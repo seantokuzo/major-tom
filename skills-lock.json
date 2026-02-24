@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skills": {
+    "atlassian-admin": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "computedHash": "009975ce9421546bc07a42538d4fdfe75eb553fcf1e564076f9b127b35a9e90b"
+    },
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "computedHash": "6412eb4eb3b91595ebab937f0c69501240e7ba761b3d82510b5cf506ec5c7adc"
+    },
+    "ios-swiftui-patterns": {
+      "source": "thebushidocollective/han",
+      "sourceType": "github",
+      "computedHash": "bcb1b79385256f906ccbd30b091a546f30b94260e8a4ea343ab876d3f8f92497"
+    },
+    "swiftui-performance-audit": {
+      "source": "dagba/ios-mcp",
+      "sourceType": "github",
+      "computedHash": "ff88cf570b667d3b236af2742fa7c9dc936ba6538a910c0e7bc425cb125638ec"
+    }
+  }
+}

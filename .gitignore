@@ -1,0 +1,149 @@
+# ============================================
+# Remote Pilot - .gitignore
+# iOS (Swift/SwiftUI) + Node.js Relay Server
+# ============================================
+
+# -----------------
+# Environment & Secrets
+# -----------------
+.env
+.env.local
+.env.*.local
+*.pem
+*.p12
+*.key
+secrets/
+Config.plist
+Secrets.swift
+
+# -----------------
+# Agent Skills (local installs)
+# -----------------
+.agents/
+.github/copilot-instructions.md
+
+# -----------------
+# macOS
+# -----------------
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# -----------------
+# Xcode / iOS
+# -----------------
+## Build generated
+build/
+DerivedData/
+*.build/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+## Dependency management
+Pods/
+Carthage/Build/
+Carthage/Checkouts/
+*.xcframeworks/
+.package.resolved
+Package.resolved
+
+## Code signing
+*.mobileprovision
+*.provisionprofile
+
+## Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+## Swift Package Manager
+.swiftpm/
+.build/
+
+## CocoaPods
+Podfile.lock
+
+## Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+## Code coverage
+*.gcno
+*.gcda
+*.profdata
+*.profraw
+
+# -----------------
+# Node.js (Relay Server)
+# -----------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+## Build output
+dist/
+out/
+*.tsbuildinfo
+
+## Runtime
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+## Logs
+logs/
+*.log
+
+## Optional npm cache
+.npm/
+.yarn/
+
+# -----------------
+# VS Code Extension
+# -----------------
+*.vsix
+.vscode-test/
+
+# -----------------
+# IDEs & Editors
+# -----------------
+## VS Code (keep settings, ignore history)
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+## JetBrains
+.idea/
+*.iml
+
+## Vim
+*.swp
+*.swo
+*~
+
+# -----------------
+# Testing
+# -----------------
+coverage/
+.nyc_output/
+*.lcov
+
+# -----------------
+# Misc
+# -----------------
+*.tmp
+*.temp
+*.bak
+*.orig
+Thumbs.db
