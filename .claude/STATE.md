@@ -7,32 +7,43 @@
 
 ## Current Phase
 
-**Pre-Implementation** — Planning complete, infrastructure being set up
+**Phase 1: "Hello Claude"** — Foundation + CLI Chat (v1.0)
 
-## Repo Status
+## Strategy
+
+**Dual client approach:**
+- **PWA** (web/) — Fast path to Hello Claude. Relay serves it. No Xcode friction.
+- **Native iOS** (ios/) — Premium track for gamified office, Apple Watch, haptics. Sideloaded, not App Store.
+- Both connect to the same relay server — it's client-agnostic.
+
+## Completed
 
 - Architecture & planning: Done (PLANNING.md)
 - Agent roles: Done (6 specialists in `.agents/agents/`)
-- Skills: Partial (iOS/SwiftUI/VSCode installed, more needed)
 - GitHub CI/PR workflow: Done
-- Source code: None yet
+- **Relay server scaffold** (PR #2, merged) — WebSocket server, CLI adapter, hook system, approval queue, event bus, session management, protocol types
+- **iOS app scaffold** (PR #3, merged) — SwiftUI shell, WebSocket client, RelayService, ChatView, ConnectionView, ApprovalCard, MessageBubble, Theme system
 
-## What's Next
+## What's Next — PWA Hello Claude Sprint
 
-Phase 1: "Hello Claude" — Foundation + CLI Chat (v1.0)
-- Relay server scaffold (WebSocket + adapter interface)
-- CLI adapter (PTY spawn, stdin/stdout, session management)
-- Hook system (pre-tool-use, approval flow)
-- iOS app scaffold (SwiftUI shell, WebSocket client)
-- Chat UI + Approval UI
+- [ ] **PWA scaffold** — Web client with WebSocket, chat UI, approval cards, connection management
+- [ ] **Hook schema verification** — Verify field names against actual Claude Code hook schema
+- [ ] **End-to-end smoke test** — Start relay, open PWA, send prompt, see response
+- [ ] **Markdown rendering** — Render Claude's output as markdown
 
-## Skills Needed Before Phase 1
+## Phase 1 Success Criteria (from PLANNING.md)
 
-- [ ] WebSocket server patterns (ws library)
-- [ ] node-pty usage patterns
-- [ ] Claude Code hooks reference
-- [ ] SpriteKit game dev (for Phase 3, not urgent)
+- [ ] Can connect to relay server from phone browser
+- [ ] Can send a prompt and see streaming response
+- [ ] Can approve/deny tool calls from phone
+- [ ] Connection auto-reconnects
+
+## Later — Native iOS Track
+
+- [ ] Xcode project setup (.xcodeproj)
+- [ ] SpriteKit gamified office (Phase 3)
+- [ ] Apple Watch companion app (Phase 5)
 
 ---
 
-_Last updated: 2026-03-15_
+_Last updated: 2026-03-16_
