@@ -8,6 +8,8 @@ struct ChatView: View {
     }
 
     var body: some View {
+        @Bindable var viewModel = viewModel
+
         VStack(spacing: 0) {
             // Connection status bar
             connectionBar
@@ -21,7 +23,7 @@ struct ChatView: View {
             messagesList
 
             // Input bar
-            inputBar
+            inputBar(text: $viewModel.inputText)
         }
         .background(MajorTomTheme.Colors.background)
         .task {
@@ -100,9 +102,9 @@ struct ChatView: View {
 
     // MARK: - Input Bar
 
-    private var inputBar: some View {
+    private func inputBar(text: Binding<String>) -> some View {
         HStack(spacing: MajorTomTheme.Spacing.md) {
-            TextField("Send a prompt...", text: $viewModel.inputText, axis: .vertical)
+            TextField("Send a prompt...", text: text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(MajorTomTheme.Typography.body)
                 .foregroundStyle(MajorTomTheme.Colors.textPrimary)

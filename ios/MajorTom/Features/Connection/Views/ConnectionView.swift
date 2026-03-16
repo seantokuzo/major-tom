@@ -8,6 +8,8 @@ struct ConnectionView: View {
     }
 
     var body: some View {
+        @Bindable var viewModel = viewModel
+
         VStack(spacing: MajorTomTheme.Spacing.xl) {
             Spacer()
 
