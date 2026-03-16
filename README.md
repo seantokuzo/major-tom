@@ -1,104 +1,82 @@
-# Remote Pilot 🛩️
+# Remote Pilot
 
-> Control VS Code Copilot from your iPhone. Approve code changes from your couch.
-
-<!-- TODO: Add demo gif -->
-<!-- ![Demo](docs/assets/demo.gif) -->
+> Control Claude Code from your iPhone. Watch your AI agents work in a pixel art office.
 
 ## What is this?
 
-Remote Pilot is a native iOS app that lets you interact with VS Code Copilot running on your Mac—without touching your keyboard.
+Remote Pilot is a native iOS app that gives you **complete mobile control** over Claude Code sessions running on your Mac. Leave a CLI session running, head out the door, and keep steering from your phone.
 
-**The killer feature:** When Copilot asks "Allow/Skip" or "Keep/Discard", you approve it from your phone. Peak lazy productivity.
+**The killer feature:** When Claude Code asks "Allow tool call?", you approve it from the couch. Or the park. Or the grocery store.
+
+**The fun feature:** A gamified Zelda-style pixel art office where your Claude orchestrator and subagents are little animated characters. They walk to their desks when working, hang in the break room when idle, and you can tap them to see what they're thinking.
 
 ## Features
 
-🤖 **Remote Copilot Chat** — Send prompts, see responses in real-time
+**Remote Control** — Send prompts, see streaming responses, approve/deny tool calls
 
-✅ **Approval Controls** — Allow/Skip tool calls, Keep/Discard changes from your phone
+**Full Approval Flow** — Allow / Skip / Deny / Allow Always — every button, from your phone
 
-🔀 **Model & Mode Switching** — Change models (GPT-4o, Claude) and modes (Agent/Ask/Edit)
+**Multi-Target** — Control Claude Code CLI sessions and the VSCode extension
 
-📁 **File Context** — Browse workspace files, add @file references remotely
+**Agent Office** — SpriteKit pixel art office with animated agent characters
 
-📋 **Jira Integration** — View sprint board, backlog, and issues
+**Tap to Inspect** — Tap any agent to see their task, output stream, and steer them
 
-📖 **Confluence Integration** — Read project docs for context
+**Live Visibility** — See files being edited, terminal output, git status in real-time
 
-📊 **Live Visibility** — See what files Copilot is editing, terminal output, git status
-
-🎤 **Voice Prompts** — Dictate prompts with Speech Recognition
-
-⌚ **Apple Watch** — Approve actions from your wrist (coming soon)
-
-## Tech Stack
-
-| Component         | Technology                    |
-| ----------------- | ----------------------------- |
-| iOS App           | Swift 5.9+, SwiftUI, iOS 17+  |
-| Relay Server      | Node.js + WebSocket           |
-| VS Code Extension | TypeScript                    |
-| Auth              | OAuth 2.0 (GitHub, Atlassian) |
+**Voice Prompts** — Dictate prompts while walking the dog
 
 ## Architecture
 
 ```
-┌─────────────────┐         ┌─────────────────────────┐
-│   iOS App       │   WSS   │   Mac (Relay Server)    │
-│   (SwiftUI)     │◄───────►│   + VS Code Extension   │
-└─────────────────┘         └─────────────────────────┘
-        │                              │
-        │ HTTPS                        │ VS Code API
-        ▼                              ▼
-┌─────────────────┐         ┌─────────────────────────┐
-│  Atlassian API  │         │  GitHub Copilot Chat    │
-└─────────────────┘         └─────────────────────────┘
+┌──────────────┐         ┌──────────────────────────┐
+│  iOS App     │   WSS   │  Mac                     │
+│  SwiftUI +   │◄───────►│  Relay Server (Node.js)  │
+│  SpriteKit   │         │  ├── CLI Adapter (PTY)   │
+└──────────────┘         │  └── VSCode Adapter      │
+                         └──────────────────────────┘
 ```
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| iOS App | Swift 5.9+, SwiftUI, SpriteKit, iOS 17+ |
+| Relay Server | Node.js 22+, TypeScript, ws, node-pty |
+| VSCode Extension | TypeScript, VSCode Extension API |
+| Communication | WebSocket (JSON protocol) |
 
 ## Project Status
 
-🚧 **In Development** — Building toward v1.0 MVP
+**In Development** — Building toward v1.0 (CLI chat + approval flow)
 
-See [docs/PLANNING.md](docs/PLANNING.md) for detailed roadmap, user stories, and requirements.
+See [docs/PLANNING.md](docs/PLANNING.md) for the full roadmap, architecture, and protocol spec.
+
+## Roadmap
+
+| Version | Theme | What You Get |
+|---------|-------|-------------|
+| v1.0 | Foundation | Chat + approve tool calls from phone |
+| v1.1 | Full Control | VSCode bridge, live visibility, file context |
+| v2.0 | The Office | Gamified agent visualization |
+| v2.1 | Delight | Voice, templates, notifications |
+| v3.0 | Everywhere | Apple Watch, widgets |
 
 ## Getting Started
 
-> Full setup guide coming soon. For now, see [docs/PLANNING.md](docs/PLANNING.md#setup-guide).
-
-### Quick Start
+> Full setup guide coming with v1.0.
 
 ```bash
-# Clone the repo
+# Clone
 git clone https://github.com/seantokuzo/remote-pilot.git
 cd remote-pilot
 
-# iOS app - open in Xcode
-open ios/RemotePilot.xcodeproj
-
 # Relay server
 cd relay && npm install && npm start
+
+# iOS app — open in Xcode
+open ios/RemotePilot.xcodeproj
 ```
-
-## Documentation
-
-| Doc                                     | Description                               |
-| --------------------------------------- | ----------------------------------------- |
-| [PLANNING.md](docs/PLANNING.md)         | Full roadmap, user stories, requirements  |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical deep-dive (coming soon)         |
-| [SETUP.md](docs/SETUP.md)               | Detailed setup instructions (coming soon) |
-
-## Why?
-
-Because sometimes you want to:
-
-- Monitor a long Copilot task from another room
-- Approve code changes while making coffee
-- Check your sprint board without context switching
-- Feel like a wizard controlling your IDE remotely
-
-## Contributing
-
-This is a personal/portfolio project, but the code is open. Feel free to fork and adapt for your workflow.
 
 ## License
 
@@ -106,4 +84,4 @@ MIT
 
 ---
 
-_Built for lazy productivity by [@seantokuzo](https://github.com/seantokuzo)_
+_Built for lazy productivity._
