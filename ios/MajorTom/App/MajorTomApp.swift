@@ -7,17 +7,20 @@ struct MajorTomApp: App {
     var body: some Scene {
         WindowGroup {
             TabView {
-                Tab("Control", systemImage: "terminal") {
-                    ChatView(relay: relay)
-                }
+                ChatView(relay: relay)
+                    .tabItem {
+                        Label("Control", systemImage: "terminal")
+                    }
 
-                Tab("Connect", systemImage: "antenna.radiowaves.left.and.right") {
-                    ConnectionView(relay: relay)
-                }
+                ConnectionView(relay: relay)
+                    .tabItem {
+                        Label("Connect", systemImage: "antenna.radiowaves.left.and.right")
+                    }
 
-                Tab("Settings", systemImage: "gear") {
-                    SettingsView()
-                }
+                SettingsView()
+                    .tabItem {
+                        Label("Settings", systemImage: "gear")
+                    }
             }
             .tint(MajorTomTheme.Colors.accent)
             .preferredColorScheme(.dark)

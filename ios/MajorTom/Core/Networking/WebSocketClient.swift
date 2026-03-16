@@ -24,6 +24,7 @@ final class WebSocketClient {
     private var reconnectAttempt = 0
     private let maxReconnectAttempts = 10
     private var receiveTask: Task<Void, Never>?
+    private var pingTask: Task<Void, Never>?
 
     var onMessage: ((Data) -> Void)?
 
@@ -45,6 +46,8 @@ final class WebSocketClient {
 
     func disconnect() {
         isIntentionalDisconnect = true
+        pingTask?.cancel()
+        pingTask = nil
         receiveTask?.cancel()
         receiveTask = nil
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
@@ -68,14 +71,18 @@ final class WebSocketClient {
     private func establishConnection(url: URL) {
         webSocketTask = session.webSocketTask(with: url)
         webSocketTask?.resume()
-        connectionState = .connected
+        // Stay in .connecting — first successful receive sets .connected
+        if connectionState != .reconnecting {
+            connectionState = .connecting
+        }
 
         receiveTask?.cancel()
         receiveTask = Task { [weak self] in
             await self?.receiveLoop()
         }
 
-        schedulePing()
+        pingTask?.cancel()
+        pingTask = schedulePing()
     }
 
     private func receiveLoop() async {
@@ -84,6 +91,11 @@ final class WebSocketClient {
         while !Task.isCancelled {
             do {
                 let message = try await task.receive()
+                // First successful receive confirms we're connected
+                if connectionState != .connected {
+                    connectionState = .connected
+                    reconnectAttempt = 0
+                }
                 switch message {
                 case .string(let text):
                     if let data = text.data(using: .utf8) {
@@ -103,7 +115,8 @@ final class WebSocketClient {
         }
     }
 
-    private func schedulePing() {
+    @discardableResult
+    private func schedulePing() -> Task<Void, Never> {
         Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))

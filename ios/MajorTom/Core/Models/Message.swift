@@ -80,7 +80,12 @@ struct OutputEvent: Codable, Identifiable {
     let chunk: String
     let format: OutputFormat
 
-    var id: String { "\(sessionId)-\(chunk.hashValue)" }
+    // Use UUID for stable identity — hashValue is not stable across runs
+    let id = UUID().uuidString
+
+    enum CodingKeys: String, CodingKey {
+        case type, sessionId, chunk, format
+    }
 }
 
 enum OutputFormat: String, Codable {
