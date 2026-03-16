@@ -37,8 +37,15 @@ export function createHookServer(approvalQueue: ApprovalQueue, port: number) {
       // Pre-tool-use: blocks until iOS app sends decision
       if (method === 'POST' && url === '/hooks/pre-tool-use') {
         const body = await readBody(req);
-        const hookData = JSON.parse(body) as Record<string, unknown>;
+        let hookData: Record<string, unknown>;
+        try {
+          hookData = JSON.parse(body) as Record<string, unknown>;
+        } catch {
+          sendJson(res, 400, { error: 'Invalid JSON in hook payload' });
+          return;
+        }
         const requestId = randomUUID();
+        // Claude Code hook payload fields — will verify against actual schema
         const tool = (hookData['tool_name'] as string) ?? 'unknown';
         const description = (hookData['tool_input'] as string) ?? '';
 
@@ -61,7 +68,13 @@ export function createHookServer(approvalQueue: ApprovalQueue, port: number) {
       // Post-tool-use: fire and forget
       if (method === 'POST' && url === '/hooks/post-tool-use') {
         const body = await readBody(req);
-        const hookData = JSON.parse(body) as Record<string, unknown>;
+        let hookData: Record<string, unknown>;
+        try {
+          hookData = JSON.parse(body) as Record<string, unknown>;
+        } catch {
+          sendJson(res, 400, { error: 'Invalid JSON in hook payload' });
+          return;
+        }
         const sessionId = (hookData['session_id'] as string) ?? '';
         const tool = (hookData['tool_name'] as string) ?? 'unknown';
         const output = (hookData['tool_output'] as string) ?? '';
@@ -81,7 +94,13 @@ export function createHookServer(approvalQueue: ApprovalQueue, port: number) {
       // Notification: fire and forget
       if (method === 'POST' && url === '/hooks/notification') {
         const body = await readBody(req);
-        const hookData = JSON.parse(body) as Record<string, unknown>;
+        let hookData: Record<string, unknown>;
+        try {
+          hookData = JSON.parse(body) as Record<string, unknown>;
+        } catch {
+          sendJson(res, 400, { error: 'Invalid JSON in hook payload' });
+          return;
+        }
 
         logger.info({ hookData }, 'Notification hook received');
         // TODO: Parse agent lifecycle events from notification data

@@ -6,6 +6,7 @@ interface PendingApproval {
   requestId: string;
   tool: string;
   resolve: (decision: ApprovalDecision) => void;
+  timer: ReturnType<typeof setTimeout>;
   createdAt: number;
 }
 
@@ -28,22 +29,23 @@ export class ApprovalQueue {
    */
   waitForDecision(requestId: string, tool: string): Promise<ApprovalDecision> {
     return new Promise<ApprovalDecision>((resolve) => {
-      const entry: PendingApproval = {
-        requestId,
-        tool,
-        resolve,
-        createdAt: Date.now(),
-      };
-      this.pending.set(requestId, entry);
-      logger.info({ requestId, tool }, 'Approval queued, waiting for decision');
-
       // Timeout: auto-deny if no response
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (this.pending.has(requestId)) {
           logger.warn({ requestId, tool }, 'Approval timed out, auto-denying');
           this.resolve(requestId, 'deny');
         }
       }, this.timeoutMs);
+
+      const entry: PendingApproval = {
+        requestId,
+        tool,
+        resolve,
+        timer,
+        createdAt: Date.now(),
+      };
+      this.pending.set(requestId, entry);
+      logger.info({ requestId, tool }, 'Approval queued, waiting for decision');
     });
   }
 
@@ -57,6 +59,7 @@ export class ApprovalQueue {
       return false;
     }
     this.pending.delete(requestId);
+    clearTimeout(entry.timer);
     entry.resolve(decision);
     logger.info({ requestId, decision, tool: entry.tool }, 'Approval resolved');
     return true;
