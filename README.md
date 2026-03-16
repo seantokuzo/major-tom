@@ -1,10 +1,10 @@
-# Remote Pilot
+# Major Tom
 
 > Control Claude Code from your iPhone. Watch your AI agents work in a pixel art office.
 
 ## What is this?
 
-Remote Pilot is a native iOS app that gives you **complete mobile control** over Claude Code sessions running on your Mac. Leave a CLI session running, head out the door, and keep steering from your phone.
+Major Tom is a native iOS app that gives you **complete mobile control** over Claude Code sessions running on your Mac. Leave a CLI session running, head out the door, and keep steering from your phone.
 
 **The killer feature:** When Claude Code asks "Allow tool call?", you approve it from the couch. Or the park. Or the grocery store.
 
@@ -68,14 +68,14 @@ See [docs/PLANNING.md](docs/PLANNING.md) for the full roadmap, architecture, and
 
 ```bash
 # Clone
-git clone https://github.com/seantokuzo/remote-pilot.git
-cd remote-pilot
+git clone https://github.com/seantokuzo/major-tom.git
+cd major-tom
 
 # Relay server
 cd relay && npm install && npm start
 
 # iOS app — open in Xcode
-open ios/RemotePilot.xcodeproj
+open ios/MajorTom.xcodeproj
 ```
 
 ## License

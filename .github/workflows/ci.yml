@@ -1,0 +1,338 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # =============================================================================
+  # Relay Server — Lint
+  # =============================================================================
+  lint-relay:
+    name: Lint (Relay)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: relay/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+  # =============================================================================
+  # Relay Server — Typecheck
+  # =============================================================================
+  typecheck-relay:
+    name: Typecheck (Relay)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: relay/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  # =============================================================================
+  # Relay Server — Tests
+  # =============================================================================
+  test-relay:
+    name: Test (Relay)
+    runs-on: ubuntu-latest
+    needs: [lint-relay, typecheck-relay]
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: relay/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Tests
+        run: npm test
+        env:
+          NODE_ENV: test
+
+  # =============================================================================
+  # Relay Server — Build
+  # =============================================================================
+  build-relay:
+    name: Build (Relay)
+    runs-on: ubuntu-latest
+    needs: [lint-relay, typecheck-relay]
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: relay/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  # =============================================================================
+  # VSCode Extension — Lint + Typecheck + Build
+  # =============================================================================
+  build-extension:
+    name: Build (VSCode Extension)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode-extension
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  # =============================================================================
+  # iOS — Build (requires macOS runner)
+  # NOTE: Disabled until Xcode project exists. Enable when Phase 1 starts.
+  # =============================================================================
+  # build-ios:
+  #   name: Build (iOS)
+  #   runs-on: macos-14
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Select Xcode
+  #       run: sudo xcode-select -s /Applications/Xcode_15.2.app
+  #
+  #     - name: Build
+  #       run: |
+  #         xcodebuild build \
+  #           -project ios/MajorTom.xcodeproj \
+  #           -scheme MajorTom \
+  #           -destination 'platform=iOS Simulator,name=iPhone 15' \
+  #           -configuration Debug \
+  #           CODE_SIGNING_ALLOWED=NO
+
+  # =============================================================================
+  # Auto-Label PRs on CI Results
+  # =============================================================================
+  label-pr:
+    name: Label PR
+    runs-on: ubuntu-latest
+    needs: [lint-relay, typecheck-relay, test-relay, build-relay, build-extension]
+    if: always() && github.event_name == 'pull_request'
+    steps:
+      - name: Add Lint Failure label
+        if: needs.lint-relay.result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['Lint Failure']
+            });
+
+      - name: Remove Lint Failure label on success
+        if: needs.lint-relay.result == 'success'
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: 'Lint Failure'
+            });
+
+      - name: Add Type Error label
+        if: needs.typecheck-relay.result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['Type Error']
+            });
+
+      - name: Remove Type Error label on success
+        if: needs.typecheck-relay.result == 'success'
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: 'Type Error'
+            });
+
+      - name: Add Test Failure label
+        if: needs.test-relay.result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['Test Failure']
+            });
+
+      - name: Remove Test Failure label on success
+        if: needs.test-relay.result == 'success'
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: 'Test Failure'
+            });
+
+      - name: Add Build Failure label
+        if: needs.build-relay.result == 'failure' || needs.build-extension.result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['Build Failure']
+            });
+
+      - name: Remove Build Failure label on success
+        if: needs.build-relay.result == 'success' && needs.build-extension.result == 'success'
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: 'Build Failure'
+            });
+
+      - name: Add CI Pass label
+        if: |
+          needs.lint-relay.result == 'success' &&
+          needs.typecheck-relay.result == 'success' &&
+          needs.test-relay.result == 'success' &&
+          needs.build-relay.result == 'success' &&
+          needs.build-extension.result == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['CI Pass']
+            });
+
+      - name: Remove CI Pass label on failure
+        if: |
+          needs.lint-relay.result == 'failure' ||
+          needs.typecheck-relay.result == 'failure' ||
+          needs.test-relay.result == 'failure' ||
+          needs.build-relay.result == 'failure' ||
+          needs.build-extension.result == 'failure'
+        uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: 'CI Pass'
+            });
+
+  # =============================================================================
+  # Required Status Check (summary job for branch protection)
+  # =============================================================================
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [lint-relay, typecheck-relay, test-relay, build-relay, build-extension]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.lint-relay.result }}" != "success" ]] || \
+             [[ "${{ needs.typecheck-relay.result }}" != "success" ]] || \
+             [[ "${{ needs.test-relay.result }}" != "success" ]] || \
+             [[ "${{ needs.build-relay.result }}" != "success" ]] || \
+             [[ "${{ needs.build-extension.result }}" != "success" ]]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
+          echo "All CI checks passed!"

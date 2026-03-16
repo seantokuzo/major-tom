@@ -1,4 +1,4 @@
-# Remote Pilot — Project Instructions
+# Major Tom — Project Instructions
 
 > Extends global `~/.claude/CLAUDE.md`. Project-specific rules live here.
 
@@ -6,7 +6,7 @@
 
 ## Project Overview
 
-Remote Pilot is a native iOS app for controlling Claude Code from your iPhone. It consists of three components:
+Major Tom is a native iOS app for controlling Claude Code from your iPhone. It consists of three components:
 
 1. **iOS App** (`ios/`) — SwiftUI + SpriteKit, iOS 17+
 2. **Relay Server** (`relay/`) — Node.js + TypeScript, WebSocket hub
@@ -28,7 +28,7 @@ See [docs/PLANNING.md](docs/PLANNING.md) for architecture, protocol spec, and ro
 
 ## Tech Stack & Conventions
 
-### iOS App (`ios/RemotePilot/`)
+### iOS App (`ios/MajorTom/`)
 
 | Concern | Convention |
 |---------|-----------|
@@ -108,12 +108,12 @@ Agent directives live in `.agents/agents/`:
 
 | Agent | Role | Scope |
 |-------|------|-------|
-| `rp-orchestrator.md` | Thin coordinator | Task decomposition, wave scheduling |
-| `rp-ios-engineer.md` | iOS specialist | SwiftUI, SpriteKit, iOS app code |
-| `rp-relay-engineer.md` | Backend specialist | Node.js relay server, adapters |
-| `rp-extension-engineer.md` | VSCode specialist | Companion extension |
-| `rp-sprite-artist.md` | Game/art specialist | SpriteKit scenes, sprites, animations |
-| `rp-researcher.md` | Research specialist | Context7, docs, API investigation |
+| `mt-orchestrator.md` | Thin coordinator | Task decomposition, wave scheduling |
+| `mt-ios-engineer.md` | iOS specialist | SwiftUI, SpriteKit, iOS app code |
+| `mt-relay-engineer.md` | Backend specialist | Node.js relay server, adapters |
+| `mt-extension-engineer.md` | VSCode specialist | Companion extension |
+| `mt-sprite-artist.md` | Game/art specialist | SpriteKit scenes, sprites, animations |
+| `mt-researcher.md` | Research specialist | Context7, docs, API investigation |
 
 ---
 
@@ -138,4 +138,3 @@ Before marking any task complete:
 - Don't guess package versions — always check with `npm view`
 - Don't nest subagents (orchestrator → workers, never workers → sub-workers)
 - Don't paste file contents into agent prompts (pass paths instead)
-- Don't create Atlassian/Copilot features (they're backlogged)
