@@ -1,4 +1,4 @@
-# Remote Pilot — Planning Document
+# Major Tom — Planning Document
 
 > Control Claude Code from your iPhone. Watch your AI agents work in a gamified Zelda-style office. Ship code from the couch.
 
@@ -6,7 +6,7 @@
 
 ## Vision
 
-Remote Pilot is a native iOS app that gives you **complete mobile control** over Claude Code sessions running on your Mac — both CLI sessions and the VSCode extension. When you leave your desk, your AI keeps working. You steer it from your phone.
+Major Tom is a native iOS app that gives you **complete mobile control** over Claude Code sessions running on your Mac — both CLI sessions and the VSCode extension. When you leave your desk, your AI keeps working. You steer it from your phone.
 
 **But we're not just building a remote control.** We're building a fucking beautiful, gamified visualization of your AI workforce. Think tiny Zelda-style pixel office where your Claude orchestrator and subagents are little characters — moving to their desks when you spawn them on tasks, hanging in the break room when idle, and tappable to see their thought streams in real-time.
 
@@ -160,7 +160,7 @@ Lightweight extension that provides the bridge between Claude Code's VSCode UI a
 ## Project Structure
 
 ```
-remote-pilot/
+major-tom/
 ├── CLAUDE.md                          # Project-level AI instructions
 ├── README.md
 ├── docs/
@@ -169,9 +169,9 @@ remote-pilot/
 │   └── PROTOCOL.md                    # WebSocket message protocol spec
 │
 ├── ios/                               # Xcode project
-│   └── RemotePilot/
+│   └── MajorTom/
 │       ├── App/
-│       │   └── RemotePilotApp.swift
+│       │   └── MajorTomApp.swift
 │       ├── Features/
 │       │   ├── Control/               # Chat, approvals, remote control
 │       │   │   ├── Views/
@@ -220,12 +220,12 @@ remote-pilot/
 └── .agents/                           # AI agent directives
     ├── skills/                        # Installed skills
     └── agents/                        # GSD-style agent files
-        ├── rp-orchestrator.md         # Thin orchestrator
-        ├── rp-ios-engineer.md         # iOS/SwiftUI specialist
-        ├── rp-relay-engineer.md       # Node.js relay specialist
-        ├── rp-extension-engineer.md   # VSCode extension specialist
-        ├── rp-sprite-artist.md        # SpriteKit/pixel art specialist
-        └── rp-researcher.md           # Research & Context7 specialist
+        ├── mt-orchestrator.md         # Thin orchestrator
+        ├── mt-ios-engineer.md         # iOS/SwiftUI specialist
+        ├── mt-relay-engineer.md       # Node.js relay specialist
+        ├── mt-extension-engineer.md   # VSCode extension specialist
+        ├── mt-sprite-artist.md        # SpriteKit/pixel art specialist
+        └── mt-researcher.md           # Research & Context7 specialist
 ```
 
 ---
@@ -285,8 +285,6 @@ remote-pilot/
 
 | ID | Feature | Notes |
 |----|---------|-------|
-| F-B1 | Jira Integration | Nice to have, not core to the Claude Code vision |
-| F-B2 | Confluence Integration | Same — can revisit if needed |
 | F-B3 | GitHub PR Status | Can use GitHub app directly |
 | F-B4 | CI/CD Pipeline View | Same |
 | F-B5 | Copilot Support | Legacy — only if you need it alongside Claude Code |
@@ -529,7 +527,7 @@ remote-pilot/
 
 ### Phase 5: "Everywhere" — Platform Expansion (v3.0)
 
-**Goal:** Remote Pilot on your wrist and home screen.
+**Goal:** Major Tom on your wrist and home screen.
 
 **Delivers:** Apple Watch app, Home Screen widgets
 
@@ -705,4 +703,3 @@ npx skills add https://github.com/anthropics/knowledge-work-plugins --skill road
 npx skills add https://github.com/borghei/claude-skills --skill product-manager-toolkit
 ```
 
-> Note: Atlassian skill retained but deprioritized. Jira/Confluence integration moved to backlog.

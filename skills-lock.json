@@ -1,11 +1,6 @@
 {
   "version": 1,
   "skills": {
-    "atlassian-admin": {
-      "source": "alirezarezvani/claude-skills",
-      "sourceType": "github",
-      "computedHash": "009975ce9421546bc07a42538d4fdfe75eb553fcf1e564076f9b127b35a9e90b"
-    },
     "find-skills": {
       "source": "vercel-labs/skills",
       "sourceType": "github",
