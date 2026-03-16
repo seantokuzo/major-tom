@@ -1,0 +1,230 @@
+import Foundation
+
+// MARK: - Message Type Routing
+
+enum MessageType: String, Codable {
+    // Client → Server
+    case prompt
+    case approval
+    case cancel
+    case sessionStart = "session.start"
+    case sessionAttach = "session.attach"
+    case agentMessage = "agent.message"
+    case workspaceTree = "workspace.tree"
+    case contextAdd = "context.add"
+
+    // Server → Client
+    case output
+    case approvalRequest = "approval.request"
+    case toolStart = "tool.start"
+    case toolComplete = "tool.complete"
+    case agentSpawn = "agent.spawn"
+    case agentWorking = "agent.working"
+    case agentIdle = "agent.idle"
+    case agentComplete = "agent.complete"
+    case agentDismissed = "agent.dismissed"
+    case connectionStatus = "connection.status"
+    case sessionInfo = "session.info"
+    case workspaceTreeResponse = "workspace.tree.response"
+    case error
+}
+
+// MARK: - Client → Server Messages
+
+struct PromptMessage: Codable {
+    let type: String = "prompt"
+    let sessionId: String
+    let text: String
+    var context: [String]?
+}
+
+struct ApprovalDecisionMessage: Codable {
+    let type: String = "approval"
+    let requestId: String
+    let decision: ApprovalDecision
+}
+
+enum ApprovalDecision: String, Codable {
+    case allow
+    case deny
+    case skip
+    case allowAlways = "allow_always"
+}
+
+struct CancelMessage: Codable {
+    let type: String = "cancel"
+    let sessionId: String
+}
+
+struct SessionStartMessage: Codable {
+    let type: String = "session.start"
+    let adapter: AdapterType
+    var workingDir: String?
+}
+
+enum AdapterType: String, Codable {
+    case cli
+    case vscode
+}
+
+struct SessionAttachMessage: Codable {
+    let type: String = "session.attach"
+    let sessionId: String
+}
+
+// MARK: - Server → Client Messages
+
+struct OutputEvent: Codable, Identifiable {
+    let type: String
+    let sessionId: String
+    let chunk: String
+    let format: OutputFormat
+
+    // Use UUID for stable identity — hashValue is not stable across runs
+    let id = UUID().uuidString
+
+    enum CodingKeys: String, CodingKey {
+        case type, sessionId, chunk, format
+    }
+}
+
+enum OutputFormat: String, Codable {
+    case markdown
+    case plain
+}
+
+struct ApprovalRequestEvent: Codable, Identifiable {
+    let type: String
+    let requestId: String
+    let tool: String
+    let description: String
+    let details: [String: AnyCodableValue]?
+
+    var id: String { requestId }
+}
+
+struct ToolStartEvent: Codable {
+    let type: String
+    let sessionId: String
+    let tool: String
+    let input: [String: AnyCodableValue]?
+}
+
+struct ToolCompleteEvent: Codable {
+    let type: String
+    let sessionId: String
+    let tool: String
+    let output: String
+    let success: Bool
+}
+
+struct AgentSpawnEvent: Codable, Identifiable {
+    let type: String
+    let agentId: String
+    var parentId: String?
+    let task: String
+    let role: String
+
+    var id: String { agentId }
+}
+
+struct AgentWorkingEvent: Codable {
+    let type: String
+    let agentId: String
+    let task: String
+}
+
+struct AgentIdleEvent: Codable {
+    let type: String
+    let agentId: String
+}
+
+struct AgentCompleteEvent: Codable {
+    let type: String
+    let agentId: String
+    let result: String
+}
+
+struct AgentDismissedEvent: Codable {
+    let type: String
+    let agentId: String
+}
+
+struct ConnectionStatusEvent: Codable {
+    let type: String
+    let status: String
+    let adapter: String
+}
+
+struct SessionInfoEvent: Codable, Identifiable {
+    let type: String
+    let sessionId: String
+    let adapter: String
+    let startedAt: String
+    var tokenUsage: TokenUsage?
+
+    var id: String { sessionId }
+}
+
+struct TokenUsage: Codable {
+    let used: Int
+    let remaining: Int
+}
+
+struct ErrorEvent: Codable {
+    let type: String
+    let code: String
+    let message: String
+}
+
+// MARK: - Type-erased JSON value for dynamic fields
+
+enum AnyCodableValue: Codable {
+    case string(String)
+    case int(Int)
+    case double(Double)
+    case bool(Bool)
+    case object([String: AnyCodableValue])
+    case array([AnyCodableValue])
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let val = try? container.decode(Bool.self) {
+            self = .bool(val)
+        } else if let val = try? container.decode(Int.self) {
+            self = .int(val)
+        } else if let val = try? container.decode(Double.self) {
+            self = .double(val)
+        } else if let val = try? container.decode(String.self) {
+            self = .string(val)
+        } else if let val = try? container.decode([String: AnyCodableValue].self) {
+            self = .object(val)
+        } else if let val = try? container.decode([AnyCodableValue].self) {
+            self = .array(val)
+        } else {
+            self = .null
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let val): try container.encode(val)
+        case .int(let val): try container.encode(val)
+        case .double(let val): try container.encode(val)
+        case .bool(let val): try container.encode(val)
+        case .object(let val): try container.encode(val)
+        case .array(let val): try container.encode(val)
+        case .null: try container.encodeNil()
+        }
+    }
+}
+
+// MARK: - Server message routing envelope
+
+struct MessageEnvelope: Codable {
+    let type: String
+}
