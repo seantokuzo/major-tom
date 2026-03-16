@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { WebSocketServer, type WebSocket } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from './utils/logger.js';
 import { SessionManager } from './sessions/session-manager.js';
 import { ClaudeCliAdapter } from './adapters/claude-cli.adapter.js';
@@ -168,7 +168,7 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
 // ── Broadcasting ────────────────────────────────────────────
 
 function sendToClient(ws: WebSocket, message: ServerMessage): void {
-  if (ws.readyState === ws.OPEN) {
+  if (ws.readyState === WebSocket.OPEN) {
     ws.send(encodeServerMessage(message));
   }
 }
@@ -176,7 +176,7 @@ function sendToClient(ws: WebSocket, message: ServerMessage): void {
 function broadcast(message: ServerMessage): void {
   const encoded = encodeServerMessage(message);
   for (const client of clients) {
-    if (client.readyState === client.OPEN) {
+    if (client.readyState === WebSocket.OPEN) {
       client.send(encoded);
     }
   }
@@ -209,10 +209,12 @@ async function shutdown(signal: string): Promise<void> {
   // Dispose adapters
   await cliAdapter.dispose();
 
-  // Close servers
-  wss.close();
-  httpServer.close();
-  hookServer.close();
+  // Close servers and wait for them to finish
+  await Promise.all([
+    new Promise<void>((resolve) => wss.close(() => resolve())),
+    new Promise<void>((resolve) => httpServer.close(() => resolve())),
+    new Promise<void>((resolve) => hookServer.close(() => resolve())),
+  ]);
 
   clearInterval(heartbeatInterval);
   eventBus.removeAllListeners();
