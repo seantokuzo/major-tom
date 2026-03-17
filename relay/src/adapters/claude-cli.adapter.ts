@@ -44,7 +44,7 @@ function buildHookSettings(): Record<string, unknown> {
           hooks: [
             {
               type: 'command',
-              command: `bash ${HOOKS_DIR}/pre-tool-use.sh`,
+              command: `bash "${HOOKS_DIR}/pre-tool-use.sh"`,
               timeout: 300,
             },
           ],
@@ -56,7 +56,7 @@ function buildHookSettings(): Record<string, unknown> {
           hooks: [
             {
               type: 'command',
-              command: `bash ${HOOKS_DIR}/post-tool-use.sh`,
+              command: `bash "${HOOKS_DIR}/post-tool-use.sh"`,
               timeout: 10,
             },
           ],
@@ -68,7 +68,7 @@ function buildHookSettings(): Record<string, unknown> {
           hooks: [
             {
               type: 'command',
-              command: `bash ${HOOKS_DIR}/notification.sh`,
+              command: `bash "${HOOKS_DIR}/notification.sh"`,
               timeout: 10,
             },
           ],
@@ -97,17 +97,25 @@ export class ClaudeCliAdapter implements IAdapter {
     const settingsFile = await this.writeHookSettings(session.id);
     const hookUrl = `http://localhost:${this.hookPort}`;
 
-    const ptyProcess = pty.spawn('claude', ['--settings', settingsFile], {
-      name: 'xterm-color',
-      cols: 120,
-      rows: 40,
-      cwd: workingDir,
-      env: {
-        ...process.env,
-        TERM: 'xterm-color',
-        MAJOR_TOM_HOOK_URL: hookUrl,
-      },
-    });
+    let ptyProcess: pty.IPty;
+    try {
+      ptyProcess = pty.spawn('claude', ['--settings', settingsFile], {
+        name: 'xterm-color',
+        cols: 120,
+        rows: 40,
+        cwd: workingDir,
+        env: {
+          ...process.env,
+          TERM: 'xterm-color',
+          MAJOR_TOM_HOOK_URL: hookUrl,
+        },
+      });
+    } catch (err) {
+      // Clean up temp settings file and session on spawn failure
+      void this.cleanupSettingsFile(settingsFile);
+      session.close();
+      throw err;
+    }
 
     const ptySession: PtySession = { session, process: ptyProcess, settingsFile };
     this.ptySessions.set(session.id, ptySession);
