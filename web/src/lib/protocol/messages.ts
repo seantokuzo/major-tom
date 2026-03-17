@@ -1,4 +1,4 @@
-// Major Tom WebSocket Protocol — shared types (mirrors relay/src/protocol/messages.ts)
+// Major Tom WebSocket Protocol — shared types (subset of relay/src/protocol/messages.ts)
 
 // ── Client → Server ─────────────────────────────────────────
 
@@ -68,8 +68,16 @@ export interface ToolCompleteMessage {
   type: 'tool.complete';
   sessionId: string;
   tool: string;
+  toolUseId?: string;
   output: string;
   success: boolean;
+}
+
+export interface NotificationMessage {
+  type: 'notification';
+  title: string;
+  message: string;
+  notificationType: string;
 }
 
 export interface ConnectionStatusMessage {
@@ -99,4 +107,5 @@ export type ServerMessage =
   | ToolCompleteMessage
   | ConnectionStatusMessage
   | SessionInfoMessage
+  | NotificationMessage
   | ErrorMessage;

@@ -4,7 +4,7 @@
   import ApprovalCard from './ApprovalCard.svelte';
   import type { ApprovalDecision } from '../protocol/messages';
 
-  let messagesEnd: HTMLDivElement;
+  let messagesEnd: HTMLDivElement | undefined;
 
   function scrollToBottom() {
     messagesEnd?.scrollIntoView({ behavior: 'smooth' });

@@ -25,7 +25,9 @@ export class RelaySocket {
   connect(host: string): void {
     this.intentionalClose = false;
     this.reconnectAttempt = 0;
-    this.url = host.startsWith('ws://') || host.startsWith('wss://') ? host : `ws://${host}`;
+    const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+    const defaultScheme = isSecure ? 'wss://' : 'ws://';
+    this.url = host.startsWith('ws://') || host.startsWith('wss://') ? host : `${defaultScheme}${host}`;
     this.setState('connecting');
     this.establish();
   }

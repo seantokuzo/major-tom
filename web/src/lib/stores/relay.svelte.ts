@@ -151,6 +151,15 @@ class RelayStore {
         });
         break;
 
+      case 'notification':
+        this.messages.push({
+          id: uid(),
+          role: 'system',
+          content: message.title ? `${message.title}: ${message.message}` : message.message,
+          timestamp: new Date(),
+        });
+        break;
+
       case 'connection.status':
         // Handled implicitly by socket state
         break;
