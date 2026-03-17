@@ -65,6 +65,7 @@
     <button
       class="send-btn"
       type="submit"
+      aria-label="Send message"
       disabled={!relay.inputText.trim() || !relay.hasSession}
     >
       ↑

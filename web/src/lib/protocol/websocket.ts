@@ -23,6 +23,17 @@ export class RelaySocket {
   onStateChange: StateHandler | null = null;
 
   connect(host: string): void {
+    // Clean up any existing connection first
+    if (this.ws) {
+      this.ws.onclose = null; // prevent reconnect from firing
+      this.ws.close(1000, 'Reconnecting');
+      this.ws = null;
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
     this.intentionalClose = false;
     this.reconnectAttempt = 0;
     const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
