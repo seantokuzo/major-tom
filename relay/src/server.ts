@@ -22,7 +22,7 @@ const DISABLE_STATIC = process.env['NO_STATIC'] === '1' || process.argv.includes
 // ── Core services ───────────────────────────────────────────
 
 const sessionManager = new SessionManager();
-const cliAdapter = new ClaudeCliAdapter(sessionManager);
+const cliAdapter = new ClaudeCliAdapter(sessionManager, HOOK_PORT);
 const approvalQueue = new ApprovalQueue();
 
 // ── Static file handler (serves PWA from web/dist/) ─────────
