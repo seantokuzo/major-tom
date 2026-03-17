@@ -1,5 +1,5 @@
 import { existsSync, createReadStream } from 'node:fs';
-import { join, extname, resolve } from 'node:path';
+import { join, extname, relative, resolve } from 'node:path';
 import { stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { logger } from './utils/logger.js';
@@ -77,7 +77,8 @@ export function createStaticHandler(
 
     // Verify the resolved path is within the static dir (safety check)
     const realPath = resolve(filePath);
-    if (!realPath.startsWith(resolvedDir)) {
+    const rel = relative(resolvedDir, realPath);
+    if (rel.startsWith('..') || /* absolute escape on Windows */ resolve(resolvedDir, rel) !== realPath) {
       res.writeHead(403);
       res.end('Forbidden');
       return true;

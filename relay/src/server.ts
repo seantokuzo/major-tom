@@ -47,10 +47,17 @@ const httpServer = createServer((req, res) => {
 
   // Serve static PWA files if available
   if (serveStatic) {
-    serveStatic(req, res).catch((_err: unknown) => {
-      res.writeHead(500);
-      res.end('Internal server error');
-    });
+    serveStatic(req, res)
+      .then((handled) => {
+        if (!handled) {
+          res.writeHead(404);
+          res.end('Not found');
+        }
+      })
+      .catch((_err: unknown) => {
+        res.writeHead(500);
+        res.end('Internal server error');
+      });
     return;
   }
 
