@@ -15,7 +15,7 @@ function escapeHtml(str: string): string {
 // Eagerly load highlight.js + common languages on import so it's ready
 // by the time Claude sends code blocks (typically after a few seconds)
 let hljs: typeof import('highlight.js').default | null = null;
-const hljsReady = import('highlight.js/lib/core').then(async (mod) => {
+void import('highlight.js/lib/core').then(async (mod) => {
   hljs = mod.default;
   // Register common languages for Claude Code output
   const [ts, js, json, bash, css, html, python, go, rust, swift, yaml, sql, diff] =
@@ -61,10 +61,12 @@ const hljsReady = import('highlight.js/lib/core').then(async (mod) => {
 const marked = new Marked({
   renderer: {
     code({ text, lang }: { text: string; lang?: string }) {
+      // Sanitize lang to prevent attribute injection
+      const safeLang = lang && /^[a-zA-Z0-9_+-]+$/.test(lang) ? lang : undefined;
       let highlighted: string;
-      if (hljs && lang) {
+      if (hljs && safeLang) {
         try {
-          highlighted = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
+          highlighted = hljs.highlight(text, { language: safeLang, ignoreIllegals: true }).value;
         } catch {
           highlighted = escapeHtml(text);
         }
@@ -77,7 +79,7 @@ const marked = new Marked({
       } else {
         highlighted = escapeHtml(text);
       }
-      const langClass = lang ? ` class="language-${lang}"` : '';
+      const langClass = safeLang ? ` class="language-${safeLang}"` : '';
       return `<pre><code${langClass}>${highlighted}</code></pre>`;
     },
   },
