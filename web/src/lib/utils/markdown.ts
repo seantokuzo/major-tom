@@ -3,7 +3,17 @@
 import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 
-// Lazy-load highlight.js only when needed
+// HTML-escape helper for raw code when hljs isn't available
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Eagerly load highlight.js + common languages on import so it's ready
+// by the time Claude sends code blocks (typically after a few seconds)
 let hljs: typeof import('highlight.js').default | null = null;
 const hljsReady = import('highlight.js/lib/core').then(async (mod) => {
   hljs = mod.default;
@@ -44,26 +54,28 @@ const hljsReady = import('highlight.js/lib/core').then(async (mod) => {
   hljs.registerLanguage('yml', yaml.default);
   hljs.registerLanguage('sql', sql.default);
   hljs.registerLanguage('diff', diff.default);
+}).catch(() => {
+  // highlight.js failed to load — rendering still works without highlighting
 });
 
 const marked = new Marked({
   renderer: {
     code({ text, lang }: { text: string; lang?: string }) {
-      let highlighted = text;
+      let highlighted: string;
       if (hljs && lang) {
         try {
-          const result = hljs.highlight(text, { language: lang, ignoreIllegals: true });
-          highlighted = result.value;
+          highlighted = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
         } catch {
-          // Language not registered, fall back to plain
+          highlighted = escapeHtml(text);
         }
       } else if (hljs) {
         try {
-          const result = hljs.highlightAuto(text);
-          highlighted = result.value;
+          highlighted = hljs.highlightAuto(text).value;
         } catch {
-          // Auto-detect failed, fall back to plain
+          highlighted = escapeHtml(text);
         }
+      } else {
+        highlighted = escapeHtml(text);
       }
       const langClass = lang ? ` class="language-${lang}"` : '';
       return `<pre><code${langClass}>${highlighted}</code></pre>`;
@@ -72,14 +84,6 @@ const marked = new Marked({
   gfm: true,
   breaks: true,
 });
-
-// Wait for highlight.js to load, then we're good
-export async function initMarkdown(): Promise<void> {
-  await hljsReady;
-}
-
-// Start loading immediately on import
-initMarkdown();
 
 export function renderMarkdown(content: string): string {
   const raw = marked.parse(content) as string;
