@@ -4,6 +4,7 @@ import type {
   ApprovalRequestMessage,
   ToolStartMessage,
   ToolCompleteMessage,
+  NotificationMessage,
   AgentSpawnMessage,
   AgentWorkingMessage,
   AgentIdleMessage,
@@ -23,6 +24,7 @@ export interface RelayEventMap {
   'agent.working': AgentWorkingMessage;
   'agent.idle': AgentIdleMessage;
   'agent.complete': AgentCompleteMessage;
+  'notification': NotificationMessage;
   'agent.dismissed': AgentDismissedMessage;
   'server.message': ServerMessage;
 }

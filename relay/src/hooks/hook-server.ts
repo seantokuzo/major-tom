@@ -47,21 +47,34 @@ export function createHookServer(approvalQueue: ApprovalQueue, port: number) {
         const requestId = randomUUID();
         // Claude Code hook payload fields — will verify against actual schema
         const tool = (hookData['tool_name'] as string) ?? 'unknown';
-        const description = (hookData['tool_input'] as string) ?? '';
+        const toolInput = hookData['tool_input'] as Record<string, unknown> | undefined;
 
-        // Forward approval request to iOS via event bus
+        // Forward approval request to client via event bus
         eventBus.emit('approval.request', {
           type: 'approval.request',
           requestId,
           tool,
-          description: typeof description === 'string' ? description : JSON.stringify(description),
+          description: toolInput ? JSON.stringify(toolInput) : '',
           details: hookData,
         });
 
         // Block until iOS responds
         const decision = await approvalQueue.waitForDecision(requestId, tool);
 
-        sendJson(res, 200, { decision });
+        // Map our decision to Claude Code's expected format
+        // Claude Code expects: { hookSpecificOutput: { hookEventName, permissionDecision } }
+        // permissionDecision must be: "allow" | "deny" | "ask"
+        const permissionDecision =
+          decision === 'allow' || decision === 'allow_always' ? 'allow' :
+          decision === 'deny' ? 'deny' :
+          'ask'; // 'skip' maps to 'ask' (let Claude Code decide)
+
+        sendJson(res, 200, {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision,
+          },
+        });
         return;
       }
 
@@ -77,13 +90,15 @@ export function createHookServer(approvalQueue: ApprovalQueue, port: number) {
         }
         const sessionId = (hookData['session_id'] as string) ?? '';
         const tool = (hookData['tool_name'] as string) ?? 'unknown';
-        const output = (hookData['tool_output'] as string) ?? '';
+        const toolResponse = hookData['tool_response'] as Record<string, unknown> | undefined;
+        const toolUseId = (hookData['tool_use_id'] as string) || undefined;
 
         eventBus.emit('tool.complete', {
           type: 'tool.complete',
           sessionId,
           tool,
-          output: typeof output === 'string' ? output : JSON.stringify(output),
+          ...(toolUseId && { toolUseId }),
+          output: toolResponse ? JSON.stringify(toolResponse) : '',
           success: true,
         });
 
@@ -102,9 +117,19 @@ export function createHookServer(approvalQueue: ApprovalQueue, port: number) {
           return;
         }
 
-        logger.info({ hookData }, 'Notification hook received');
-        // TODO: Parse agent lifecycle events from notification data
-        // and forward to agentTracker
+        // Notification hooks have: message, title, notification_type
+        const message = (hookData['message'] as string) ?? '';
+        const title = (hookData['title'] as string) ?? '';
+        const notificationType = (hookData['notification_type'] as string) ?? '';
+
+        logger.info({ title, notificationType, message }, 'Notification hook received');
+
+        eventBus.emit('notification', {
+          type: 'notification',
+          title,
+          message,
+          notificationType,
+        });
 
         sendJson(res, 200, { status: 'ok' });
         return;

@@ -92,6 +92,7 @@ export interface ToolCompleteMessage {
   type: 'tool.complete';
   sessionId: string;
   tool: string;
+  toolUseId?: string;
   output: string;
   success: boolean;
 }
@@ -152,6 +153,13 @@ export interface WorkspaceTreeResponseMessage {
   files: FileNode[];
 }
 
+export interface NotificationMessage {
+  type: 'notification';
+  title: string;
+  message: string;
+  notificationType: string;
+}
+
 export interface ErrorMessage {
   type: 'error';
   code: string;
@@ -171,6 +179,7 @@ export type ServerMessage =
   | ConnectionStatusMessage
   | SessionInfoMessage
   | WorkspaceTreeResponseMessage
+  | NotificationMessage
   | ErrorMessage;
 
 // ── Utilities ───────────────────────────────────────────────
