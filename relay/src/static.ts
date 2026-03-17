@@ -1,5 +1,5 @@
 import { existsSync, createReadStream } from 'node:fs';
-import { join, extname, relative, resolve } from 'node:path';
+import { join, extname, isAbsolute, relative, resolve } from 'node:path';
 import { stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { logger } from './utils/logger.js';
@@ -53,7 +53,14 @@ export function createStaticHandler(
     }
 
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    let pathname = decodeURIComponent(url.pathname);
+    let pathname: string;
+    try {
+      pathname = decodeURIComponent(url.pathname);
+    } catch {
+      res.writeHead(400);
+      res.end('Bad request');
+      return true;
+    }
 
     // Prevent directory traversal
     if (pathname.includes('..')) {
@@ -78,7 +85,7 @@ export function createStaticHandler(
     // Verify the resolved path is within the static dir (safety check)
     const realPath = resolve(filePath);
     const rel = relative(resolvedDir, realPath);
-    if (rel.startsWith('..') || /* absolute escape on Windows */ resolve(resolvedDir, rel) !== realPath) {
+    if (rel.startsWith('..') || isAbsolute(rel) || resolve(resolvedDir, rel) !== realPath) {
       res.writeHead(403);
       res.end('Forbidden');
       return true;
@@ -94,20 +101,24 @@ export function createStaticHandler(
     const ext = extname(realPath).toLowerCase();
     const contentType = MIME_TYPES[ext] ?? 'application/octet-stream';
 
-    res.writeHead(200, { 'Content-Type': contentType });
-
     if (req.method === 'HEAD') {
+      res.writeHead(200, { 'Content-Type': contentType });
       res.end();
       return true;
     }
 
     const stream = createReadStream(realPath);
-    stream.pipe(res);
-    stream.on('error', (_err: Error) => {
+    stream.on('open', () => {
+      res.writeHead(200, { 'Content-Type': contentType });
+      stream.pipe(res);
+    });
+    stream.on('error', () => {
       if (!res.headersSent) {
         res.writeHead(500);
+        res.end('Internal server error');
+      } else {
+        res.destroy();
       }
-      res.end('Internal server error');
     });
 
     return true;

@@ -10,7 +10,9 @@
     "build:web": "cd ../web && npm run build",
     "build:all": "npm run build:web && npm run build",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "echo \"No tests yet\" && exit 0"
   },
   "dependencies": {
     "node-pty": "1.1.0",
