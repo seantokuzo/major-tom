@@ -93,12 +93,13 @@ export class ClaudeCliAdapter implements IAdapter {
   async start(workingDir: string): Promise<Session> {
     const session = this.sessionManager.create('cli', workingDir);
 
-    // Write a temporary settings file with hook configuration
-    const settingsFile = await this.writeHookSettings(session.id);
-    const hookUrl = `http://localhost:${this.hookPort}`;
-
+    let settingsFile: string;
     let ptyProcess: pty.IPty;
+    const hookUrl = `http://localhost:${this.hookPort}`;
     try {
+      // Write a temporary settings file with hook configuration
+      settingsFile = await this.writeHookSettings(session.id);
+
       ptyProcess = pty.spawn('claude', ['--settings', settingsFile], {
         name: 'xterm-color',
         cols: 120,
@@ -111,8 +112,8 @@ export class ClaudeCliAdapter implements IAdapter {
         },
       });
     } catch (err) {
-      // Clean up temp settings file and session on spawn failure
-      void this.cleanupSettingsFile(settingsFile);
+      // Clean up temp settings file (if written) and session on failure
+      if (settingsFile!) void this.cleanupSettingsFile(settingsFile!);
       session.close();
       throw err;
     }
