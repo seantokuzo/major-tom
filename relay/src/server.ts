@@ -18,7 +18,7 @@ const CLAUDE_WORK_DIR = process.env['CLAUDE_WORK_DIR'] ?? process.cwd();
 // ── Core services ───────────────────────────────────────────
 
 const sessionManager = new SessionManager();
-const cliAdapter = new ClaudeCliAdapter(sessionManager);
+const cliAdapter = new ClaudeCliAdapter(sessionManager, HOOK_PORT);
 const approvalQueue = new ApprovalQueue();
 
 // ── HTTP server (for health check + future REST endpoints) ──

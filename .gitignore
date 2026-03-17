@@ -144,6 +144,7 @@ coverage/
 # -----------------
 *.tmp
 *.temp
+.tmp/
 *.bak
 *.orig
 Thumbs.db
