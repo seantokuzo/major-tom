@@ -1,4 +1,6 @@
 import { createServer } from 'node:http';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from './utils/logger.js';
 import { SessionManager } from './sessions/session-manager.js';
@@ -7,6 +9,7 @@ import { ApprovalQueue } from './hooks/approval-queue.js';
 import { createHookServer } from './hooks/hook-server.js';
 import { eventBus } from './events/event-bus.js';
 import { encodeServerMessage, safeDecode } from './protocol/codec.js';
+import { createStaticHandler } from './static.js';
 import type { ClientMessage, ServerMessage } from './protocol/messages.js';
 
 // ── Configuration ───────────────────────────────────────────
@@ -14,6 +17,7 @@ import type { ClientMessage, ServerMessage } from './protocol/messages.js';
 const WS_PORT = parseInt(process.env['WS_PORT'] ?? '9090', 10);
 const HOOK_PORT = parseInt(process.env['HOOK_PORT'] ?? '9091', 10);
 const CLAUDE_WORK_DIR = process.env['CLAUDE_WORK_DIR'] ?? process.cwd();
+const DISABLE_STATIC = process.env['NO_STATIC'] === '1' || process.argv.includes('--no-static');
 
 // ── Core services ───────────────────────────────────────────
 
@@ -21,7 +25,14 @@ const sessionManager = new SessionManager();
 const cliAdapter = new ClaudeCliAdapter(sessionManager);
 const approvalQueue = new ApprovalQueue();
 
-// ── HTTP server (for health check + future REST endpoints) ──
+// ── Static file handler (serves PWA from web/dist/) ─────────
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const WEB_DIST_DIR = join(__dirname, '..', '..', 'web', 'dist');
+
+const serveStatic = DISABLE_STATIC ? null : createStaticHandler(WEB_DIST_DIR);
+
+// ── HTTP server (health check + static PWA files) ───────────
 
 const httpServer = createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
@@ -33,6 +44,23 @@ const httpServer = createServer((req, res) => {
     }));
     return;
   }
+
+  // Serve static PWA files if available
+  if (serveStatic) {
+    serveStatic(req, res)
+      .then((handled) => {
+        if (!handled) {
+          res.writeHead(404);
+          res.end('Not found');
+        }
+      })
+      .catch((_err: unknown) => {
+        res.writeHead(500);
+        res.end('Internal server error');
+      });
+    return;
+  }
+
   res.writeHead(404);
   res.end('Not found');
 });
@@ -229,5 +257,8 @@ process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 // ── Start ───────────────────────────────────────────────────
 
 httpServer.listen(WS_PORT, () => {
-  logger.info({ wsPort: WS_PORT, hookPort: HOOK_PORT }, 'Major Tom relay server started');
+  logger.info(
+    { wsPort: WS_PORT, hookPort: HOOK_PORT, staticServing: serveStatic !== null },
+    'Major Tom relay server started',
+  );
 });
