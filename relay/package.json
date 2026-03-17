@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc && esbuild src/server.ts --bundle --platform=node --outdir=dist --format=esm --external:node-pty",
+    "build:web": "cd ../web && npm run build",
+    "build:all": "npm run build:web && npm run build",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit"
   },
