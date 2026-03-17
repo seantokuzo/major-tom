@@ -17,5 +17,11 @@
     "svelte-check": "^4.4.5",
     "typescript": "~5.9.3",
     "vite": "^8.0.0"
+  },
+  "dependencies": {
+    "@types/dompurify": "^3.0.5",
+    "dompurify": "^3.3.3",
+    "highlight.js": "^11.11.1",
+    "marked": "^17.0.4"
   }
 }
