@@ -196,6 +196,20 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
     }
 
     case 'approval': {
+      // Route approval through the adapter's stdin (permission-prompt-tool stdio)
+      // The requestId is the tool_use_id from the permission prompt
+      // Map our decision vocabulary to Claude Code's expected format
+      const ccDecision =
+        message.decision === 'allow' || message.decision === 'allow_always' ? 'allow' :
+        message.decision === 'deny' ? 'deny' : 'deny';
+
+      // Find which session this approval belongs to
+      // For now, send to all sessions (we'll refine with session tracking later)
+      for (const sessionInfo of sessionManager.list()) {
+        cliAdapter.sendPermissionResponse(sessionInfo.id, message.requestId, ccDecision);
+      }
+
+      // Also resolve in approval queue for hook-server compatibility
       approvalQueue.resolve(message.requestId, message.decision);
       break;
     }
@@ -240,9 +254,72 @@ function broadcast(message: ServerMessage): void {
   }
 }
 
-// Forward all adapter output to connected iOS clients
+// Forward adapter events to connected clients
 cliAdapter.on('output', (sessionId: string, chunk: string) => {
   broadcast({ type: 'output', sessionId, chunk, format: 'plain' });
+});
+
+cliAdapter.on('approval-request', (request) => {
+  broadcast({
+    type: 'approval.request',
+    requestId: request.requestId,
+    tool: request.tool,
+    description: request.description,
+    details: request.details,
+  });
+});
+
+cliAdapter.on('tool-start', (info) => {
+  broadcast({
+    type: 'tool.start',
+    sessionId: info.sessionId,
+    tool: info.tool,
+    input: info.input,
+  });
+});
+
+cliAdapter.on('tool-complete', (result) => {
+  broadcast({
+    type: 'tool.complete',
+    sessionId: result.sessionId,
+    tool: result.tool,
+    output: result.output,
+    success: result.success,
+  });
+});
+
+cliAdapter.on('agent-lifecycle', (event) => {
+  switch (event.event) {
+    case 'spawn':
+      broadcast({
+        type: 'agent.spawn',
+        agentId: event.agentId,
+        parentId: event.parentId,
+        task: event.task ?? '',
+        role: event.role ?? 'subagent',
+      });
+      break;
+    case 'working':
+      broadcast({
+        type: 'agent.working',
+        agentId: event.agentId,
+        task: event.task ?? '',
+      });
+      break;
+    case 'idle':
+      broadcast({ type: 'agent.idle', agentId: event.agentId });
+      break;
+    case 'complete':
+      broadcast({
+        type: 'agent.complete',
+        agentId: event.agentId,
+        result: event.result ?? '',
+      });
+      break;
+    case 'dismissed':
+      broadcast({ type: 'agent.dismissed', agentId: event.agentId });
+      break;
+  }
 });
 
 // Forward event bus messages to all clients
