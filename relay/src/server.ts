@@ -1,4 +1,7 @@
 import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { join, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from './utils/logger.js';
 import { SessionManager } from './sessions/session-manager.js';
@@ -8,6 +11,23 @@ import { createHookServer } from './hooks/hook-server.js';
 import { eventBus } from './events/event-bus.js';
 import { encodeServerMessage, safeDecode } from './protocol/codec.js';
 import type { ClientMessage, ServerMessage } from './protocol/messages.js';
+
+// ── Static file serving ─────────────────────────────────────
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+const WEB_DIST = join(__dirname, '..', '..', 'web', 'dist');
+
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
 
 // ── Configuration ───────────────────────────────────────────
 
@@ -23,8 +43,11 @@ const approvalQueue = new ApprovalQueue();
 
 // ── HTTP server (for health check + future REST endpoints) ──
 
-const httpServer = createServer((req, res) => {
-  if (req.method === 'GET' && req.url === '/health') {
+const httpServer = createServer(async (req, res) => {
+  const url = req.url ?? '/';
+
+  // Health check endpoint
+  if (req.method === 'GET' && url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'ok',
@@ -33,6 +56,41 @@ const httpServer = createServer((req, res) => {
     }));
     return;
   }
+
+  // Serve PWA static files from web/dist/
+  if (req.method === 'GET') {
+    const filePath = url === '/' ? '/index.html' : url;
+    const fullPath = join(WEB_DIST, filePath);
+
+    // Security: prevent path traversal
+    if (!fullPath.startsWith(WEB_DIST)) {
+      res.writeHead(403);
+      res.end('Forbidden');
+      return;
+    }
+
+    try {
+      const data = await readFile(fullPath);
+      const ext = extname(fullPath);
+      const contentType = MIME_TYPES[ext] ?? 'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(data);
+      return;
+    } catch {
+      // SPA fallback: serve index.html for non-file routes
+      if (!extname(filePath)) {
+        try {
+          const data = await readFile(join(WEB_DIST, 'index.html'));
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(data);
+          return;
+        } catch {
+          // fall through to 404
+        }
+      }
+    }
+  }
+
   res.writeHead(404);
   res.end('Not found');
 });
