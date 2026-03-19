@@ -34,12 +34,39 @@ export interface SessionAttachMessage {
   sessionId: string;
 }
 
+export interface AgentChatMessage {
+  type: 'agent.message';
+  agentId: string;
+  text: string;
+}
+
+export interface WorkspaceTreeMessage {
+  type: 'workspace.tree';
+  path?: string;
+}
+
+export interface ContextAddMessage {
+  type: 'context.add';
+  path: string;
+  contextType: 'file' | 'folder';
+}
+
+export interface SettingsApprovalMessage {
+  type: 'settings.approval';
+  mode: 'manual' | 'auto' | 'delay';
+  delaySeconds?: number;
+}
+
 export type ClientMessage =
   | PromptMessage
   | ApprovalMessage
   | CancelMessage
   | SessionStartMessage
-  | SessionAttachMessage;
+  | SessionAttachMessage
+  | AgentChatMessage
+  | WorkspaceTreeMessage
+  | ContextAddMessage
+  | SettingsApprovalMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -74,6 +101,36 @@ export interface ToolCompleteMessage {
   success: boolean;
 }
 
+export interface AgentSpawnMessage {
+  type: 'agent.spawn';
+  agentId: string;
+  parentId?: string;
+  task: string;
+  role: string;
+}
+
+export interface AgentWorkingMessage {
+  type: 'agent.working';
+  agentId: string;
+  task: string;
+}
+
+export interface AgentIdleMessage {
+  type: 'agent.idle';
+  agentId: string;
+}
+
+export interface AgentCompleteMessage {
+  type: 'agent.complete';
+  agentId: string;
+  result: string;
+}
+
+export interface AgentDismissedMessage {
+  type: 'agent.dismissed';
+  agentId: string;
+}
+
 export interface NotificationMessage {
   type: 'notification';
   title: string;
@@ -95,6 +152,26 @@ export interface SessionInfoMessage {
   tokenUsage?: { used: number; remaining: number };
 }
 
+export interface SessionResultMessage {
+  type: 'session.result';
+  sessionId: string;
+  costUsd: number;
+  numTurns: number;
+  durationMs: number;
+}
+
+export interface WorkspaceTreeResponseMessage {
+  type: 'workspace.tree.response';
+  files: FileNode[];
+}
+
+export interface FileNode {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  children?: FileNode[];
+}
+
 export interface ErrorMessage {
   type: 'error';
   code: string;
@@ -106,7 +183,14 @@ export type ServerMessage =
   | ApprovalRequestMessage
   | ToolStartMessage
   | ToolCompleteMessage
+  | AgentSpawnMessage
+  | AgentWorkingMessage
+  | AgentIdleMessage
+  | AgentCompleteMessage
+  | AgentDismissedMessage
   | ConnectionStatusMessage
   | SessionInfoMessage
+  | SessionResultMessage
+  | WorkspaceTreeResponseMessage
   | NotificationMessage
   | ErrorMessage;

@@ -1,5 +1,6 @@
 <script lang="ts">
   import ConnectionBar from './lib/components/ConnectionBar.svelte';
+  import SessionInfo from './lib/components/SessionInfo.svelte';
   import ChatView from './lib/components/ChatView.svelte';
 </script>
 
@@ -8,6 +9,7 @@
     <h1 class="title">Major Tom</h1>
   </header>
   <ConnectionBar />
+  <SessionInfo />
   <ChatView />
 </div>
 
@@ -19,15 +21,17 @@
   }
 
   .header {
-    padding: var(--sp-sm) var(--sp-lg);
+    padding: var(--sp-xs) var(--sp-lg);
     background: var(--bg);
     flex-shrink: 0;
   }
 
   .title {
-    font-size: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
     font-weight: 700;
     color: var(--accent);
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 </style>
