@@ -10,6 +10,9 @@ final class RelayService {
     var chatMessages: [ChatMessage] = []
     var lastError: String? { webSocket.lastError }
 
+    /// Office view model — receives agent lifecycle events.
+    var officeViewModel: OfficeViewModel?
+
     private let webSocket = WebSocketClient()
 
     init() {
@@ -111,6 +114,31 @@ final class RelayService {
                 let status = event.success ? "completed" : "failed"
                 let msg = ChatMessage(role: .tool, content: "\(event.tool) \(status)")
                 chatMessages.append(msg)
+            }
+
+        case .agentSpawn:
+            if let event = try? MessageCodec.decode(AgentSpawnEvent.self, from: data) {
+                officeViewModel?.handleAgentSpawn(id: event.agentId, role: event.role, task: event.task)
+            }
+
+        case .agentWorking:
+            if let event = try? MessageCodec.decode(AgentWorkingEvent.self, from: data) {
+                officeViewModel?.handleAgentWorking(id: event.agentId, task: event.task)
+            }
+
+        case .agentIdle:
+            if let event = try? MessageCodec.decode(AgentIdleEvent.self, from: data) {
+                officeViewModel?.handleAgentIdle(id: event.agentId)
+            }
+
+        case .agentComplete:
+            if let event = try? MessageCodec.decode(AgentCompleteEvent.self, from: data) {
+                officeViewModel?.handleAgentComplete(id: event.agentId, result: event.result)
+            }
+
+        case .agentDismissed:
+            if let event = try? MessageCodec.decode(AgentDismissedEvent.self, from: data) {
+                officeViewModel?.handleAgentDismissed(id: event.agentId)
             }
 
         case .connectionStatus:
