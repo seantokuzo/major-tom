@@ -1,12 +1,15 @@
 import { logger } from '../utils/logger.js';
 
 export type ApprovalDecision = 'allow' | 'deny' | 'skip' | 'allow_always';
+export type ApprovalMode = 'manual' | 'auto' | 'delay';
 
 interface PendingApproval {
   requestId: string;
   tool: string;
   resolve: (decision: ApprovalDecision) => void;
   timer: ReturnType<typeof setTimeout>;
+  /** Optional delay timer for 'delay' mode auto-approval */
+  delayTimer?: ReturnType<typeof setTimeout>;
   createdAt: number;
 }
 
@@ -17,9 +20,30 @@ interface PendingApproval {
 export class ApprovalQueue {
   private pending = new Map<string, PendingApproval>();
   private timeoutMs: number;
+  private mode: ApprovalMode = 'manual';
+  private delaySeconds = 10;
 
   constructor(timeoutMs = 5 * 60 * 1000) {
     this.timeoutMs = timeoutMs;
+  }
+
+  /**
+   * Set the approval mode.
+   * - 'manual': block until the client responds (default)
+   * - 'auto': immediately allow all requests (ClaudeGod mode)
+   * - 'delay': auto-allow after delaySeconds unless client responds first
+   */
+  setMode(mode: ApprovalMode, delaySeconds?: number): void {
+    this.mode = mode;
+    if (delaySeconds !== undefined) {
+      this.delaySeconds = delaySeconds;
+    }
+    logger.info({ mode, delaySeconds: this.delaySeconds }, 'Approval mode updated');
+  }
+
+  /** Get current approval mode */
+  getMode(): ApprovalMode {
+    return this.mode;
   }
 
   /**
@@ -28,6 +52,12 @@ export class ApprovalQueue {
    * The hook script blocks on this.
    */
   waitForDecision(requestId: string, tool: string): Promise<ApprovalDecision> {
+    // Auto mode: immediately allow without queuing
+    if (this.mode === 'auto') {
+      logger.info({ requestId, tool, mode: 'auto' }, 'Auto-approving (ClaudeGod mode)');
+      return Promise.resolve('allow');
+    }
+
     return new Promise<ApprovalDecision>((resolve) => {
       // Timeout: auto-deny if no response
       const timer = setTimeout(() => {
@@ -44,8 +74,22 @@ export class ApprovalQueue {
         timer,
         createdAt: Date.now(),
       };
+
+      // Delay mode: set a timer to auto-allow after delaySeconds
+      if (this.mode === 'delay') {
+        entry.delayTimer = setTimeout(() => {
+          if (this.pending.has(requestId)) {
+            logger.info(
+              { requestId, tool, delaySeconds: this.delaySeconds },
+              'Delay expired, auto-approving',
+            );
+            this.resolve(requestId, 'allow');
+          }
+        }, this.delaySeconds * 1000);
+      }
+
       this.pending.set(requestId, entry);
-      logger.info({ requestId, tool }, 'Approval queued, waiting for decision');
+      logger.info({ requestId, tool, mode: this.mode }, 'Approval queued, waiting for decision');
     });
   }
 
@@ -60,6 +104,9 @@ export class ApprovalQueue {
     }
     this.pending.delete(requestId);
     clearTimeout(entry.timer);
+    if (entry.delayTimer) {
+      clearTimeout(entry.delayTimer);
+    }
     entry.resolve(decision);
     logger.info({ requestId, decision, tool: entry.tool }, 'Approval resolved');
     return true;

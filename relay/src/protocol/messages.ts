@@ -55,6 +55,12 @@ export interface ContextAddMessage {
   contextType: 'file' | 'folder';
 }
 
+export interface SettingsApprovalMessage {
+  type: 'settings.approval';
+  mode: 'manual' | 'auto' | 'delay';
+  delaySeconds?: number;
+}
+
 export type ClientMessage =
   | PromptMessage
   | ApprovalMessage
@@ -63,7 +69,8 @@ export type ClientMessage =
   | SessionAttachMessage
   | AgentMessageMessage
   | WorkspaceTreeMessage
-  | ContextAddMessage;
+  | ContextAddMessage
+  | SettingsApprovalMessage;
 
 // ── Server → Client (Relay → iOS) ──────────────────────────
 
@@ -161,6 +168,15 @@ export interface NotificationMessage {
   notificationType: string;
 }
 
+export interface SessionResultMessage {
+  type: 'session.result';
+  sessionId: string;
+  cost_usd: number;
+  num_turns: number;
+  duration_ms: number;
+  token_usage?: { input: number; output: number };
+}
+
 export interface ErrorMessage {
   type: 'error';
   code: string;
@@ -180,6 +196,7 @@ export type ServerMessage =
   | ConnectionStatusMessage
   | SessionInfoMessage
   | WorkspaceTreeResponseMessage
+  | SessionResultMessage
   | NotificationMessage
   | ErrorMessage;
 

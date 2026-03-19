@@ -31,6 +31,14 @@ export interface AgentEvent {
   result?: string;
 }
 
+export interface SessionResult {
+  sessionId: string;
+  cost_usd: number;
+  num_turns: number;
+  duration_ms: number;
+  token_usage?: { input: number; output: number };
+}
+
 // ── Adapter interface ───────────────────────────────────────
 
 export interface IAdapter {
@@ -46,6 +54,7 @@ export interface IAdapter {
   on(event: 'tool-start', handler: (info: ToolInfo) => void): void;
   on(event: 'tool-complete', handler: (result: ToolResult) => void): void;
   on(event: 'agent-lifecycle', handler: (event: AgentEvent) => void): void;
+  on(event: 'session-result', handler: (result: SessionResult) => void): void;
 
   dispose(): Promise<void>;
 }
