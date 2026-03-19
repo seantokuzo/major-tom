@@ -193,6 +193,13 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
       logger.info({ path: message.path }, 'Context add not yet implemented');
       break;
     }
+
+    case 'settings.approval': {
+      // TODO: Add authentication — currently any connected client can change approval mode.
+      // Auth will be addressed in a dedicated security phase (token-based or session-scoped).
+      approvalQueue.setMode(message.mode, message.delaySeconds);
+      break;
+    }
   }
 }
 
@@ -244,6 +251,16 @@ cliAdapter.on('tool-complete', (result) => {
     tool: result.tool,
     output: result.output,
     success: result.success,
+  });
+});
+
+cliAdapter.on('session-result', (result) => {
+  broadcast({
+    type: 'session.result',
+    sessionId: result.sessionId,
+    costUsd: result.costUsd,
+    numTurns: result.numTurns,
+    durationMs: result.durationMs,
   });
 });
 

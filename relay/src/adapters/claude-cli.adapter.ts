@@ -15,6 +15,7 @@ import type {
   ToolInfo,
   ToolResult,
   AgentEvent,
+  SessionResult,
 } from './adapter.interface.js';
 import { logger } from '../utils/logger.js';
 
@@ -349,16 +350,30 @@ export class ClaudeCliAdapter implements IAdapter {
       this.emitter.emit('output', sessionId, `\n[Error: ${errorText}]\n`);
     }
 
+    const rawDuration = Number(msg['durationMs']);
+    const rawCost = Number(msg['total_costUsd']);
+    const rawTurns = Number(msg['numTurns']);
+    const durationMs = Number.isFinite(rawDuration) ? rawDuration : 0;
+    const costUsd = Number.isFinite(rawCost) ? rawCost : 0;
+    const numTurns = Number.isFinite(rawTurns) ? rawTurns : 0;
+
     logger.info(
       {
         sessionId,
         subtype,
-        durationMs: msg['duration_ms'],
-        cost: msg['total_cost_usd'],
-        turns: msg['num_turns'],
+        durationMs,
+        cost: costUsd,
+        turns: numTurns,
       },
       'Prompt result',
     );
+
+    this.emitter.emit('session-result', {
+      sessionId,
+      costUsd: costUsd,
+      numTurns: numTurns,
+      durationMs: durationMs,
+    } satisfies SessionResult);
   }
 
   // ── Event emitter interface ─────────────────────────────────
@@ -368,6 +383,7 @@ export class ClaudeCliAdapter implements IAdapter {
   on(event: 'tool-start', handler: (info: ToolInfo) => void): void;
   on(event: 'tool-complete', handler: (result: ToolResult) => void): void;
   on(event: 'agent-lifecycle', handler: (event: AgentEvent) => void): void;
+  on(event: 'session-result', handler: (result: SessionResult) => void): void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   on(event: string, handler: (...args: any[]) => void): void {
     this.emitter.on(event, handler);
