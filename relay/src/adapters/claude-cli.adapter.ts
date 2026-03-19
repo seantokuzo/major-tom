@@ -45,9 +45,16 @@ export class ClaudeCliAdapter implements IAdapter {
   async start(workingDir: string): Promise<Session> {
     const session = this.sessionManager.create('cli', workingDir);
 
-    // The SDK v2 session doesn't support cwd directly — it inherits
-    // process.cwd(). The relay server should be started from the target
-    // working directory (via CLAUDE_WORK_DIR env var).
+    // The SDK v2 session API doesn't support cwd — it inherits process.cwd().
+    // Warn if the requested workingDir differs from where we're actually running.
+    const cwd = process.cwd();
+    if (workingDir !== cwd) {
+      logger.warn(
+        { workingDir, cwd },
+        'Requested workingDir differs from process.cwd() — SDK session will use process.cwd()',
+      );
+    }
+
     const sdkSession = unstable_v2_createSession({
       model: 'claude-sonnet-4-20250514',
       permissionMode: 'default',
@@ -92,9 +99,13 @@ export class ClaudeCliAdapter implements IAdapter {
     const entry = this.sessions.get(sessionId);
     if (!entry) return;
 
-    // Abort the stream, which should signal the SDK to cancel
+    // Close the SDK session (kills the underlying Claude process) and
+    // abort the stream consumption loop so we stop processing events.
     entry.streamAbort.abort();
-    logger.info({ sessionId }, 'Cancel signal sent');
+    entry.sdkSession.close();
+    entry.session.close();
+    this.sessions.delete(sessionId);
+    logger.info({ sessionId }, 'Session cancelled and closed');
   }
 
   // ── Permission handling ──────────────────────────────────────

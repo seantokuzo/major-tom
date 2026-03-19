@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { join, extname } from 'node:path';
+import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from './utils/logger.js';
@@ -14,7 +14,7 @@ import type { ClientMessage, ServerMessage } from './protocol/messages.js';
 // ── Static file serving ─────────────────────────────────────
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const WEB_DIST = join(__dirname, '..', '..', 'web', 'dist');
+const WEB_DIST = resolve(__dirname, '..', '..', 'web', 'dist');
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html',
@@ -57,11 +57,12 @@ const httpServer = createServer(async (req, res) => {
 
   // Serve PWA static files from web/dist/
   if (req.method === 'GET') {
-    const filePath = url === '/' ? '/index.html' : url;
-    const fullPath = join(WEB_DIST, filePath);
+    // Strip leading slash to get a relative path, then resolve against WEB_DIST
+    const relativePath = url === '/' ? 'index.html' : url.replace(/^\//, '');
+    const fullPath = resolve(WEB_DIST, relativePath);
 
-    // Security: prevent path traversal
-    if (!fullPath.startsWith(WEB_DIST)) {
+    // Security: prevent path traversal — resolved path must be within WEB_DIST
+    if (!fullPath.startsWith(WEB_DIST + sep) && fullPath !== WEB_DIST) {
       res.writeHead(403);
       res.end('Forbidden');
       return;
@@ -76,9 +77,9 @@ const httpServer = createServer(async (req, res) => {
       return;
     } catch {
       // SPA fallback: serve index.html for non-file routes
-      if (!extname(filePath)) {
+      if (!extname(relativePath)) {
         try {
-          const data = await readFile(join(WEB_DIST, 'index.html'));
+          const data = await readFile(resolve(WEB_DIST, 'index.html'));
           res.writeHead(200, { 'Content-Type': 'text/html' });
           res.end(data);
           return;
