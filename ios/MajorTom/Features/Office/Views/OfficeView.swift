@@ -40,17 +40,22 @@ struct OfficeView: View {
                 }
             }
         }
-        .sheet(item: $viewModel.selectedAgent) { agent in
-            AgentInspectorView(
-                agent: agent,
-                onRename: { newName in
-                    viewModel.renameAgent(id: agent.id, newName: newName)
-                    scene.updateAgentName(id: agent.id, name: newName)
-                },
-                onDismiss: {
-                    viewModel.dismissInspector()
-                }
-            )
+        .sheet(isPresented: Binding(
+            get: { viewModel.selectedAgentId != nil },
+            set: { if !$0 { viewModel.dismissInspector() } }
+        )) {
+            if let agent = viewModel.selectedAgent {
+                AgentInspectorView(
+                    agent: agent,
+                    onRename: { newName in
+                        viewModel.renameAgent(id: agent.id, newName: newName)
+                        scene.updateAgentName(id: agent.id, name: newName)
+                    },
+                    onDismiss: {
+                        viewModel.dismissInspector()
+                    }
+                )
+            }
         }
     }
 

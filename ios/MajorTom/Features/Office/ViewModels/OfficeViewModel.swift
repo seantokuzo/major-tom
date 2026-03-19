@@ -11,8 +11,14 @@ final class OfficeViewModel {
     // MARK: - State
 
     var agents: [AgentState] = []
-    var selectedAgent: AgentState?
+    var selectedAgentId: String?
     var desks: [Desk] = OfficeLayout.desks
+
+    /// Live lookup — always returns current state, never a stale copy.
+    var selectedAgent: AgentState? {
+        guard let id = selectedAgentId else { return nil }
+        return agents.first { $0.id == id }
+    }
 
     // MARK: - Character Assignment
 
@@ -71,6 +77,7 @@ final class OfficeViewModel {
             try? await Task.sleep(for: .seconds(2))
             if let idx = agents.firstIndex(where: { $0.id == id }) {
                 agents[idx].status = .leaving
+                releaseDesk(for: id)
             }
             // Remove after walking out
             try? await Task.sleep(for: .seconds(1.5))
@@ -84,6 +91,7 @@ final class OfficeViewModel {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
         agents[index].status = .leaving
         agents[index].currentTask = nil
+        releaseDesk(for: id)
 
         // Remove after walking out
         Task { @MainActor in
@@ -96,22 +104,18 @@ final class OfficeViewModel {
 
     /// Select an agent for the inspector view.
     func selectAgent(_ agent: AgentState) {
-        selectedAgent = agent
+        selectedAgentId = agent.id
     }
 
     /// Dismiss the inspector.
     func dismissInspector() {
-        selectedAgent = nil
+        selectedAgentId = nil
     }
 
     /// Rename the selected agent's display name.
     func renameAgent(id: String, newName: String) {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
         agents[index].name = newName
-        // Keep selectedAgent in sync if it's the same one
-        if selectedAgent?.id == id {
-            selectedAgent?.name = newName
-        }
     }
 
     // MARK: - Private Helpers
@@ -144,8 +148,8 @@ final class OfficeViewModel {
     private func removeAgent(id: String) {
         releaseDesk(for: id)
         agents.removeAll { $0.id == id }
-        if selectedAgent?.id == id {
-            selectedAgent = nil
+        if selectedAgentId == id {
+            selectedAgentId = nil
         }
     }
 }

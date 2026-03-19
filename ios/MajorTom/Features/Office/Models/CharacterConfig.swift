@@ -23,6 +23,8 @@ struct CharacterConfig: Identifiable {
     let breakBehaviors: [BreakDestination]
 
     /// Dachshund-specific: needs a blanket at their desk.
+    /// Note: Blanket mechanic UI is planned for a future phase — this flag
+    /// is pre-wired so the config is ready when the interaction is built.
     let needsBlanket: Bool
 
     var id: String { type.rawValue }
