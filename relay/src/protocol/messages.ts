@@ -171,9 +171,9 @@ export interface NotificationMessage {
 export interface SessionResultMessage {
   type: 'session.result';
   sessionId: string;
-  cost_usd: number;
-  num_turns: number;
-  duration_ms: number;
+  costUsd: number;
+  numTurns: number;
+  durationMs: number;
 }
 
 export interface ErrorMessage {

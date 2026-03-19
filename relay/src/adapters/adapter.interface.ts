@@ -33,9 +33,9 @@ export interface AgentEvent {
 
 export interface SessionResult {
   sessionId: string;
-  cost_usd: number;
-  num_turns: number;
-  duration_ms: number;
+  costUsd: number;
+  numTurns: number;
+  durationMs: number;
 }
 
 // ── Adapter interface ───────────────────────────────────────

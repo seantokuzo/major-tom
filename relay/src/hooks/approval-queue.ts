@@ -39,11 +39,15 @@ export class ApprovalQueue {
 
     // Validate and clamp delaySeconds to safe range [1, 300]
     if (delaySeconds !== undefined) {
-      this.delaySeconds = Math.max(1, Math.min(300, Math.floor(delaySeconds || 10)));
+      const parsed = typeof delaySeconds === 'number' ? delaySeconds : NaN;
+      this.delaySeconds = Number.isFinite(parsed)
+        ? Math.max(1, Math.min(300, Math.floor(parsed)))
+        : this.delaySeconds;
     }
 
-    // Cancel existing delay timers when switching away from delay mode
-    if (prevMode === 'delay' && mode !== 'delay') {
+    // Cancel existing delay timers when switching away from delay mode,
+    // or when re-entering delay mode (timers will be re-created with new delay)
+    if (prevMode === 'delay') {
       for (const entry of this.pending.values()) {
         if (entry.delayTimer) {
           clearTimeout(entry.delayTimer);

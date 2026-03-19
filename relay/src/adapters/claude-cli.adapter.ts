@@ -350,9 +350,9 @@ export class ClaudeCliAdapter implements IAdapter {
       this.emitter.emit('output', sessionId, `\n[Error: ${errorText}]\n`);
     }
 
-    const rawDuration = Number(msg['duration_ms']);
-    const rawCost = Number(msg['total_cost_usd']);
-    const rawTurns = Number(msg['num_turns']);
+    const rawDuration = Number(msg['durationMs']);
+    const rawCost = Number(msg['total_costUsd']);
+    const rawTurns = Number(msg['numTurns']);
     const durationMs = Number.isFinite(rawDuration) ? rawDuration : 0;
     const costUsd = Number.isFinite(rawCost) ? rawCost : 0;
     const numTurns = Number.isFinite(rawTurns) ? rawTurns : 0;
@@ -370,9 +370,9 @@ export class ClaudeCliAdapter implements IAdapter {
 
     this.emitter.emit('session-result', {
       sessionId,
-      cost_usd: costUsd,
-      num_turns: numTurns,
-      duration_ms: durationMs,
+      costUsd: costUsd,
+      numTurns: numTurns,
+      durationMs: durationMs,
     } satisfies SessionResult);
   }
 

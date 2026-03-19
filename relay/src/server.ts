@@ -195,6 +195,8 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
     }
 
     case 'settings.approval': {
+      // TODO: Add authentication — currently any connected client can change approval mode.
+      // Auth will be addressed in a dedicated security phase (token-based or session-scoped).
       approvalQueue.setMode(message.mode, message.delaySeconds);
       break;
     }
@@ -256,9 +258,9 @@ cliAdapter.on('session-result', (result) => {
   broadcast({
     type: 'session.result',
     sessionId: result.sessionId,
-    cost_usd: result.cost_usd,
-    num_turns: result.num_turns,
-    duration_ms: result.duration_ms,
+    costUsd: result.costUsd,
+    numTurns: result.numTurns,
+    durationMs: result.durationMs,
   });
 });
 
