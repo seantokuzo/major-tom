@@ -42,10 +42,10 @@ function uid(): string {
  */
 function detectServerAddress(): string {
   if (typeof window === 'undefined') return 'localhost:9090';
-  const { hostname, port, protocol } = window.location;
-  // If we're on localhost or a file:// URL, use the default
+  const { hostname, port } = window.location;
+  // If we're on localhost or a file:// URL, always use relay's default port
   if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1') {
-    return `localhost:${port || '9090'}`;
+    return 'localhost:9090';
   }
   // Remote host (tunnel, LAN IP, etc.) — use same host, the relay serves both HTTP and WS
   return port ? `${hostname}:${port}` : hostname;
