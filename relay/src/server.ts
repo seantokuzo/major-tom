@@ -57,8 +57,9 @@ const httpServer = createServer(async (req, res) => {
 
   // Serve PWA static files from web/dist/
   if (req.method === 'GET') {
-    // Strip leading slash to get a relative path, then resolve against WEB_DIST
-    const relativePath = url === '/' ? 'index.html' : url.replace(/^\//, '');
+    // Parse pathname (strip query string), then strip leading slash for resolve()
+    const pathname = new URL(url, 'http://localhost').pathname;
+    const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
     const fullPath = resolve(WEB_DIST, relativePath);
 
     // Security: prevent path traversal — resolved path must be within WEB_DIST

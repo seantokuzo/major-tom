@@ -185,7 +185,7 @@ class RelayStore {
   }
 
   private addApproval(event: ApprovalRequestMessage): void {
-    // Extract toolUseId from details (set by relay from control_request)
+    // Extract toolUseId from details (set by relay from SDK canUseTool callback)
     const toolUseId = event.details?.['tool_use_id'] as string | undefined;
     this.pendingApprovals.push({
       id: event.requestId,
