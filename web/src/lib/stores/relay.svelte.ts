@@ -246,6 +246,8 @@ class RelayStore {
     this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0 };
     this.isWaitingForResponse = false;
     this.activeToolName = null;
+    this.inputText = '';
+    this.inputPrefix = '';
     this.persistSessionId();
     if (this.isConnected) {
       this.startSession();
@@ -494,9 +496,9 @@ class RelayStore {
   }
 
   private handleSessionResult(result: SessionResultMessage): void {
-    this.sessionStats.totalCost += result.cost_usd;
-    this.sessionStats.turnCount += result.num_turns;
-    this.sessionStats.totalDuration += result.duration_ms;
+    this.sessionStats.totalCost += result.costUsd;
+    this.sessionStats.turnCount += result.numTurns;
+    this.sessionStats.totalDuration += result.durationMs;
   }
 }
 

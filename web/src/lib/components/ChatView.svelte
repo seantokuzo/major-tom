@@ -57,6 +57,7 @@
     relay.messages.forEach((m) => m.content);
     clearTimeout(persistTimer);
     persistTimer = setTimeout(() => relay.persistMessages(), 500);
+    return () => clearTimeout(persistTimer);
   });
 
   let placeholderText = $derived(

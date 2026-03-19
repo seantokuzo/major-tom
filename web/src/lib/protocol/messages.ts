@@ -34,7 +34,7 @@ export interface SessionAttachMessage {
   sessionId: string;
 }
 
-export interface AgentMessageMessage {
+export interface AgentChatMessage {
   type: 'agent.message';
   agentId: string;
   text: string;
@@ -63,7 +63,7 @@ export type ClientMessage =
   | CancelMessage
   | SessionStartMessage
   | SessionAttachMessage
-  | AgentMessageMessage
+  | AgentChatMessage
   | WorkspaceTreeMessage
   | ContextAddMessage
   | SettingsApprovalMessage;
@@ -155,10 +155,9 @@ export interface SessionInfoMessage {
 export interface SessionResultMessage {
   type: 'session.result';
   sessionId: string;
-  cost_usd: number;
-  num_turns: number;
-  duration_ms: number;
-  token_usage?: { input: number; output: number };
+  costUsd: number;
+  numTurns: number;
+  durationMs: number;
 }
 
 export interface WorkspaceTreeResponseMessage {

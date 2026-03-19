@@ -166,9 +166,8 @@
 
 {#if open}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="palette-backdrop" onclick={close} onkeydown={handleKeydown}>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="palette" onclick={(e) => e.stopPropagation()} onkeydown={handlePaletteKeydown}>
+  <div class="palette-backdrop" onclick={close} onkeydown={handleKeydown} role="presentation">
+    <div class="palette" onclick={(e) => e.stopPropagation()} onkeydown={handlePaletteKeydown} role="dialog" aria-label="Command palette" aria-modal="true">
       <div class="palette-input-row">
         <span class="palette-prompt">/</span>
         <input
