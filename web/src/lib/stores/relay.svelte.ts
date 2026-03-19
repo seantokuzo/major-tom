@@ -11,11 +11,20 @@ import type {
 
 // ── Chat message model ──────────────────────────────────────
 
+export interface ToolMeta {
+  tool: string;
+  input?: Record<string, unknown>;
+  output?: string;
+  success?: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'tool' | 'system';
   content: string;
   timestamp: Date;
+  /** Present on role === 'tool' messages — carries tool name, input, and output */
+  toolMeta?: ToolMeta;
 }
 
 // ── Approval request model ──────────────────────────────────
@@ -62,6 +71,7 @@ interface SerializedMessage {
   role: 'user' | 'assistant' | 'tool' | 'system';
   content: string;
   timestamp: string;
+  toolMeta?: ToolMeta;
 }
 
 function serializeMessages(messages: ChatMessage[]): string {
@@ -70,6 +80,7 @@ function serializeMessages(messages: ChatMessage[]): string {
     role: m.role,
     content: m.content,
     timestamp: m.timestamp.toISOString(),
+    ...(m.toolMeta ? { toolMeta: m.toolMeta } : {}),
   }));
   return JSON.stringify(serializable);
 }
@@ -362,6 +373,10 @@ class RelayStore {
           role: 'tool',
           content: `Using ${message.tool}...`,
           timestamp: new Date(),
+          toolMeta: {
+            tool: message.tool,
+            input: message.input,
+          },
         });
         break;
 
@@ -372,6 +387,11 @@ class RelayStore {
           role: 'tool',
           content: `${message.tool} ${message.success ? 'completed' : 'failed'}`,
           timestamp: new Date(),
+          toolMeta: {
+            tool: message.tool,
+            output: message.output,
+            success: message.success,
+          },
         });
         break;
 
