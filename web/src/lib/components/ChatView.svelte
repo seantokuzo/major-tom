@@ -49,12 +49,14 @@
     queueMicrotask(scrollToBottom);
   });
 
-  // Persist messages to localStorage
+  // Persist messages to localStorage (debounced to avoid jank during streaming)
+  let persistTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
     relay.messages.length;
     // Access deep content to track mutations
     relay.messages.forEach((m) => m.content);
-    relay.persistMessages();
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => relay.persistMessages(), 500);
   });
 
   let placeholderText = $derived(

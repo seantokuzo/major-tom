@@ -50,7 +50,7 @@
       name: '/model sonnet',
       description: 'Switch to Sonnet',
       action: () => {
-        relay.trackCommandUsage('/model');
+        relay.trackCommandUsage('/model sonnet');
         relay.sendPrompt('/model sonnet');
       },
     },
@@ -58,7 +58,7 @@
       name: '/model opus',
       description: 'Switch to Opus',
       action: () => {
-        relay.trackCommandUsage('/model');
+        relay.trackCommandUsage('/model opus');
         relay.sendPrompt('/model opus');
       },
     },
@@ -66,7 +66,7 @@
       name: '/model haiku',
       description: 'Switch to Haiku',
       action: () => {
-        relay.trackCommandUsage('/model');
+        relay.trackCommandUsage('/model haiku');
         relay.sendPrompt('/model haiku');
       },
     },
@@ -123,12 +123,16 @@
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      selectedIndex = Math.min(selectedIndex + 1, filteredCommands.length - 1);
+      if (filteredCommands.length > 0) {
+        selectedIndex = Math.min(selectedIndex + 1, filteredCommands.length - 1);
+      }
       return;
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      selectedIndex = Math.max(selectedIndex - 1, 0);
+      if (filteredCommands.length > 0) {
+        selectedIndex = Math.max(selectedIndex - 1, 0);
+      }
       return;
     }
     if (e.key === 'Enter') {
@@ -136,6 +140,13 @@
       const cmd = filteredCommands[selectedIndex];
       if (cmd) selectCommand(cmd);
       return;
+    }
+  }
+
+  function handlePaletteKeydown(e: KeyboardEvent) {
+    // Only stop propagation for keys we handle — let Escape bubble through
+    if (['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) {
+      e.stopPropagation();
     }
   }
 
@@ -157,7 +168,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="palette-backdrop" onclick={close} onkeydown={handleKeydown}>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="palette" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+    <div class="palette" onclick={(e) => e.stopPropagation()} onkeydown={handlePaletteKeydown}>
       <div class="palette-input-row">
         <span class="palette-prompt">/</span>
         <input

@@ -142,6 +142,7 @@ class RelayStore {
   private wasConnected = false;
   private storedSessionId: string | null = null;
   private persistenceInitialized = false;
+  private isReattaching = false;
 
   constructor() {
     this.socket.onStateChange = (state) => {
@@ -168,15 +169,19 @@ class RelayStore {
   private restoreFromStorage(): void {
     if (typeof window === 'undefined') return;
 
-    const storedMessages = localStorage.getItem(STORAGE_KEYS.messages);
-    if (storedMessages) {
-      this.messages = deserializeMessages(storedMessages);
-    }
+    try {
+      const storedMessages = localStorage.getItem(STORAGE_KEYS.messages);
+      if (storedMessages) {
+        this.messages = deserializeMessages(storedMessages);
+      }
 
-    const storedSessionId = localStorage.getItem(STORAGE_KEYS.sessionId);
-    if (storedSessionId) {
-      this.storedSessionId = storedSessionId;
-      // Don't set sessionId yet — wait for successful reattach
+      const storedSessionId = localStorage.getItem(STORAGE_KEYS.sessionId);
+      if (storedSessionId) {
+        this.storedSessionId = storedSessionId;
+        // Don't set sessionId yet — wait for successful reattach
+      }
+    } catch {
+      // localStorage unavailable (privacy mode, quota exceeded) — start fresh
     }
 
     // Set up persistence effect after restoring
@@ -186,23 +191,33 @@ class RelayStore {
   /** Call from an $effect in a component to persist messages reactively */
   persistMessages(): void {
     if (!this.persistenceInitialized || typeof window === 'undefined') return;
-    const json = serializeMessages(this.messages);
-    localStorage.setItem(STORAGE_KEYS.messages, json);
+    try {
+      const json = serializeMessages(this.messages);
+      localStorage.setItem(STORAGE_KEYS.messages, json);
+    } catch {
+      // localStorage unavailable or quota exceeded — degrade gracefully
+    }
   }
 
   private persistSessionId(): void {
     if (typeof window === 'undefined') return;
-    if (this.sessionId) {
-      localStorage.setItem(STORAGE_KEYS.sessionId, this.sessionId);
+    try {
+      if (this.sessionId) {
+        localStorage.setItem(STORAGE_KEYS.sessionId, this.sessionId);
+        this.storedSessionId = this.sessionId;
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.sessionId);
+        this.storedSessionId = null;
+      }
+    } catch {
+      // localStorage unavailable — update in-memory state only
       this.storedSessionId = this.sessionId;
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.sessionId);
-      this.storedSessionId = null;
     }
   }
 
   private attemptReattach(): void {
     if (!this.storedSessionId) return;
+    this.isReattaching = true;
     this.socket.send({ type: 'session.attach', sessionId: this.storedSessionId });
   }
 
@@ -292,9 +307,13 @@ class RelayStore {
 
   trackCommandUsage(command: string): void {
     if (typeof window === 'undefined') return;
-    const usage = this.getCommandUsage();
-    usage[command] = (usage[command] || 0) + 1;
-    localStorage.setItem(STORAGE_KEYS.commandUsage, JSON.stringify(usage));
+    try {
+      const usage = this.getCommandUsage();
+      usage[command] = (usage[command] || 0) + 1;
+      localStorage.setItem(STORAGE_KEYS.commandUsage, JSON.stringify(usage));
+    } catch {
+      // localStorage unavailable — skip tracking
+    }
   }
 
   // ── Message routing ─────────────────────────────────────
@@ -316,8 +335,8 @@ class RelayStore {
       case 'session.info':
         this.sessionId = message.sessionId;
         this.persistSessionId();
-        // If this was a reattach, show a system message
-        if (this.storedSessionId === message.sessionId && this.messages.length > 0) {
+        // Only show "Session restored" when we were explicitly reattaching
+        if (this.isReattaching && this.messages.length > 0) {
           this.messages.push({
             id: uid(),
             role: 'system',
@@ -325,6 +344,7 @@ class RelayStore {
             timestamp: new Date(),
           });
         }
+        this.isReattaching = false;
         break;
 
       case 'session.result':
@@ -405,6 +425,7 @@ class RelayStore {
       case 'error':
         this.isWaitingForResponse = false;
         this.activeToolName = null;
+        this.isReattaching = false;
         // Handle session attach failure
         if (message.code === 'SESSION_NOT_FOUND' || message.code === 'SESSION_EXPIRED') {
           this.sessionId = null;

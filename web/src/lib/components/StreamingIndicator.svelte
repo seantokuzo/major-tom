@@ -2,7 +2,7 @@
   import { relay } from '../stores/relay.svelte';
 </script>
 
-{#if relay.isWaitingForResponse}
+{#if relay.isWaitingForResponse || relay.activeToolName}
   <div class="indicator">
     {#if relay.activeToolName}
       <span class="tool-indicator">
