@@ -232,62 +232,78 @@ major-tom/
 
 ## Features
 
-### Tier 1: Foundation (Must Have for v1.0)
+### v1.0 — Foundation ✅ COMPLETE
+
+| ID | Feature | Status |
+|----|---------|--------|
+| F01 | **Claude Code CLI Chat** | ✅ Send prompts, see responses |
+| F02 | **Approval Flow** | ✅ Allow / Skip / Deny / Allow Always |
+| F03 | **Live Output Stream** | ✅ Streaming markdown-rendered output |
+| F04 | **Connection Management** | ✅ Auto-connect, auto-reconnect, tunnel support |
+| F05 | **Session Management** | ✅ Start sessions via Agent SDK |
+
+### v1.1 — Mission Control MVP
 
 | ID | Feature | Description |
 |----|---------|-------------|
-| F01 | **Claude Code CLI Chat** | Send prompts to a running Claude Code CLI session, see streaming responses |
-| F02 | **Approval Flow** | See pending tool calls, tap Allow / Skip / Deny — full hook-based approval |
-| F03 | **Live Output Stream** | Real-time streaming of Claude Code's output (markdown rendered) |
-| F04 | **Connection Management** | Pair with relay server, connection status, auto-reconnect |
-| F05 | **Session Management** | Start new sessions, see active session, basic session history |
+| F06 | **Session Persistence** | Chat history + session ID in localStorage, survive refresh/sleep |
+| F07 | **ClaudeGod Mode** | Auto-approve: full auto, delay countdown, or manual. Per-tool overrides later. |
+| F08 | **Command Palette** | `/` trigger, searchable, sorted by frequency, client-side intercept |
+| F09 | **Slash Commands** | `/new`, `/clear`, `/plan`, `/compact`, `/model`, `/btw` |
+| F10 | **Cost & Usage Display** | Per-prompt cost, running total, token usage (from new `session.result` message) |
+| F11 | **Streaming Indicator** | "Thinking..." animation, tool use preview |
+| F12 | **CLI-Like Chat UI** | Monospace, tightened layout, Claude Code visual language |
 
-### Tier 2: Full Control (v1.1)
-
-| ID | Feature | Description |
-|----|---------|-------------|
-| F06 | **VSCode Extension Bridge** | Control Claude Code's VSCode chat panel remotely |
-| F07 | **File Context** | Browse workspace files, add @file/@folder references |
-| F08 | **Terminal Streaming** | See terminal output from Claude Code's commands |
-| F09 | **Cancel/Interrupt** | Stop runaway operations with one tap |
-| F10 | **Git Status** | See current branch, uncommitted changes, diffs |
-
-### Tier 3: Agent Office (v2.0)
+### v1.2 — Mission Control+
 
 | ID | Feature | Description |
 |----|---------|-------------|
-| F11 | **Office Scene** | SpriteKit pixel art office with furniture, rooms, decorations |
-| F12 | **Agent Characters** | Animated sprites for orchestrator + subagents |
-| F13 | **Agent Lifecycle** | Characters spawn at desks when working, move to break rooms when idle |
-| F14 | **Tap to Inspect** | Tap an agent to see their current task, output stream, progress |
-| F15 | **Steer Agents** | Send messages to specific subagents from the inspection view |
+| F13 | **Mobile Diff Viewer** | Side-by-side or unified diff, syntax highlighted |
+| F14 | **Tool Activity Feed** | Scrollable timeline, tool name/duration/success, collapsible I/O |
+| F15 | **Agent Activity Panel** | Active subagents with tasks and elapsed time |
+| F16 | **Better Approval Cards** | Tool icons, formatted JSON preview, timeout countdown |
+| F17 | **Push Notifications** | Web-push for approvals, tap → opens PWA |
 
-### Tier 4: Polish & Delight (v2.1+)
-
-| ID | Feature | Description |
-|----|---------|-------------|
-| F16 | **Voice Prompts** | Dictate prompts via iOS Speech Recognition |
-| F17 | **Prompt Templates** | Save, organize, and reuse common prompts |
-| F18 | **Push Notifications** | Approval requests, task completion, errors, idle alerts |
-| F19 | **Haptic Feedback** | Satisfying haptics for approvals and key actions |
-| F20 | **Dark Mode** | Beautiful dark theme (default) with light option |
-| F21 | **Smart Suggestions** | Context-aware prompt suggestions based on workspace state |
-
-### Tier 5: Platform (v3.0)
+### v2.0 — The Office
 
 | ID | Feature | Description |
 |----|---------|-------------|
-| F22 | **Home Screen Widget** | Connection status, pending approvals, agent count |
-| F23 | **Apple Watch** | Approve/deny from your wrist |
-| F24 | **Prompt History** | Search and re-send previous prompts |
+| F18 | **Office Scene** | SpriteKit tech campus with 8 areas |
+| F19 | **9 Characters** | 5 humans + 4 dogs, each with unique personality and break behaviors |
+| F20 | **Agent Lifecycle** | Spawn → desk → work → break → celebrate → exit |
+| F21 | **Dachshund Blanket Mechanic** | Demands blanket, one-click give, burrows contentedly |
+| F22 | **Mini-Map + Follow** | Area overview with badges, tap-to-navigate, character follow mode |
+| F23 | **Tap to Inspect** | Overlay: agent ID, role, task, live output |
+| F24 | **Rename Characters** | Long press → custom name |
+
+### v2.1 — Delight
+
+| ID | Feature | Description |
+|----|---------|-------------|
+| F25 | **Voice Prompts** | Speech-to-text input |
+| F26 | **Prompt Templates** | Save, organize, reuse |
+| F27 | **Desk Customization** | Tap desk → upload photo or pick from files |
+| F28 | **Agent Steering** | Send prompts to specific agents from inspector |
+| F29 | **Custom Characters** | README guide for prompting Claude to create new sprites |
+| F30 | **Haptic Feedback** | Satisfying haptics for approvals (native) |
+| F31 | **Push Notification Actions** | Allow/Deny directly from iOS notification |
+
+### v3.0 — Everywhere
+
+| ID | Feature | Description |
+|----|---------|-------------|
+| F32 | **Apple Watch** | Approve/deny from wrist, connection status |
+| F33 | **Home Screen Widget** | WidgetKit — status, pending approvals, agent count |
+| F34 | **Stable Tunnel** | Named Cloudflare Tunnel + custom domain for PWA install |
 
 ### Deprioritized (Backlog)
 
 | ID | Feature | Notes |
 |----|---------|-------|
-| F-B3 | GitHub PR Status | Can use GitHub app directly |
-| F-B4 | CI/CD Pipeline View | Same |
-| F-B5 | Copilot Support | Legacy — only if you need it alongside Claude Code |
+| F-B1 | VSCode Extension Bridge | CLI-only for foreseeable future |
+| F-B2 | GitHub PR Status | Use GitHub app directly |
+| F-B3 | CI/CD Pipeline View | Same |
+| F-B4 | Copilot Support | Legacy, unlikely needed |
 
 ---
 
@@ -563,75 +579,238 @@ This protocol touches the following components — listed here so we don't build
 
 > Phases are organized around **coherent user capabilities** (GSD pattern), not tech layers.
 > Each phase delivers something a user can actually use end-to-end.
+> VSCode extension is deprioritized — CLI-only for MVP and foreseeable future.
 
-### Phase 1: "Hello Claude" — Foundation + CLI Chat (v1.0)
+### Phase 1: "Hello Claude" — Foundation + CLI Chat (v1.0) ✅ COMPLETE
 
 **Goal:** Send a prompt to Claude Code from your phone and see the response.
 
-**Delivers:** End-to-end message flow from iOS → Relay → Claude Code CLI → back
+**Delivers:** End-to-end message flow from Phone → Relay → Claude Code CLI → back
 
-| Task Group | Key Deliverables |
-|------------|-----------------|
-| Relay Server Scaffold | WebSocket server, adapter interface, message protocol |
-| CLI Adapter | PTY spawn, stdin/stdout capture, session management |
-| Hook System | pre-tool-use hook script, relay HTTP endpoints, approval flow |
-| iOS App Scaffold | SwiftUI app shell, WebSocket client, connection pairing |
-| Chat UI | Message list, input bar, streaming markdown renderer |
-| Approval UI | Action sheet with Allow / Skip / Deny buttons |
+| Deliverable | Status |
+|------------|--------|
+| Relay server scaffold (WebSocket, sessions, protocol) | ✅ PR #2 |
+| iOS app scaffold (SwiftUI shell, WebSocket, chat) | ✅ PR #3 |
+| PWA scaffold (Svelte 5, WebSocket, chat, approvals, markdown) | ✅ PRs #4–#9 |
+| CLI adapter rewrite (Agent SDK, permission handling) | ✅ PR #13 |
+| Auto-connect + rendering fix (tunnel/LAN support) | ✅ PR #14 |
+| End-to-end phone test via Cloudflare Tunnel | ✅ Verified |
 
-**Success Criteria:**
-- [ ] Can pair iPhone with relay server
-- [ ] Can send a prompt and see streaming response
-- [ ] Can approve/deny tool calls from phone
-- [ ] Connection auto-reconnects
+**Success Criteria — ALL MET:**
+- [x] Can connect to relay server from phone browser
+- [x] Can send a prompt and see response
+- [x] Can approve/deny tool calls from phone
+- [x] Connection auto-reconnects
 
 ---
 
-### Phase 2: "Full Control" — VSCode + Visibility (v1.1)
+### Phase 2: "Mission Control" — The Real Mobile Workflow (v1.1)
 
-**Goal:** Control Claude Code in VSCode too. See everything it's doing.
+**Goal:** Do everything you can do at your laptop, from your phone. For real.
 
-**Delivers:** VSCode extension bridge, live file/terminal/git visibility
+**Delivers:** A PWA that feels like Claude Code CLI but mobile-native. Persistent sessions, auto-approve modes, slash commands, and a UI that doesn't make you want to go back to your desk.
 
-| Task Group | Key Deliverables |
-|------------|-----------------|
-| VSCode Extension | Companion extension, Claude Code UI bridge, message forwarding |
-| File Context | Workspace tree browser, @file/@folder context management |
-| Terminal Stream | Terminal output capture and forwarding |
-| Git Status | Branch, uncommitted changes, diff viewer |
-| Cancel/Interrupt | One-tap operation cancellation |
-| Session History | List, resume, and manage past sessions |
+#### MVP (v1.1) — "I can actually work from my phone"
 
-**Success Criteria:**
-- [ ] Can type into Claude Code's VSCode chat from phone
-- [ ] Can press approval buttons in VSCode from phone
-- [ ] Can see files being edited in real-time
-- [ ] Can see terminal output streaming
-- [ ] Can browse workspace files and add to context
+| ID | Feature | Description | Wave |
+|----|---------|-------------|------|
+| MC-01 | **Session persistence** | Chat history + session ID in localStorage. Phone sleeps, you come back, everything's there. `session.attach` on reconnect. | 1 |
+| MC-02 | **ClaudeGod mode** | Auto-approve settings: (a) full auto-approve, (b) delay mode — X-second countdown toast, auto-accept if no action, (c) manual (current). Per-tool overrides later. | 1 |
+| MC-03 | **Command palette** | Type `/` → searchable palette pops up. Sorted by most recent/frequent. Client-side intercept translates to SDK actions. Hardcoded list for MVP. | 1 |
+| MC-04 | **Slash commands** | `/new` (fresh session), `/clear` (clear display, keep session), `/plan` (plan mode), `/compact` (compact context), `/model` (switch model). Intercepted client-side. | 1 |
+| MC-05 | **`/btw` quick-ask** | Send a quick question into the current session without disrupting flow. Prefixed so Claude knows it's a side-question with full context. | 1 |
+| MC-06 | **Streaming indicator** | "Claude is thinking..." animation while waiting. Tool use preview: "Using Read on `/src/main.ts`...". | 2 |
+| MC-07 | **Session result broadcast** | New `session.result` message from relay with `total_cost_usd`, `num_turns`, `duration_ms`, `token_usage`. Currently logged but not sent to clients. | 2 |
+| MC-08 | **Cost & usage display** | Per-prompt cost, running session total, token usage bar. Data from MC-07. | 2 |
+| MC-09 | **Approval countdown toast** | For ClaudeGod delay mode: toast notification with countdown bar, tool name, input preview. Tap to cancel auto-approve. | 2 |
+| MC-10 | **Protocol sync** | Unify web client protocol types with relay — add agent lifecycle events, session.result, all missing types. | 1 |
+| MC-11 | **CLI-like chat UI** | Monospace, streaming text, same visual language as Claude Code CLI. Better than current but not a redesign — just tighten it up. | 2 |
+
+#### v1.2 — "This is actually better than my laptop"
+
+| ID | Feature | Description |
+|----|---------|-------------|
+| MC-12 | **Mobile diff viewer** | Side-by-side or unified diff view for changed files. Syntax highlighted. |
+| MC-13 | **Tool activity feed** | Scrollable timeline of tool calls — name, duration, success/fail, collapsible input/output. |
+| MC-14 | **Agent activity panel** | Active subagents with tasks, elapsed time. Ties into Office visualization later. |
+| MC-15 | **Better approval cards** | Tool icons (Read=magnifying glass, Bash=terminal, Edit=pencil), formatted JSON input preview, timeout countdown. |
+| MC-16 | **System event display** | Context compaction, API retries, rate limit warnings — categorized and styled. |
+| MC-17 | **Push notifications (web-push)** | iOS push notifications for approval requests. Tap → opens PWA to approval. Requires home screen install. |
+
+#### v1.3+ — Nice to Have
+
+| ID | Feature | Description |
+|----|---------|-------------|
+| MC-18 | **Push notification inline actions** | Allow/Deny directly from iOS notification without opening app. |
+| MC-19 | **File context browser** | Workspace tree, tap to view files, @file/@folder references. |
+| MC-20 | **Session history** | List past sessions, resume, see metadata (date, cost, turns). |
+| MC-21 | **Git status** | Branch, uncommitted files, ahead/behind. |
+| MC-22 | **Reconnection UX** | Backoff timer display, manual retry, last message timestamp. |
+| MC-23 | **Voice prompts** | Speech-to-text input via Web Speech API. |
+| MC-24 | **Prompt templates** | Save, organize, reuse common prompts. |
+
+#### Implementation Waves
+
+**Wave 1 — Foundation (Protocol + State + Persistence)**
+- Sync web protocol types with relay (MC-10)
+- Session persistence in localStorage (MC-01)
+- ClaudeGod mode settings + approval queue logic (MC-02)
+- Command palette + slash command intercept (MC-03, MC-04)
+- `/btw` quick-ask (MC-05)
+- ~4-5 days, 2-3 PRs
+
+**Wave 2 — Visibility + Polish**
+- `session.result` broadcast from relay (MC-07)
+- Cost & usage display (MC-08)
+- Streaming indicator (MC-06)
+- Approval countdown toast for delay mode (MC-09)
+- CLI-like chat tightening (MC-11)
+- ~3-4 days, 2-3 PRs
+
+**Wave 3 — v1.2 Features** (after MVP ships)
+- Diff viewer, tool feed, agent panel, better approvals, system events, push notifications
+- ~6-8 days, 4-5 PRs
 
 ---
 
 ### Phase 3: "The Office" — Gamified Agent Visualization (v2.0)
 
-**Goal:** Watch your AI team work in a pixel art office.
+**Goal:** Watch your AI workforce in a pixel-art tech office. Characters with personality, break-time behaviors, and a Meta-pre-COVID vibe.
 
-**Delivers:** SpriteKit office scene with animated agent characters
+**Delivers:** SpriteKit office scene (iOS native) with animated characters representing Claude agents. Each character has unique break behaviors. Multiple areas to explore.
 
-| Task Group | Key Deliverables |
-|------------|-----------------|
-| Office Scene | Pixel art office with rooms (desks, break room, kitchen, lounge) |
-| Sprite System | Character sprites with walk, work, idle, and error animations |
-| Agent Lifecycle | Event-driven character spawning, movement, and dismissal |
-| Pathfinding | A* or simple grid-based pathfinding between rooms |
-| Agent Inspector | Tap-to-inspect overlay with live thought stream |
-| Agent Steering | Send messages to specific agents from inspector |
+#### Characters
 
-**Success Criteria:**
-- [ ] Can see pixel office with orchestrator character
-- [ ] Subagent characters appear when spawned
-- [ ] Characters walk to desks when working, break rooms when idle
-- [ ] Can tap character to see their current task/output
-- [ ] Can send a message to steer a specific agent
+**9 characters at launch.** Roles assigned via config, not hardcoded. User can rename and reassign.
+
+**Humans (5):**
+
+| Character | Look | Break Behavior |
+|-----------|------|----------------|
+| Dev | Hoodie, headphones, energy drink on desk | Gym, plays ping pong, naps on beanbag |
+| Office Worker | Button-down, coffee mug, organized desk | Kitchen (coffee runs), break room couch, errands |
+| PM | Polo, clipboard, sticky notes everywhere | Meeting room (alone, lol), phone call walk, rollercoaster |
+| Clown | Full clown outfit, balloon animal on desk | Juggles in break room, rides tiny bike around office, rollercoaster |
+| Frankenstein | Bolts, green skin, sparking cables on desk | Charging station (robot-style), wanders confused, scared of coffee machine |
+
+**Dogs (4 — the user's actual dogs):**
+
+| Character | Look | Break Behavior |
+|-----------|------|----------------|
+| Dachshund | Auburn short-hair, long boi | **MUST find a blanket** to hang in office (demands one if missing — one-click give). Dog park, walks, burrows under desk |
+| Cattle Dog | Red heeler body, GSD-style face | Dog park (herds other dogs), patrol walk around office, food/water |
+| Schnauzer #1 | All black, distinguished beard | Dog park, curls up on couch, stands guard at door |
+| Schnauzer #2 | Salt & pepper (mostly black), scruffy | Dog park, follows Schnauzer #1 everywhere, food/water, zoomies |
+
+> **Custom characters:** See README for how to prompt Claude to create new character sprites and behaviors. PRs welcome from friends.
+
+#### Office Environment
+
+**Vibe:** Silicon Valley tech campus, pre-COVID Meta energy. Cool workstations, ping pong, snack bar, bean bags, neon signs, standing desks, monitor walls.
+
+**Areas:**
+
+| Area | Description | Who Goes Here |
+|------|-------------|---------------|
+| **Main Floor** | Open plan, 6-8 desks with personality, monitor walls, standing desks | Everyone (working) |
+| **Server Room** | Blinky lights, cable spaghetti, cold blue lighting | Orchestrator's desk |
+| **Break Room** | Couches, vending machine, TV, ping pong table, bean bags | Humans (break) |
+| **Kitchen** | Coffee machine, snack bar, mini fridge, water cooler | Humans (break), dogs (food/water) |
+| **Dog Corner** | Dog beds, blankets, toy basket, water bowls | Dogs (indoor break) |
+| **Dog Park** | Grass, fence, tennis balls, fire hydrant | Dogs (outdoor break) |
+| **Gym** | Treadmill, weights, yoga mat | Humans (outdoor break) |
+| **Rollercoaster** | Yes, a rollercoaster. It's that kind of office. | PM, Clown (outdoor break) |
+
+#### Agent Lifecycle → Character Behavior
+
+| Event | What Happens |
+|-------|-------------|
+| `agent.spawn` | Character appears at office entrance, walks to available desk |
+| `agent.working` | Sits at desk, typing/working animation (looping). Dogs lay on desk or sit in chair. |
+| `agent.idle` | Stands up, picks a break activity based on character type. Random selection weighted by personality. |
+| `agent.complete` | Celebration animation at desk (fist pump, tail wag, honk nose, spark bolts). Short-lived. |
+| `agent.dismissed` | Walks to exit, disappears |
+
+**Dachshund Blanket Mechanic:**
+When the dachshund goes idle indoors, it looks for a blanket in Dog Corner. If no blanket is available, it sits and starts "demanding" (thought bubble with blanket icon, increasingly agitated animation). User gets a one-tap "Give Blanket" button. Once given, dachshund burrows under blanket contentedly.
+
+#### Navigation
+
+**Mini-map + Follow mode (Option A + C):**
+- Corner mini-map shows all areas as icons with character count badges
+- Greyed out areas = empty, glowing = activity
+- Tap area on mini-map → camera pans there
+- Tap character → optional "Follow" toggle, camera tracks them between areas
+- Pinch to zoom on main view
+
+#### Interactions
+
+| Interaction | Description | Priority |
+|-------------|-------------|----------|
+| **Tap to inspect** | Overlay sheet: agent ID, role, current task, live output stream | MVP |
+| **Rename** | Long press → rename character | MVP |
+| **Follow** | Tap character → toggle follow mode, camera tracks them | MVP |
+| **Give blanket** | One-tap when dachshund demands it | MVP |
+| **Reassign role** | Change which agent type a character represents | v2.1 |
+| **Customize desk** | Tap desk → upload photo or pick from files for desk decoration | v2.1 |
+| **Guide with prompt** | Send a message to steer a specific agent from inspection view | v2.1 |
+
+#### Art & Sprites
+
+**Style:** 32x32 pixel art, top-down perspective. Low-bit but **distinguishable** — each dog breed must read clearly as that breed at small sizes.
+
+**Per character (9 characters × asset set):**
+- 4-direction walk cycle (4 frames each = 16 walk frames)
+- Work animation (2-4 frames, looping)
+- Idle/breathing animation (2 frames)
+- Break-specific animations (varies per character)
+- Celebration animation (2-4 frames)
+- Error state (red tint flash overlay)
+
+**Environment tileset:**
+- Floor tiles (wood, carpet, grass, concrete)
+- Wall/partition tiles
+- Furniture sprites (desks, chairs, couches, ping pong, coffee machine, vending machine, bean bags, dog beds, blankets)
+- Decorations (plants, neon signs, monitors, cable spaghetti, fire hydrant, tennis balls)
+
+**Placeholder strategy:** Start with colored rectangles/circles differentiated by role. Get the movement system and state machine working. Pretty sprites come later (or we commission them / AI-generate base assets).
+
+#### Implementation Waves
+
+**Wave 1 — Infrastructure (~3-4 days)**
+- `Features/Office/` directory structure
+- Wire iOS `RelayService` to handle `agent.*` events
+- `OfficeViewModel` (@Observable) tracking agent states + desk occupancy
+- Basic `OfficeScene` with grid rendering and placeholder sprites
+- Mini-map component
+
+**Wave 2 — Movement & Animation (~4-5 days)**
+- `AgentSprite` class (SKSpriteNode subclass) with placeholder art
+- Walk cycle animation system (4 directions)
+- Grid-based A* pathfinding
+- Desk assignment and occupancy tracking
+- Character walks to desk on spawn, to break areas on idle
+
+**Wave 3 — Character Personalities (~3-4 days)**
+- Break behavior system (weighted random per character type)
+- Dachshund blanket mechanic
+- Celebration animations on complete
+- Multiple area transitions (office → dog park, gym, etc.)
+- Area-specific idle animations
+
+**Wave 4 — Interactions & Polish (~3-4 days)**
+- Tap to inspect → `AgentInspectorView` overlay
+- Rename via long press
+- Follow mode (camera tracks character)
+- Mini-map badges and navigation
+- Give Blanket button
+- Particle effects, ambient animations
+
+**Wave 5 — Real Sprites (~timeline TBD)**
+- Commission or create actual 32x32 pixel art
+- All 9 characters with full animation sets
+- Environment tileset and furniture
+- Sprite atlases for GPU batching
 
 ---
 
@@ -639,21 +818,17 @@ This protocol touches the following components — listed here so we don't build
 
 **Goal:** Make it so good you never want to sit at your desk again.
 
-**Delivers:** Voice, templates, notifications, beautiful polish
+**Delivers:** Voice, push notifications, desk customization, prompt templates
 
 | Task Group | Key Deliverables |
 |------------|-----------------|
-| Voice Prompts | Speech Recognition integration, voice-to-text input |
+| Voice Prompts | Speech Recognition (iOS native + Web Speech API) |
 | Prompt Templates | Save, organize, search, and reuse prompts |
-| Notifications | APNs for approvals, completions, errors, idle |
-| Haptics | Satisfying feedback for approvals and key actions |
-| UI Polish | Animations, transitions, micro-interactions, dark mode perfection |
-| Prompt History | Searchable history with re-send capability |
-
-**Success Criteria:**
-- [ ] Can dictate prompts while walking
-- [ ] Receive push notifications for pending approvals
-- [ ] App feels premium with smooth animations and haptics
+| Push Notifications | Native iOS APNs + PWA web-push with inline actions |
+| Desk Customization | Tap desk → upload photo or pick from file system |
+| Character Expansion | Custom character creation guide in README |
+| Agent Steering | Guide specific agents with prompts from inspector |
+| Haptics | Satisfying feedback for approvals and key actions (native) |
 
 ---
 
@@ -661,18 +836,18 @@ This protocol touches the following components — listed here so we don't build
 
 **Goal:** Major Tom on your wrist and home screen.
 
-**Delivers:** Apple Watch app, Home Screen widgets
+**Delivers:** Apple Watch app, Home Screen widgets, stable remote access
 
 | Task Group | Key Deliverables |
 |------------|-----------------|
 | Watch App | Approve/deny from wrist, connection status, basic prompting |
 | Widgets | WidgetKit — connection status, pending approvals, agent count |
-| Remote Access | Tailscale integration for controlling Mac from anywhere |
+| Stable Tunnel | Named Cloudflare Tunnel + custom domain (~$10/yr) for PWA home screen install |
 
 **Success Criteria:**
 - [ ] Can approve tool calls from Apple Watch
 - [ ] Home screen widget shows live status
-- [ ] Works over Tailscale from outside local network
+- [ ] Stable URL for PWA install
 
 ---
 
@@ -680,13 +855,14 @@ This protocol touches the following components — listed here so we don't build
 
 | Version | Phase | Theme | Key Deliverable |
 |---------|-------|-------|-----------------|
-| **v1.0** | 1 | Foundation | Chat with Claude Code from phone, approve tool calls |
-| **v1.1** | 2 | Full Control | VSCode bridge, live visibility, file context |
-| **v2.0** | 3 | The Office | Gamified agent visualization |
-| **v2.1** | 4 | Delight | Voice, templates, notifications, polish |
-| **v3.0** | 5 | Everywhere | Watch, widgets, remote access |
+| **v1.0** | 1 ✅ | Hello Claude | Chat + approve from phone via PWA |
+| **v1.1** | 2 | Mission Control MVP | Persistent sessions, ClaudeGod mode, slash commands, cost display |
+| **v1.2** | 2 | Mission Control+ | Diff viewer, tool feed, push notifications |
+| **v2.0** | 3 | The Office | Gamified agent visualization with 9 characters |
+| **v2.1** | 4 | Delight | Voice, templates, desk customization, haptics |
+| **v3.0** | 5 | Everywhere | Watch, widgets, stable tunnel |
 
-> **Reality check:** Phase 1 is the real MVP. If you can send prompts and approve tool calls from your phone, you've already won. Everything else is gravy — delicious, beautiful gravy.
+> **Reality check:** v1.0 is done. v1.1 makes this actually usable as a daily workflow tool. The Office is the fun part — but Mission Control MVP comes first because you need the tool to actually work before you make it pretty.
 
 ---
 
@@ -720,6 +896,9 @@ All messages are JSON with a `type` field for routing.
 
 // Add file to context
 { type: "context.add", path: string, type: "file" | "folder" }
+
+// Update approval settings (ClaudeGod mode)
+{ type: "settings.approval", mode: "manual" | "auto" | "delay", delaySeconds?: number }
 ```
 
 ### Server → Client (Relay → iOS)
@@ -753,6 +932,9 @@ All messages are JSON with a `type` field for routing.
 // Workspace file tree
 { type: "workspace.tree.response", files: FileNode[] }
 
+// Session result (prompt completed — cost, tokens, duration)
+{ type: "session.result", sessionId: string, cost_usd: number, num_turns: number, duration_ms: number, token_usage?: { input: number, output: number } }
+
 // Error
 { type: "error", code: string, message: string }
 ```
@@ -770,17 +952,22 @@ All messages are JSON with a `type` field for routing.
 - **Information density** — show what matters, hide what doesn't, progressive disclosure
 
 ### Office Aesthetic
-- **16x16 or 32x32 pixel art** — clean, readable at small sizes
+- **32x32 pixel art** — clean, readable at small sizes, distinguishable characters
 - **Top-down perspective** — classic Zelda/Pokemon style
-- **Warm color palette** — cozy office vibes (wood tones, soft lighting)
-- **Character differentiation** — each agent type has a distinct sprite (color, accessories)
-- **Animation states** — walk cycle (4 frames), work (typing at desk, 2-4 frames), idle (breathing, 2 frames), error (red flash)
-- **Room types:**
-  - **Main floor** — desks for active agents (one per desk)
-  - **Break room** — couches, vending machine (idle agents hang here)
-  - **Kitchen** — coffee machine, snacks (random idle destination)
-  - **Server room** — blinky lights (orchestrator's desk is here)
-  - **Lounge** — beanbags, plants (another idle destination)
+- **Silicon Valley tech campus** — Meta pre-COVID energy, cool workstations, neon signs
+- **9 launch characters** — 5 humans (Dev, Office Worker, PM, Clown, Frankenstein) + 4 dogs (Dachshund, Cattle Dog, 2 Schnauzers)
+- **Personality-driven breaks** — each character has unique idle behaviors (gym, dog park, blanket hunting, juggling)
+- **Animation states** — walk cycle (4 frames × 4 directions), work (2-4 frames), idle (2 frames), celebration (2-4 frames), error (red flash)
+- **Multiple areas:**
+  - **Main floor** — open plan, 6-8 desks with personality
+  - **Server room** — blinky lights, orchestrator's desk
+  - **Break room** — couches, ping pong, bean bags, TV
+  - **Kitchen** — coffee machine, snack bar, mini fridge
+  - **Dog corner** — dog beds, blankets, toy basket
+  - **Dog park** — grass, fence, tennis balls (outdoor)
+  - **Gym** — treadmill, weights (outdoor)
+  - **Rollercoaster** — because why not (outdoor)
+- **Navigation** — mini-map with area badges + character follow mode
 
 ### Interaction Patterns
 - **Swipe between modes** — Control ↔ Office (horizontal swipe or tab)
