@@ -7,8 +7,12 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc && esbuild src/server.ts --bundle --platform=node --outdir=dist --format=esm --packages=external",
+    "build:web": "cd ../web && npm run build",
+    "build:all": "npm run build:web && npm run build",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "echo \"No tests yet\" && exit 0"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.79",

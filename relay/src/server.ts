@@ -1,6 +1,5 @@
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { resolve, extname, sep } from 'node:path';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from './utils/logger.js';
@@ -9,29 +8,14 @@ import { ClaudeCliAdapter } from './adapters/claude-cli.adapter.js';
 import { ApprovalQueue } from './hooks/approval-queue.js';
 import { eventBus } from './events/event-bus.js';
 import { encodeServerMessage, safeDecode } from './protocol/codec.js';
+import { createStaticHandler } from './static.js';
 import type { ClientMessage, ServerMessage } from './protocol/messages.js';
-
-// ── Static file serving ─────────────────────────────────────
-
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const WEB_DIST = resolve(__dirname, '..', '..', 'web', 'dist');
-
-const MIME_TYPES: Record<string, string> = {
-  '.html': 'text/html',
-  '.js': 'application/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.ico': 'image/x-icon',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-};
 
 // ── Configuration ───────────────────────────────────────────
 
 const WS_PORT = parseInt(process.env['WS_PORT'] ?? '9090', 10);
 const CLAUDE_WORK_DIR = process.env['CLAUDE_WORK_DIR'] ?? process.cwd();
+const DISABLE_STATIC = process.env['NO_STATIC'] === '1' || process.argv.includes('--no-static');
 
 // ── Core services ───────────────────────────────────────────
 
@@ -39,7 +23,14 @@ const sessionManager = new SessionManager();
 const approvalQueue = new ApprovalQueue();
 const cliAdapter = new ClaudeCliAdapter(sessionManager, approvalQueue);
 
-// ── HTTP server (for health check + future REST endpoints) ──
+// ── Static file handler (serves PWA from web/dist/) ─────────
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const WEB_DIST_DIR = join(__dirname, '..', '..', 'web', 'dist');
+
+const serveStatic = DISABLE_STATIC ? null : createStaticHandler(WEB_DIST_DIR);
+
+// ── HTTP server (health check + static PWA files) ───────────
 
 const httpServer = createServer(async (req, res) => {
   const url = req.url ?? '/';
@@ -55,40 +46,20 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
-  // Serve PWA static files from web/dist/
-  if (req.method === 'GET') {
-    // Parse pathname (strip query string), then strip leading slash for resolve()
-    const pathname = new URL(url, 'http://localhost').pathname;
-    const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
-    const fullPath = resolve(WEB_DIST, relativePath);
-
-    // Security: prevent path traversal — resolved path must be within WEB_DIST
-    if (!fullPath.startsWith(WEB_DIST + sep) && fullPath !== WEB_DIST) {
-      res.writeHead(403);
-      res.end('Forbidden');
-      return;
-    }
-
-    try {
-      const data = await readFile(fullPath);
-      const ext = extname(fullPath);
-      const contentType = MIME_TYPES[ext] ?? 'application/octet-stream';
-      res.writeHead(200, { 'Content-Type': contentType });
-      res.end(data);
-      return;
-    } catch {
-      // SPA fallback: serve index.html for non-file routes
-      if (!extname(relativePath)) {
-        try {
-          const data = await readFile(resolve(WEB_DIST, 'index.html'));
-          res.writeHead(200, { 'Content-Type': 'text/html' });
-          res.end(data);
-          return;
-        } catch {
-          // fall through to 404
+  // Serve static PWA files if available
+  if (serveStatic) {
+    serveStatic(req, res)
+      .then((handled) => {
+        if (!handled) {
+          res.writeHead(404);
+          res.end('Not found');
         }
-      }
-    }
+      })
+      .catch((_err: unknown) => {
+        res.writeHead(500);
+        res.end('Internal server error');
+      });
+    return;
   }
 
   res.writeHead(404);
@@ -347,5 +318,8 @@ process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 // ── Start ───────────────────────────────────────────────────
 
 httpServer.listen(WS_PORT, () => {
-  logger.info({ wsPort: WS_PORT }, 'Major Tom relay server started');
+  logger.info(
+    { wsPort: WS_PORT, staticServing: serveStatic !== null },
+    'Major Tom relay server started',
+  );
 });
