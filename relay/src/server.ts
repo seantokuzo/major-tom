@@ -7,7 +7,6 @@ import { logger } from './utils/logger.js';
 import { SessionManager } from './sessions/session-manager.js';
 import { ClaudeCliAdapter } from './adapters/claude-cli.adapter.js';
 import { ApprovalQueue } from './hooks/approval-queue.js';
-import { createHookServer } from './hooks/hook-server.js';
 import { eventBus } from './events/event-bus.js';
 import { encodeServerMessage, safeDecode } from './protocol/codec.js';
 import type { ClientMessage, ServerMessage } from './protocol/messages.js';
@@ -32,14 +31,13 @@ const MIME_TYPES: Record<string, string> = {
 // ── Configuration ───────────────────────────────────────────
 
 const WS_PORT = parseInt(process.env['WS_PORT'] ?? '9090', 10);
-const HOOK_PORT = parseInt(process.env['HOOK_PORT'] ?? '9091', 10);
 const CLAUDE_WORK_DIR = process.env['CLAUDE_WORK_DIR'] ?? process.cwd();
 
 // ── Core services ───────────────────────────────────────────
 
 const sessionManager = new SessionManager();
-const cliAdapter = new ClaudeCliAdapter(sessionManager);
 const approvalQueue = new ApprovalQueue();
+const cliAdapter = new ClaudeCliAdapter(sessionManager, approvalQueue);
 
 // ── HTTP server (for health check + future REST endpoints) ──
 
@@ -196,20 +194,8 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
     }
 
     case 'approval': {
-      // Route approval through the adapter's stdin (permission-prompt-tool stdio)
-      // The requestId is the tool_use_id from the permission prompt
-      // Map our decision vocabulary to Claude Code's expected format
-      const ccDecision =
-        message.decision === 'allow' || message.decision === 'allow_always' ? 'allow' :
-        message.decision === 'deny' ? 'deny' : 'deny';
-
-      // Find which session this approval belongs to
-      // For now, send to all sessions (we'll refine with session tracking later)
-      for (const sessionInfo of sessionManager.list()) {
-        cliAdapter.sendPermissionResponse(sessionInfo.id, message.requestId, ccDecision);
-      }
-
-      // Also resolve in approval queue for hook-server compatibility
+      // Resolve the approval in the queue — the SDK's canUseTool callback
+      // is blocking until this resolves
       approvalQueue.resolve(message.requestId, message.decision);
       break;
     }
@@ -327,10 +313,6 @@ eventBus.on('server.message', (message: ServerMessage) => {
   broadcast(message);
 });
 
-// ── Hook HTTP server (Claude Code hooks POST here) ──────────
-
-const hookServer = createHookServer(approvalQueue, HOOK_PORT);
-
 // ── Graceful shutdown ───────────────────────────────────────
 
 async function shutdown(signal: string): Promise<void> {
@@ -348,7 +330,6 @@ async function shutdown(signal: string): Promise<void> {
   await Promise.all([
     new Promise<void>((resolve) => wss.close(() => resolve())),
     new Promise<void>((resolve) => httpServer.close(() => resolve())),
-    new Promise<void>((resolve) => hookServer.close(() => resolve())),
   ]);
 
   clearInterval(heartbeatInterval);
@@ -364,5 +345,5 @@ process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 // ── Start ───────────────────────────────────────────────────
 
 httpServer.listen(WS_PORT, () => {
-  logger.info({ wsPort: WS_PORT, hookPort: HOOK_PORT }, 'Major Tom relay server started');
+  logger.info({ wsPort: WS_PORT }, 'Major Tom relay server started');
 });

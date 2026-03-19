@@ -71,6 +71,7 @@ export function createHookServer(approvalQueue: ApprovalQueue, port: number) {
 
         sendJson(res, 200, {
           hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
             permissionDecision,
           },
         });

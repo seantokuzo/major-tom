@@ -1,7 +1,14 @@
 import { EventEmitter } from 'node:events';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import {
+  unstable_v2_createSession,
+  type SDKSession,
+  type SDKMessage,
+  type PermissionResult,
+} from '@anthropic-ai/claude-agent-sdk';
 import { Session } from '../sessions/session.js';
 import { SessionManager } from '../sessions/session-manager.js';
+import { ApprovalQueue } from '../hooks/approval-queue.js';
 import type {
   IAdapter,
   ApprovalRequest,
@@ -11,295 +18,230 @@ import type {
 } from './adapter.interface.js';
 import { logger } from '../utils/logger.js';
 
-// ── Claude Code CLI Adapter ─────────────────────────────────
-// Persistent process using --input-format stream-json / --output-format stream-json.
-// Same approach as VSCode extension: stdin for prompts + permission responses,
-// stdout for all events (streaming deltas, tool calls, permissions, results).
+// ── Claude Code SDK Adapter ─────────────────────────────────
+// Uses the official Agent SDK's v2 session API.
+// The SDK handles the WebSocket bridge + permission protocol internally.
+// We get a simple `canUseTool` callback for approval and an async
+// generator for streaming events.
 
-interface CliSession {
+interface SdkSessionEntry {
   session: Session;
-  process: ChildProcess;
-  stdoutBuffer: string;
+  sdkSession: SDKSession;
+  streamAbort: AbortController;
 }
 
 export class ClaudeCliAdapter implements IAdapter {
   readonly type = 'cli' as const;
   private emitter = new EventEmitter();
-  private cliSessions = new Map<string, CliSession>();
+  private sessions = new Map<string, SdkSessionEntry>();
   private sessionManager: SessionManager;
+  private approvalQueue: ApprovalQueue;
 
-  constructor(sessionManager: SessionManager) {
+  constructor(sessionManager: SessionManager, approvalQueue: ApprovalQueue) {
     this.sessionManager = sessionManager;
+    this.approvalQueue = approvalQueue;
   }
 
   async start(workingDir: string): Promise<Session> {
     const session = this.sessionManager.create('cli', workingDir);
 
-    const args = [
-      '--verbose',
-      '--output-format', 'stream-json',
-      '--input-format', 'stream-json',
-      '--include-partial-messages',
-      '--permission-prompt-tool', 'stdio',
-      '--no-chrome',
-      '--debug-to-stderr',
-      '--session-id', session.id,
-    ];
-
-    logger.info({ sessionId: session.id, workingDir, args }, 'Spawning persistent Claude process');
-
-    const child = spawn('claude', args, {
-      cwd: workingDir,
-      stdio: ['pipe', 'pipe', 'pipe'],
+    // The SDK v2 session doesn't support cwd directly — it inherits
+    // process.cwd(). The relay server should be started from the target
+    // working directory (via CLAUDE_WORK_DIR env var).
+    const sdkSession = unstable_v2_createSession({
+      model: 'claude-sonnet-4-20250514',
+      permissionMode: 'default',
+      canUseTool: (toolName, input, options) =>
+        this.handlePermission(session.id, toolName, input, options.toolUseID),
       env: {
         ...process.env,
         NO_COLOR: '1',
       },
     });
 
-    const cliSession: CliSession = {
-      session,
-      process: child,
-      stdoutBuffer: '',
-    };
-    this.cliSessions.set(session.id, cliSession);
+    const streamAbort = new AbortController();
+    const entry: SdkSessionEntry = { session, sdkSession, streamAbort };
+    this.sessions.set(session.id, entry);
 
-    // Parse newline-delimited JSON from stdout
-    child.stdout?.on('data', (data: Buffer) => {
-      cliSession.stdoutBuffer += data.toString();
-      const lines = cliSession.stdoutBuffer.split('\n');
-      cliSession.stdoutBuffer = lines.pop() ?? '';
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        this.handleStreamEvent(session.id, line.trim());
-      }
-    });
+    // Start consuming the stream in the background
+    this.consumeStream(session.id, sdkSession, streamAbort.signal);
 
-    // Debug logs go to stderr (--debug-to-stderr)
-    child.stderr?.on('data', (data: Buffer) => {
-      const text = data.toString().trim();
-      if (text) {
-        logger.debug({ sessionId: session.id, stderr: text.slice(0, 300) }, 'Claude stderr');
-      }
-    });
-
-    child.on('exit', (code, signal) => {
-      logger.info({ sessionId: session.id, code, signal }, 'Claude process exited');
-      session.close();
-      this.cliSessions.delete(session.id);
-    });
-
-    child.on('error', (err) => {
-      logger.error({ sessionId: session.id, err }, 'Claude process error');
-      this.emitter.emit('output', session.id, `\n[Process error: ${err.message}]\n`);
-      session.close();
-      this.cliSessions.delete(session.id);
-    });
-
+    logger.info({ sessionId: session.id, workingDir }, 'SDK session created');
     return session;
   }
 
   async attach(sessionId: string): Promise<Session> {
     const session = this.sessionManager.get(sessionId);
-    if (!this.cliSessions.has(sessionId)) {
-      throw new Error(`No CLI session for ${sessionId}`);
+    if (!this.sessions.has(sessionId)) {
+      throw new Error(`No SDK session for ${sessionId}`);
     }
     return session;
   }
 
-  // ── Send prompt via stream-json stdin ───────────────────────
-
   async sendPrompt(sessionId: string, text: string, _context?: string[]): Promise<void> {
-    const cliSession = this.cliSessions.get(sessionId);
-    if (!cliSession) {
-      throw new Error(`No CLI session for ${sessionId}`);
+    const entry = this.sessions.get(sessionId);
+    if (!entry) {
+      throw new Error(`No SDK session for ${sessionId}`);
     }
 
-    const message = {
-      type: 'user',
-      message: {
-        role: 'user',
-        content: text,
-      },
-    };
-
-    this.writeStdin(cliSession, message);
-    logger.info({ sessionId, textLength: text.length }, 'Prompt sent via stream-json stdin');
-  }
-
-  // ── Send permission response via stream-json stdin ──────────
-
-  sendPermissionResponse(sessionId: string, toolUseId: string, decision: string): void {
-    const cliSession = this.cliSessions.get(sessionId);
-    if (!cliSession) {
-      logger.warn({ sessionId }, 'No CLI session for permission response');
-      return;
-    }
-
-    const message = {
-      type: 'user',
-      message: {
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: toolUseId,
-            content: JSON.stringify({ permissionDecision: decision }),
-          },
-        ],
-      },
-    };
-
-    this.writeStdin(cliSession, message);
-    logger.info({ sessionId, toolUseId, decision }, 'Permission response sent');
+    await entry.sdkSession.send(text);
+    logger.info({ sessionId, textLength: text.length }, 'Prompt sent via SDK');
   }
 
   async cancelOperation(sessionId: string): Promise<void> {
-    const cliSession = this.cliSessions.get(sessionId);
-    if (!cliSession) return;
+    const entry = this.sessions.get(sessionId);
+    if (!entry) return;
 
-    cliSession.process.kill('SIGINT');
-    logger.info({ sessionId }, 'Cancel signal sent to CLI');
+    // Abort the stream, which should signal the SDK to cancel
+    entry.streamAbort.abort();
+    logger.info({ sessionId }, 'Cancel signal sent');
   }
 
-  // ── Stream event parsing ──────────────────────────────────
+  // ── Permission handling ──────────────────────────────────────
 
-  private handleStreamEvent(sessionId: string, line: string): void {
-    let event: Record<string, unknown>;
-    try {
-      event = JSON.parse(line) as Record<string, unknown>;
-    } catch {
-      logger.debug({ sessionId, line: line.slice(0, 200) }, 'Non-JSON stream line');
-      return;
+  private async handlePermission(
+    sessionId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    toolUseId: string,
+  ): Promise<PermissionResult> {
+    const requestId = randomUUID();
+
+    // Emit approval request to connected clients
+    this.emitter.emit('approval-request', {
+      requestId,
+      tool: toolName,
+      description: JSON.stringify(input),
+      details: {
+        tool_name: toolName,
+        tool_input: input,
+        tool_use_id: toolUseId,
+      },
+    } satisfies ApprovalRequest);
+
+    logger.info({ sessionId, requestId, toolName, toolUseId }, 'Permission requested');
+
+    // Block until the client responds
+    const decision = await this.approvalQueue.waitForDecision(requestId, toolName);
+
+    logger.info({ sessionId, requestId, toolName, decision }, 'Permission decision received');
+
+    if (decision === 'allow' || decision === 'allow_always') {
+      return { behavior: 'allow', toolUseID: toolUseId };
     }
 
-    const type = event['type'] as string;
+    return {
+      behavior: 'deny',
+      message: `User denied ${toolName}`,
+      toolUseID: toolUseId,
+    };
+  }
+
+  // ── Stream consumption ───────────────────────────────────────
+
+  private async consumeStream(
+    sessionId: string,
+    sdkSession: SDKSession,
+    signal: AbortSignal,
+  ): Promise<void> {
+    try {
+      for await (const message of sdkSession.stream()) {
+        if (signal.aborted) break;
+        this.handleSdkMessage(sessionId, message);
+      }
+    } catch (err) {
+      if (!signal.aborted) {
+        logger.error({ sessionId, err }, 'Stream error');
+        this.emitter.emit('output', sessionId, `\n[Stream error: ${err instanceof Error ? err.message : 'unknown'}]\n`);
+      }
+    } finally {
+      logger.info({ sessionId }, 'Stream ended');
+    }
+  }
+
+  private handleSdkMessage(sessionId: string, message: SDKMessage): void {
+    const type = message.type;
 
     switch (type) {
       case 'system':
-        this.handleSystemEvent(sessionId, event);
+        this.handleSystemMessage(sessionId, message);
         break;
 
       case 'assistant':
-        this.handleAssistantEvent(sessionId, event);
+        this.handleAssistantMessage(sessionId, message);
         break;
 
       case 'stream_event':
-        this.handleStreamDelta(sessionId, event);
-        break;
-
-      case 'user':
-        // Echo of our input — ignore
+        this.handleStreamEvent(sessionId, message);
         break;
 
       case 'result':
-        this.handleResultEvent(sessionId, event);
+        this.handleResultMessage(sessionId, message);
         break;
-
-      case 'tool_progress':
-        this.handleToolProgress(sessionId, event);
-        break;
-
-      case 'rate_limit_event':
-        this.handleRateLimit(sessionId, event);
-        break;
-
-      case 'auth_status':
-        logger.debug({ sessionId }, 'Auth status event');
-        break;
-
-      case 'prompt_suggestion': {
-        const suggestion = event['suggestion'] as string;
-        if (suggestion) {
-          this.emitter.emit('prompt-suggestion', sessionId, suggestion);
-        }
-        break;
-      }
 
       default:
-        logger.debug({ sessionId, type, keys: Object.keys(event) }, 'Unhandled stream event type');
+        logger.debug({ sessionId, type }, 'Unhandled SDK message type');
     }
   }
 
-  // ── System events ─────────────────────────────────────────
+  // ── System messages ──────────────────────────────────────────
 
-  private handleSystemEvent(sessionId: string, event: Record<string, unknown>): void {
-    const subtype = event['subtype'] as string;
+  private handleSystemMessage(sessionId: string, message: SDKMessage): void {
+    if (message.type !== 'system') return;
+    const msg = message as Record<string, unknown>;
+    const subtype = msg['subtype'] as string;
 
     switch (subtype) {
       case 'init':
         logger.info(
-          {
-            sessionId,
-            model: event['model'],
-            version: event['claude_code_version'],
-            toolCount: (event['tools'] as string[] | undefined)?.length,
-          },
+          { sessionId, model: msg['model'], version: msg['claude_code_version'] },
           'Claude session initialized',
         );
         break;
 
       case 'task_started': {
-        // Subagent spawned!
-        const taskId = event['task_id'] as string;
-        const description = event['description'] as string;
+        const taskId = msg['task_id'] as string;
+        const description = msg['summary'] as string ?? '';
         this.emitter.emit('agent-lifecycle', {
           agentId: taskId,
           event: 'spawn',
           task: description,
           role: 'subagent',
         } satisfies AgentEvent);
-        logger.info({ sessionId, taskId, description }, 'Subagent started');
         break;
       }
 
       case 'task_progress': {
-        const taskId = event['task_id'] as string;
+        const taskId = msg['task_id'] as string;
         this.emitter.emit('agent-lifecycle', {
           agentId: taskId,
           event: 'working',
-          task: (event['description'] as string) ?? '',
+          task: (msg['summary'] as string) ?? '',
         } satisfies AgentEvent);
         break;
       }
 
       case 'task_notification': {
-        const taskId = event['task_id'] as string;
-        const status = event['status'] as string;
-        const agentEvent = status === 'completed' ? 'complete' : 'dismissed';
+        const taskId = msg['task_id'] as string;
+        const status = msg['status'] as string;
         this.emitter.emit('agent-lifecycle', {
           agentId: taskId,
-          event: agentEvent,
-          result: (event['summary'] as string) ?? status,
+          event: status === 'completed' ? 'complete' : 'dismissed',
+          result: (msg['summary'] as string) ?? status,
         } satisfies AgentEvent);
-        logger.info({ sessionId, taskId, status }, 'Subagent finished');
         break;
       }
 
-      case 'api_retry':
-        logger.warn(
-          {
-            sessionId,
-            attempt: event['attempt'],
-            error: event['error'],
-            delay: event['retry_delay_ms'],
-          },
-          'API retry',
-        );
-        break;
-
       case 'status': {
-        const status = event['status'] as string | null;
+        const status = msg['status'] as string | null;
         if (status === 'compacting') {
           this.emitter.emit('output', sessionId, '\n[Compacting context...]\n');
         }
         break;
       }
 
-      case 'hook_started':
-      case 'hook_progress':
-      case 'hook_response':
-        logger.debug({ sessionId, subtype, hookName: event['hook_name'] }, 'Hook event');
+      case 'api_retry':
+        logger.warn({ sessionId, attempt: msg['attempt'], error: msg['error'] }, 'API retry');
         break;
 
       default:
@@ -307,82 +249,34 @@ export class ClaudeCliAdapter implements IAdapter {
     }
   }
 
-  // ── Assistant messages ────────────────────────────────────
+  // ── Assistant messages ───────────────────────────────────────
 
-  private handleAssistantEvent(sessionId: string, event: Record<string, unknown>): void {
-    const message = event['message'] as Record<string, unknown> | undefined;
-    if (!message) return;
+  private handleAssistantMessage(sessionId: string, message: SDKMessage): void {
+    if (message.type !== 'assistant') return;
+    const msg = message as Record<string, unknown>;
+    const betaMessage = msg['message'] as Record<string, unknown> | undefined;
+    if (!betaMessage) return;
 
-    const content = message['content'] as Array<Record<string, unknown>> | undefined;
+    const content = betaMessage['content'] as Array<Record<string, unknown>> | undefined;
     if (!content) return;
 
-    // parent_tool_use_id tracks subagent hierarchy — will use in Phase 3
-    // const parentToolUseId = (event['parent_tool_use_id'] as string) ?? null;
-
     for (const block of content) {
-      const blockType = block['type'] as string;
-
-      if (blockType === 'text') {
-        // Text output — but with --include-partial-messages, we get this via
-        // stream_event deltas too. The assistant event is the complete message.
-        // We'll use stream_event for real-time and assistant for the final version.
-        // Don't double-emit: stream_event handles real-time rendering.
-        break;
-      }
-
-      if (blockType === 'tool_use') {
-        const toolName = block['name'] as string;
-        const toolUseId = block['id'] as string;
-        const toolInput = block['input'] as Record<string, unknown>;
-
-        // Check if this is a permission prompt
-        if (this.isPermissionPrompt(toolName)) {
-          this.handlePermissionRequest(sessionId, toolUseId, toolInput);
-        } else {
-          // Regular tool use — emit tool.start
-          this.emitter.emit('tool-start', {
-            tool: toolName,
-            input: toolInput,
-            sessionId,
-          } satisfies ToolInfo);
-        }
+      if (block['type'] === 'tool_use') {
+        this.emitter.emit('tool-start', {
+          tool: block['name'] as string,
+          input: block['input'] as Record<string, unknown>,
+          sessionId,
+        } satisfies ToolInfo);
       }
     }
   }
 
-  // ── Permission prompt detection & handling ─────────────────
+  // ── Stream events (real-time deltas) ─────────────────────────
 
-  private isPermissionPrompt(toolName: string): boolean {
-    // Claude Code sends permission requests as tool_use with specific tool names
-    // when --permission-prompt-tool stdio is set
-    return toolName === 'PermissionPromptTool' ||
-           toolName === 'permission_prompt' ||
-           toolName.toLowerCase().includes('permission');
-  }
-
-  private handlePermissionRequest(
-    sessionId: string,
-    toolUseId: string,
-    input: Record<string, unknown>,
-  ): void {
-    const requestedTool = (input['tool_name'] as string) ?? 'unknown';
-    const requestedInput = input['tool_input'] as Record<string, unknown> | undefined;
-
-    logger.info({ sessionId, toolUseId, requestedTool }, 'Permission request received');
-
-    // Emit as approval request — PWA will show approval UI
-    this.emitter.emit('approval-request', {
-      requestId: toolUseId,
-      tool: requestedTool,
-      description: requestedInput ? JSON.stringify(requestedInput) : '',
-      details: input,
-    } satisfies ApprovalRequest);
-  }
-
-  // ── Streaming deltas (real-time text) ─────────────────────
-
-  private handleStreamDelta(sessionId: string, event: Record<string, unknown>): void {
-    const innerEvent = event['event'] as Record<string, unknown> | undefined;
+  private handleStreamEvent(sessionId: string, message: SDKMessage): void {
+    if (message.type !== 'stream_event') return;
+    const msg = message as Record<string, unknown>;
+    const innerEvent = msg['event'] as Record<string, unknown> | undefined;
     if (!innerEvent) return;
 
     const eventType = innerEvent['type'] as string;
@@ -390,88 +284,52 @@ export class ClaudeCliAdapter implements IAdapter {
     switch (eventType) {
       case 'content_block_delta': {
         const delta = innerEvent['delta'] as Record<string, unknown> | undefined;
-        if (!delta) break;
-
-        if (delta['type'] === 'text_delta') {
+        if (delta?.['type'] === 'text_delta') {
           const text = delta['text'] as string;
           if (text) {
             this.emitter.emit('output', sessionId, text);
           }
         }
-        // input_json_delta: tool input streaming — could show in UI
         break;
       }
 
       case 'content_block_start': {
         const block = innerEvent['content_block'] as Record<string, unknown> | undefined;
         if (block?.['type'] === 'tool_use') {
-          const toolName = block['name'] as string;
-          if (!this.isPermissionPrompt(toolName)) {
-            this.emitter.emit('output', sessionId, `\n[Using ${toolName}...]\n`);
-          }
+          this.emitter.emit('output', sessionId, `\n[Using ${block['name']}...]\n`);
         }
         break;
       }
-
-      // message_start, content_block_stop, message_delta, message_stop
-      // — useful for UI state but not critical for now
     }
   }
 
-  // ── Result event ──────────────────────────────────────────
+  // ── Result messages ──────────────────────────────────────────
 
-  private handleResultEvent(sessionId: string, event: Record<string, unknown>): void {
-    const subtype = event['subtype'] as string;
-    const isError = event['is_error'] as boolean;
+  private handleResultMessage(sessionId: string, message: SDKMessage): void {
+    if (message.type !== 'result') return;
+    const msg = message as Record<string, unknown>;
+    const subtype = msg['subtype'] as string;
+    const isError = msg['is_error'] as boolean;
 
     if (isError || subtype !== 'success') {
-      const errorResult = event['result'] as string | undefined;
-      this.emitter.emit('output', sessionId, `\n[Error: ${errorResult ?? subtype}]\n`);
+      const errors = msg['errors'] as string[] | undefined;
+      const errorText = errors?.join(', ') ?? subtype;
+      this.emitter.emit('output', sessionId, `\n[Error: ${errorText}]\n`);
     }
 
     logger.info(
       {
         sessionId,
         subtype,
-        durationMs: event['duration_ms'],
-        cost: event['total_cost_usd'],
-        turns: event['num_turns'],
+        durationMs: msg['duration_ms'],
+        cost: msg['total_cost_usd'],
+        turns: msg['num_turns'],
       },
       'Prompt result',
     );
   }
 
-  // ── Tool progress ─────────────────────────────────────────
-
-  private handleToolProgress(sessionId: string, event: Record<string, unknown>): void {
-    const toolName = event['tool_name'] as string;
-    const elapsed = event['elapsed_time_seconds'] as number;
-    logger.debug({ sessionId, toolName, elapsed }, 'Tool progress');
-  }
-
-  // ── Rate limit ────────────────────────────────────────────
-
-  private handleRateLimit(sessionId: string, event: Record<string, unknown>): void {
-    const info = event['rate_limit_info'] as Record<string, unknown> | undefined;
-    if (!info) return;
-
-    const status = info['status'] as string;
-    if (status === 'rejected') {
-      this.emitter.emit('output', sessionId, '\n[Rate limited — waiting for reset...]\n');
-      logger.warn({ sessionId, resetsAt: info['resetsAt'] }, 'Rate limited');
-    } else if (status === 'allowed_warning') {
-      logger.warn({ sessionId, utilization: info['utilization'] }, 'Rate limit warning');
-    }
-  }
-
-  // ── Helpers ────────────────────────────────────────────────
-
-  private writeStdin(cliSession: CliSession, message: unknown): void {
-    const json = JSON.stringify(message);
-    cliSession.process.stdin?.write(json + '\n');
-  }
-
-  // ── Event emitter interface ───────────────────────────────
+  // ── Event emitter interface ─────────────────────────────────
 
   on(event: 'output', handler: (sessionId: string, chunk: string) => void): void;
   on(event: 'approval-request', handler: (request: ApprovalRequest) => void): void;
@@ -500,12 +358,13 @@ export class ClaudeCliAdapter implements IAdapter {
   }
 
   async dispose(): Promise<void> {
-    for (const [sessionId, cliSession] of this.cliSessions) {
-      logger.info({ sessionId }, 'Disposing CLI session');
-      cliSession.process.kill();
-      cliSession.session.close();
+    for (const [sessionId, entry] of this.sessions) {
+      logger.info({ sessionId }, 'Disposing SDK session');
+      entry.streamAbort.abort();
+      entry.sdkSession.close();
+      entry.session.close();
     }
-    this.cliSessions.clear();
+    this.sessions.clear();
     this.emitter.removeAllListeners();
   }
 }

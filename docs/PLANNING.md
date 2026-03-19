@@ -68,7 +68,7 @@ The app has two primary modes:
 | UI Framework | SwiftUI (iOS 17+, @Observable) |
 | Game Engine | SpriteKit (embedded in SwiftUI via SpriteView) |
 | Networking | URLSessionWebSocketTask + async/await |
-| Auth | Local pairing (no OAuth needed — personal use) |
+| Auth | PIN-based device pairing → token auth (no OAuth — personal use). See Security & Pairing Protocol. |
 | Storage | SwiftData (sessions), Keychain (secrets), UserDefaults (prefs) |
 | Voice | Speech framework (dictation) |
 | Notifications | APNs via local relay |
@@ -295,7 +295,7 @@ major-tom/
 
 ### Connection & Setup
 
-- **US-001:** As a user, I can pair my iPhone with my Mac's relay server via QR code or manual IP entry
+- **US-001:** As a user, I can pair my device with my Mac's relay server via PIN code (v1.0) or QR code (v2.0+)
 - **US-002:** As a user, I can see connection status (connected/disconnected/reconnecting) at a glance
 - **US-003:** As a user, my connection auto-reconnects if interrupted
 - **US-004:** As a user, I can have the relay server auto-start on Mac login
@@ -417,13 +417,145 @@ major-tom/
 
 ### Security Requirements
 
-| ID | Requirement |
-|----|-------------|
-| SR-001 | Relay server only accepts connections from paired devices |
-| SR-002 | WebSocket connections use WSS when over public network |
-| SR-003 | No sensitive data (tokens, API keys) in logs or UserDefaults |
-| SR-004 | Pairing secrets stored in iOS Keychain |
-| SR-005 | Hook scripts must validate relay server origin |
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| SR-001 | Relay server only accepts connections from paired devices | v1.0 |
+| SR-002 | WebSocket connections use WSS when over public network | v1.0 |
+| SR-003 | No sensitive data (tokens, API keys) in logs or UserDefaults | v1.0 |
+| SR-004 | Pairing secrets stored in iOS Keychain (native) / encrypted localStorage (PWA) | v1.0 |
+| SR-005 | Hook scripts must validate relay server origin | v1.0 |
+| SR-006 | PIN-based device pairing with rate limiting (max 5 attempts per minute) | v1.0 |
+| SR-007 | Device tokens are cryptographically random (256-bit), issued after PIN verification | v1.0 |
+| SR-008 | Token sent on WebSocket upgrade via `Sec-WebSocket-Protocol` or first message auth | v1.0 |
+| SR-009 | Relay can list and revoke paired devices via CLI command | v1.0 |
+| SR-010 | Unpaired WebSocket connections are dropped within 5 seconds | v1.0 |
+| SR-011 | QR code pairing as convenience layer over PIN flow | v2.0+ |
+| SR-012 | Optional token rotation (configurable expiry, default: no expiry) | v2.0+ |
+
+### Security & Pairing Protocol
+
+#### Overview
+
+Major Tom uses a **PIN-based device pairing** model. The relay server is the trust anchor — it generates a one-time PIN, the client proves knowledge of it, and the relay issues a long-lived device token. Subsequent connections use the token directly (no re-pairing).
+
+This is **personal-use security** — we're not building OAuth or multi-tenant auth. The threat model is: prevent unauthorized devices from connecting to your relay, especially when exposed via Cloudflare Tunnel.
+
+#### Threat Model
+
+| Threat | Mitigation |
+|--------|------------|
+| Random person hits your Tunnel URL | Token required on connect — rejected in < 5s |
+| PIN brute force (6 digits = 1M combos) | Rate limit: 5 attempts/min, lockout after 15 failures for 15 min |
+| Token theft from device | Keychain (iOS) / encrypted storage (PWA) — same security as any saved password |
+| Token theft from relay | Tokens stored as SHA-256 hashes in relay config — raw token never persisted server-side |
+| Network sniffing | WSS required over public networks; PIN pairing should happen on local network |
+| Replay attacks | Token is tied to device ID — can't be reused from a different device |
+
+#### Pairing Flow (PIN)
+
+```
+┌──────────┐                              ┌──────────────┐
+│  Client   │                              │    Relay     │
+│ (PWA/iOS) │                              │   Server     │
+└─────┬─────┘                              └──────┬───────┘
+      │                                           │
+      │    1. User runs: relay pair               │
+      │    ─────────────────────────────────────►  │
+      │                                           │ Generates 6-digit PIN
+      │                                           │ Displays in terminal
+      │                                           │ PIN valid for 5 minutes
+      │                                           │
+      │    2. POST /api/pair                      │
+      │       { pin, deviceName, deviceId }       │
+      │    ─────────────────────────────────────►  │
+      │                                           │ Validates PIN
+      │                                           │ Generates 256-bit token
+      │                                           │ Stores hash(token) + deviceId + name
+      │                                           │ Invalidates PIN
+      │    3. 200 OK                              │
+      │       { token, expiresAt: null }          │
+      │    ◄─────────────────────────────────────  │
+      │                                           │
+      │    Stores token in Keychain/localStorage  │
+      │                                           │
+      │    4. WS upgrade                          │
+      │       First message: { type: "auth",      │
+      │         token, deviceId }                 │
+      │    ─────────────────────────────────────►  │
+      │                                           │ hash(token) lookup
+      │                                           │ deviceId match
+      │    5. { type: "auth.success" }            │
+      │    ◄─────────────────────────────────────  │
+      │                                           │
+      │    Connection is now authenticated ✓      │
+      └───────────────────────────────────────────┘
+```
+
+#### Key Design Decisions
+
+1. **PIN over QR for v1.0** — Works for both PWA and native iOS. No camera/QR infrastructure needed. QR is a v2.0+ convenience layer that wraps the same token exchange.
+
+2. **Token on first WS message, not upgrade headers** — `Sec-WebSocket-Protocol` header abuse is hacky and some proxies strip custom headers. A first-message auth handshake is cleaner and works universally. Connection has 5 seconds to authenticate before the relay drops it.
+
+3. **Hash-only server storage** — Relay stores `SHA-256(token)` + device metadata, never the raw token. If someone reads relay config, they can't impersonate a device.
+
+4. **Device ID binding** — Token is tied to a `deviceId` (generated on first pairing, persisted with the token). Prevents token reuse from a different device if somehow exfiltrated.
+
+5. **No expiry by default** — This is personal-use. Token lives until explicitly revoked. Optional rotation can be added in v2.0+.
+
+6. **Local-network-only pairing** — PIN exchange should only happen over local network (HTTP is fine for `localhost` / LAN IP). The PIN endpoint is disabled when accessed through Cloudflare Tunnel headers.
+
+#### Relay CLI Commands
+
+```bash
+# Generate a pairing PIN (valid 5 minutes)
+major-tom pair
+
+# List paired devices
+major-tom devices
+
+# Revoke a specific device
+major-tom revoke <deviceId>
+
+# Revoke all devices (nuclear option)
+major-tom revoke --all
+```
+
+#### Device Token Storage
+
+| Platform | Storage | Details |
+|----------|---------|---------|
+| iOS (native) | Keychain | `kSecClassGenericPassword`, service: `com.majortom.relay` |
+| PWA | localStorage | Key: `majortom_device_token`, value: `{ token, deviceId, relayUrl }` |
+
+> **Note on PWA storage:** localStorage isn't encrypted, but it's origin-scoped and same-origin policy protects it. For a personal-use app on your own phone, this is acceptable. If we want hardening later, we can use the Web Crypto API to encrypt with a user-derived key.
+
+#### Protocol Messages (Auth)
+
+```typescript
+// Client → Server (first message after WS connect)
+{ type: "auth", token: string, deviceId: string }
+
+// Server → Client (auth success)
+{ type: "auth.success", deviceName: string }
+
+// Server → Client (auth failure — connection will close)
+{ type: "auth.error", code: "invalid_token" | "unknown_device" | "rate_limited", message: string }
+```
+
+#### Implementation Touchpoints
+
+This protocol touches the following components — listed here so we don't build anything that conflicts:
+
+| Component | What to build | Phase |
+|-----------|--------------|-------|
+| `relay/src/auth/` | Token store, PIN generation, hash/verify, rate limiter | v1.0 |
+| `relay/src/server.ts` | Auth handshake on WS connect, 5s timeout, reject unauthenticated | v1.0 |
+| `relay/src/api/pair.ts` | `POST /api/pair` endpoint, PIN validation | v1.0 |
+| `relay/src/cli.ts` | `pair`, `devices`, `revoke` CLI commands | v1.0 |
+| `web/src/lib/stores/auth.svelte.ts` | Token storage, deviceId generation, auth message on connect | v1.0 |
+| `ios/.../Core/Networking/` | Keychain storage, auth message on connect | Later (native track) |
+| Cloudflare Tunnel config | Block `/api/pair` when `Cf-Connecting-Ip` header present | v1.0 |
 
 ---
 
@@ -667,6 +799,34 @@ All messages are JSON with a `type` field for routing.
 | WebSocket reliability on cellular | Dropped connections | Exponential backoff, message queuing, offline mode |
 | Claude Code VSCode extension internals | Can't programmatically interact | Start with CLI-only; VSCode bridge is Phase 2 |
 | PTY output parsing | Unstructured text is hard to parse | Use hooks for structured events; PTY for raw stream only |
+
+---
+
+## Hosting & Deployment Strategy
+
+### Decision: Same-Origin (Relay Serves PWA)
+
+The relay server serves the PWA static files from `web/dist/`. One process, one port.
+
+| Concern | Approach |
+|---------|----------|
+| Local network | Phone hits `http://<mac-ip>:9090` — gets PWA + WebSocket on same origin |
+| Remote access | Cloudflare Tunnel (free) or Tailscale to expose local relay |
+| CORS | Non-issue — same origin for local; WebSocket doesn't enforce same-origin anyway |
+| Build | `npm run build:all` builds relay + web, `npm run dev` runs everything |
+| Why not separate host? | PWA is useless without a running relay (it spawns Claude Code locally via PTY) |
+
+### Why Not Other Options
+
+- **Separate static host (Vercel/Cloudflare Pages)**: Adds deployment complexity for zero gain. The relay must run on your dev machine anyway, and you'd still need a tunnel for phone access.
+- **Full cloud deploy**: Not viable — relay spawns Claude Code in a local PTY on your project directory.
+
+### Remote Access (Phase 2+)
+
+When we want to control Claude from outside the local network:
+1. **Cloudflare Tunnel** (free) — `cloudflared tunnel` exposes `localhost:9090` to a public URL
+2. **Tailscale** — zero-config mesh VPN, phone and Mac on same virtual network
+3. **Auth is built-in** — device pairing (PIN → token) is required for all connections. Pair on local network first, then connect remotely using the stored token. The `/api/pair` endpoint is blocked when accessed through Cloudflare Tunnel to prevent remote PIN brute-force.
 
 ---
 

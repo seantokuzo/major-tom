@@ -13,6 +13,7 @@ export interface ApprovalMessage {
   type: 'approval';
   requestId: string;
   decision: ApprovalDecision;
+  toolUseId?: string;
 }
 
 export type ApprovalDecision = 'allow' | 'deny' | 'skip' | 'allow_always';
