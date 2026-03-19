@@ -1,19 +1,20 @@
 import SpriteKit
-import SwiftUI
 import UIKit
 
 // MARK: - Agent Sprite
 
-/// Placeholder sprite for an agent character in the office scene.
-/// Uses a colored rectangle with a name label, differentiated by CharacterType.
-/// Will be replaced with pixel art sprites in a future phase.
+/// Sprite for an agent character in the office scene.
+/// Uses programmatic pixel art built from small colored nodes, differentiated by CharacterType.
 final class AgentSprite: SKSpriteNode {
 
     /// The agent ID this sprite represents (used for tap-to-inspect).
     let agentId: String
 
-    /// The character type determines the sprite color.
+    /// The character type determines the pixel art appearance.
     let characterType: CharacterType
+
+    /// The pixel art node tree (child of this sprite).
+    private let pixelArt: SKNode
 
     /// The name label node displayed above the sprite.
     private let nameLabel: SKLabelNode
@@ -21,11 +22,19 @@ final class AgentSprite: SKSpriteNode {
     /// Status indicator dot below the sprite.
     private let statusDot: SKShapeNode
 
+    /// Dog character types for convenience.
+    private static let dogTypes: Set<CharacterType> = [
+        .dachshund, .cattleDog, .schnauzerBlack, .schnauzerPepper,
+    ]
+
     // MARK: - Initialization
 
     init(agentId: String, name: String, characterType: CharacterType) {
         self.agentId = agentId
         self.characterType = characterType
+
+        // Build pixel art for this character
+        pixelArt = PixelArtBuilder.build(for: characterType)
 
         // Name label
         nameLabel = SKLabelNode(fontNamed: "Menlo-Bold")
@@ -39,37 +48,32 @@ final class AgentSprite: SKSpriteNode {
         statusDot.fillColor = .gray
         statusDot.strokeColor = .clear
 
-        // Placeholder colored rectangle (32x32)
-        let config = CharacterCatalog.config(for: characterType)
-        let spriteColor = SKColor(
-            red: CGFloat(config.spriteColor.components.red),
-            green: CGFloat(config.spriteColor.components.green),
-            blue: CGFloat(config.spriteColor.components.blue),
-            alpha: 1.0
-        )
+        // Use a clear base node — the pixel art child provides the visuals
+        let spriteSize: CGSize
+        if characterType == .dachshund {
+            spriteSize = CGSize(width: 44, height: 20)
+        } else if Self.dogTypes.contains(characterType) {
+            spriteSize = CGSize(width: 36, height: 24)
+        } else {
+            spriteSize = CGSize(width: 32, height: 32)
+        }
 
-        super.init(texture: nil, color: spriteColor, size: CGSize(width: 32, height: 32))
+        super.init(texture: nil, color: .clear, size: spriteSize)
 
         self.name = "agent_\(agentId)"
         self.isUserInteractionEnabled = true
 
+        // Add pixel art centered on sprite
+        pixelArt.zPosition = 0
+        addChild(pixelArt)
+
         // Position label above sprite
-        nameLabel.position = CGPoint(x: 0, y: 20)
+        nameLabel.position = CGPoint(x: 0, y: spriteSize.height / 2 + 4)
         addChild(nameLabel)
 
         // Position status dot below sprite
-        statusDot.position = CGPoint(x: 0, y: -22)
+        statusDot.position = CGPoint(x: 0, y: -(spriteSize.height / 2 + 6))
         addChild(statusDot)
-
-        // Dog characters get a slightly different shape (wider, shorter)
-        if isDog {
-            self.size = CGSize(width: 36, height: 24)
-        }
-
-        // Dachshund is even more elongated
-        if characterType == .dachshund {
-            self.size = CGSize(width: 44, height: 20)
-        }
     }
 
     @available(*, unavailable)
@@ -80,12 +84,7 @@ final class AgentSprite: SKSpriteNode {
     // MARK: - Properties
 
     var isDog: Bool {
-        switch characterType {
-        case .dachshund, .cattleDog, .schnauzerBlack, .schnauzerPepper:
-            return true
-        default:
-            return false
-        }
+        Self.dogTypes.contains(characterType)
     }
 
     // MARK: - Update Methods
@@ -178,22 +177,5 @@ final class AgentSprite: SKSpriteNode {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let scene = scene as? OfficeScene else { return }
         scene.agentTapped(agentId: agentId)
-    }
-}
-
-// MARK: - SwiftUI Color → Components Helper
-
-extension Color {
-    /// Extract RGB components from a SwiftUI Color.
-    /// Falls back to gray if extraction fails.
-    var components: (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) {
-        // Use UIColor bridge to get components
-        let uiColor = UIColor(self)
-        var r: CGFloat = 0.5
-        var g: CGFloat = 0.5
-        var b: CGFloat = 0.5
-        var a: CGFloat = 1.0
-        uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
-        return (r, g, b, a)
     }
 }
