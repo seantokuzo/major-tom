@@ -4,102 +4,90 @@
 
   let { message }: { message: ChatMessage } = $props();
 
-  const roleStyles: Record<string, string> = {
-    user: 'bubble-user',
-    assistant: 'bubble-assistant',
-    tool: 'bubble-tool',
-    system: 'bubble-system',
-  };
-
-  const roleLabels: Record<string, string> = {
-    user: 'You',
-    assistant: 'Claude',
-    tool: 'Tool',
-    system: 'System',
-  };
-
   let rendered = $derived(
     message.role === 'assistant' ? renderMarkdown(message.content) : ''
   );
 </script>
 
-<div class="bubble {roleStyles[message.role]}">
-  <span class="role-label">{roleLabels[message.role]}</span>
-  {#if message.role === 'assistant'}
-    <div class="content markdown">{@html rendered}</div>
+<div class="msg msg-{message.role}">
+  {#if message.role === 'user'}
+    <span class="user-prompt">&gt;</span>
+    <span class="user-text">{message.content}</span>
+  {:else if message.role === 'assistant'}
+    <div class="assistant-text markdown">{@html rendered}</div>
+  {:else if message.role === 'tool'}
+    <span class="tool-text">{message.content}</span>
   {:else}
-    <div class="content">{message.content}</div>
+    <span class="system-text">{message.content}</span>
   {/if}
 </div>
 
 <style>
-  .bubble {
-    padding: var(--sp-md) var(--sp-lg);
-    border-radius: var(--r-md);
-    max-width: 85%;
+  .msg {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    max-width: 100%;
     word-wrap: break-word;
   }
 
-  .role-label {
-    display: block;
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: var(--sp-xs);
+  /* User messages — look like typed commands */
+  .msg-user {
+    display: flex;
+    gap: var(--sp-sm);
+    padding: var(--sp-xs) 0;
+    color: var(--text-primary);
   }
 
-  .content {
-    font-size: 0.9rem;
-    line-height: 1.5;
+  .user-prompt {
+    color: var(--accent);
+    flex-shrink: 0;
+    font-weight: 700;
+  }
+
+  .user-text {
     white-space: pre-wrap;
   }
 
-  .bubble-user {
-    background: var(--accent-dim);
-    align-self: flex-end;
-    margin-left: auto;
+  /* Assistant messages — continuous text blocks */
+  .msg-assistant {
+    padding: var(--sp-xs) 0;
+    color: var(--text-secondary);
+    border-left: 2px solid var(--border);
+    padding-left: var(--sp-md);
+    margin-left: var(--sp-xs);
   }
-  .bubble-user .role-label { color: rgba(255,255,255,0.6); }
 
-  .bubble-assistant {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    align-self: flex-start;
+  .assistant-text {
+    white-space: normal;
   }
-  .bubble-assistant .role-label { color: var(--accent); }
 
-  .bubble-tool {
-    background: transparent;
-    align-self: flex-start;
-    padding: var(--sp-xs) var(--sp-lg);
+  /* Tool messages — subtle inline status */
+  .msg-tool {
+    padding: 1px 0;
   }
-  .bubble-tool .role-label { display: none; }
-  .bubble-tool .content {
-    font-size: 0.8rem;
+
+  .tool-text {
+    font-size: 0.75rem;
     color: var(--text-tertiary);
-    font-family: var(--font-mono);
   }
 
-  .bubble-system {
-    background: transparent;
-    align-self: center;
+  /* System messages — centered, muted */
+  .msg-system {
+    padding: var(--sp-xs) 0;
     text-align: center;
   }
-  .bubble-system .role-label { display: none; }
-  .bubble-system .content {
-    font-size: 0.8rem;
-    color: var(--deny);
+
+  .system-text {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    font-style: italic;
   }
 
   /* ── Markdown styles ─────────────────────────────────────── */
 
-  .markdown {
-    white-space: normal;
-  }
-
   .markdown :global(p) {
-    margin-bottom: 0.75em;
+    margin-bottom: 0.5em;
   }
   .markdown :global(p:last-child) {
     margin-bottom: 0;
@@ -109,34 +97,34 @@
   .markdown :global(h2),
   .markdown :global(h3),
   .markdown :global(h4) {
-    margin: 1em 0 0.5em;
+    margin: 0.75em 0 0.35em;
     font-weight: 700;
     color: var(--text-primary);
   }
-  .markdown :global(h1) { font-size: 1.3rem; }
-  .markdown :global(h2) { font-size: 1.15rem; }
-  .markdown :global(h3) { font-size: 1.05rem; }
-  .markdown :global(h4) { font-size: 0.95rem; }
+  .markdown :global(h1) { font-size: 1.1rem; }
+  .markdown :global(h2) { font-size: 1rem; }
+  .markdown :global(h3) { font-size: 0.95rem; }
+  .markdown :global(h4) { font-size: 0.9rem; }
 
   .markdown :global(pre) {
     background: #0d0d18;
     border: 1px solid var(--border);
     border-radius: var(--r-sm);
-    padding: var(--sp-md);
-    margin: 0.75em 0;
+    padding: var(--sp-sm);
+    margin: 0.5em 0;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
 
   .markdown :global(code) {
     font-family: var(--font-mono);
-    font-size: 0.82rem;
-    line-height: 1.6;
+    font-size: 0.8rem;
+    line-height: 1.5;
   }
 
   .markdown :global(:not(pre) > code) {
     background: #1a1a2e;
-    padding: 2px 6px;
+    padding: 1px 4px;
     border-radius: 3px;
     font-size: 0.85em;
   }
@@ -152,37 +140,37 @@
   .markdown :global(ul),
   .markdown :global(ol) {
     padding-left: 1.5em;
-    margin: 0.5em 0;
+    margin: 0.35em 0;
   }
 
   .markdown :global(li) {
-    margin: 0.25em 0;
+    margin: 0.15em 0;
   }
 
   .markdown :global(blockquote) {
     border-left: 3px solid var(--accent);
     padding-left: var(--sp-md);
-    margin: 0.75em 0;
+    margin: 0.5em 0;
     color: var(--text-secondary);
   }
 
   .markdown :global(hr) {
     border: none;
     border-top: 1px solid var(--border);
-    margin: 1em 0;
+    margin: 0.75em 0;
   }
 
   .markdown :global(table) {
     width: 100%;
     border-collapse: collapse;
-    margin: 0.75em 0;
-    font-size: 0.85rem;
+    margin: 0.5em 0;
+    font-size: 0.8rem;
   }
 
   .markdown :global(th),
   .markdown :global(td) {
     border: 1px solid var(--border);
-    padding: var(--sp-xs) var(--sp-sm);
+    padding: 2px var(--sp-sm);
     text-align: left;
   }
 
