@@ -36,7 +36,6 @@ export interface SessionResult {
   cost_usd: number;
   num_turns: number;
   duration_ms: number;
-  token_usage?: { input: number; output: number };
 }
 
 // ── Adapter interface ───────────────────────────────────────

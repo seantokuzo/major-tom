@@ -34,11 +34,49 @@ export class ApprovalQueue {
    * - 'delay': auto-allow after delaySeconds unless client responds first
    */
   setMode(mode: ApprovalMode, delaySeconds?: number): void {
+    const prevMode = this.mode;
     this.mode = mode;
+
+    // Validate and clamp delaySeconds to safe range [1, 300]
     if (delaySeconds !== undefined) {
-      this.delaySeconds = delaySeconds;
+      this.delaySeconds = Math.max(1, Math.min(300, Math.floor(delaySeconds || 10)));
     }
-    logger.info({ mode, delaySeconds: this.delaySeconds }, 'Approval mode updated');
+
+    // Cancel existing delay timers when switching away from delay mode
+    if (prevMode === 'delay' && mode !== 'delay') {
+      for (const entry of this.pending.values()) {
+        if (entry.delayTimer) {
+          clearTimeout(entry.delayTimer);
+          entry.delayTimer = undefined;
+        }
+      }
+    }
+
+    // Apply new mode to already-pending approvals
+    if (mode === 'auto') {
+      // Resolve all pending as 'allow'
+      for (const requestId of [...this.pending.keys()]) {
+        logger.info({ requestId, mode: 'auto' }, 'Mode switch: auto-approving pending request');
+        this.resolve(requestId, 'allow');
+      }
+    } else if (mode === 'delay') {
+      // Attach delay timers to pending entries that don't already have one
+      for (const entry of this.pending.values()) {
+        if (!entry.delayTimer) {
+          entry.delayTimer = setTimeout(() => {
+            if (this.pending.has(entry.requestId)) {
+              logger.info(
+                { requestId: entry.requestId, tool: entry.tool, delaySeconds: this.delaySeconds },
+                'Delay expired, auto-approving',
+              );
+              this.resolve(entry.requestId, 'allow');
+            }
+          }, this.delaySeconds * 1000);
+        }
+      }
+    }
+
+    logger.info({ mode, prevMode, delaySeconds: this.delaySeconds }, 'Approval mode updated');
   }
 
   /** Get current approval mode */

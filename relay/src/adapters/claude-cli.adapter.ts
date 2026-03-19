@@ -350,9 +350,12 @@ export class ClaudeCliAdapter implements IAdapter {
       this.emitter.emit('output', sessionId, `\n[Error: ${errorText}]\n`);
     }
 
-    const durationMs = (msg['duration_ms'] as number) ?? 0;
-    const costUsd = (msg['total_cost_usd'] as number) ?? 0;
-    const numTurns = (msg['num_turns'] as number) ?? 0;
+    const rawDuration = Number(msg['duration_ms']);
+    const rawCost = Number(msg['total_cost_usd']);
+    const rawTurns = Number(msg['num_turns']);
+    const durationMs = Number.isFinite(rawDuration) ? rawDuration : 0;
+    const costUsd = Number.isFinite(rawCost) ? rawCost : 0;
+    const numTurns = Number.isFinite(rawTurns) ? rawTurns : 0;
 
     logger.info(
       {

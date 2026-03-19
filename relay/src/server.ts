@@ -196,7 +196,6 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
 
     case 'settings.approval': {
       approvalQueue.setMode(message.mode, message.delaySeconds);
-      logger.info({ mode: message.mode, delaySeconds: message.delaySeconds }, 'Approval mode updated');
       break;
     }
   }
@@ -260,7 +259,6 @@ cliAdapter.on('session-result', (result) => {
     cost_usd: result.cost_usd,
     num_turns: result.num_turns,
     duration_ms: result.duration_ms,
-    token_usage: result.token_usage,
   });
 });
 
