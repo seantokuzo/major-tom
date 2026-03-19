@@ -28,6 +28,8 @@ interface SdkSessionEntry {
   session: Session;
   sdkSession: SDKSession;
   streamAbort: AbortController;
+  /** True if we received streaming text deltas — prevents double-emit from assistant message */
+  hasStreamedText: boolean;
 }
 
 export class ClaudeCliAdapter implements IAdapter {
@@ -67,7 +69,7 @@ export class ClaudeCliAdapter implements IAdapter {
     });
 
     const streamAbort = new AbortController();
-    const entry: SdkSessionEntry = { session, sdkSession, streamAbort };
+    const entry: SdkSessionEntry = { session, sdkSession, streamAbort, hasStreamedText: false };
     this.sessions.set(session.id, entry);
 
     // Start consuming the stream in the background
@@ -270,7 +272,19 @@ export class ClaudeCliAdapter implements IAdapter {
     const content = betaMessage['content'] as Array<Record<string, unknown>> | undefined;
     if (!content) return;
 
+    const entry = this.sessions.get(sessionId);
+
     for (const block of content) {
+      if (block['type'] === 'text') {
+        // Only emit full text if we didn't already stream it via deltas
+        if (!entry?.hasStreamedText) {
+          const text = block['text'] as string;
+          if (text) {
+            this.emitter.emit('output', sessionId, text);
+          }
+        }
+      }
+
       if (block['type'] === 'tool_use') {
         this.emitter.emit('tool-start', {
           tool: block['name'] as string,
@@ -297,6 +311,9 @@ export class ClaudeCliAdapter implements IAdapter {
         if (delta?.['type'] === 'text_delta') {
           const text = delta['text'] as string;
           if (text) {
+            // Mark that we're streaming — prevents double-emit from assistant message
+            const entry = this.sessions.get(sessionId);
+            if (entry) entry.hasStreamedText = true;
             this.emitter.emit('output', sessionId, text);
           }
         }
@@ -317,6 +334,11 @@ export class ClaudeCliAdapter implements IAdapter {
 
   private handleResultMessage(sessionId: string, message: SDKMessage): void {
     if (message.type !== 'result') return;
+
+    // Reset streaming flag for next turn
+    const entry = this.sessions.get(sessionId);
+    if (entry) entry.hasStreamedText = false;
+
     const msg = message as Record<string, unknown>;
     const subtype = msg['subtype'] as string;
     const isError = msg['is_error'] as boolean;
