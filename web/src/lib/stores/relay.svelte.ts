@@ -35,10 +35,26 @@ function uid(): string {
   return `msg-${++nextId}-${Date.now()}`;
 }
 
+/**
+ * Detect the relay server address from the current page origin.
+ * If served from a remote host (e.g. Cloudflare Tunnel), use that host.
+ * Otherwise fall back to localhost:9090.
+ */
+function detectServerAddress(): string {
+  if (typeof window === 'undefined') return 'localhost:9090';
+  const { hostname, port, protocol } = window.location;
+  // If we're on localhost or a file:// URL, use the default
+  if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1') {
+    return `localhost:${port || '9090'}`;
+  }
+  // Remote host (tunnel, LAN IP, etc.) — use same host, the relay serves both HTTP and WS
+  return port ? `${hostname}:${port}` : hostname;
+}
+
 class RelayStore {
   // Connection
   connectionState = $state<ConnectionState>('disconnected');
-  serverAddress = $state('localhost:9090');
+  serverAddress = $state(detectServerAddress());
   sessionId = $state<string | null>(null);
 
   // Chat
