@@ -147,6 +147,8 @@ struct OfficeView: View {
         case .working:
             if let deskIndex = agent.deskIndex {
                 scene.moveAgentToDesk(id: agent.id, deskIndex: deskIndex)
+            } else {
+                scene.updateAgentStatus(id: agent.id, status: .working)
             }
 
         case .idle:
@@ -155,6 +157,8 @@ struct OfficeView: View {
             if let destination = config.breakBehaviors.randomElement() {
                 let areaType = breakDestinationToArea(destination)
                 scene.moveAgentToBreakArea(id: agent.id, areaType: areaType)
+            } else {
+                scene.updateAgentStatus(id: agent.id, status: .idle)
             }
 
         case .celebrating:
@@ -181,14 +185,3 @@ struct OfficeView: View {
     }
 }
 
-// MARK: - AgentState Equatable (for onChange diffing)
-
-extension AgentState: Equatable {
-    static func == (lhs: AgentState, rhs: AgentState) -> Bool {
-        lhs.id == rhs.id &&
-        lhs.name == rhs.name &&
-        lhs.status == rhs.status &&
-        lhs.currentTask == rhs.currentTask &&
-        lhs.deskIndex == rhs.deskIndex
-    }
-}

@@ -153,6 +153,7 @@ final class OfficeScene: SKScene {
         // Sit slightly behind the desk
         let seatPos = CGPoint(x: deskPos.x, y: deskPos.y - 20)
 
+        sprite.stopAnimations()
         sprite.updateStatus(.walking)
         sprite.moveTo(position: seatPos, duration: 1.5) {
             sprite.updateStatus(.working)

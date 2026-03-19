@@ -74,3 +74,15 @@ struct AgentState: Identifiable {
         return "\(seconds)s"
     }
 }
+
+// MARK: - Equatable (for onChange diffing in OfficeView)
+
+extension AgentState: Equatable {
+    static func == (lhs: AgentState, rhs: AgentState) -> Bool {
+        lhs.id == rhs.id &&
+        lhs.name == rhs.name &&
+        lhs.status == rhs.status &&
+        lhs.currentTask == rhs.currentTask &&
+        lhs.deskIndex == rhs.deskIndex
+    }
+}

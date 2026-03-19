@@ -130,7 +130,7 @@ final class OfficeViewModel {
             return nil
         }
         desks[deskIndex].occupantId = agentId
-        return desks[deskIndex].id
+        return deskIndex
     }
 
     /// Release a desk when an agent leaves.

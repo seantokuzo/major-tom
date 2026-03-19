@@ -102,8 +102,16 @@ enum CharacterCatalog {
         ),
     ]
 
+    /// Dictionary for O(1) lookup by type.
+    private static let configByType: [CharacterType: CharacterConfig] = {
+        Dictionary(uniqueKeysWithValues: all.map { ($0.type, $0) })
+    }()
+
     /// Look up config by character type.
     static func config(for type: CharacterType) -> CharacterConfig {
-        all.first { $0.type == type }!
+        guard let config = configByType[type] else {
+            fatalError("Missing CharacterConfig for \(type). Ensure all CharacterType cases are in CharacterCatalog.all.")
+        }
+        return config
     }
 }
