@@ -1,10 +1,14 @@
 import { EventEmitter } from 'node:events';
-import { writeFile, unlink, mkdir } from 'node:fs/promises';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import * as pty from 'node-pty';
+import { randomUUID } from 'node:crypto';
+import {
+  unstable_v2_createSession,
+  type SDKSession,
+  type SDKMessage,
+  type PermissionResult,
+} from '@anthropic-ai/claude-agent-sdk';
 import { Session } from '../sessions/session.js';
 import { SessionManager } from '../sessions/session-manager.js';
+import { ApprovalQueue } from '../hooks/approval-queue.js';
 import type {
   IAdapter,
   ApprovalRequest,
@@ -14,189 +18,328 @@ import type {
 } from './adapter.interface.js';
 import { logger } from '../utils/logger.js';
 
-// ── Claude Code CLI Adapter ─────────────────────────────────
-// Spawns Claude Code in a PTY via node-pty.
-// Output is streamed to connected iOS clients.
-// Input (prompts) is forwarded as PTY stdin.
-// Hooks handle structured events (approvals, tool calls, agents).
+// ── Claude Code SDK Adapter ─────────────────────────────────
+// Uses the official Agent SDK's v2 session API.
+// The SDK handles the WebSocket bridge + permission protocol internally.
+// We get a simple `canUseTool` callback for approval and an async
+// generator for streaming events.
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-/** Absolute path to relay/hooks/ directory */
-const HOOKS_DIR = resolve(__dirname, '../../hooks');
-
-interface PtySession {
+interface SdkSessionEntry {
   session: Session;
-  process: pty.IPty;
-  settingsFile?: string;
-}
-
-/**
- * Build a Claude Code settings object that wires up our hook scripts.
- * Uses the `hooks` key with PreToolUse, PostToolUse, and Notification events.
- */
-function buildHookSettings(): Record<string, unknown> {
-  return {
-    hooks: {
-      PreToolUse: [
-        {
-          matcher: '.*',
-          hooks: [
-            {
-              type: 'command',
-              command: `bash "${HOOKS_DIR}/pre-tool-use.sh"`,
-              timeout: 300,
-            },
-          ],
-        },
-      ],
-      PostToolUse: [
-        {
-          matcher: '.*',
-          hooks: [
-            {
-              type: 'command',
-              command: `bash "${HOOKS_DIR}/post-tool-use.sh"`,
-              timeout: 10,
-            },
-          ],
-        },
-      ],
-      Notification: [
-        {
-          matcher: '.*',
-          hooks: [
-            {
-              type: 'command',
-              command: `bash "${HOOKS_DIR}/notification.sh"`,
-              timeout: 10,
-            },
-          ],
-        },
-      ],
-    },
-  };
+  sdkSession: SDKSession;
+  streamAbort: AbortController;
 }
 
 export class ClaudeCliAdapter implements IAdapter {
   readonly type = 'cli' as const;
   private emitter = new EventEmitter();
-  private ptySessions = new Map<string, PtySession>();
+  private sessions = new Map<string, SdkSessionEntry>();
   private sessionManager: SessionManager;
-  private hookPort: number;
+  private approvalQueue: ApprovalQueue;
 
-  constructor(sessionManager: SessionManager, hookPort = 9091) {
+  constructor(sessionManager: SessionManager, approvalQueue: ApprovalQueue) {
     this.sessionManager = sessionManager;
-    this.hookPort = hookPort;
+    this.approvalQueue = approvalQueue;
   }
 
   async start(workingDir: string): Promise<Session> {
     const session = this.sessionManager.create('cli', workingDir);
 
-    let settingsFile: string;
-    let ptyProcess: pty.IPty;
-    const hookUrl = `http://localhost:${this.hookPort}`;
-    try {
-      // Write a temporary settings file with hook configuration
-      settingsFile = await this.writeHookSettings(session.id);
-
-      ptyProcess = pty.spawn('claude', ['--settings', settingsFile], {
-        name: 'xterm-color',
-        cols: 120,
-        rows: 40,
-        cwd: workingDir,
-        env: {
-          ...process.env,
-          TERM: 'xterm-color',
-          MAJOR_TOM_HOOK_URL: hookUrl,
-        },
-      });
-    } catch (err) {
-      // Clean up temp settings file (if written) and session on failure
-      if (settingsFile!) void this.cleanupSettingsFile(settingsFile!);
-      session.close();
-      throw err;
+    // The SDK v2 session API doesn't support cwd — it inherits process.cwd().
+    // Warn if the requested workingDir differs from where we're actually running.
+    const cwd = process.cwd();
+    if (workingDir !== cwd) {
+      logger.warn(
+        { workingDir, cwd },
+        'Requested workingDir differs from process.cwd() — SDK session will use process.cwd()',
+      );
     }
 
-    const ptySession: PtySession = { session, process: ptyProcess, settingsFile };
-    this.ptySessions.set(session.id, ptySession);
-
-    ptyProcess.onData((data: string) => {
-      this.emitter.emit('output', session.id, data);
+    const sdkSession = unstable_v2_createSession({
+      model: 'claude-sonnet-4-20250514',
+      permissionMode: 'default',
+      canUseTool: (toolName, input, options) =>
+        this.handlePermission(session.id, toolName, input, options.toolUseID),
+      env: {
+        ...process.env,
+        NO_COLOR: '1',
+      },
     });
 
-    ptyProcess.onExit(({ exitCode, signal }) => {
-      logger.info({ sessionId: session.id, exitCode, signal }, 'Claude CLI process exited');
-      session.close();
-      this.ptySessions.delete(session.id);
-      // Clean up temp settings file
-      void this.cleanupSettingsFile(settingsFile);
-    });
+    const streamAbort = new AbortController();
+    const entry: SdkSessionEntry = { session, sdkSession, streamAbort };
+    this.sessions.set(session.id, entry);
 
-    logger.info(
-      { sessionId: session.id, workingDir, pid: ptyProcess.pid, hookUrl, settingsFile },
-      'Claude CLI session started with hooks configured',
-    );
+    // Start consuming the stream in the background
+    this.consumeStream(session.id, sdkSession, streamAbort.signal);
 
+    logger.info({ sessionId: session.id, workingDir }, 'SDK session created');
     return session;
-  }
-
-  /**
-   * Write a temporary settings JSON file with Major Tom hook configuration.
-   * Uses a temp directory under relay so we don't pollute the user's project.
-   */
-  private async writeHookSettings(sessionId: string): Promise<string> {
-    const tmpDir = resolve(__dirname, '../../.tmp');
-    await mkdir(tmpDir, { recursive: true });
-
-    const settingsPath = resolve(tmpDir, `hooks-${sessionId}.json`);
-    const settings = buildHookSettings();
-    await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
-
-    logger.debug({ settingsPath }, 'Wrote hook settings file');
-    return settingsPath;
-  }
-
-  /**
-   * Clean up a temporary settings file after a session ends.
-   */
-  private async cleanupSettingsFile(filePath: string): Promise<void> {
-    try {
-      await unlink(filePath);
-      logger.debug({ filePath }, 'Cleaned up hook settings file');
-    } catch (err) {
-      // Not critical — file may already be gone
-      logger.debug({ filePath, err }, 'Could not clean up hook settings file');
-    }
   }
 
   async attach(sessionId: string): Promise<Session> {
     const session = this.sessionManager.get(sessionId);
-    if (!this.ptySessions.has(sessionId)) {
-      throw new Error(`No PTY process for session ${sessionId}`);
+    if (!this.sessions.has(sessionId)) {
+      throw new Error(`No SDK session for ${sessionId}`);
     }
     return session;
   }
 
   async sendPrompt(sessionId: string, text: string, _context?: string[]): Promise<void> {
-    const ptySession = this.ptySessions.get(sessionId);
-    if (!ptySession) {
-      throw new Error(`No PTY process for session ${sessionId}`);
+    const entry = this.sessions.get(sessionId);
+    if (!entry) {
+      throw new Error(`No SDK session for ${sessionId}`);
     }
 
-    // Write the prompt text followed by Enter
-    ptySession.process.write(text + '\r');
-    logger.debug({ sessionId, textLength: text.length }, 'Prompt sent to CLI');
+    await entry.sdkSession.send(text);
+    logger.info({ sessionId, textLength: text.length }, 'Prompt sent via SDK');
   }
 
   async cancelOperation(sessionId: string): Promise<void> {
-    const ptySession = this.ptySessions.get(sessionId);
-    if (!ptySession) return;
+    const entry = this.sessions.get(sessionId);
+    if (!entry) return;
 
-    // Send Ctrl+C (ETX) to interrupt
-    ptySession.process.write('\x03');
-    logger.info({ sessionId }, 'Cancel signal sent to CLI');
+    // Close the SDK session (kills the underlying Claude process) and
+    // abort the stream consumption loop so we stop processing events.
+    entry.streamAbort.abort();
+    entry.sdkSession.close();
+    entry.session.close();
+    this.sessions.delete(sessionId);
+    logger.info({ sessionId }, 'Session cancelled and closed');
   }
+
+  // ── Permission handling ──────────────────────────────────────
+
+  private async handlePermission(
+    sessionId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    toolUseId: string,
+  ): Promise<PermissionResult> {
+    const requestId = randomUUID();
+
+    // Emit approval request to connected clients
+    this.emitter.emit('approval-request', {
+      requestId,
+      tool: toolName,
+      description: JSON.stringify(input),
+      details: {
+        tool_name: toolName,
+        tool_input: input,
+        tool_use_id: toolUseId,
+      },
+    } satisfies ApprovalRequest);
+
+    logger.info({ sessionId, requestId, toolName, toolUseId }, 'Permission requested');
+
+    // Block until the client responds
+    const decision = await this.approvalQueue.waitForDecision(requestId, toolName);
+
+    logger.info({ sessionId, requestId, toolName, decision }, 'Permission decision received');
+
+    if (decision === 'allow' || decision === 'allow_always') {
+      return { behavior: 'allow', toolUseID: toolUseId };
+    }
+
+    return {
+      behavior: 'deny',
+      message: `User denied ${toolName}`,
+      toolUseID: toolUseId,
+    };
+  }
+
+  // ── Stream consumption ───────────────────────────────────────
+
+  private async consumeStream(
+    sessionId: string,
+    sdkSession: SDKSession,
+    signal: AbortSignal,
+  ): Promise<void> {
+    try {
+      for await (const message of sdkSession.stream()) {
+        if (signal.aborted) break;
+        this.handleSdkMessage(sessionId, message);
+      }
+    } catch (err) {
+      if (!signal.aborted) {
+        logger.error({ sessionId, err }, 'Stream error');
+        this.emitter.emit('output', sessionId, `\n[Stream error: ${err instanceof Error ? err.message : 'unknown'}]\n`);
+      }
+    } finally {
+      logger.info({ sessionId }, 'Stream ended');
+    }
+  }
+
+  private handleSdkMessage(sessionId: string, message: SDKMessage): void {
+    const type = message.type;
+
+    switch (type) {
+      case 'system':
+        this.handleSystemMessage(sessionId, message);
+        break;
+
+      case 'assistant':
+        this.handleAssistantMessage(sessionId, message);
+        break;
+
+      case 'stream_event':
+        this.handleStreamEvent(sessionId, message);
+        break;
+
+      case 'result':
+        this.handleResultMessage(sessionId, message);
+        break;
+
+      default:
+        logger.debug({ sessionId, type }, 'Unhandled SDK message type');
+    }
+  }
+
+  // ── System messages ──────────────────────────────────────────
+
+  private handleSystemMessage(sessionId: string, message: SDKMessage): void {
+    if (message.type !== 'system') return;
+    const msg = message as Record<string, unknown>;
+    const subtype = msg['subtype'] as string;
+
+    switch (subtype) {
+      case 'init':
+        logger.info(
+          { sessionId, model: msg['model'], version: msg['claude_code_version'] },
+          'Claude session initialized',
+        );
+        break;
+
+      case 'task_started': {
+        const taskId = msg['task_id'] as string;
+        this.emitter.emit('agent-lifecycle', {
+          agentId: taskId,
+          event: 'spawn',
+          task: (msg['description'] as string) ?? '',
+          role: 'subagent',
+        } satisfies AgentEvent);
+        break;
+      }
+
+      case 'task_progress': {
+        const taskId = msg['task_id'] as string;
+        this.emitter.emit('agent-lifecycle', {
+          agentId: taskId,
+          event: 'working',
+          task: (msg['description'] as string) ?? (msg['summary'] as string) ?? '',
+        } satisfies AgentEvent);
+        break;
+      }
+
+      case 'task_notification': {
+        const taskId = msg['task_id'] as string;
+        const status = msg['status'] as string;
+        this.emitter.emit('agent-lifecycle', {
+          agentId: taskId,
+          event: status === 'completed' ? 'complete' : 'dismissed',
+          result: (msg['summary'] as string) ?? status,
+        } satisfies AgentEvent);
+        break;
+      }
+
+      case 'status': {
+        const status = msg['status'] as string | null;
+        if (status === 'compacting') {
+          this.emitter.emit('output', sessionId, '\n[Compacting context...]\n');
+        }
+        break;
+      }
+
+      case 'api_retry':
+        logger.warn({ sessionId, attempt: msg['attempt'], error: msg['error'] }, 'API retry');
+        break;
+
+      default:
+        logger.debug({ sessionId, subtype }, 'Unhandled system event');
+    }
+  }
+
+  // ── Assistant messages ───────────────────────────────────────
+
+  private handleAssistantMessage(sessionId: string, message: SDKMessage): void {
+    if (message.type !== 'assistant') return;
+    const msg = message as Record<string, unknown>;
+    const betaMessage = msg['message'] as Record<string, unknown> | undefined;
+    if (!betaMessage) return;
+
+    const content = betaMessage['content'] as Array<Record<string, unknown>> | undefined;
+    if (!content) return;
+
+    for (const block of content) {
+      if (block['type'] === 'tool_use') {
+        this.emitter.emit('tool-start', {
+          tool: block['name'] as string,
+          input: block['input'] as Record<string, unknown>,
+          sessionId,
+        } satisfies ToolInfo);
+      }
+    }
+  }
+
+  // ── Stream events (real-time deltas) ─────────────────────────
+
+  private handleStreamEvent(sessionId: string, message: SDKMessage): void {
+    if (message.type !== 'stream_event') return;
+    const msg = message as Record<string, unknown>;
+    const innerEvent = msg['event'] as Record<string, unknown> | undefined;
+    if (!innerEvent) return;
+
+    const eventType = innerEvent['type'] as string;
+
+    switch (eventType) {
+      case 'content_block_delta': {
+        const delta = innerEvent['delta'] as Record<string, unknown> | undefined;
+        if (delta?.['type'] === 'text_delta') {
+          const text = delta['text'] as string;
+          if (text) {
+            this.emitter.emit('output', sessionId, text);
+          }
+        }
+        break;
+      }
+
+      case 'content_block_start': {
+        const block = innerEvent['content_block'] as Record<string, unknown> | undefined;
+        if (block?.['type'] === 'tool_use') {
+          this.emitter.emit('output', sessionId, `\n[Using ${block['name']}...]\n`);
+        }
+        break;
+      }
+    }
+  }
+
+  // ── Result messages ──────────────────────────────────────────
+
+  private handleResultMessage(sessionId: string, message: SDKMessage): void {
+    if (message.type !== 'result') return;
+    const msg = message as Record<string, unknown>;
+    const subtype = msg['subtype'] as string;
+    const isError = msg['is_error'] as boolean;
+
+    if (isError || subtype !== 'success') {
+      const errors = msg['errors'] as string[] | undefined;
+      const errorText = errors?.join(', ') ?? subtype;
+      this.emitter.emit('output', sessionId, `\n[Error: ${errorText}]\n`);
+    }
+
+    logger.info(
+      {
+        sessionId,
+        subtype,
+        durationMs: msg['duration_ms'],
+        cost: msg['total_cost_usd'],
+        turns: msg['num_turns'],
+      },
+      'Prompt result',
+    );
+  }
+
+  // ── Event emitter interface ─────────────────────────────────
 
   on(event: 'output', handler: (sessionId: string, chunk: string) => void): void;
   on(event: 'approval-request', handler: (request: ApprovalRequest) => void): void;
@@ -208,7 +351,6 @@ export class ClaudeCliAdapter implements IAdapter {
     this.emitter.on(event, handler);
   }
 
-  // Called by the hook server when structured events come in
   emitApprovalRequest(request: ApprovalRequest): void {
     this.emitter.emit('approval-request', request);
   }
@@ -226,15 +368,13 @@ export class ClaudeCliAdapter implements IAdapter {
   }
 
   async dispose(): Promise<void> {
-    for (const [sessionId, ptySession] of this.ptySessions) {
-      logger.info({ sessionId }, 'Disposing CLI session');
-      ptySession.process.kill();
-      ptySession.session.close();
-      if (ptySession.settingsFile) {
-        await this.cleanupSettingsFile(ptySession.settingsFile);
-      }
+    for (const [sessionId, entry] of this.sessions) {
+      logger.info({ sessionId }, 'Disposing SDK session');
+      entry.streamAbort.abort();
+      entry.sdkSession.close();
+      entry.session.close();
     }
-    this.ptySessions.clear();
+    this.sessions.clear();
     this.emitter.removeAllListeners();
   }
 }

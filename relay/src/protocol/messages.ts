@@ -19,6 +19,7 @@ export interface ApprovalMessage {
   type: 'approval';
   requestId: string;
   decision: 'allow' | 'deny' | 'skip' | 'allow_always';
+  toolUseId?: string;
 }
 
 export interface CancelMessage {

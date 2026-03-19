@@ -6,7 +6,6 @@ import { logger } from './utils/logger.js';
 import { SessionManager } from './sessions/session-manager.js';
 import { ClaudeCliAdapter } from './adapters/claude-cli.adapter.js';
 import { ApprovalQueue } from './hooks/approval-queue.js';
-import { createHookServer } from './hooks/hook-server.js';
 import { eventBus } from './events/event-bus.js';
 import { encodeServerMessage, safeDecode } from './protocol/codec.js';
 import { createStaticHandler } from './static.js';
@@ -15,15 +14,14 @@ import type { ClientMessage, ServerMessage } from './protocol/messages.js';
 // ── Configuration ───────────────────────────────────────────
 
 const WS_PORT = parseInt(process.env['WS_PORT'] ?? '9090', 10);
-const HOOK_PORT = parseInt(process.env['HOOK_PORT'] ?? '9091', 10);
 const CLAUDE_WORK_DIR = process.env['CLAUDE_WORK_DIR'] ?? process.cwd();
 const DISABLE_STATIC = process.env['NO_STATIC'] === '1' || process.argv.includes('--no-static');
 
 // ── Core services ───────────────────────────────────────────
 
 const sessionManager = new SessionManager();
-const cliAdapter = new ClaudeCliAdapter(sessionManager, HOOK_PORT);
 const approvalQueue = new ApprovalQueue();
+const cliAdapter = new ClaudeCliAdapter(sessionManager, approvalQueue);
 
 // ── Static file handler (serves PWA from web/dist/) ─────────
 
@@ -34,8 +32,11 @@ const serveStatic = DISABLE_STATIC ? null : createStaticHandler(WEB_DIST_DIR);
 
 // ── HTTP server (health check + static PWA files) ───────────
 
-const httpServer = createServer((req, res) => {
-  if (req.method === 'GET' && req.url === '/health') {
+const httpServer = createServer(async (req, res) => {
+  const url = req.url ?? '/';
+
+  // Health check endpoint
+  if (req.method === 'GET' && url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'ok',
@@ -166,6 +167,8 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
     }
 
     case 'approval': {
+      // Resolve the approval in the queue — the SDK's canUseTool callback
+      // is blocking until this resolves
       approvalQueue.resolve(message.requestId, message.decision);
       break;
     }
@@ -210,19 +213,78 @@ function broadcast(message: ServerMessage): void {
   }
 }
 
-// Forward all adapter output to connected iOS clients
+// Forward adapter events to connected clients
 cliAdapter.on('output', (sessionId: string, chunk: string) => {
   broadcast({ type: 'output', sessionId, chunk, format: 'plain' });
+});
+
+cliAdapter.on('approval-request', (request) => {
+  broadcast({
+    type: 'approval.request',
+    requestId: request.requestId,
+    tool: request.tool,
+    description: request.description,
+    details: request.details,
+  });
+});
+
+cliAdapter.on('tool-start', (info) => {
+  broadcast({
+    type: 'tool.start',
+    sessionId: info.sessionId,
+    tool: info.tool,
+    input: info.input,
+  });
+});
+
+cliAdapter.on('tool-complete', (result) => {
+  broadcast({
+    type: 'tool.complete',
+    sessionId: result.sessionId,
+    tool: result.tool,
+    output: result.output,
+    success: result.success,
+  });
+});
+
+cliAdapter.on('agent-lifecycle', (event) => {
+  switch (event.event) {
+    case 'spawn':
+      broadcast({
+        type: 'agent.spawn',
+        agentId: event.agentId,
+        parentId: event.parentId,
+        task: event.task ?? '',
+        role: event.role ?? 'subagent',
+      });
+      break;
+    case 'working':
+      broadcast({
+        type: 'agent.working',
+        agentId: event.agentId,
+        task: event.task ?? '',
+      });
+      break;
+    case 'idle':
+      broadcast({ type: 'agent.idle', agentId: event.agentId });
+      break;
+    case 'complete':
+      broadcast({
+        type: 'agent.complete',
+        agentId: event.agentId,
+        result: event.result ?? '',
+      });
+      break;
+    case 'dismissed':
+      broadcast({ type: 'agent.dismissed', agentId: event.agentId });
+      break;
+  }
 });
 
 // Forward event bus messages to all clients
 eventBus.on('server.message', (message: ServerMessage) => {
   broadcast(message);
 });
-
-// ── Hook HTTP server (Claude Code hooks POST here) ──────────
-
-const hookServer = createHookServer(approvalQueue, HOOK_PORT);
 
 // ── Graceful shutdown ───────────────────────────────────────
 
@@ -241,7 +303,6 @@ async function shutdown(signal: string): Promise<void> {
   await Promise.all([
     new Promise<void>((resolve) => wss.close(() => resolve())),
     new Promise<void>((resolve) => httpServer.close(() => resolve())),
-    new Promise<void>((resolve) => hookServer.close(() => resolve())),
   ]);
 
   clearInterval(heartbeatInterval);
@@ -258,7 +319,7 @@ process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 
 httpServer.listen(WS_PORT, () => {
   logger.info(
-    { wsPort: WS_PORT, hookPort: HOOK_PORT, staticServing: serveStatic !== null },
+    { wsPort: WS_PORT, staticServing: serveStatic !== null },
     'Major Tom relay server started',
   );
 });

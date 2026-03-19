@@ -90,7 +90,7 @@ export function createHookServer(approvalQueue: ApprovalQueue, port: number) {
         }
         const sessionId = (hookData['session_id'] as string) ?? '';
         const tool = (hookData['tool_name'] as string) ?? 'unknown';
-        const toolResponse = hookData['tool_response'] as Record<string, unknown> | undefined;
+        const toolResult = hookData['tool_result'] as Record<string, unknown> | undefined;
         const toolUseId = (hookData['tool_use_id'] as string) || undefined;
 
         eventBus.emit('tool.complete', {
@@ -98,7 +98,7 @@ export function createHookServer(approvalQueue: ApprovalQueue, port: number) {
           sessionId,
           tool,
           ...(toolUseId && { toolUseId }),
-          output: toolResponse ? JSON.stringify(toolResponse) : '',
+          output: toolResult ? JSON.stringify(toolResult) : '',
           success: true,
         });
 

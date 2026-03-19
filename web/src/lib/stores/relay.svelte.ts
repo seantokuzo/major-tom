@@ -24,6 +24,7 @@ export interface ApprovalRequest {
   tool: string;
   description: string;
   details?: Record<string, unknown>;
+  toolUseId?: string;
   receivedAt: Date;
 }
 
@@ -99,7 +100,9 @@ class RelayStore {
   }
 
   sendApproval(requestId: string, decision: ApprovalDecision): void {
-    this.socket.send({ type: 'approval', requestId, decision });
+    const approval = this.pendingApprovals.find((a) => a.id === requestId);
+    const toolUseId = approval?.toolUseId;
+    this.socket.send({ type: 'approval', requestId, decision, toolUseId });
     this.pendingApprovals = this.pendingApprovals.filter((a) => a.id !== requestId);
   }
 
@@ -182,11 +185,14 @@ class RelayStore {
   }
 
   private addApproval(event: ApprovalRequestMessage): void {
+    // Extract toolUseId from details (set by relay from SDK canUseTool callback)
+    const toolUseId = event.details?.['tool_use_id'] as string | undefined;
     this.pendingApprovals.push({
       id: event.requestId,
       tool: event.tool,
       description: event.description,
       details: event.details,
+      toolUseId,
       receivedAt: new Date(),
     });
   }
