@@ -437,9 +437,9 @@ class RelayStore {
             success: message.success,
           },
         });
-        // Update activity feed
+        // Update activity feed — match oldest incomplete entry (FIFO for parallel tool uses)
         {
-          const running = [...this.toolActivities].reverse().find(
+          const running = this.toolActivities.find(
             (a) => a.tool === message.tool && !a.completedAt
           );
           if (running) {

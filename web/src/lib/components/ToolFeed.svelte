@@ -29,17 +29,23 @@
 
   function describeInput(tool: string, input?: Record<string, unknown>): string {
     if (!input) return '';
+    // Normalize: relay wraps tool args under details.tool_input
+    const toolInput = (input['tool_input'] && typeof input['tool_input'] === 'object')
+      ? input['tool_input'] as Record<string, unknown>
+      : null;
+    const get = (key: string): unknown => input[key] ?? toolInput?.[key];
+
     const toolLower = tool.toLowerCase();
     if (toolLower === 'bash' || toolLower === 'execute' || toolLower === 'shell') {
-      const cmd = (input['command'] ?? input['tool_input']?.['command']) as string | undefined;
+      const cmd = get('command') as string | undefined;
       return cmd ? cmd.slice(0, 80) : '';
     }
     if (toolLower === 'edit' || toolLower === 'replace' || toolLower === 'write' || toolLower === 'read' || toolLower === 'create') {
-      const fp = (input['file_path'] ?? input['path'] ?? input['tool_input']?.['file_path']) as string | undefined;
+      const fp = (get('file_path') ?? get('path')) as string | undefined;
       return fp ? fp.split('/').slice(-2).join('/') : '';
     }
     if (toolLower === 'glob' || toolLower === 'grep' || toolLower === 'search') {
-      const pattern = (input['pattern'] ?? input['tool_input']?.['pattern']) as string | undefined;
+      const pattern = get('pattern') as string | undefined;
       return pattern ? pattern.slice(0, 60) : '';
     }
     return '';
@@ -54,7 +60,7 @@
         <span class="running-badge">{runningCount} running</span>
       {/if}
       <span class="feed-count">{activities.length}</span>
-      <span class="toggle-arrow" class:collapsed>{collapsed ? '\u25B6' : '\u25BC'}</span>
+      <span class="toggle-arrow" class:collapsed={collapsed}>{collapsed ? '\u25B6' : '\u25BC'}</span>
     </button>
 
     {#if !collapsed}
