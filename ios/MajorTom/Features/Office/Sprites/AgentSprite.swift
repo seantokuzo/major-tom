@@ -278,11 +278,14 @@ final class AgentSprite: SKSpriteNode {
         guard let scene = scene as? OfficeScene else { return }
         guard let touch = touches.first else { return }
 
-        // Check if cold indicator was tapped
+        // Check if cold indicator was tapped (convert to indicator's coordinate space)
         let touchLocation = touch.location(in: self)
-        if let indicator = coldIndicator, indicator.contains(touchLocation) {
-            scene.blanketRequested(agentId: agentId)
-            return
+        if let indicator = coldIndicator {
+            let touchInIndicator = indicator.convert(touchLocation, from: self)
+            if indicator.contains(touchInIndicator) {
+                scene.blanketRequested(agentId: agentId)
+                return
+            }
         }
 
         scene.agentTapped(agentId: agentId)
