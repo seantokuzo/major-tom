@@ -261,6 +261,8 @@ cliAdapter.on('session-result', (result) => {
     costUsd: result.costUsd,
     numTurns: result.numTurns,
     durationMs: result.durationMs,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
   });
 });
 
