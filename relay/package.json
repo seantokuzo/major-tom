@@ -12,7 +12,10 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "echo \"No tests yet\" && exit 0"
+    "test": "echo \"No tests yet\" && exit 0",
+    "tunnel:setup": "bash ../tunnel/setup.sh",
+    "tunnel": "bash ../tunnel/start.sh",
+    "dev:remote": "npm run dev & npm run tunnel"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.79",
