@@ -9,9 +9,18 @@
   } = $props();
 
   let expanded = $state(window.innerWidth >= 768);
+  let userToggledExpand = $state(false);
   let swipeStartX = $state(0);
   let swipeDeltaX = $state(0);
   let isSwiping = $state(false);
+
+  // Update expanded on resize unless user has manually toggled
+  $effect(() => {
+    if (userToggledExpand) return;
+    const handler = () => { expanded = window.innerWidth >= 768; };
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  });
 
   const SWIPE_THRESHOLD = 80;
 
@@ -25,33 +34,42 @@
 
   // ── Tool-specific detail extraction ──────────────────────
 
+  // Normalize: relay wraps tool args in details.tool_input, fall back to top-level
+  let input = $derived.by(() => {
+    const d = request.details;
+    if (d?.['tool_input'] && typeof d['tool_input'] === 'object') {
+      return d['tool_input'] as Record<string, unknown>;
+    }
+    return d ?? {};
+  });
+
   let bashCommand = $derived(
     (toolLower === 'bash' || toolLower === 'execute' || toolLower === 'shell')
-      ? (request.details?.['command'] as string) ?? null
+      ? (input['command'] as string) ?? null
       : null
   );
 
   let bashCwd = $derived(
     (toolLower === 'bash' || toolLower === 'execute' || toolLower === 'shell')
-      ? (request.details?.['cwd'] as string) ?? (request.details?.['working_directory'] as string) ?? null
+      ? (input['cwd'] as string) ?? (input['working_directory'] as string) ?? null
       : null
   );
 
   let editFilePath = $derived(
     (toolLower === 'edit' || toolLower === 'replace')
-      ? (request.details?.['file_path'] as string) ?? (request.details?.['path'] as string) ?? null
+      ? (input['file_path'] as string) ?? (input['path'] as string) ?? null
       : null
   );
 
   let editOldString = $derived(
     (toolLower === 'edit' || toolLower === 'replace')
-      ? (request.details?.['old_string'] as string) ?? (request.details?.['old_str'] as string) ?? null
+      ? (input['old_string'] as string) ?? (input['old_str'] as string) ?? null
       : null
   );
 
   let editNewString = $derived(
     (toolLower === 'edit' || toolLower === 'replace')
-      ? (request.details?.['new_string'] as string) ?? (request.details?.['new_str'] as string) ?? null
+      ? (input['new_string'] as string) ?? (input['new_str'] as string) ?? null
       : null
   );
 
@@ -64,13 +82,13 @@
 
   let writeFilePath = $derived(
     (toolLower === 'write' || toolLower === 'create')
-      ? (request.details?.['file_path'] as string) ?? (request.details?.['path'] as string) ?? null
+      ? (input['file_path'] as string) ?? (input['path'] as string) ?? null
       : null
   );
 
   let writeContent = $derived(
     (toolLower === 'write' || toolLower === 'create')
-      ? (request.details?.['content'] as string) ?? null
+      ? (input['content'] as string) ?? null
       : null
   );
 
@@ -81,19 +99,19 @@
   );
 
   let writeSize = $derived(
-    writeContent ? writeContent.length : null
+    writeContent ? new TextEncoder().encode(writeContent).length : null
   );
 
   let readFilePath = $derived(
     toolLower === 'read'
-      ? (request.details?.['file_path'] as string) ?? (request.details?.['path'] as string) ?? null
+      ? (input['file_path'] as string) ?? (input['path'] as string) ?? null
       : null
   );
 
   let readLineRange = $derived.by(() => {
     if (toolLower !== 'read') return null;
-    const offset = request.details?.['offset'] as number | undefined;
-    const limit = request.details?.['limit'] as number | undefined;
+    const offset = input['offset'] as number | undefined;
+    const limit = input['limit'] as number | undefined;
     if (offset != null || limit != null) {
       return `${offset ?? 0}${limit != null ? `-${(offset ?? 0) + limit}` : '+'}`;
     }
@@ -120,6 +138,9 @@
     } else if (e.key === 'd' || e.key === 'D') {
       e.preventDefault();
       onDecision(request.id, 'deny');
+    } else if (e.key === 's' || e.key === 'S') {
+      e.preventDefault();
+      onDecision(request.id, 'skip');
     }
   }
 
@@ -185,7 +206,7 @@
 
   <!-- Expand/collapse toggle -->
   {#if request.details && Object.keys(request.details).length > 0}
-    <button class="toggle-btn" onclick={() => expanded = !expanded}>
+    <button class="toggle-btn" onclick={() => { userToggledExpand = true; expanded = !expanded; }}>
       <span class="toggle-arrow" class:expanded={expanded}>{expanded ? '\u25BC' : '\u25B6'}</span>
       {expanded ? 'Hide details' : 'Show details'}
     </button>
@@ -266,8 +287,11 @@
     <button class="btn btn-deny" onclick={() => onDecision(request.id, 'deny')}>
       Deny
     </button>
+    <button class="btn btn-skip" onclick={() => onDecision(request.id, 'skip')}>
+      Skip
+    </button>
   </div>
-  <div class="shortcut-hint">A = Allow &middot; D = Deny &middot; Swipe to decide</div>
+  <div class="shortcut-hint">A = Allow &middot; D = Deny &middot; S = Skip &middot; Swipe to decide</div>
 </div>
 
 <style>
@@ -549,6 +573,8 @@
 
   .btn-allow { background: var(--allow); color: #000; }
   .btn-deny { background: var(--deny); color: #000; }
+  .btn-skip { background: rgba(120, 120, 130, 0.3); color: var(--fg); opacity: 0.7; }
+  .btn-skip:hover { opacity: 1; }
 
   .btn-allow-always {
     background: transparent;

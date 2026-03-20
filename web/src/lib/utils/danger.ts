@@ -58,8 +58,13 @@ export function scoreToolDanger(
 ): DangerLevel {
   const toolLower = tool.toLowerCase();
 
+  // Normalize: relay wraps tool args in details.tool_input, fall back to top-level
+  const input = (details?.['tool_input'] && typeof details['tool_input'] === 'object'
+    ? details['tool_input'] as Record<string, unknown>
+    : details) ?? {};
+
   if (toolLower === 'bash' || toolLower === 'execute' || toolLower === 'shell') {
-    const command = (details?.['command'] as string) ?? '';
+    const command = (input['command'] as string) ?? '';
     return scoreBashDanger(command);
   }
 
