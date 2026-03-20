@@ -35,13 +35,20 @@
 - [x] Can approve/deny tool calls from phone
 - [x] Connection auto-reconnects (WebSocket reconnect built in)
 
-## Phase 2 — In Planning
+## Phase 2 — In Progress
 
 ### Track A: "Mission Control" (PWA)
-Leveling up the chat UI — cost display, streaming indicators, better approval cards, tool activity feed, reconnection UX.
+- [x] Inline diff viewer — LCS algorithm, unified/split views, auto-collapse (PR #20)
+- [x] Enhanced approval cards — danger scoring, tool-specific details, swipe gestures, Skip button (PR #21)
+- [ ] Cost display, streaming indicators
+- [ ] Tool activity feed
+- [ ] Reconnection UX
 
 ### Track B: "The Office" (Native iOS)
-Gamified SpriteKit canvas — isometric office, Claude agents as characters, idle animations, state machines tied to agent lifecycle events.
+- [x] Pixel art sprites — programmatic 16x16 art for all 9 characters, template caching (PR #18)
+- [x] Dachshund blanket mechanic — shiver animation, snowflake indicator, cozy overlay (PR #19)
+- [ ] Isometric office layout
+- [ ] Agent state machines tied to lifecycle events
 
 ## Later
 
@@ -50,4 +57,4 @@ Gamified SpriteKit canvas — isometric office, Claude agents as characters, idl
 
 ---
 
-_Last updated: 2026-03-19_
+_Last updated: 2026-03-20_
