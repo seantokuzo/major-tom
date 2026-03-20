@@ -12,7 +12,7 @@ const HIGH_PATTERNS = [
   /\bgit\s+clean\s+-[a-zA-Z]*f/i,
   /\bDROP\s+(TABLE|DATABASE)\b/i,
   /\bTRUNCATE\s+TABLE\b/i,
-  /\bDELETE\s+FROM\b.*\bWHERE\b.*=.*\*/i,
+  /\bDELETE\s+FROM\b/i,
   /\bmkfs\b/i,
   /\bdd\s+if=/i,
   /\bchmod\s+777\b/i,

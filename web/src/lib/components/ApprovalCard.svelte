@@ -1,8 +1,7 @@
 <script lang="ts">
   import type { ApprovalRequest } from '../stores/relay.svelte';
   import type { ApprovalDecision } from '../protocol/messages';
-  import { scoreToolDanger, dangerColor, toolIcon, type DangerLevel } from '../utils/danger';
-  import { renderMarkdown } from '../utils/markdown';
+  import { scoreToolDanger, dangerColor, toolIcon } from '../utils/danger';
 
   let { request, onDecision }: {
     request: ApprovalRequest;
@@ -56,7 +55,7 @@
       : null
   );
 
-  let editLineDelta = $derived(() => {
+  let editLineDelta = $derived.by(() => {
     if (!editOldString && !editNewString) return null;
     const oldLines = (editOldString ?? '').split('\n').length;
     const newLines = (editNewString ?? '').split('\n').length;
@@ -91,7 +90,7 @@
       : null
   );
 
-  let readLineRange = $derived(() => {
+  let readLineRange = $derived.by(() => {
     if (toolLower !== 'read') return null;
     const offset = request.details?.['offset'] as number | undefined;
     const limit = request.details?.['limit'] as number | undefined;
@@ -148,13 +147,6 @@
     swipeDeltaX = 0;
   }
 
-  function escapeHtml(str: string): string {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  }
-
   function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -162,10 +154,10 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
 <div
   class="card"
+  tabindex="0"
+  onkeydown={handleKeydown}
   class:danger-high={danger === 'high'}
   class:danger-medium={danger === 'medium'}
   class:danger-normal={danger === 'normal'}
@@ -194,7 +186,7 @@
   <!-- Expand/collapse toggle -->
   {#if request.details && Object.keys(request.details).length > 0}
     <button class="toggle-btn" onclick={() => expanded = !expanded}>
-      <span class="toggle-arrow" class:expanded>{expanded ? '\u25BC' : '\u25B6'}</span>
+      <span class="toggle-arrow" class:expanded={expanded}>{expanded ? '\u25BC' : '\u25B6'}</span>
       {expanded ? 'Hide details' : 'Show details'}
     </button>
   {/if}
@@ -207,7 +199,7 @@
         {#if bashCwd}
           <div class="detail-label">cwd: <span class="detail-path">{bashCwd}</span></div>
         {/if}
-        <pre class="code-block bash-command"><code>{escapeHtml(bashCommand)}</code></pre>
+        <pre class="code-block bash-command"><code>{bashCommand}</code></pre>
       {/if}
 
       <!-- Edit tool -->
@@ -216,15 +208,15 @@
         {#if editOldString != null || editNewString != null}
           <div class="diff-block">
             {#if editOldString}
-              <pre class="diff-old"><code>{escapeHtml(editOldString)}</code></pre>
+              <pre class="diff-old"><code>{editOldString}</code></pre>
             {/if}
             {#if editNewString}
-              <pre class="diff-new"><code>{escapeHtml(editNewString)}</code></pre>
+              <pre class="diff-new"><code>{editNewString}</code></pre>
             {/if}
           </div>
-          {#if editLineDelta() != null}
-            <span class="line-delta" class:positive={editLineDelta()! > 0} class:negative={editLineDelta()! < 0}>
-              {editLineDelta()! > 0 ? '+' : ''}{editLineDelta()} lines
+          {#if editLineDelta != null}
+            <span class="line-delta" class:positive={editLineDelta > 0} class:negative={editLineDelta < 0}>
+              {editLineDelta > 0 ? '+' : ''}{editLineDelta} lines
             </span>
           {/if}
         {/if}
@@ -237,21 +229,21 @@
           <div class="detail-meta">{formatFileSize(writeSize)}</div>
         {/if}
         {#if writePreview}
-          <pre class="code-block"><code>{escapeHtml(writePreview)}</code></pre>
+          <pre class="code-block"><code>{writePreview}</code></pre>
         {/if}
       {/if}
 
       <!-- Read tool -->
       {#if readFilePath}
         <div class="detail-label file-path">{readFilePath}</div>
-        {#if readLineRange()}
-          <div class="detail-meta">Lines {readLineRange()}</div>
+        {#if readLineRange}
+          <div class="detail-meta">Lines {readLineRange}</div>
         {/if}
       {/if}
 
       <!-- Generic tool -->
       {#if detailsJson}
-        <pre class="code-block json-block"><code>{escapeHtml(detailsJson)}</code></pre>
+        <pre class="code-block json-block"><code>{detailsJson}</code></pre>
       {/if}
     </div>
   {/if}
