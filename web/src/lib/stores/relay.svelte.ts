@@ -540,8 +540,12 @@ class RelayStore {
     this.sessionStats.totalCost += result.costUsd;
     this.sessionStats.turnCount += result.numTurns;
     this.sessionStats.totalDuration += result.durationMs;
-    if (result.inputTokens) this.sessionStats.inputTokens += result.inputTokens;
-    if (result.outputTokens) this.sessionStats.outputTokens += result.outputTokens;
+    if (typeof result.inputTokens === 'number' && Number.isFinite(result.inputTokens)) {
+      this.sessionStats.inputTokens += result.inputTokens;
+    }
+    if (typeof result.outputTokens === 'number' && Number.isFinite(result.outputTokens)) {
+      this.sessionStats.outputTokens += result.outputTokens;
+    }
   }
 }
 

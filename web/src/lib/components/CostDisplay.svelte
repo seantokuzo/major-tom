@@ -35,8 +35,11 @@
 {#if relay.hasSession}
   <button
     class="cost-display {costColor}"
+    type="button"
     onclick={() => expanded = !expanded}
     title="Click for token breakdown"
+    aria-expanded={expanded}
+    aria-controls="cost-token-breakdown"
   >
     <span class="cost-value">{costText}</span>
     <span class="separator">|</span>
@@ -48,7 +51,7 @@
   </button>
 
   {#if expanded}
-    <div class="token-breakdown">
+    <div class="token-breakdown" id="cost-token-breakdown">
       {#if hasTokens}
         <span class="token-item">
           <span class="token-label">In:</span>
