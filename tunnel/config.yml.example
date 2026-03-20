@@ -1,0 +1,14 @@
+# Major Tom — Cloudflare Tunnel Configuration
+#
+# Copy this to config.yml and fill in your values.
+# config.yml is gitignored — never commit it.
+#
+# Run `npm run tunnel:setup` from relay/ to generate this automatically.
+
+tunnel: TUNNEL_ID          # replaced by setup.sh with actual tunnel UUID
+credentials-file: /Users/USERNAME/.cloudflared/TUNNEL_ID.json
+
+ingress:
+  - hostname: majortom.example.com   # replace with your actual subdomain
+    service: http://localhost:9090
+  - service: http_status:404

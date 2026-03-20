@@ -142,6 +142,12 @@ coverage/
 *.lcov
 
 # -----------------
+# Cloudflare Tunnel
+# -----------------
+tunnel/config.yml
+tunnel/*.json
+
+# -----------------
 # Misc
 # -----------------
 *.tmp
