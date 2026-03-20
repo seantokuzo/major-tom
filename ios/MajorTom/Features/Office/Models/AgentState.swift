@@ -51,7 +51,7 @@ struct AgentState: Identifiable {
     var wantsBlanket: Bool {
         let config = CharacterCatalog.config(for: characterType)
         guard config.needsBlanket, !hasBlanket else { return false }
-        let isAtDesk = deskIndex != nil && (status == .working || status == .idle)
+        let isAtDesk = deskIndex != nil && status == .working
         return isAtDesk
     }
 

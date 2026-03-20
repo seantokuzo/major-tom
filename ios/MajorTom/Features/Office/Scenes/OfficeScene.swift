@@ -225,7 +225,9 @@ final class OfficeScene: SKScene {
     func showColdState(id: String) {
         guard let sprite = agentSprites[id] else { return }
         sprite.showColdIndicator()
-        sprite.startShiverAnimation()
+        if sprite.action(forKey: "shiver") == nil {
+            sprite.startShiverAnimation()
+        }
     }
 
     /// Give blanket to an agent — show overlay, play happy animation.

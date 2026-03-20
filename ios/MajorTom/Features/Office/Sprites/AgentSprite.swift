@@ -141,6 +141,7 @@ final class AgentSprite: SKSpriteNode {
 
     /// Simple idle bobbing animation.
     func startIdleAnimation() {
+        removeAction(forKey: "shiver")
         removeAction(forKey: "idle")
         let bob = SKAction.sequence([
             SKAction.moveBy(x: 0, y: 3, duration: 0.8),
@@ -151,6 +152,7 @@ final class AgentSprite: SKSpriteNode {
 
     /// Simple working animation (slight shake).
     func startWorkAnimation() {
+        removeAction(forKey: "shiver")
         removeAction(forKey: "idle")
         removeAction(forKey: "work")
         let shake = SKAction.sequence([
@@ -255,10 +257,12 @@ final class AgentSprite: SKSpriteNode {
     func hideBlanket() {
         guard let blanket = blanketOverlay else { return }
         isBlanketShown = false
-        blanket.run(SKAction.fadeOut(withDuration: 0.3)) {
+        blanket.run(SKAction.fadeOut(withDuration: 0.3)) { [weak self] in
             blanket.removeFromParent()
+            if self?.blanketOverlay === blanket {
+                self?.blanketOverlay = nil
+            }
         }
-        blanketOverlay = nil
     }
 
     /// Stop all animations.
