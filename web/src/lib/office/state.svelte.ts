@@ -154,7 +154,8 @@ export function createOfficeState(): OfficeState {
   function handleIdle(id: string): void {
     const agent = agents.find((a) => a.id === id);
     if (!agent) return;
-    agent.status = 'idle';
+    // Don't set status to 'idle' yet — agent needs to walk to break spot first.
+    // Keep previous status during the walk so the inspector badge stays accurate.
     agent.currentTask = null;
     agents = [...agents];
 
@@ -170,8 +171,15 @@ export function createOfficeState(): OfficeState {
     engine.setAnimation(id, 'none');
     engine.moveAgent(id, pos, 2000);
 
-    // After arrival, start idle animation
+    // After arrival, set idle status and start idle animation.
+    // Guard: if the agent transitioned to another state before timeout fires, bail out.
     setTimeout(() => {
+      const current = agents.find((a) => a.id === id);
+      if (!current) return;
+      if (current.status === 'working' || current.status === 'celebrating' || current.status === 'leaving') return;
+
+      current.status = 'idle';
+      agents = [...agents];
       engine.setStatusColor(id, STATUS_COLORS.idle);
       // Dachshund shivers, others bob
       const anim: AnimationType =

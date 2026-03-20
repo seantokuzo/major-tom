@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SCENE_WIDTH, SCENE_HEIGHT, AREAS, DESKS, DOOR_POSITION } from '../office/layout';
+  import { SCENE_WIDTH, SCENE_HEIGHT, AREAS, DOOR_POSITION } from '../office/layout';
   import { renderCharacter, getCharacterSize } from '../office/pixel-art';
   import type { OfficeEngine, EngineAgent } from '../office/engine';
 

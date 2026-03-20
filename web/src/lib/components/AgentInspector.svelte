@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import type { OfficeAgent } from '../office/types';
   import { getCharacterConfig } from '../office/characters';
   import { STATUS_COLORS } from '../office/state.svelte';
@@ -13,13 +14,18 @@
 
   let isRenaming = $state(false);
   let renameText = $state('');
+  let now = $state(Date.now());
+
+  // Tick every second so uptime updates reactively
+  const uptimeInterval = setInterval(() => { now = Date.now(); }, 1000);
+  onDestroy(() => clearInterval(uptimeInterval));
 
   const config = $derived(getCharacterConfig(agent.characterType));
 
   const statusColor = $derived(STATUS_COLORS[agent.status] ?? STATUS_COLORS.spawning);
 
   const uptime = $derived.by(() => {
-    const ms = Date.now() - agent.spawnedAt.getTime();
+    const ms = now - agent.spawnedAt.getTime();
     const totalSeconds = Math.floor(ms / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
