@@ -60,7 +60,7 @@
   let stateLabel = $derived.by(() => {
     const state = relay.connectionState;
     if (state === 'reconnecting') {
-      const parts = [`Reconnecting (${relay.reconnectAttempt}/20)`];
+      const parts = [`Reconnecting (${relay.reconnectAttempt}/${relay.maxReconnectAttempts})`];
       if (timeSinceDisconnect) parts.push(timeSinceDisconnect);
       return parts.join(' \u2014 ');
     }

@@ -35,7 +35,7 @@
   <div class="reconnect-banner">
     <span class="banner-dot"></span>
     <span class="banner-text">
-      Reconnecting... (attempt {relay.reconnectAttempt}/20)
+      Reconnecting... (attempt {relay.reconnectAttempt}/{relay.maxReconnectAttempts})
       {#if timeSinceDisconnect}
         &mdash; disconnected {timeSinceDisconnect}
       {/if}

@@ -143,6 +143,7 @@ class RelayStore {
   serverAddress = $state(detectServerAddress());
   sessionId = $state<string | null>(null);
   reconnectAttempt = $state(0);
+  maxReconnectAttempts = $state(20);
   lastConnectedAt = $state<Date | null>(null);
   lastDisconnectedAt = $state<Date | null>(null);
   connectionError = $state<string | null>(null);
@@ -188,15 +189,17 @@ class RelayStore {
       if (state === 'connected') {
         this.wasConnected = true;
         this.lastConnectedAt = new Date();
+        this.lastDisconnectedAt = null;
         this.reconnectAttempt = 0;
         this.connectionError = null;
 
-        // On reconnect, try to reattach stored session
-        if (!wasConnected && this.storedSessionId) {
+        // On (re)connect, try to reattach stored session if we have one and aren't already reattaching
+        if (this.storedSessionId && !this.isReattaching) {
           this.attemptReattach();
         }
       } else if (state === 'reconnecting' || (state === 'disconnected' && wasConnected)) {
-        if (!this.lastDisconnectedAt || this.wasConnected) {
+        // Only record disconnect time once per disconnect cycle
+        if (!this.lastDisconnectedAt) {
           this.lastDisconnectedAt = new Date();
         }
         if (state === 'disconnected') {
@@ -205,8 +208,9 @@ class RelayStore {
       }
     };
 
-    this.socket.onReconnectAttempt = (attempt) => {
+    this.socket.onReconnectAttempt = (attempt, maxAttempts) => {
       this.reconnectAttempt = attempt;
+      this.maxReconnectAttempts = maxAttempts;
     };
 
     this.socket.onMaxRetriesExceeded = () => {

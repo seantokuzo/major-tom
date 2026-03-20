@@ -110,7 +110,7 @@ export class RelaySocket {
     this.setState('reconnecting');
     this.reconnectAttempt++;
     this.onReconnectAttempt?.(this.reconnectAttempt, MAX_RECONNECT_ATTEMPTS);
-    const delay = Math.min(Math.pow(2, this.reconnectAttempt) * 1000, MAX_RECONNECT_DELAY);
+    const delay = Math.min(Math.pow(2, this.reconnectAttempt - 1) * 1000, MAX_RECONNECT_DELAY);
 
     this.reconnectTimer = setTimeout(() => {
       if (!this.intentionalClose) {

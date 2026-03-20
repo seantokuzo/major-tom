@@ -17,10 +17,8 @@
     prevState = state;
 
     if (state === 'connected' && was !== 'connecting') {
-      // Reconnected (not initial connect)
       toasts.success('Connected to relay');
     } else if (state === 'connected' && was === 'connecting') {
-      // Initial connect -- only show if we had previous disconnect
       if (relay.lastDisconnectedAt) {
         toasts.success('Connected to relay');
       }
@@ -29,6 +27,16 @@
     } else if (state === 'disconnected' && relay.connectionError) {
       toasts.error(relay.connectionError);
     }
+  });
+
+  // Separate effect for connectionError set after state transition (e.g. max retries)
+  let prevError = $state<string | null>(null);
+  $effect(() => {
+    const error = relay.connectionError;
+    if (error && error !== prevError && relay.isDisconnected) {
+      toasts.error(error);
+    }
+    prevError = error;
   });
 </script>
 

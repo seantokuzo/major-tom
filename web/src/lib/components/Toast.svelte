@@ -18,7 +18,12 @@
       >
         <span class="toast-dot" style="background: {typeColors[toast.type]}"></span>
         <span class="toast-message">{toast.message}</span>
-        <button class="toast-dismiss" onclick={() => toasts.removeToast(toast.id)}>
+        <button
+          class="toast-dismiss"
+          type="button"
+          aria-label="Dismiss notification"
+          onclick={() => toasts.removeToast(toast.id)}
+        >
           &times;
         </button>
       </div>
