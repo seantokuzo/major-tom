@@ -54,13 +54,13 @@
 
 {#if activities.length > 0}
   <div class="tool-feed">
-    <button class="feed-header" onclick={() => collapsed = !collapsed}>
+    <button class="feed-header" aria-expanded={!collapsed} onclick={() => collapsed = !collapsed}>
       <span class="feed-title">Tool Activity</span>
       {#if runningCount > 0}
         <span class="running-badge">{runningCount} running</span>
       {/if}
       <span class="feed-count">{activities.length}</span>
-      <span class="toggle-arrow" class:collapsed={collapsed}>{collapsed ? '\u25B6' : '\u25BC'}</span>
+      <span class="toggle-arrow">{collapsed ? '\u25B6' : '\u25BC'}</span>
     </button>
 
     {#if !collapsed}

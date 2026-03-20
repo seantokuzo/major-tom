@@ -421,7 +421,14 @@ class RelayStore {
           duration: null,
           input: message.input,
         });
-        if (this.toolActivities.length > 50) this.toolActivities.shift();
+        if (this.toolActivities.length > 50) {
+          const completedIdx = this.toolActivities.findIndex(a => a.completedAt !== null);
+          if (completedIdx >= 0) {
+            this.toolActivities.splice(completedIdx, 1);
+          } else {
+            this.toolActivities.shift();
+          }
+        }
         break;
 
       case 'tool.complete':
