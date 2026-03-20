@@ -43,6 +43,18 @@ struct AgentState: Identifiable {
     var deskIndex: Int?
     let spawnedAt: Date
 
+    /// Whether this agent currently has a blanket (dachshund mechanic).
+    var hasBlanket: Bool = false
+
+    /// True when this agent's character needs a blanket and doesn't have one yet.
+    /// Only applies at desk (working/idle with a desk assignment).
+    var wantsBlanket: Bool {
+        let config = CharacterCatalog.config(for: characterType)
+        guard config.needsBlanket, !hasBlanket else { return false }
+        let isAtDesk = deskIndex != nil && status == .working
+        return isAtDesk
+    }
+
     init(
         id: String,
         name: String,
@@ -83,6 +95,7 @@ extension AgentState: Equatable {
         lhs.name == rhs.name &&
         lhs.status == rhs.status &&
         lhs.currentTask == rhs.currentTask &&
-        lhs.deskIndex == rhs.deskIndex
+        lhs.deskIndex == rhs.deskIndex &&
+        lhs.hasBlanket == rhs.hasBlanket
     }
 }

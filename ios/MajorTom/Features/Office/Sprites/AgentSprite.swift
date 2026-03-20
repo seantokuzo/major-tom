@@ -27,6 +27,14 @@ final class AgentSprite: SKSpriteNode {
         .dachshund, .cattleDog, .schnauzerBlack, .schnauzerPepper,
     ]
 
+    /// Cold indicator shown when dachshund wants a blanket (snowflake emoji).
+    private var coldIndicator: SKLabelNode?
+
+    /// Blanket overlay shown when dachshund has a blanket.
+    private var blanketOverlay: SKSpriteNode?
+
+    /// Whether the blanket is currently shown.
+    private(set) var isBlanketShown = false
     // MARK: - Initialization
 
     init(agentId: String, name: String, characterType: CharacterType) {
@@ -130,6 +138,7 @@ final class AgentSprite: SKSpriteNode {
 
     /// Simple idle bobbing animation.
     func startIdleAnimation() {
+        removeAction(forKey: "shiver")
         removeAction(forKey: "idle")
         let bob = SKAction.sequence([
             SKAction.moveBy(x: 0, y: 3, duration: 0.8),
@@ -140,6 +149,7 @@ final class AgentSprite: SKSpriteNode {
 
     /// Simple working animation (slight shake).
     func startWorkAnimation() {
+        removeAction(forKey: "shiver")
         removeAction(forKey: "idle")
         removeAction(forKey: "work")
         let shake = SKAction.sequence([
@@ -163,6 +173,95 @@ final class AgentSprite: SKSpriteNode {
         run(SKAction.repeat(celebrate, count: 3), withKey: "celebrate")
     }
 
+    /// Gentle shiver animation — slower and more pathetic than work shake.
+    /// Used when dachshund is at desk without a blanket.
+    func startShiverAnimation() {
+        removeAction(forKey: "idle")
+        removeAction(forKey: "work")
+        removeAction(forKey: "shiver")
+        let shiver = SKAction.sequence([
+            SKAction.moveBy(x: 1.5, y: 0, duration: 0.1),
+            SKAction.moveBy(x: -3, y: 0, duration: 0.1),
+            SKAction.moveBy(x: 1.5, y: 0, duration: 0.1),
+            SKAction.wait(forDuration: 1.2),
+        ])
+        run(SKAction.repeatForever(shiver), withKey: "shiver")
+    }
+
+    /// Brief happy tail-wag wiggle when blanket is given.
+    func playBlanketHappyWiggle() {
+        removeAction(forKey: "shiver")
+        let wiggle = SKAction.sequence([
+            SKAction.rotate(byAngle: 0.15, duration: 0.08),
+            SKAction.rotate(byAngle: -0.30, duration: 0.08),
+            SKAction.rotate(byAngle: 0.30, duration: 0.08),
+            SKAction.rotate(byAngle: -0.30, duration: 0.08),
+            SKAction.rotate(byAngle: 0.15, duration: 0.08),
+        ])
+        run(SKAction.repeat(wiggle, count: 3), withKey: "happyWiggle")
+    }
+
+    // MARK: - Blanket Visuals
+
+    /// Show the cold indicator (snowflake) above the sprite.
+    func showColdIndicator() {
+        guard coldIndicator == nil else { return }
+        let label = SKLabelNode(text: "\u{2744}\u{FE0F}")  // ❄️
+        label.fontSize = 14
+        label.position = CGPoint(x: 0, y: 32)
+        label.zPosition = 15
+        label.name = "coldIndicator"
+
+        // Gentle pulse so it draws attention
+        let pulse = SKAction.sequence([
+            SKAction.scale(to: 1.2, duration: 0.6),
+            SKAction.scale(to: 0.9, duration: 0.6),
+        ])
+        label.run(SKAction.repeatForever(pulse))
+
+        addChild(label)
+        coldIndicator = label
+    }
+
+    /// Hide the cold indicator.
+    func hideColdIndicator() {
+        coldIndicator?.removeFromParent()
+        coldIndicator = nil
+    }
+
+    /// Show the blanket overlay on the sprite (warm-colored rectangle draped over the dog).
+    func showBlanket() {
+        guard blanketOverlay == nil else { return }
+        isBlanketShown = true
+
+        // Blanket is a warm brown/red rectangle slightly larger than the sprite
+        let blanket = SKSpriteNode(
+            color: SKColor(red: 0.65, green: 0.25, blue: 0.15, alpha: 0.85),
+            size: CGSize(width: size.width + 6, height: size.height * 0.6)
+        )
+        blanket.position = CGPoint(x: 0, y: -size.height * 0.15)
+        blanket.zPosition = 1  // Above sprite body, below name label
+        blanket.name = "blanketOverlay"
+        addChild(blanket)
+        blanketOverlay = blanket
+
+        // Fade-in
+        blanket.alpha = 0
+        blanket.run(SKAction.fadeIn(withDuration: 0.3))
+    }
+
+    /// Remove the blanket overlay.
+    func hideBlanket() {
+        guard let blanket = blanketOverlay else { return }
+        isBlanketShown = false
+        blanket.run(SKAction.fadeOut(withDuration: 0.3)) { [weak self] in
+            blanket.removeFromParent()
+            if self?.blanketOverlay === blanket {
+                self?.blanketOverlay = nil
+            }
+        }
+    }
+
     /// Stop all animations.
     func stopAnimations() {
         removeAllActions()
@@ -171,8 +270,21 @@ final class AgentSprite: SKSpriteNode {
     // MARK: - Touch Handling
 
     /// Tap detection — forwards to the scene for agent selection.
+    /// If the cold indicator is tapped, gives blanket instead.
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let scene = scene as? OfficeScene else { return }
+        guard let touch = touches.first else { return }
+
+        // Check if cold indicator was tapped (convert to indicator's coordinate space)
+        let touchLocation = touch.location(in: self)
+        if let indicator = coldIndicator {
+            let touchInIndicator = indicator.convert(touchLocation, from: self)
+            if indicator.contains(touchInIndicator) {
+                scene.blanketRequested(agentId: agentId)
+                return
+            }
+        }
+
         scene.agentTapped(agentId: agentId)
     }
 }

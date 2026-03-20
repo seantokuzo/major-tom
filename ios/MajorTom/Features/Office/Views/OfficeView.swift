@@ -17,6 +17,7 @@ struct OfficeView: View {
     /// Previous agent states for diffing.
     @State private var previousAgentIds: Set<String> = []
     @State private var previousStatuses: [String: AgentStatus] = [:]
+    @State private var previousBlanketStates: [String: Bool] = [:]
 
     var body: some View {
         ZStack {
@@ -39,6 +40,9 @@ struct OfficeView: View {
                     viewModel.selectAgent(agent)
                 }
             }
+            scene.onBlanketRequested = { agentId in
+                viewModel.giveBlanket(to: agentId)
+            }
         }
         .sheet(isPresented: Binding(
             get: { viewModel.selectedAgentId != nil },
@@ -50,6 +54,9 @@ struct OfficeView: View {
                     onRename: { newName in
                         viewModel.renameAgent(id: agent.id, newName: newName)
                         scene.updateAgentName(id: agent.id, name: newName)
+                    },
+                    onGiveBlanket: {
+                        viewModel.giveBlanket(to: agent.id)
                     },
                     onDismiss: {
                         viewModel.dismissInspector()
@@ -134,9 +141,25 @@ struct OfficeView: View {
             }
         }
 
+        // Sync blanket state
+        for agent in agents {
+            let previousHasBlanket = previousBlanketStates[agent.id] ?? false
+            if agent.hasBlanket && !previousHasBlanket {
+                // Blanket was just given
+                scene.giveBlanket(id: agent.id)
+            } else if !agent.hasBlanket && previousHasBlanket {
+                // Blanket was removed (agent left desk)
+                scene.removeBlanket(id: agent.id)
+            } else if agent.wantsBlanket && !agent.hasBlanket {
+                // Agent wants blanket but doesn't have one — show cold state
+                scene.showColdState(id: agent.id)
+            }
+        }
+
         // Update tracking
         previousAgentIds = currentIds
         previousStatuses = Dictionary(uniqueKeysWithValues: agents.map { ($0.id, $0.status) })
+        previousBlanketStates = Dictionary(uniqueKeysWithValues: agents.map { ($0.id, $0.hasBlanket) })
     }
 
     /// Handle an agent's status transition in the scene.
@@ -157,6 +180,8 @@ struct OfficeView: View {
             }
 
         case .idle:
+            // Remove blanket visuals when leaving desk
+            scene.removeBlanket(id: agent.id)
             // Pick a random break area based on character config
             let config = CharacterCatalog.config(for: agent.characterType)
             if let destination = config.breakBehaviors.randomElement() {
@@ -167,9 +192,11 @@ struct OfficeView: View {
             }
 
         case .celebrating:
+            scene.removeBlanket(id: agent.id)
             scene.celebrateAgent(id: agent.id)
 
         case .leaving:
+            scene.removeBlanket(id: agent.id)
             if let deskIndex = agent.deskIndex {
                 scene.highlightDesk(deskIndex, occupied: false)
             }

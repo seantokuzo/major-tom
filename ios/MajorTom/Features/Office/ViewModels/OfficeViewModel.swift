@@ -61,6 +61,7 @@ final class OfficeViewModel {
     /// Agent gets up and wanders to a break area.
     func handleAgentIdle(id: String) {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
+        resetBlanket(for: id)
         agents[index].status = .idle
         agents[index].currentTask = nil
     }
@@ -69,6 +70,7 @@ final class OfficeViewModel {
     /// Agent celebrates, then leaves.
     func handleAgentComplete(id: String, result: String) {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
+        resetBlanket(for: id)
         agents[index].status = .celebrating
         agents[index].currentTask = result
 
@@ -89,6 +91,7 @@ final class OfficeViewModel {
     /// Agent immediately starts leaving.
     func handleAgentDismissed(id: String) {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
+        resetBlanket(for: id)
         agents[index].status = .leaving
         agents[index].currentTask = nil
         releaseDesk(for: id)
@@ -116,6 +119,20 @@ final class OfficeViewModel {
     func renameAgent(id: String, newName: String) {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
         agents[index].name = newName
+    }
+
+    // MARK: - Blanket Mechanic
+
+    /// Give a blanket to the specified agent.
+    func giveBlanket(to agentId: String) {
+        guard let index = agents.firstIndex(where: { $0.id == agentId }) else { return }
+        agents[index].hasBlanket = true
+    }
+
+    /// Reset blanket state when an agent leaves their desk.
+    private func resetBlanket(for agentId: String) {
+        guard let index = agents.firstIndex(where: { $0.id == agentId }) else { return }
+        agents[index].hasBlanket = false
     }
 
     // MARK: - Private Helpers
