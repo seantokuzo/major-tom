@@ -50,23 +50,21 @@
     {/if}
   </button>
 
-  {#if expanded}
-    <div class="token-breakdown" id="cost-token-breakdown">
-      {#if hasTokens}
-        <span class="token-item">
-          <span class="token-label">In:</span>
-          <span class="token-count">{inputTokensText}</span>
-        </span>
-        <span class="token-sep">/</span>
-        <span class="token-item">
-          <span class="token-label">Out:</span>
-          <span class="token-count">{outputTokensText}</span>
-        </span>
-      {:else}
-        <span class="token-item no-data">No token data yet</span>
-      {/if}
-    </div>
-  {/if}
+  <div class="token-breakdown" id="cost-token-breakdown" hidden={!expanded}>
+    {#if hasTokens}
+      <span class="token-item">
+        <span class="token-label">In:</span>
+        <span class="token-count">{inputTokensText}</span>
+      </span>
+      <span class="token-sep">/</span>
+      <span class="token-item">
+        <span class="token-label">Out:</span>
+        <span class="token-count">{outputTokensText}</span>
+      </span>
+    {:else}
+      <span class="token-item no-data">No token data yet</span>
+    {/if}
+  </div>
 {/if}
 
 <style>

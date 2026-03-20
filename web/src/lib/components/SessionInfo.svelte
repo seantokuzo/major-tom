@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { relay } from '../stores/relay.svelte';
   import CostDisplay from './CostDisplay.svelte';
 </script>
 
-<div class="session-bar">
-  <CostDisplay />
-</div>
+{#if relay.hasSession}
+  <div class="session-bar">
+    <CostDisplay />
+  </div>
+{/if}
 
 <style>
   .session-bar {
