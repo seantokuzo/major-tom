@@ -174,6 +174,8 @@ export interface SessionResultMessage {
   costUsd: number;
   numTurns: number;
   durationMs: number;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 export interface ErrorMessage {

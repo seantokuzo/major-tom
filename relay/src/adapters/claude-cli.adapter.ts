@@ -353,9 +353,13 @@ export class ClaudeCliAdapter implements IAdapter {
     const rawDuration = Number(msg['durationMs']);
     const rawCost = Number(msg['total_costUsd']);
     const rawTurns = Number(msg['numTurns']);
+    const rawInputTokens = Number(msg['input_tokens']);
+    const rawOutputTokens = Number(msg['output_tokens']);
     const durationMs = Number.isFinite(rawDuration) ? rawDuration : 0;
     const costUsd = Number.isFinite(rawCost) ? rawCost : 0;
     const numTurns = Number.isFinite(rawTurns) ? rawTurns : 0;
+    const inputTokens = Number.isFinite(rawInputTokens) ? rawInputTokens : undefined;
+    const outputTokens = Number.isFinite(rawOutputTokens) ? rawOutputTokens : undefined;
 
     logger.info(
       {
@@ -364,6 +368,8 @@ export class ClaudeCliAdapter implements IAdapter {
         durationMs,
         cost: costUsd,
         turns: numTurns,
+        inputTokens,
+        outputTokens,
       },
       'Prompt result',
     );
@@ -373,6 +379,8 @@ export class ClaudeCliAdapter implements IAdapter {
       costUsd: costUsd,
       numTurns: numTurns,
       durationMs: durationMs,
+      inputTokens,
+      outputTokens,
     } satisfies SessionResult);
   }
 

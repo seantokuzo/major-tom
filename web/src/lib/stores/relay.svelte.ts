@@ -54,6 +54,8 @@ export interface SessionStats {
   totalCost: number;
   turnCount: number;
   totalDuration: number;
+  inputTokens: number;
+  outputTokens: number;
 }
 
 // ── localStorage keys ───────────────────────────────────────
@@ -154,7 +156,7 @@ class RelayStore {
   agents = $state<Agent[]>([]);
 
   // Session stats
-  sessionStats = $state<SessionStats>({ totalCost: 0, turnCount: 0, totalDuration: 0 });
+  sessionStats = $state<SessionStats>({ totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 });
 
   // Streaming state
   isWaitingForResponse = $state(false);
@@ -273,7 +275,7 @@ class RelayStore {
     this.sessionId = null;
     this.pendingApprovals = [];
     this.agents = [];
-    this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0 };
+    this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
     this.isWaitingForResponse = false;
     this.activeToolName = null;
     this.inputText = '';
@@ -538,6 +540,8 @@ class RelayStore {
     this.sessionStats.totalCost += result.costUsd;
     this.sessionStats.turnCount += result.numTurns;
     this.sessionStats.totalDuration += result.durationMs;
+    if (result.inputTokens) this.sessionStats.inputTokens += result.inputTokens;
+    if (result.outputTokens) this.sessionStats.outputTokens += result.outputTokens;
   }
 }
 
