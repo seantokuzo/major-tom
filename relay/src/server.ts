@@ -9,7 +9,10 @@ import { ApprovalQueue } from './hooks/approval-queue.js';
 import { eventBus } from './events/event-bus.js';
 import { encodeServerMessage, safeDecode } from './protocol/codec.js';
 import { createStaticHandler } from './static.js';
+import { PushManager } from './push/push-manager.js';
+import { NotificationBatcher } from './push/notification-batcher.js';
 import type { ClientMessage, ServerMessage } from './protocol/messages.js';
+import type { PushSubscriptionData } from './push/push-manager.js';
 
 // ── Configuration ───────────────────────────────────────────
 
@@ -22,6 +25,8 @@ const DISABLE_STATIC = process.env['NO_STATIC'] === '1' || process.argv.includes
 const sessionManager = new SessionManager();
 const approvalQueue = new ApprovalQueue();
 const cliAdapter = new ClaudeCliAdapter(sessionManager, approvalQueue);
+const pushManager = new PushManager();
+const notificationBatcher = new NotificationBatcher(pushManager);
 
 // ── Static file handler (serves PWA from web/dist/) ─────────
 
@@ -30,10 +35,49 @@ const WEB_DIST_DIR = join(__dirname, '..', '..', 'web', 'dist');
 
 const serveStatic = DISABLE_STATIC ? null : createStaticHandler(WEB_DIST_DIR);
 
-// ── HTTP server (health check + static PWA files) ───────────
+// ── HTTP helpers ─────────────────────────────────────────────
+
+function readBody(req: import('node:http').IncomingMessage, maxBytes = 65_536): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        req.destroy();
+        reject(Object.assign(new Error('Request body too large'), { code: 'BODY_TOO_LARGE' }));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+    req.on('error', reject);
+  });
+}
+
+function sendJson(res: import('node:http').ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+  });
+  res.end(JSON.stringify(body));
+}
+
+// ── HTTP server (health check + push endpoints + static PWA files) ───
 
 const httpServer = createServer(async (req, res) => {
   const url = req.url ?? '/';
+
+  // CORS preflight for push endpoints
+  if (req.method === 'OPTIONS' && url.startsWith('/push/')) {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    });
+    res.end();
+    return;
+  }
 
   // Health check endpoint
   if (req.method === 'GET' && url === '/health') {
@@ -43,6 +87,71 @@ const httpServer = createServer(async (req, res) => {
       sessions: sessionManager.list(),
       pendingApprovals: approvalQueue.size,
     }));
+    return;
+  }
+
+  // ── Push notification endpoints ──────────────────────────
+
+  // GET /push/vapid-key — returns the VAPID public key for client subscription
+  if (req.method === 'GET' && url === '/push/vapid-key') {
+    sendJson(res, 200, { publicKey: pushManager.getVapidPublicKey() });
+    return;
+  }
+
+  // POST /push/subscribe — stores a push subscription
+  if (req.method === 'POST' && url === '/push/subscribe') {
+    try {
+      let body: string;
+      try {
+        body = await readBody(req);
+      } catch (err) {
+        if ((err as { code?: string }).code === 'BODY_TOO_LARGE') {
+          sendJson(res, 413, { error: 'Request body too large' });
+        } else {
+          sendJson(res, 400, { error: 'Bad request' });
+        }
+        return;
+      }
+      const parsed = JSON.parse(body) as { subscription?: PushSubscriptionData };
+      const sub = parsed.subscription;
+      if (!sub?.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) {
+        sendJson(res, 400, { error: 'Invalid subscription: requires endpoint, keys.p256dh, keys.auth' });
+        return;
+      }
+      pushManager.subscribe(sub);
+      sendJson(res, 200, { status: 'ok' });
+    } catch (err: unknown) {
+      logger.error({ err }, 'Failed to process push subscribe');
+      sendJson(res, 400, { error: 'Invalid JSON body' });
+    }
+    return;
+  }
+
+  // POST /push/unsubscribe — removes a push subscription
+  if (req.method === 'POST' && url === '/push/unsubscribe') {
+    try {
+      let body: string;
+      try {
+        body = await readBody(req);
+      } catch (err) {
+        if ((err as { code?: string }).code === 'BODY_TOO_LARGE') {
+          sendJson(res, 413, { error: 'Request body too large' });
+        } else {
+          sendJson(res, 400, { error: 'Bad request' });
+        }
+        return;
+      }
+      const parsed = JSON.parse(body) as { endpoint?: string };
+      if (!parsed.endpoint) {
+        sendJson(res, 400, { error: 'Missing endpoint field' });
+        return;
+      }
+      pushManager.unsubscribe(parsed.endpoint);
+      sendJson(res, 200, { status: 'ok' });
+    } catch (err: unknown) {
+      logger.error({ err }, 'Failed to process push unsubscribe');
+      sendJson(res, 400, { error: 'Invalid JSON body' });
+    }
     return;
   }
 
@@ -233,6 +342,7 @@ cliAdapter.on('approval-request', (request) => {
     description: request.description,
     details: request.details,
   });
+  notificationBatcher.addApprovalRequest(request.tool, request.requestId);
 });
 
 cliAdapter.on('tool-start', (info) => {
@@ -305,6 +415,12 @@ eventBus.on('server.message', (message: ServerMessage) => {
   broadcast(message);
 });
 
+// ── Push notifications for approval requests ─────────────────
+
+eventBus.on('approval.request', (message) => {
+  notificationBatcher.addApprovalRequest(message.tool, message.requestId);
+});
+
 // ── Graceful shutdown ───────────────────────────────────────
 
 async function shutdown(signal: string): Promise<void> {
@@ -325,6 +441,7 @@ async function shutdown(signal: string): Promise<void> {
   ]);
 
   clearInterval(heartbeatInterval);
+  notificationBatcher.dispose();
   eventBus.removeAllListeners();
 
   logger.info('Shutdown complete');
