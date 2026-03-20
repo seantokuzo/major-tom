@@ -58,6 +58,16 @@ export interface SessionStats {
   outputTokens: number;
 }
 
+export interface ToolActivity {
+  id: string;
+  tool: string;
+  startedAt: Date;
+  completedAt: Date | null;
+  success: boolean | null;
+  duration: number | null;
+  input?: Record<string, unknown>;
+}
+
 // ── localStorage keys ───────────────────────────────────────
 
 const STORAGE_KEYS = {
@@ -166,6 +176,9 @@ class RelayStore {
   // Streaming state
   isWaitingForResponse = $state(false);
   activeToolName = $state<string | null>(null);
+
+  // Tool activity feed
+  toolActivities = $state<ToolActivity[]>([]);
 
   // Command palette
   inputPrefix = $state('');
@@ -317,6 +330,7 @@ class RelayStore {
     this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
     this.isWaitingForResponse = false;
     this.activeToolName = null;
+    this.toolActivities = [];
     this.inputText = '';
     this.inputPrefix = '';
     this.persistSessionId();
@@ -438,6 +452,24 @@ class RelayStore {
             input: message.input,
           },
         });
+        // Track in activity feed
+        this.toolActivities.push({
+          id: uid(),
+          tool: message.tool,
+          startedAt: new Date(),
+          completedAt: null,
+          success: null,
+          duration: null,
+          input: message.input,
+        });
+        if (this.toolActivities.length > 50) {
+          const completedIdx = this.toolActivities.findIndex(a => a.completedAt !== null);
+          if (completedIdx >= 0) {
+            this.toolActivities.splice(completedIdx, 1);
+          } else {
+            this.toolActivities.shift();
+          }
+        }
         break;
 
       case 'tool.complete':
@@ -453,6 +485,17 @@ class RelayStore {
             success: message.success,
           },
         });
+        // Update activity feed — match oldest incomplete entry (FIFO for parallel tool uses)
+        {
+          const running = this.toolActivities.find(
+            (a) => a.tool === message.tool && !a.completedAt
+          );
+          if (running) {
+            running.completedAt = new Date();
+            running.success = message.success;
+            running.duration = running.completedAt.getTime() - running.startedAt.getTime();
+          }
+        }
         break;
 
       case 'agent.spawn':
