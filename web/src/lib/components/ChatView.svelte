@@ -60,13 +60,16 @@
     return () => clearTimeout(persistTimer);
   });
 
-  let placeholderText = $derived(
-    relay.inputPrefix
-      ? `${relay.inputPrefix}...`
-      : relay.hasSession
-        ? 'Send a prompt...'
-        : 'Connect and start a session'
-  );
+  /** Disable input when not connected or reconnecting */
+  let inputDisabled = $derived(!relay.hasSession || !relay.isConnected);
+
+  let placeholderText = $derived.by(() => {
+    if (relay.isReconnecting) return 'Reconnecting to relay...';
+    if (relay.isDisconnected) return relay.connectionError ?? 'Disconnected';
+    if (relay.inputPrefix) return `${relay.inputPrefix}...`;
+    if (relay.hasSession) return 'Send a prompt...';
+    return 'Connect and start a session';
+  });
 </script>
 
 <div class="chat-view">
@@ -89,7 +92,7 @@
   </div>
 
   <!-- Input bar -->
-  <form class="input-bar" onsubmit={handleSubmit}>
+  <form class="input-bar" class:input-bar-disabled={inputDisabled} onsubmit={handleSubmit}>
     <span class="input-prompt">&gt;</span>
     <textarea
       bind:this={inputEl}
@@ -99,13 +102,13 @@
       oninput={handleInput}
       placeholder={placeholderText}
       rows="1"
-      disabled={!relay.hasSession}
+      disabled={inputDisabled}
     ></textarea>
     <button
       class="send-btn"
       type="submit"
       aria-label="Send message"
-      disabled={!relay.inputText.trim() || !relay.hasSession}
+      disabled={!relay.inputText.trim() || inputDisabled}
     >
       &uarr;
     </button>
@@ -149,6 +152,11 @@
     background: var(--surface);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
+    transition: opacity 0.2s;
+  }
+
+  .input-bar-disabled {
+    opacity: 0.6;
   }
 
   .input-prompt {
