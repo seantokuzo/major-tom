@@ -4,6 +4,7 @@
   import ApprovalCard from './ApprovalCard.svelte';
   import CommandPalette from './CommandPalette.svelte';
   import StreamingIndicator from './StreamingIndicator.svelte';
+  import ToolFeed from './ToolFeed.svelte';
   import type { ApprovalDecision } from '../protocol/messages';
 
   let messagesEnd: HTMLDivElement | undefined;
@@ -87,6 +88,9 @@
     <StreamingIndicator />
     <div bind:this={messagesEnd}></div>
   </div>
+
+  <!-- Tool activity feed -->
+  <ToolFeed />
 
   <!-- Input bar -->
   <form class="input-bar" onsubmit={handleSubmit}>
