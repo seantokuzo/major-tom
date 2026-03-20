@@ -214,7 +214,7 @@ class RelayStore {
     };
 
     this.socket.onMaxRetriesExceeded = () => {
-      this.connectionError = 'Failed to connect after 20 attempts';
+      this.connectionError = `Failed to connect after ${this.maxReconnectAttempts} attempts`;
     };
 
     this.socket.onMessage = (message) => {

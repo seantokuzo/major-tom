@@ -10,7 +10,7 @@
 </script>
 
 {#if toasts.toasts.length > 0}
-  <div class="toast-container">
+  <div class="toast-container" aria-live="polite" role="status">
     {#each toasts.toasts as toast (toast.id)}
       <div
         class="toast toast-{toast.type}"

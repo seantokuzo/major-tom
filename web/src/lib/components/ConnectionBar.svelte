@@ -26,7 +26,7 @@
     disconnected: 'var(--deny)',
     connecting: 'var(--accent)',
     connected: 'var(--allow)',
-    reconnecting: '#f59e0b',
+    reconnecting: 'var(--accent)',
   };
 
   let timeSinceDisconnect = $state('');

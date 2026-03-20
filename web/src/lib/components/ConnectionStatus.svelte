@@ -57,8 +57,8 @@
     align-items: center;
     gap: 8px;
     padding: 6px 16px;
-    background: rgba(245, 158, 11, 0.1);
-    border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
     flex-shrink: 0;
   }
 
@@ -76,7 +76,7 @@
     width: 6px;
     height: 6px;
     border-radius: var(--r-full);
-    background: #f59e0b;
+    background: var(--accent);
     animation: banner-pulse 1.5s ease-in-out infinite;
     flex-shrink: 0;
   }

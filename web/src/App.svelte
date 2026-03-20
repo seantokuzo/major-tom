@@ -9,6 +9,7 @@
 
   // Wire connection state changes to toast notifications
   let prevState = $state(relay.connectionState);
+  let wasReconnecting = $state(false);
 
   $effect(() => {
     const state = relay.connectionState;
@@ -16,15 +17,21 @@
     const was = prevState;
     prevState = state;
 
-    if (state === 'connected' && was !== 'connecting') {
-      toasts.success('Connected to relay');
-    } else if (state === 'connected' && was === 'connecting') {
-      if (relay.lastDisconnectedAt) {
+    if (state === 'connected') {
+      // If we went through a reconnecting phase, show reconnect toast
+      if (wasReconnecting) {
+        toasts.success('Reconnected to relay');
+        wasReconnecting = false;
+      } else {
         toasts.success('Connected to relay');
       }
-    } else if (state === 'reconnecting' && was === 'connected') {
-      toasts.warning('Connection lost, reconnecting...');
+    } else if (state === 'reconnecting') {
+      wasReconnecting = true;
+      if (was === 'connected') {
+        toasts.warning('Connection lost, reconnecting...');
+      }
     } else if (state === 'disconnected' && relay.connectionError) {
+      wasReconnecting = false;
       toasts.error(relay.connectionError);
     }
   });
