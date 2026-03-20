@@ -33,9 +33,10 @@
   // ── Diff computation ────────────────────────────────────────
 
   /**
-   * Simple Myers-like diff: computes LCS then generates unified diff lines.
-   * Good enough for the edit sizes Claude produces (typically < 200 lines).
+   * LCS-based diff via dynamic programming. O(m·n) — suitable for typical edit sizes (< 500 lines).
    */
+  const MAX_DIFF_LINES = 500;
+
   function computeDiff(oldStr: string, newStr: string): DiffLine[] {
     const oldLines = oldStr ? oldStr.split('\n') : [];
     const newLines = newStr ? newStr.split('\n') : [];
@@ -43,6 +44,14 @@
     // LCS via dynamic programming
     const m = oldLines.length;
     const n = newLines.length;
+
+    // Too large for LCS — show as full replacement to avoid freezing the UI
+    if (m > MAX_DIFF_LINES || n > MAX_DIFF_LINES) {
+      return [
+        ...oldLines.map((line, i) => ({ type: 'remove' as const, content: line, oldLineNum: i + 1, newLineNum: null })),
+        ...newLines.map((line, i) => ({ type: 'add' as const, content: line, oldLineNum: null, newLineNum: i + 1 })),
+      ];
+    }
 
     // For empty old content (Write tool), everything is an addition
     if (m === 0) {
@@ -169,7 +178,6 @@
   // ── File info ───────────────────────────────────────────────
 
   let fileName = $derived(filePath.split('/').pop() ?? filePath);
-  let fileExt = $derived(fileName.includes('.') ? fileName.split('.').pop() ?? '' : '');
 
   // ── Actions ─────────────────────────────────────────────────
 
@@ -206,14 +214,18 @@
         class:active={viewMode === 'unified'}
         onclick={() => (viewMode = 'unified')}
         title="Unified view"
+        aria-label="Unified view"
+        aria-pressed={viewMode === 'unified'}
       >U</button>
       <button
         class="diff-btn"
         class:active={viewMode === 'side-by-side'}
         onclick={() => (viewMode = 'side-by-side')}
         title="Side-by-side view"
+        aria-label="Side-by-side view"
+        aria-pressed={viewMode === 'side-by-side'}
       >S</button>
-      <button class="diff-btn" onclick={copyNewContent} title="Copy new content">
+      <button class="diff-btn" onclick={copyNewContent} title="Copy new content" aria-label={copied ? 'Copied' : 'Copy new content'}>
         {copied ? 'ok' : 'cp'}
       </button>
     </div>
@@ -430,8 +442,8 @@
 
   .line-content {
     padding: 0 var(--sp-sm);
-    white-space: pre-wrap;
-    word-break: break-all;
+    white-space: pre;
+    overflow-wrap: normal;
     vertical-align: top;
   }
 

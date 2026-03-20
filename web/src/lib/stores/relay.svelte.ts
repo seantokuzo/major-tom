@@ -74,13 +74,27 @@ interface SerializedMessage {
   toolMeta?: ToolMeta;
 }
 
+/** Truncate large string values in toolMeta to prevent localStorage quota blowout */
+function truncateToolMeta(meta: ToolMeta): ToolMeta {
+  const truncate = (val: unknown): unknown => {
+    if (typeof val === 'string' && val.length > 500) return val.slice(0, 500) + '…[truncated]';
+    if (typeof val === 'object' && val !== null) {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(val)) out[k] = truncate(v);
+      return out;
+    }
+    return val;
+  };
+  return { ...meta, input: truncate(meta.input) as Record<string, unknown> };
+}
+
 function serializeMessages(messages: ChatMessage[]): string {
   const serializable: SerializedMessage[] = messages.map((m) => ({
     id: m.id,
     role: m.role,
     content: m.content,
     timestamp: m.timestamp.toISOString(),
-    ...(m.toolMeta ? { toolMeta: m.toolMeta } : {}),
+    ...(m.toolMeta ? { toolMeta: truncateToolMeta(m.toolMeta) } : {}),
   }));
   return JSON.stringify(serializable);
 }

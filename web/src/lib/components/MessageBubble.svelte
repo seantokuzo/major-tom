@@ -11,9 +11,9 @@
 
   // ── Diff detection for Edit/Write tool messages ──────────────
 
-  /** Tool names that produce diffs we can render */
-  const EDIT_TOOLS = ['Edit', 'edit', 'file_edit', 'EditFile'];
-  const WRITE_TOOLS = ['Write', 'write', 'file_write', 'WriteFile', 'CreateFile'];
+  /** Tool names that produce diffs we can render (exact match, case-insensitive) */
+  const EDIT_TOOL_SET = new Set(['edit', 'file_edit', 'editfile']);
+  const WRITE_TOOL_SET = new Set(['write', 'file_write', 'writefile', 'createfile']);
 
   interface DiffData {
     filePath: string;
@@ -29,7 +29,7 @@
     const filePath = (input['file_path'] ?? input['path'] ?? input['filePath'] ?? '') as string;
     if (!filePath) return null;
 
-    if (EDIT_TOOLS.some((t) => tool.includes(t))) {
+    if (EDIT_TOOL_SET.has(tool.toLowerCase())) {
       const oldStr = (input['old_string'] ?? input['oldString'] ?? input['old_str'] ?? '') as string;
       const newStr = (input['new_string'] ?? input['newString'] ?? input['new_str'] ?? '') as string;
       if (oldStr || newStr) {
@@ -37,7 +37,7 @@
       }
     }
 
-    if (WRITE_TOOLS.some((t) => tool.includes(t))) {
+    if (WRITE_TOOL_SET.has(tool.toLowerCase())) {
       const content = (input['content'] ?? input['file_text'] ?? '') as string;
       if (content) {
         return { filePath, oldContent: '', newContent: content };
