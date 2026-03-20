@@ -57,7 +57,7 @@ enum PixelArtBuilder {
 
     // MARK: - Pixel Helpers
 
-    /// Place a single pixel at grid coordinates. (0,0) is center of the sprite.
+    /// Place a single pixel at local grid coordinates. The container is auto-centered by `build(for:)`.
     private static func pixel(
         x: Int,
         y: Int,
