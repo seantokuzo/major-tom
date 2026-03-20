@@ -56,15 +56,12 @@ final class AgentSprite: SKSpriteNode {
         statusDot.fillColor = .gray
         statusDot.strokeColor = .clear
 
-        // Use a clear base node — the pixel art child provides the visuals
-        let spriteSize: CGSize
-        if characterType == .dachshund {
-            spriteSize = CGSize(width: 44, height: 20)
-        } else if Self.dogTypes.contains(characterType) {
-            spriteSize = CGSize(width: 36, height: 24)
-        } else {
-            spriteSize = CGSize(width: 32, height: 32)
-        }
+        // Derive sprite size from pixel art's actual bounds
+        let artFrame = pixelArt.calculateAccumulatedFrame()
+        let spriteSize = CGSize(
+            width: max(artFrame.width + 4, 32),
+            height: max(artFrame.height + 4, 32)
+        )
 
         super.init(texture: nil, color: .clear, size: spriteSize)
 
@@ -75,11 +72,11 @@ final class AgentSprite: SKSpriteNode {
         pixelArt.zPosition = 0
         addChild(pixelArt)
 
-        // Position label above sprite
+        // Position label above sprite (derived from art frame)
         nameLabel.position = CGPoint(x: 0, y: spriteSize.height / 2 + 4)
         addChild(nameLabel)
 
-        // Position status dot below sprite
+        // Position status dot below sprite (derived from art frame)
         statusDot.position = CGPoint(x: 0, y: -(spriteSize.height / 2 + 6))
         addChild(statusDot)
     }
