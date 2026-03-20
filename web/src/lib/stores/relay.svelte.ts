@@ -11,11 +11,20 @@ import type {
 
 // ── Chat message model ──────────────────────────────────────
 
+export interface ToolMeta {
+  tool: string;
+  input?: Record<string, unknown>;
+  output?: string;
+  success?: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'tool' | 'system';
   content: string;
   timestamp: Date;
+  /** Present on role === 'tool' messages — carries tool name, input, and output */
+  toolMeta?: ToolMeta;
 }
 
 // ── Approval request model ──────────────────────────────────
@@ -62,6 +71,26 @@ interface SerializedMessage {
   role: 'user' | 'assistant' | 'tool' | 'system';
   content: string;
   timestamp: string;
+  toolMeta?: ToolMeta;
+}
+
+/** Truncate large string values in toolMeta to prevent localStorage quota blowout */
+function truncateToolMeta(meta: ToolMeta): ToolMeta {
+  const truncate = (val: unknown): unknown => {
+    if (typeof val === 'string' && val.length > 500) return val.slice(0, 500) + '…[truncated]';
+    if (typeof val === 'object' && val !== null) {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(val)) out[k] = truncate(v);
+      return out;
+    }
+    return val;
+  };
+  const result: ToolMeta = { ...meta, input: truncate(meta.input) as Record<string, unknown> };
+  // Also truncate output which can be a very large JSON string
+  if (typeof result.output === 'string' && result.output.length > 500) {
+    result.output = result.output.slice(0, 500) + '…[truncated]';
+  }
+  return result;
 }
 
 function serializeMessages(messages: ChatMessage[]): string {
@@ -70,6 +99,7 @@ function serializeMessages(messages: ChatMessage[]): string {
     role: m.role,
     content: m.content,
     timestamp: m.timestamp.toISOString(),
+    ...(m.toolMeta ? { toolMeta: truncateToolMeta(m.toolMeta) } : {}),
   }));
   return JSON.stringify(serializable);
 }
@@ -362,6 +392,10 @@ class RelayStore {
           role: 'tool',
           content: `Using ${message.tool}...`,
           timestamp: new Date(),
+          toolMeta: {
+            tool: message.tool,
+            input: message.input,
+          },
         });
         break;
 
@@ -372,6 +406,11 @@ class RelayStore {
           role: 'tool',
           content: `${message.tool} ${message.success ? 'completed' : 'failed'}`,
           timestamp: new Date(),
+          toolMeta: {
+            tool: message.tool,
+            output: message.output,
+            success: message.success,
+          },
         });
         break;
 

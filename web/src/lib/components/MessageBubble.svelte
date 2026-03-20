@@ -1,12 +1,51 @@
 <script lang="ts">
   import type { ChatMessage } from '../stores/relay.svelte';
   import { renderMarkdown } from '../utils/markdown';
+  import DiffViewer from './DiffViewer.svelte';
 
   let { message }: { message: ChatMessage } = $props();
 
   let rendered = $derived(
     message.role === 'assistant' ? renderMarkdown(message.content) : ''
   );
+
+  // ── Diff detection for Edit/Write tool messages ──────────────
+
+  /** Tool names that produce diffs we can render (exact match, case-insensitive) */
+  const EDIT_TOOL_SET = new Set(['edit', 'file_edit', 'editfile']);
+  const WRITE_TOOL_SET = new Set(['write', 'file_write', 'writefile', 'createfile']);
+
+  interface DiffData {
+    filePath: string;
+    oldContent: string;
+    newContent: string;
+  }
+
+  let diffData = $derived.by((): DiffData | null => {
+    if (message.role !== 'tool' || !message.toolMeta) return null;
+    const { tool, input } = message.toolMeta;
+    if (!input) return null;
+
+    const filePath = (input['file_path'] ?? input['path'] ?? input['filePath'] ?? '') as string;
+    if (!filePath) return null;
+
+    if (EDIT_TOOL_SET.has(tool.toLowerCase())) {
+      const oldStr = (input['old_string'] ?? input['oldString'] ?? input['old_str'] ?? '') as string;
+      const newStr = (input['new_string'] ?? input['newString'] ?? input['new_str'] ?? '') as string;
+      if (oldStr || newStr) {
+        return { filePath, oldContent: oldStr, newContent: newStr };
+      }
+    }
+
+    if (WRITE_TOOL_SET.has(tool.toLowerCase())) {
+      const content = (input['content'] ?? input['file_text'] ?? '') as string;
+      if (content) {
+        return { filePath, oldContent: '', newContent: content };
+      }
+    }
+
+    return null;
+  });
 </script>
 
 <div class="msg msg-{message.role}">
@@ -16,7 +55,15 @@
   {:else if message.role === 'assistant'}
     <div class="assistant-text markdown">{@html rendered}</div>
   {:else if message.role === 'tool'}
-    <span class="tool-text">{message.content}</span>
+    {#if diffData}
+      <DiffViewer
+        filePath={diffData.filePath}
+        oldContent={diffData.oldContent}
+        newContent={diffData.newContent}
+      />
+    {:else}
+      <span class="tool-text">{message.content}</span>
+    {/if}
   {:else}
     <span class="system-text">{message.content}</span>
   {/if}
