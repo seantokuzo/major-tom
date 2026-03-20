@@ -242,39 +242,40 @@ major-tom/
 | F04 | **Connection Management** | ✅ Auto-connect, auto-reconnect, tunnel support |
 | F05 | **Session Management** | ✅ Start sessions via Agent SDK |
 
-### v1.1 — Mission Control MVP
+### v1.1 — Mission Control MVP ✅ COMPLETE
 
-| ID | Feature | Description |
-|----|---------|-------------|
-| F06 | **Session Persistence** | Chat history + session ID in localStorage, survive refresh/sleep |
-| F07 | **ClaudeGod Mode** | Auto-approve: full auto, delay countdown, or manual. Per-tool overrides later. |
-| F08 | **Command Palette** | `/` trigger, searchable, sorted by frequency, client-side intercept |
-| F09 | **Slash Commands** | `/new`, `/clear`, `/plan`, `/compact`, `/model`, `/btw` |
-| F10 | **Cost & Usage Display** | Per-prompt cost, running total, token usage (from new `session.result` message) |
-| F11 | **Streaming Indicator** | "Thinking..." animation, tool use preview |
-| F12 | **CLI-Like Chat UI** | Monospace, tightened layout, Claude Code visual language |
+| ID | Feature | Status |
+|----|---------|--------|
+| F06 | **Session Persistence** | ✅ Chat history + session ID in localStorage (PR #16) |
+| F07 | **ClaudeGod Mode** | ✅ Auto-approve with delay countdown (PR #16) |
+| F08 | **Command Palette** | ✅ `/` trigger, searchable, frequency-sorted (PR #16) |
+| F09 | **Slash Commands** | ✅ `/new`, `/clear`, `/plan`, `/compact`, `/model`, `/btw` (PR #16) |
+| F10 | **Cost & Usage Display** | ✅ Per-turn cost, running total, token breakdown (PR #22) |
+| F11 | **Streaming Indicator** | ✅ Thinking/tool spinners, active tool name (PR #22) |
+| F12 | **CLI-Like Chat UI** | ✅ Monospace, tightened layout (PR #16) |
 
-### v1.2 — Mission Control+
+### v1.2 — Mission Control+ ✅ COMPLETE
 
-| ID | Feature | Description |
-|----|---------|-------------|
-| F13 | **Mobile Diff Viewer** | Side-by-side or unified diff, syntax highlighted |
-| F14 | **Tool Activity Feed** | Scrollable timeline, tool name/duration/success, collapsible I/O |
-| F15 | **Agent Activity Panel** | Active subagents with tasks and elapsed time |
-| F16 | **Better Approval Cards** | Tool icons, formatted JSON preview, timeout countdown |
-| F17 | **Push Notifications** | Web-push for approvals, tap → opens PWA |
+| ID | Feature | Status |
+|----|---------|--------|
+| F13 | **Mobile Diff Viewer** | ✅ LCS algorithm, unified/split views, auto-collapse (PR #20) |
+| F14 | **Tool Activity Feed** | ✅ Real-time timeline, duration/success, collapsible I/O (PR #25) |
+| F15 | **Agent Activity Panel** | ✅ Agent inspector with status, task, uptime (PR #24) |
+| F16 | **Better Approval Cards** | ✅ Danger scoring, tool-specific details, swipe gestures (PR #21) |
+| F17 | **Push Notifications** | ⬜ Deferred to v3.0 |
+| F17b | **Reconnection UX** | ✅ Toast notifications, status bar, error handling (PR #23) |
 
-### v2.0 — The Office
+### v2.0 — The Office ✅ COMPLETE (PWA)
 
-| ID | Feature | Description |
-|----|---------|-------------|
-| F18 | **Office Scene** | SpriteKit tech campus with 8 areas |
-| F19 | **9 Characters** | 5 humans + 4 dogs, each with unique personality and break behaviors |
-| F20 | **Agent Lifecycle** | Spawn → desk → work → break → celebrate → exit |
-| F21 | **Dachshund Blanket Mechanic** | Demands blanket, one-click give, burrows contentedly |
-| F22 | **Mini-Map + Follow** | Area overview with badges, tap-to-navigate, character follow mode |
-| F23 | **Tap to Inspect** | Overlay: agent ID, role, task, live output |
-| F24 | **Rename Characters** | Long press → custom name |
+| ID | Feature | Status |
+|----|---------|--------|
+| F18 | **Office Scene** | ✅ Canvas-based office with desks, break areas, door (PR #24) |
+| F19 | **9 Characters** | ✅ Pixel art sprites, 5 humans + 4 dogs (PR #18, #24) |
+| F20 | **Agent Lifecycle** | ✅ Spawn → desk → work → idle → celebrate → exit (PR #24) |
+| F21 | **Dachshund Blanket Mechanic** | ✅ Shiver animation, snowflake, cozy overlay (PR #19) |
+| F22 | **Mini-Map + Follow** | ⬜ Deferred |
+| F23 | **Tap to Inspect** | ✅ Agent inspector with status, task, rename (PR #24) |
+| F24 | **Rename Characters** | ✅ Rename from inspector panel (PR #24) |
 
 ### v2.1 — Delight
 

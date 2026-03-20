@@ -40,20 +40,33 @@
 ### Track A: "Mission Control" (PWA)
 - [x] Inline diff viewer — LCS algorithm, unified/split views, auto-collapse (PR #20)
 - [x] Enhanced approval cards — danger scoring, tool-specific details, swipe gestures, Skip button (PR #21)
-- [ ] Cost display, streaming indicators
-- [ ] Tool activity feed
-- [ ] Reconnection UX
+- [x] Cost display, streaming indicators — per-turn cost, token breakdown, thinking/tool spinners (PR #22)
+- [x] Reconnection UX — toast notifications, status bar, connection error handling (PR #23)
+- [x] Tool activity feed — real-time tool tracking, collapsible panel, duration/success (PR #25)
 
-### Track B: "The Office" (Native iOS)
+### Track B: "The Office" (PWA)
 - [x] Pixel art sprites — programmatic 16x16 art for all 9 characters, template caching (PR #18)
 - [x] Dachshund blanket mechanic — shiver animation, snowflake indicator, cozy overlay (PR #19)
-- [ ] Isometric office layout
-- [ ] Agent state machines tied to lifecycle events
+- [x] Office canvas + agent state machine — pixel art office, agent sprites, lifecycle events, inspector (PR #24)
 
-## Later
+### Phase 2 Success Criteria — ALL MET
 
-- [ ] Stable Cloudflare Tunnel (named tunnel + custom domain, ~$10/yr)
-- [ ] Apple Watch companion app (Phase 5)
+- [x] Cost and token usage visible per-turn and cumulative
+- [x] Streaming/thinking/tool indicators visible during agent work
+- [x] Reconnection with toast feedback and status bar
+- [x] Tool activity feed with real-time tracking
+- [x] The Office: agents visualized as pixel art characters in an office scene
+- [x] Agent lifecycle (spawn → work → idle → complete → dismiss) drives office animations
+
+## Phase 3 — Not Started
+
+### Candidates (pick next session)
+- [ ] Push notifications (web-push for approvals)
+- [ ] Agent steering (send prompts to specific agents from inspector)
+- [ ] Voice prompts (Speech-to-text input)
+- [ ] Prompt templates (save, organize, reuse)
+- [ ] Stable Cloudflare Tunnel (named tunnel + custom domain)
+- [ ] Apple Watch companion app
 
 ---
 
