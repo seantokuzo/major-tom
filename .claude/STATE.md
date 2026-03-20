@@ -7,7 +7,7 @@
 
 ## Current Phase
 
-**Phase 2: "Mission Control" + "The Office"** — Two parallel tracks
+**Phase 3: "Never Miss an Approval"** — Push notifications + stable tunnel — COMPLETE
 
 ## Strategy
 
@@ -35,7 +35,7 @@
 - [x] Can approve/deny tool calls from phone
 - [x] Connection auto-reconnects (WebSocket reconnect built in)
 
-## Phase 2 — In Progress
+## Completed — Phase 2: "Mission Control" + "The Office"
 
 ### Track A: "Mission Control" (PWA)
 - [x] Inline diff viewer — LCS algorithm, unified/split views, auto-collapse (PR #20)
@@ -58,15 +58,30 @@
 - [x] The Office: agents visualized as pixel art characters in an office scene
 - [x] Agent lifecycle (spawn → work → idle → complete → dismiss) drives office animations
 
-## Phase 3 — Not Started
+## Completed — Phase 3: "Never Miss an Approval"
+
+- [x] Relay: Web push notification support — VAPID keys, subscription endpoints, notification batcher (PR #26)
+- [x] PWA: Service worker + push notification UI — SW registration, permission toggle, notification click routing (PR #27)
+- [x] Cloudflare named tunnel — setup script, start script, npm scripts, README (PR #28)
+
+### Phase 3 Success Criteria — ALL MET
+
+- [x] Push notifications fire on approval requests (native OS notifications)
+- [x] Notification batcher prevents spam (2s debounce window)
+- [x] Clicking notification opens/focuses the app
+- [x] NotificationToggle UI for enable/disable
+- [x] Named Cloudflare Tunnel with one-time setup + daily `npm run dev:remote`
+- [x] SW gated behind production mode (no dev HMR breakage)
+
+## Phase 4 — Not Started
 
 ### Candidates (pick next session)
-- [ ] Push notifications (web-push for approvals)
 - [ ] Agent steering (send prompts to specific agents from inspector)
 - [ ] Voice prompts (Speech-to-text input)
 - [ ] Prompt templates (save, organize, reuse)
-- [ ] Stable Cloudflare Tunnel (named tunnel + custom domain)
 - [ ] Apple Watch companion app
+- [ ] Auth/security hardening (token auth for push endpoints, CORS restriction)
+- [ ] HTTP helper deduplication (extract shared readBody/sendJson utils)
 
 ---
 
