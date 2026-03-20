@@ -46,6 +46,7 @@ export interface Agent {
   task: string;
   role: string;
   status: 'spawned' | 'working' | 'idle' | 'complete' | 'dismissed';
+  result?: string;
 }
 
 // ── Session stats model ─────────────────────────────────────
@@ -531,7 +532,10 @@ class RelayStore {
 
       case 'agent.complete': {
         const agent = this.agents.find((a) => a.id === message.agentId);
-        if (agent) agent.status = 'complete';
+        if (agent) {
+          agent.status = 'complete';
+          agent.result = message.result;
+        }
         this.messages.push({
           id: uid(),
           role: 'system',

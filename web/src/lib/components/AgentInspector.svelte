@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { OfficeAgent } from '../office/types';
   import { getCharacterConfig } from '../office/characters';
+  import { STATUS_COLORS } from '../office/state.svelte';
 
   interface Props {
     agent: OfficeAgent;
@@ -15,17 +16,7 @@
 
   const config = $derived(getCharacterConfig(agent.characterType));
 
-  const statusColor = $derived.by(() => {
-    const colors: Record<string, string> = {
-      spawning: 'rgb(153, 153, 153)',
-      walking: 'rgb(102, 179, 255)',
-      working: 'rgb(77, 217, 115)',
-      idle: 'rgb(242, 191, 77)',
-      celebrating: 'rgb(242, 166, 64)',
-      leaving: 'rgb(179, 77, 77)',
-    };
-    return colors[agent.status] ?? 'rgb(153, 153, 153)';
-  });
+  const statusColor = $derived(STATUS_COLORS[agent.status] ?? STATUS_COLORS.spawning);
 
   const uptime = $derived.by(() => {
     const ms = Date.now() - agent.spawnedAt.getTime();

@@ -57,15 +57,25 @@
   const office = createOfficeState();
 
   // Wire relay agent events to office state.
+  // We track which agents have been processed to avoid duplicate handling.
+  // Composite key includes status + task so task changes within the same status are caught.
   let processedAgentStates = $state<Map<string, string>>(new Map());
 
   $effect(() => {
+    // Clear tracking and office state when relay agents are reset (e.g. newSession)
+    if (relay.agents.length === 0 && processedAgentStates.size > 0) {
+      processedAgentStates.clear();
+      office.reset();
+      return;
+    }
+
     const agents = relay.agents;
     for (const agent of agents) {
-      const prevStatus = processedAgentStates.get(agent.id);
-      if (prevStatus === agent.status) continue;
+      const key = `${agent.status}::${agent.task}`;
+      const prevKey = processedAgentStates.get(agent.id);
+      if (prevKey === key) continue;
 
-      processedAgentStates.set(agent.id, agent.status);
+      processedAgentStates.set(agent.id, key);
 
       switch (agent.status) {
         case 'spawned':
@@ -78,7 +88,7 @@
           office.handleIdle(agent.id);
           break;
         case 'complete':
-          office.handleComplete(agent.id, agent.task);
+          office.handleComplete(agent.id, agent.result ?? agent.task);
           break;
         case 'dismissed':
           office.handleDismissed(agent.id);

@@ -103,6 +103,10 @@ export class OfficeEngine {
     this.agents.delete(id);
   }
 
+  clear(): void {
+    this.agents.clear();
+  }
+
   moveAgent(id: string, to: Point, durationMs: number): void {
     const agent = this.agents.get(id);
     if (!agent) return;

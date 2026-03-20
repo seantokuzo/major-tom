@@ -10,7 +10,7 @@ import type { AnimationType } from './engine';
 
 // ── Status colors ────────────────────────────────────────────
 
-const STATUS_COLORS: Record<string, string> = {
+export const STATUS_COLORS: Record<string, string> = {
   spawning: 'rgb(153, 153, 153)',
   walking: 'rgb(102, 179, 255)',
   working: 'rgb(77, 217, 115)',
@@ -45,6 +45,7 @@ export interface OfficeState {
   handleIdle(id: string): void;
   handleComplete(id: string, result: string): void;
   handleDismissed(id: string): void;
+  reset(): void;
 
   selectAgent(id: string): void;
   dismissInspector(): void;
@@ -108,8 +109,6 @@ export function createOfficeState(): OfficeState {
       currentTask: task,
       deskIndex,
       spawnedAt: new Date(),
-      position: { ...DOOR_POSITION },
-      targetPosition: deskIndex !== null ? { ...desks[deskIndex].position } : null,
     };
 
     agents.push(agent);
@@ -118,21 +117,26 @@ export function createOfficeState(): OfficeState {
     engine.addAgent(id, characterType, agent.name, DOOR_POSITION);
     engine.setStatusColor(id, STATUS_COLORS.spawning);
 
-    // If desk assigned, walk to desk
-    if (deskIndex !== null) {
+    // No desk available — park near the door in idle state
+    if (deskIndex === null) {
+      agent.status = 'idle';
+      engine.setStatusColor(id, STATUS_COLORS.idle);
+      engine.setAnimation(id, 'idle-bob');
+      agents = [...agents];
+      return;
+    }
+
+    // Desk assigned, walk to desk
+    {
       const deskPos = desks[deskIndex].position;
       // Sit slightly below the desk
       const seatPos = { x: deskPos.x, y: deskPos.y + 20 };
       engine.moveAgent(id, seatPos, 1500);
-      engine.setStatusColor(id, STATUS_COLORS.walking);
 
-      // After arrival, set to working
-      const agentRef = agent;
-      setTimeout(() => {
-        agentRef.status = 'walking';
-        // Update agents array for reactivity
-        agents = [...agents];
-      }, 50);
+      // Set walking status immediately
+      agent.status = 'walking';
+      engine.setStatusColor(id, STATUS_COLORS.walking);
+      agents = [...agents];
     }
   }
 
@@ -237,6 +241,13 @@ export function createOfficeState(): OfficeState {
     handleIdle,
     handleComplete,
     handleDismissed,
+    reset() {
+      agents = [];
+      desks = DESKS.map((d) => ({ ...d, occupantId: null }));
+      selectedAgentId = null;
+      nextCharacterIndex = 0;
+      engine.clear();
+    },
 
     selectAgent(id: string) { selectedAgentId = id; },
     dismissInspector() { selectedAgentId = null; },

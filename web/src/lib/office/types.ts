@@ -77,8 +77,6 @@ export interface OfficeAgent {
   currentTask: string | null;
   deskIndex: number | null;
   spawnedAt: Date;
-  position: Point;
-  targetPosition: Point | null;
 }
 
 export interface Desk {

@@ -54,6 +54,25 @@
 
   // ── Click handler ──────────────────────────────────────────
 
+  /** Rounded rect with fallback for browsers lacking ctx.roundRect */
+  function safeRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(x, y, w, h, r);
+    } else {
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.arcTo(x + w, y, x + w, y + r, r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+      ctx.lineTo(x + r, y + h);
+      ctx.arcTo(x, y + h, x, y + h - r, r);
+      ctx.lineTo(x, y + r);
+      ctx.arcTo(x, y, x + r, y, r);
+      ctx.closePath();
+    }
+  }
+
   function handleClick(event: MouseEvent) {
     if (!canvasEl || !onAgentClick) return;
     const rect = canvasEl.getBoundingClientRect();
@@ -103,8 +122,7 @@
       const radius = 3;
 
       // Rounded rectangle
-      ctx.beginPath();
-      ctx.roundRect(dx, dy, dw, dh, radius);
+      safeRoundRect(ctx, dx, dy, dw, dh, radius);
 
       if (isOccupied) {
         ctx.fillStyle = 'rgb(115, 89, 64)';
@@ -132,8 +150,7 @@
     {
       const dx = DOOR_POSITION.x, dy = DOOR_POSITION.y;
       const dw = 30, dh = 10;
-      ctx.beginPath();
-      ctx.roundRect(dx - dw / 2, dy - dh / 2, dw, dh, 2);
+      safeRoundRect(ctx, dx - dw / 2, dy - dh / 2, dw, dh, 2);
       ctx.fillStyle = 'rgba(242, 166, 64, 0.8)';
       ctx.fill();
 
@@ -199,8 +216,9 @@
     height={SCENE_HEIGHT}
     style="width: {SCENE_WIDTH * scale}px; height: {SCENE_HEIGHT * scale}px;"
     onclick={handleClick}
-    role="img"
-    aria-label="Office visualization showing agent positions and status"
+    role="application"
+    tabindex="0"
+    aria-label="Office visualization — click agents to inspect"
   ></canvas>
 </div>
 

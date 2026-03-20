@@ -481,12 +481,20 @@ function buildSchnauzer(isBlack: boolean): PixelList {
 // ── Pixel List → Canvas ──────────────────────────────────────
 
 interface CachedSprite {
-  canvas: OffscreenCanvas;
-  /** Offset from the logical center to the canvas top-left corner */
-  offsetX: number;
-  offsetY: number;
+  canvas: OffscreenCanvas | HTMLCanvasElement;
   width: number;
   height: number;
+}
+
+/** Create an offscreen canvas, falling back to HTMLCanvasElement for Safari/iOS */
+function createOffscreen(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
+  if (typeof globalThis.OffscreenCanvas !== 'undefined') {
+    return new OffscreenCanvas(w, h);
+  }
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  return c;
 }
 
 const spriteCache = new Map<CharacterType, CachedSprite>();
@@ -529,27 +537,17 @@ function buildCachedSprite(type: CharacterType): CachedSprite {
   const w = (maxX - minX + 1) * PIXEL_SIZE;
   const h = (maxY - minY + 1) * PIXEL_SIZE;
 
-  const canvas = new OffscreenCanvas(w, h);
+  const canvas = createOffscreen(w, h);
   const ctx = canvas.getContext('2d')!;
 
   for (const [x, y, color] of pixels) {
-    ctx.fillStyle = color;
-    ctx.fillRect((x - minX) * PIXEL_SIZE, (y - minY) * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+    (ctx as CanvasRenderingContext2D).fillStyle = color;
+    (ctx as CanvasRenderingContext2D).fillRect(
+      (x - minX) * PIXEL_SIZE, (y - minY) * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE
+    );
   }
 
-  // The original pixel data is centered at (0,0). The bounding box's center
-  // in pixel coords is ((minX+maxX)/2, (minY+maxY)/2). We need the offset
-  // from center to the top-left of the cached canvas.
-  const centerPxX = (minX + maxX + 1) / 2;
-  const centerPxY = (minY + maxY + 1) / 2;
-
-  return {
-    canvas,
-    offsetX: centerPxX * PIXEL_SIZE - w / 2,
-    offsetY: centerPxY * PIXEL_SIZE - h / 2,
-    width: w,
-    height: h,
-  };
+  return { canvas, width: w, height: h };
 }
 
 function getCachedSprite(type: CharacterType): CachedSprite {
