@@ -6,21 +6,25 @@ export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'rec
 
 export type MessageHandler = (message: ServerMessage) => void;
 export type StateHandler = (state: ConnectionState) => void;
+export type ReconnectHandler = (attempt: number, maxAttempts: number) => void;
+export type MaxRetriesHandler = () => void;
 
-const MAX_RECONNECT_ATTEMPTS = 10;
+const MAX_RECONNECT_ATTEMPTS = 20;
 const MAX_RECONNECT_DELAY = 30_000;
 
 export class RelaySocket {
   private ws: WebSocket | null = null;
   private url: string = '';
-  private reconnectAttempt = 0;
   private intentionalClose = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+  reconnectAttempt = 0;
   state: ConnectionState = 'disconnected';
 
   onMessage: MessageHandler | null = null;
   onStateChange: StateHandler | null = null;
+  onReconnectAttempt: ReconnectHandler | null = null;
+  onMaxRetriesExceeded: MaxRetriesHandler | null = null;
 
   connect(host: string): void {
     // Clean up any existing connection first
@@ -99,15 +103,18 @@ export class RelaySocket {
     if (this.intentionalClose) return;
     if (this.reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
       this.setState('disconnected');
+      this.onMaxRetriesExceeded?.();
       return;
     }
 
     this.setState('reconnecting');
     this.reconnectAttempt++;
-    const delay = Math.min(Math.pow(2, this.reconnectAttempt) * 1000, MAX_RECONNECT_DELAY);
+    this.onReconnectAttempt?.(this.reconnectAttempt, MAX_RECONNECT_ATTEMPTS);
+    const delay = Math.min(Math.pow(2, this.reconnectAttempt - 1) * 1000, MAX_RECONNECT_DELAY);
 
     this.reconnectTimer = setTimeout(() => {
       if (!this.intentionalClose) {
+        this.setState('connecting');
         this.establish();
       }
     }, delay);

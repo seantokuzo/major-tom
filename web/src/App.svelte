@@ -1,7 +1,50 @@
 <script lang="ts">
   import ConnectionBar from './lib/components/ConnectionBar.svelte';
+  import ConnectionStatus from './lib/components/ConnectionStatus.svelte';
   import SessionInfo from './lib/components/SessionInfo.svelte';
   import ChatView from './lib/components/ChatView.svelte';
+  import Toast from './lib/components/Toast.svelte';
+  import { relay } from './lib/stores/relay.svelte';
+  import { toasts } from './lib/stores/toast.svelte';
+
+  // Wire connection state changes to toast notifications
+  let prevState = $state(relay.connectionState);
+  let wasReconnecting = $state(false);
+
+  $effect(() => {
+    const state = relay.connectionState;
+    if (state === prevState) return;
+    const was = prevState;
+    prevState = state;
+
+    if (state === 'connected') {
+      // If we went through a reconnecting phase, show reconnect toast
+      if (wasReconnecting) {
+        toasts.success('Reconnected to relay');
+        wasReconnecting = false;
+      } else {
+        toasts.success('Connected to relay');
+      }
+    } else if (state === 'reconnecting') {
+      wasReconnecting = true;
+      if (was === 'connected') {
+        toasts.warning('Connection lost, reconnecting...');
+      }
+    } else if (state === 'disconnected' && relay.connectionError) {
+      wasReconnecting = false;
+      toasts.error(relay.connectionError);
+    }
+  });
+
+  // Separate effect for connectionError set after state transition (e.g. max retries)
+  let prevError = $state<string | null>(null);
+  $effect(() => {
+    const error = relay.connectionError;
+    if (error && error !== prevError && relay.isDisconnected) {
+      toasts.error(error);
+    }
+    prevError = error;
+  });
 </script>
 
 <div class="app">
@@ -9,8 +52,10 @@
     <h1 class="title">Major Tom</h1>
   </header>
   <ConnectionBar />
+  <ConnectionStatus />
   <SessionInfo />
   <ChatView />
+  <Toast />
 </div>
 
 <style>

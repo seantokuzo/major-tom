@@ -79,7 +79,7 @@ interface SerializedMessage {
 /** Truncate large string values in toolMeta to prevent localStorage quota blowout */
 function truncateToolMeta(meta: ToolMeta): ToolMeta {
   const truncate = (val: unknown): unknown => {
-    if (typeof val === 'string' && val.length > 500) return val.slice(0, 500) + '…[truncated]';
+    if (typeof val === 'string' && val.length > 500) return val.slice(0, 500) + '\u2026[truncated]';
     if (typeof val === 'object' && val !== null) {
       const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(val)) out[k] = truncate(v);
@@ -90,7 +90,7 @@ function truncateToolMeta(meta: ToolMeta): ToolMeta {
   const result: ToolMeta = { ...meta, input: truncate(meta.input) as Record<string, unknown> };
   // Also truncate output which can be a very large JSON string
   if (typeof result.output === 'string' && result.output.length > 500) {
-    result.output = result.output.slice(0, 500) + '…[truncated]';
+    result.output = result.output.slice(0, 500) + '\u2026[truncated]';
   }
   return result;
 }
@@ -144,6 +144,11 @@ class RelayStore {
   connectionState = $state<ConnectionState>('disconnected');
   serverAddress = $state(detectServerAddress());
   sessionId = $state<string | null>(null);
+  reconnectAttempt = $state(0);
+  maxReconnectAttempts = $state(20);
+  lastConnectedAt = $state<Date | null>(null);
+  lastDisconnectedAt = $state<Date | null>(null);
+  connectionError = $state<string | null>(null);
 
   // Chat
   messages = $state<ChatMessage[]>([]);
@@ -168,6 +173,8 @@ class RelayStore {
   // Derived
   isConnected = $derived(this.connectionState === 'connected');
   hasSession = $derived(this.sessionId !== null);
+  isDisconnected = $derived(this.connectionState === 'disconnected');
+  isReconnecting = $derived(this.connectionState === 'reconnecting');
 
   // Internal
   private socket = new RelaySocket();
@@ -180,12 +187,36 @@ class RelayStore {
     this.socket.onStateChange = (state) => {
       const wasConnected = this.wasConnected;
       this.connectionState = state;
-      this.wasConnected = state === 'connected';
 
-      // On reconnect, try to reattach stored session
-      if (state === 'connected' && !wasConnected && this.storedSessionId) {
-        this.attemptReattach();
+      if (state === 'connected') {
+        this.wasConnected = true;
+        this.lastConnectedAt = new Date();
+        this.lastDisconnectedAt = null;
+        this.reconnectAttempt = 0;
+        this.connectionError = null;
+
+        // On (re)connect, try to reattach stored session if we have one and aren't already reattaching
+        if (this.storedSessionId && !this.isReattaching) {
+          this.attemptReattach();
+        }
+      } else if (state === 'reconnecting' || (state === 'disconnected' && wasConnected)) {
+        // Only record disconnect time once per disconnect cycle
+        if (!this.lastDisconnectedAt) {
+          this.lastDisconnectedAt = new Date();
+        }
+        if (state === 'disconnected') {
+          this.wasConnected = false;
+        }
       }
+    };
+
+    this.socket.onReconnectAttempt = (attempt, maxAttempts) => {
+      this.reconnectAttempt = attempt;
+      this.maxReconnectAttempts = maxAttempts;
+    };
+
+    this.socket.onMaxRetriesExceeded = () => {
+      this.connectionError = `Failed to connect after ${this.maxReconnectAttempts} attempts`;
     };
 
     this.socket.onMessage = (message) => {
@@ -256,6 +287,7 @@ class RelayStore {
   // ── Actions ─────────────────────────────────────────────
 
   connect(): void {
+    this.connectionError = null;
     this.socket.connect(this.serverAddress);
   }
 
@@ -263,6 +295,13 @@ class RelayStore {
     this.socket.disconnect();
     this.sessionId = null;
     this.wasConnected = false;
+  }
+
+  /** Manual retry -- resets error state and reconnect counter, then connects */
+  retry(): void {
+    this.connectionError = null;
+    this.reconnectAttempt = 0;
+    this.socket.connect(this.serverAddress);
   }
 
   startSession(): void {
@@ -427,7 +466,7 @@ class RelayStore {
         this.messages.push({
           id: uid(),
           role: 'system',
-          content: `Agent spawned: ${message.role} — ${message.task}`,
+          content: `Agent spawned: ${message.role} \u2014 ${message.task}`,
           timestamp: new Date(),
         });
         break;
@@ -477,7 +516,7 @@ class RelayStore {
           this.messages.push({
             id: uid(),
             role: 'system',
-            content: 'Session expired — start a new session',
+            content: 'Session expired \u2014 start a new session',
             timestamp: new Date(),
           });
         } else {
