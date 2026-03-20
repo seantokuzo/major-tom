@@ -7,6 +7,7 @@ import SwiftUI
 struct AgentInspectorView: View {
     let agent: AgentState
     let onRename: (String) -> Void
+    let onGiveBlanket: () -> Void
     let onDismiss: () -> Void
 
     @State private var isRenaming = false
@@ -26,6 +27,11 @@ struct AgentInspectorView: View {
             // Current task
             if let task = agent.currentTask {
                 taskSection(task)
+            }
+
+            // Blanket action (dachshund only)
+            if agent.wantsBlanket || agent.hasBlanket {
+                blanketAction
             }
 
             Spacer()
@@ -120,6 +126,30 @@ struct AgentInspectorView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(MajorTomTheme.Colors.background)
                 .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.small))
+        }
+    }
+
+    private var blanketAction: some View {
+        Group {
+            if agent.wantsBlanket {
+                Button {
+                    onGiveBlanket()
+                } label: {
+                    Label("Give Blanket \u{1F9F6}", systemImage: "flame.fill")
+                        .font(MajorTomTheme.Typography.body)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color(red: 0.65, green: 0.25, blue: 0.15))
+            } else if agent.hasBlanket {
+                Label("Has Blanket \u{2713}", systemImage: "checkmark.circle.fill")
+                    .font(MajorTomTheme.Typography.body)
+                    .foregroundStyle(MajorTomTheme.Colors.allow)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, MajorTomTheme.Spacing.sm)
+                    .background(MajorTomTheme.Colors.allow.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.small))
+            }
         }
     }
 

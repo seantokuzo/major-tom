@@ -10,6 +10,12 @@ final class OfficeScene: SKScene {
     /// Callback when an agent sprite is tapped (wired to SwiftUI via OfficeView).
     var onAgentTapped: ((String) -> Void)?
 
+    /// Callback when a blanket is requested via tapping the cold indicator.
+    var onBlanketRequested: ((String) -> Void)?
+
+    /// Optional callback fired when a blanket is given (for future haptic/sound).
+    var onBlanketGiven: ((String) -> Void)?
+
     /// Tracks agent sprites by their agent ID.
     private var agentSprites: [String: AgentSprite] = [:]
 
@@ -213,7 +219,39 @@ final class OfficeScene: SKScene {
         }
     }
 
+    // MARK: - Blanket Mechanic
+
+    /// Show the cold/shiver state for an agent wanting a blanket.
+    func showColdState(id: String) {
+        guard let sprite = agentSprites[id] else { return }
+        sprite.showColdIndicator()
+        sprite.startShiverAnimation()
+    }
+
+    /// Give blanket to an agent — show overlay, play happy animation.
+    func giveBlanket(id: String) {
+        guard let sprite = agentSprites[id] else { return }
+        sprite.hideColdIndicator()
+        sprite.removeAction(forKey: "shiver")
+        sprite.showBlanket()
+        sprite.playBlanketHappyWiggle()
+        onBlanketGiven?(id)
+    }
+
+    /// Remove blanket visual from an agent (when leaving desk).
+    func removeBlanket(id: String) {
+        guard let sprite = agentSprites[id] else { return }
+        sprite.hideColdIndicator()
+        sprite.hideBlanket()
+        sprite.removeAction(forKey: "shiver")
+    }
+
     // MARK: - Touch Forwarding
+
+    /// Called by AgentSprite when the cold indicator is tapped.
+    func blanketRequested(agentId: String) {
+        onBlanketRequested?(agentId)
+    }
 
     /// Called by AgentSprite when tapped. Forwards to SwiftUI via callback.
     func agentTapped(agentId: String) {
