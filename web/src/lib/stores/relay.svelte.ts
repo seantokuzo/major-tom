@@ -85,7 +85,12 @@ function truncateToolMeta(meta: ToolMeta): ToolMeta {
     }
     return val;
   };
-  return { ...meta, input: truncate(meta.input) as Record<string, unknown> };
+  const result: ToolMeta = { ...meta, input: truncate(meta.input) as Record<string, unknown> };
+  // Also truncate output which can be a very large JSON string
+  if (typeof result.output === 'string' && result.output.length > 500) {
+    result.output = result.output.slice(0, 500) + '…[truncated]';
+  }
+  return result;
 }
 
 function serializeMessages(messages: ChatMessage[]): string {

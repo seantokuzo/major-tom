@@ -45,11 +45,14 @@
     const m = oldLines.length;
     const n = newLines.length;
 
-    // Too large for LCS — show as full replacement to avoid freezing the UI
+    // Too large for LCS — show as truncated replacement to avoid freezing the UI
     if (m > MAX_DIFF_LINES || n > MAX_DIFF_LINES) {
+      const maxFallback = collapseThreshold ?? MAX_DIFF_LINES;
+      const limitedOld = oldLines.slice(0, maxFallback);
+      const limitedNew = newLines.slice(0, maxFallback);
       return [
-        ...oldLines.map((line, i) => ({ type: 'remove' as const, content: line, oldLineNum: i + 1, newLineNum: null })),
-        ...newLines.map((line, i) => ({ type: 'add' as const, content: line, oldLineNum: null, newLineNum: i + 1 })),
+        ...limitedOld.map((line, i) => ({ type: 'remove' as const, content: line, oldLineNum: i + 1, newLineNum: null })),
+        ...limitedNew.map((line, i) => ({ type: 'add' as const, content: line, oldLineNum: null, newLineNum: i + 1 })),
       ];
     }
 
@@ -125,7 +128,13 @@
   }
 
   let diffLines = $derived(computeDiff(oldContent, newContent));
-  let isLargeDiff = $derived(diffLines.length > collapseThreshold);
+  let isLargeDiff = $derived.by(() => {
+    const threshold = collapseThreshold ?? 40;
+    if (viewMode === 'side-by-side') {
+      return sidePairs.length > threshold;
+    }
+    return diffLines.length > threshold;
+  });
   let isCollapsed = $derived(isLargeDiff && !expanded);
   let visibleLines = $derived(
     isCollapsed ? diffLines.slice(0, collapseThreshold) : diffLines
