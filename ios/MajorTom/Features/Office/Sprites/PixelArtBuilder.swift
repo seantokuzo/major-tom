@@ -10,29 +10,49 @@ enum PixelArtBuilder {
     /// The size of each "pixel" in the sprite art.
     static let pixelSize: CGFloat = 2
 
+    /// Template cache to avoid rebuilding pixel art for duplicate character types.
+    private static var templateCache: [CharacterType: SKNode] = [:]
+
     /// Build the pixel art node tree for a given character type.
-    /// Returns an SKNode container with all pixel children, centered at (0,0).
+    /// Returns an SKNode container with all pixel children, auto-centered at (0,0)
+    /// by shifting the container based on its accumulated frame.
     static func build(for type: CharacterType) -> SKNode {
+        if let cached = templateCache[type] {
+            return cached.copy() as! SKNode
+        }
+
+        let node: SKNode
         switch type {
         case .dev:
-            return buildDev()
+            node = buildDev()
         case .officeWorker:
-            return buildOfficeWorker()
+            node = buildOfficeWorker()
         case .pm:
-            return buildPM()
+            node = buildPM()
         case .clown:
-            return buildClown()
+            node = buildClown()
         case .frankenstein:
-            return buildFrankenstein()
+            node = buildFrankenstein()
         case .dachshund:
-            return buildDachshund()
+            node = buildDachshund()
         case .cattleDog:
-            return buildCattleDog()
+            node = buildCattleDog()
         case .schnauzerBlack:
-            return buildSchnauzer(isBlack: true)
+            node = buildSchnauzer(isBlack: true)
         case .schnauzerPepper:
-            return buildSchnauzer(isBlack: false)
+            node = buildSchnauzer(isBlack: false)
         }
+
+        // Auto-center: shift so the accumulated frame is centered at (0,0)
+        let frame = node.calculateAccumulatedFrame()
+        node.position = CGPoint(x: -frame.midX, y: -frame.midY)
+
+        // Wrap in a parent so the centering offset is baked in
+        let container = SKNode()
+        container.addChild(node)
+
+        templateCache[type] = container
+        return container.copy() as! SKNode
     }
 
     // MARK: - Pixel Helpers
@@ -163,12 +183,12 @@ enum PixelArtBuilder {
     private static let dogEye = SKColor(red: 0.20, green: 0.12, blue: 0.08, alpha: 1)
     private static let dogNose = SKColor(red: 0.10, green: 0.08, blue: 0.06, alpha: 1)
 
-    // MARK: - Human Builders (32x32 grid, centered at 0,0 -> coords from -8 to +7)
+    // MARK: - Human Builders (16x16 pixel grid at 2pt = 32x32 points, centered at 0,0 -> coords from -8 to +7)
 
     /// Developer: hoodie, headphones, laptop glow
     private static func buildDev() -> SKNode {
         let n = SKNode()
-        let ox = -8 // offset so grid maps -8..+7
+        let ox = -8 // offset so 16x16 pixel grid maps to -8..+7
         let oy = -8
 
         // Hair (top of head)
