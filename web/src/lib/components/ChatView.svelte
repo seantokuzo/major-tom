@@ -266,7 +266,7 @@
       </div>
     </div>
   {/if}
-  <FileTreeBrowser bind:open={fileTreeOpen} onclose={handleFileTreeClose} />
+  <FileTreeBrowser bind:open={fileTreeOpen} onClose={handleFileTreeClose} />
 </div>
 
 <style>

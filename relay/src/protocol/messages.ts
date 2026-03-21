@@ -200,6 +200,7 @@ export interface ContextRemoveResponseMessage {
   type: 'context.remove.response';
   path: string;
   success: boolean;
+  error?: string;
   totalContextSize: number;
 }
 

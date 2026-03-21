@@ -142,7 +142,8 @@ export class Session {
 
     const parts: string[] = ['<attached-files>'];
     for (const [filePath, content] of this.contextFiles) {
-      parts.push(`<file path="${filePath}">`);
+      const escapedPath = filePath.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      parts.push(`<file path="${escapedPath}">`);
       parts.push(content);
       parts.push('</file>');
     }

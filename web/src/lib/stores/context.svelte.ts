@@ -52,6 +52,8 @@ class ContextStore {
     if (response.success) {
       this.contextFiles = this.contextFiles.filter((f) => f.path !== response.path);
       this.totalContextSize = response.totalContextSize;
+    } else {
+      toasts.error(response.error ?? `Failed to remove ${response.path}`);
     }
   }
 

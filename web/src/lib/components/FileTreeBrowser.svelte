@@ -3,7 +3,7 @@
   import { contextStore } from '../stores/context.svelte';
   import type { FileNode } from '../protocol/messages';
 
-  let { open = $bindable(false), onclose }: { open: boolean; onclose: () => void } = $props();
+  let { open = $bindable(false), onClose }: { open: boolean; onClose: () => void } = $props();
 
   let expandedDirs = $state<Set<string>>(new Set());
   let selectedFiles = $state<Set<string>>(new Set());
@@ -48,7 +48,7 @@
 
   function close() {
     open = false;
-    onclose();
+    onClose();
   }
 
   function handleBackdropKeydown(e: KeyboardEvent) {

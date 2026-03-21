@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from './utils/logger.js';
@@ -20,7 +20,7 @@ import { createStaticHandler } from './static.js';
 import { PushManager } from './push/push-manager.js';
 import { NotificationBatcher } from './push/notification-batcher.js';
 import { scanWorkspaceTree } from './workspace/tree-scanner.js';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import type { ClientMessage, ServerMessage } from './protocol/messages.js';
 import type { PushSubscriptionData } from './push/push-manager.js';
 
@@ -465,6 +465,13 @@ async function handleClientMessage(message: ClientMessage, ws: AuthenticatedWebS
             return sessions.length > 0 ? sessionManager.tryGet(sessions[0]!.id) : undefined;
           })();
       const workDir = session?.workingDir ?? CLAUDE_WORK_DIR;
+      // Validate that the requested sub-path stays within workDir (path traversal guard)
+      const resolvedTreePath = message.path ? resolve(workDir, message.path) : workDir;
+      const relTreePath = relative(workDir, resolvedTreePath);
+      if (relTreePath.startsWith('..')) {
+        sendToClient(ws, { type: 'workspace.tree.response', files: [] });
+        break;
+      }
       const tree = await scanWorkspaceTree(workDir, message.path);
       sendToClient(ws, {
         type: 'workspace.tree.response',
@@ -493,9 +500,22 @@ async function handleClientMessage(message: ClientMessage, ws: AuthenticatedWebS
         break;
       }
 
-      // Guard against path traversal
+      // Only 'file' contextType is supported
+      if (message.contextType !== 'file') {
+        sendToClient(ws, {
+          type: 'context.add.response',
+          path: message.path,
+          success: false,
+          error: `Unsupported contextType: '${message.contextType}'. Only 'file' is supported.`,
+          totalContextSize: session.contextSize,
+        });
+        break;
+      }
+
+      // Guard against path traversal — use relative() so symlink tricks don't bypass startsWith
       const resolved = resolve(session.workingDir, message.path);
-      if (!resolved.startsWith(session.workingDir + '/') && resolved !== session.workingDir) {
+      const rel = relative(session.workingDir, resolved);
+      if (rel.startsWith('..') || rel.startsWith('/')) {
         sendToClient(ws, {
           type: 'context.add.response',
           path: message.path,
@@ -507,6 +527,19 @@ async function handleClientMessage(message: ClientMessage, ws: AuthenticatedWebS
       }
 
       try {
+        // Check file size via stat before reading to avoid loading huge files into memory
+        const MAX_FILE_BYTES = 50 * 1024; // 50 KB
+        const stat = statSync(resolved);
+        if (stat.size > MAX_FILE_BYTES) {
+          sendToClient(ws, {
+            type: 'context.add.response',
+            path: message.path,
+            success: false,
+            error: `File exceeds 50 KB limit (${(stat.size / 1024).toFixed(1)} KB)`,
+            totalContextSize: session.contextSize,
+          });
+          break;
+        }
         const content = readFileSync(resolved, 'utf-8');
         const result = session.addContextFile(message.path, content);
 
@@ -536,6 +569,7 @@ async function handleClientMessage(message: ClientMessage, ws: AuthenticatedWebS
           type: 'context.remove.response',
           path: message.path,
           success: false,
+          error: 'Session not found',
           totalContextSize: 0,
         });
         break;
