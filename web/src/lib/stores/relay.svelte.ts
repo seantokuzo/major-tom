@@ -8,6 +8,7 @@ import type {
   SessionResultMessage,
   ServerMessage,
 } from '../protocol/messages';
+import { promptHistory } from './prompt-history.svelte';
 
 // ── Chat message model ──────────────────────────────────────
 
@@ -390,6 +391,9 @@ class RelayStore {
     });
     if (!overrideText) this.inputText = '';
     this.inputPrefix = '';
+
+    // Record in prompt history (use original text, not prefixed)
+    promptHistory.add(text);
 
     this.isWaitingForResponse = true;
     this.activeToolName = null;
