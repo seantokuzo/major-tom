@@ -1,13 +1,25 @@
 <script lang="ts">
   import { relay } from '../stores/relay.svelte';
+  import { templates } from '../stores/templates.svelte';
 
   interface Command {
+    key: string;
     name: string;
     description: string;
     action: () => void;
   }
 
-  let { open = $bindable(false), onClose }: { open: boolean; onClose: () => void } = $props();
+  let {
+    open = $bindable(false),
+    onClose,
+    onOpenTemplates,
+    onOpenSaveTemplate,
+  }: {
+    open: boolean;
+    onClose: () => void;
+    onOpenTemplates?: () => void;
+    onOpenSaveTemplate?: () => void;
+  } = $props();
 
   let searchText = $state('');
   let selectedIndex = $state(0);
@@ -15,6 +27,7 @@
 
   const commands: Command[] = [
     {
+      key: '/new',
       name: '/new',
       description: 'Start a fresh session',
       action: () => {
@@ -23,6 +36,7 @@
       },
     },
     {
+      key: '/clear',
       name: '/clear',
       description: 'Clear chat display (keep session)',
       action: () => {
@@ -31,6 +45,7 @@
       },
     },
     {
+      key: '/plan',
       name: '/plan',
       description: 'Enter plan mode',
       action: () => {
@@ -39,6 +54,7 @@
       },
     },
     {
+      key: '/compact',
       name: '/compact',
       description: 'Compact context window',
       action: () => {
@@ -47,6 +63,7 @@
       },
     },
     {
+      key: '/model sonnet',
       name: '/model sonnet',
       description: 'Switch to Sonnet',
       action: () => {
@@ -55,6 +72,7 @@
       },
     },
     {
+      key: '/model opus',
       name: '/model opus',
       description: 'Switch to Opus',
       action: () => {
@@ -63,6 +81,7 @@
       },
     },
     {
+      key: '/model haiku',
       name: '/model haiku',
       description: 'Switch to Haiku',
       action: () => {
@@ -71,12 +90,31 @@
       },
     },
     {
+      key: '/btw',
       name: '/btw',
       description: 'Quick side-question (won\'t derail Claude)',
       action: () => {
         relay.trackCommandUsage('/btw');
         relay.inputPrefix = "Quick question, don't lose track of what you're working on: ";
         // Close palette and let user type their question
+      },
+    },
+    {
+      key: '/save',
+      name: '/save',
+      description: 'Save current input as a template',
+      action: () => {
+        relay.trackCommandUsage('/save');
+        onOpenSaveTemplate?.();
+      },
+    },
+    {
+      key: '/templates',
+      name: '/templates',
+      description: 'Browse saved prompt templates',
+      action: () => {
+        relay.trackCommandUsage('/templates');
+        onOpenTemplates?.();
       },
     },
   ];
@@ -95,12 +133,32 @@
     }
 
     // Sort by usage count (descending), then alphabetically
-    return [...filtered].sort((a, b) => {
+    const sorted = [...filtered].sort((a, b) => {
       const aCount = usage[a.name] || 0;
       const bCount = usage[b.name] || 0;
       if (bCount !== aCount) return bCount - aCount;
       return a.name.localeCompare(b.name);
     });
+
+    // Append matching templates when user has typed a query
+    if (query) {
+      const matchingTemplates = templates.search(query).slice(0, 5);
+      for (const tpl of matchingTemplates) {
+        sorted.push({
+          key: `tpl-${tpl.id}`,
+          name: `# ${tpl.name}`,
+          description: tpl.content.length > 50 ? tpl.content.slice(0, 50) + '...' : tpl.content,
+          action: () => {
+            const used = templates.use(tpl.id);
+            if (used) {
+              relay.inputText = used.content;
+            }
+          },
+        });
+      }
+    }
+
+    return sorted;
   });
 
   function selectCommand(cmd: Command) {
@@ -179,7 +237,7 @@
         />
       </div>
       <div class="palette-list">
-        {#each filteredCommands as cmd, i (cmd.name)}
+        {#each filteredCommands as cmd, i (cmd.key)}
           <button
             class="palette-item"
             class:selected={i === selectedIndex}

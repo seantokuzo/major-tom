@@ -6,11 +6,16 @@
   import StreamingIndicator from './StreamingIndicator.svelte';
   import ToolFeed from './ToolFeed.svelte';
   import VoiceMicButton from './VoiceMicButton.svelte';
+  import TemplateDrawer from './TemplateDrawer.svelte';
+  import TemplateSaveDialog from './TemplateSaveDialog.svelte';
   import type { ApprovalDecision } from '../protocol/messages';
 
   let messagesEnd: HTMLDivElement | undefined;
   let inputEl: HTMLTextAreaElement | undefined;
   let paletteOpen = $state(false);
+  let templateDrawerOpen = $state(false);
+  let templateSaveOpen = $state(false);
+  let saveDialogContent = $state('');
 
   function scrollToBottom() {
     messagesEnd?.scrollIntoView({ behavior: 'smooth' });
@@ -38,6 +43,29 @@
 
   function handlePaletteClose() {
     paletteOpen = false;
+    if (!templateDrawerOpen && !templateSaveOpen) {
+      queueMicrotask(() => inputEl?.focus());
+    }
+  }
+
+  function handleOpenTemplates() {
+    paletteOpen = false;
+    templateDrawerOpen = true;
+  }
+
+  function handleOpenSaveTemplate() {
+    paletteOpen = false;
+    saveDialogContent = relay.inputText;
+    templateSaveOpen = true;
+  }
+
+  function handleTemplateDrawerClose() {
+    templateDrawerOpen = false;
+    queueMicrotask(() => inputEl?.focus());
+  }
+
+  function handleTemplateSaveClose() {
+    templateSaveOpen = false;
     queueMicrotask(() => inputEl?.focus());
   }
 
@@ -111,6 +139,15 @@
     ></textarea>
     <VoiceMicButton relay={relay} disabled={inputDisabled} />
     <button
+      class="template-btn"
+      type="button"
+      aria-label="Templates"
+      onclick={() => templateDrawerOpen = true}
+      disabled={inputDisabled}
+    >
+      &#9733;
+    </button>
+    <button
       class="send-btn"
       type="submit"
       aria-label="Send message"
@@ -120,7 +157,14 @@
     </button>
   </form>
 
-  <CommandPalette bind:open={paletteOpen} onClose={handlePaletteClose} />
+  <CommandPalette
+    bind:open={paletteOpen}
+    onClose={handlePaletteClose}
+    onOpenTemplates={handleOpenTemplates}
+    onOpenSaveTemplate={handleOpenSaveTemplate}
+  />
+  <TemplateDrawer bind:open={templateDrawerOpen} onClose={handleTemplateDrawerClose} />
+  <TemplateSaveDialog bind:open={templateSaveOpen} onClose={handleTemplateSaveClose} initialContent={saveDialogContent} />
 </div>
 
 <style>
@@ -192,6 +236,27 @@
   }
   .input-field:disabled {
     opacity: 0.4;
+  }
+
+  .template-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .template-btn:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .template-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 
   .send-btn {
