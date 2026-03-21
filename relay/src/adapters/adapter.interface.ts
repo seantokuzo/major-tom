@@ -48,6 +48,7 @@ export interface IAdapter {
   start(workingDir: string): Promise<Session>;
   attach(sessionId: string): Promise<Session>;
   sendPrompt(sessionId: string, text: string, context?: string[]): Promise<void>;
+  sendAgentMessage(sessionId: string, agentId: string, text: string): Promise<void>;
   cancelOperation(sessionId: string): Promise<void>;
 
   on(event: 'output', handler: (sessionId: string, chunk: string) => void): void;

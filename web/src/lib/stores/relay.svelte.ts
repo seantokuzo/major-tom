@@ -377,6 +377,28 @@ class RelayStore {
     this.pendingApprovals = this.pendingApprovals.filter((a) => a.id !== requestId);
   }
 
+  sendAgentMessage(agentId: string, text: string): void {
+    const trimmed = text.trim();
+    if (!trimmed || !this.sessionId) return;
+
+    this.messages.push({
+      id: uid(),
+      role: 'user',
+      content: `[To agent ${agentId}]: ${trimmed}`,
+      timestamp: new Date(),
+    });
+
+    this.isWaitingForResponse = true;
+    this.activeToolName = null;
+
+    this.socket.send({
+      type: 'agent.message',
+      sessionId: this.sessionId,
+      agentId,
+      text: trimmed,
+    });
+  }
+
   cancelOperation(): void {
     if (!this.sessionId) return;
     this.socket.send({ type: 'cancel', sessionId: this.sessionId });

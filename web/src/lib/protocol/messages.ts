@@ -36,6 +36,7 @@ export interface SessionAttachMessage {
 
 export interface AgentChatMessage {
   type: 'agent.message';
+  sessionId: string;
   agentId: string;
   text: string;
 }

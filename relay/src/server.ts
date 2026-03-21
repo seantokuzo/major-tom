@@ -7,6 +7,7 @@ import { SessionManager } from './sessions/session-manager.js';
 import { ClaudeCliAdapter } from './adapters/claude-cli.adapter.js';
 import { ApprovalQueue } from './hooks/approval-queue.js';
 import { eventBus } from './events/event-bus.js';
+import { agentTracker } from './events/agent-tracker.js';
 import { encodeServerMessage, safeDecode } from './protocol/codec.js';
 import { createStaticHandler } from './static.js';
 import { PushManager } from './push/push-manager.js';
@@ -288,7 +289,7 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
     }
 
     case 'agent.message': {
-      logger.info({ agentId: message.agentId }, 'Agent message forwarding not yet implemented');
+      await cliAdapter.sendAgentMessage(message.sessionId, message.agentId, message.text);
       break;
     }
 
@@ -379,6 +380,7 @@ cliAdapter.on('session-result', (result) => {
 cliAdapter.on('agent-lifecycle', (event) => {
   switch (event.event) {
     case 'spawn':
+      agentTracker.spawn(event.agentId, event.role ?? 'subagent', event.task ?? '', event.parentId);
       broadcast({
         type: 'agent.spawn',
         agentId: event.agentId,
@@ -388,6 +390,7 @@ cliAdapter.on('agent-lifecycle', (event) => {
       });
       break;
     case 'working':
+      agentTracker.working(event.agentId, event.task ?? '');
       broadcast({
         type: 'agent.working',
         agentId: event.agentId,
@@ -395,9 +398,11 @@ cliAdapter.on('agent-lifecycle', (event) => {
       });
       break;
     case 'idle':
+      agentTracker.idle(event.agentId);
       broadcast({ type: 'agent.idle', agentId: event.agentId });
       break;
     case 'complete':
+      agentTracker.complete(event.agentId, event.result ?? '');
       broadcast({
         type: 'agent.complete',
         agentId: event.agentId,
@@ -405,6 +410,7 @@ cliAdapter.on('agent-lifecycle', (event) => {
       });
       break;
     case 'dismissed':
+      agentTracker.dismiss(event.agentId);
       broadcast({ type: 'agent.dismissed', agentId: event.agentId });
       break;
   }

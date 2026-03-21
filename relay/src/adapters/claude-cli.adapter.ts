@@ -17,6 +17,7 @@ import type {
   AgentEvent,
   SessionResult,
 } from './adapter.interface.js';
+import { agentTracker } from '../events/agent-tracker.js';
 import { logger } from '../utils/logger.js';
 
 // ── Claude Code SDK Adapter ─────────────────────────────────
@@ -96,6 +97,22 @@ export class ClaudeCliAdapter implements IAdapter {
 
     await entry.sdkSession.send(text);
     logger.info({ sessionId, textLength: text.length }, 'Prompt sent via SDK');
+  }
+
+  async sendAgentMessage(sessionId: string, agentId: string, text: string): Promise<void> {
+    const entry = this.sessions.get(sessionId);
+    if (!entry) {
+      throw new Error(`No SDK session for ${sessionId}`);
+    }
+
+    // Look up agent context for a more descriptive prefix
+    const agent = agentTracker.get(agentId);
+    const wrappedText = agent
+      ? `[Regarding agent "${agent.role}" (task: "${agent.task}")]: ${text}`
+      : `[Regarding agent ${agentId}]: ${text}`;
+
+    await entry.sdkSession.send(wrappedText);
+    logger.info({ sessionId, agentId, textLength: text.length }, 'Agent message sent via SDK');
   }
 
   async cancelOperation(sessionId: string): Promise<void> {
