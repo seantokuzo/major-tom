@@ -377,7 +377,7 @@ function triggerPersistence(sessionId: string): void {
 
 // ── Message routing ─────────────────────────────────────────
 
-async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promise<void> {
+async function handleClientMessage(message: ClientMessage, ws: AuthenticatedWebSocket): Promise<void> {
   switch (message.type) {
     case 'session.start': {
       const workDir = message.workingDir ?? CLAUDE_WORK_DIR;
