@@ -441,6 +441,7 @@ class RelayStore {
   }
 
   requestSessionList(): void {
+    if (!this.isConnected) return;
     sessionsStore.markLoading();
     this.socket.send({ type: 'session.list' });
   }

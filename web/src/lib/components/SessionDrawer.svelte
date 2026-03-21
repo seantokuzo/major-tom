@@ -36,7 +36,7 @@
   }
 
   function dirName(path: string): string {
-    const parts = path.split('/');
+    const parts = path.split(/[\\/]/);
     return parts[parts.length - 1] || path;
   }
 
@@ -52,8 +52,7 @@
 </script>
 
 {#if open}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="drawer-backdrop" onclick={close} role="presentation">
+  <div class="drawer-backdrop" onclick={close} onkeydown={(e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') close(); }} role="presentation">
     <div class="drawer" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Sessions" aria-modal="true">
       <div class="drawer-header">
         <span class="drawer-title">Sessions</span>

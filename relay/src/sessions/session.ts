@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { basename } from 'node:path';
 
 export type AdapterType = 'cli' | 'vscode';
 export type SessionStatus = 'active' | 'idle' | 'closed';
@@ -80,7 +81,7 @@ export class Session {
     return {
       id: this.id,
       adapter: this.adapter,
-      workingDir: this.workingDir,
+      workingDir: basename(this.workingDir),
       status: this.status,
       startedAt: this.startedAt,
       totalCost: this.totalCost,
