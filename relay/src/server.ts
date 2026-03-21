@@ -887,20 +887,34 @@ if (process.argv.includes('pair')) {
   });
 } else {
   // Restore persisted session metadata on startup, then listen
+  function onServerReady() {
+    logger.info(
+      { wsPort: WS_PORT, staticServing: serveStatic !== null },
+      'Major Tom relay server started',
+    );
+
+    // Auto-generate a pairing PIN on startup if no devices are registered
+    if (deviceManager.list().length === 0) {
+      const { pin, expiresAt } = pinManager.generatePin();
+      const expiryMin = Math.ceil((expiresAt.getTime() - Date.now()) / 60_000);
+      console.log('');
+      console.log('  ┌─────────────────────────────────┐');
+      console.log('  │     No paired devices found      │');
+      console.log('  ├─────────────────────────────────┤');
+      console.log('  │                                 │');
+      console.log(`  │         PIN:  ${pin}            │`);
+      console.log('  │                                 │');
+      console.log(`  │   Expires in ${expiryMin} min               │`);
+      console.log('  └─────────────────────────────────┘');
+      console.log('  Enter this PIN in your Major Tom app to pair.');
+      console.log('');
+    }
+  }
+
   sessionManager.restoreFromDisk().then(() => {
-    httpServer.listen(WS_PORT, () => {
-      logger.info(
-        { wsPort: WS_PORT, staticServing: serveStatic !== null },
-        'Major Tom relay server started',
-      );
-    });
+    httpServer.listen(WS_PORT, onServerReady);
   }).catch((err: unknown) => {
     logger.error({ err }, 'Failed to restore sessions from disk, starting anyway');
-    httpServer.listen(WS_PORT, () => {
-      logger.info(
-        { wsPort: WS_PORT, staticServing: serveStatic !== null },
-        'Major Tom relay server started',
-      );
-    });
+    httpServer.listen(WS_PORT, onServerReady);
   });
 }
