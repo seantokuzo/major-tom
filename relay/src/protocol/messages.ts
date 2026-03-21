@@ -40,6 +40,7 @@ export interface SessionAttachMessage {
 
 export interface AgentMessageMessage {
   type: 'agent.message';
+  sessionId: string;
   agentId: string;
   text: string;
 }

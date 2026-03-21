@@ -288,7 +288,7 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
     }
 
     case 'agent.message': {
-      logger.info({ agentId: message.agentId }, 'Agent message forwarding not yet implemented');
+      await cliAdapter.sendAgentMessage(message.sessionId, message.agentId, message.text);
       break;
     }
 
