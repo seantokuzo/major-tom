@@ -61,15 +61,21 @@ class TemplateStore {
                 typeof (entry as Record<string, unknown>).name === 'string' &&
                 typeof (entry as Record<string, unknown>).content === 'string'
             )
-            .map((entry) => ({
-              id: typeof entry.id === 'string' ? entry.id : uid(),
-              name: entry.name as string,
-              content: entry.content as string,
-              category: typeof entry.category === 'string' ? entry.category : undefined,
-              usageCount: typeof entry.usageCount === 'number' ? entry.usageCount : 0,
-              createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : now,
-              updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt : now,
-            }))
+            .map((entry) => {
+              const id = typeof entry.id === 'string' && entry.id ? entry.id : uid();
+              const cat = typeof entry.category === 'string' ? entry.category.trim() : '';
+              const rawCount = typeof entry.usageCount === 'number' ? entry.usageCount : 0;
+              const usageCount = Number.isFinite(rawCount) && rawCount >= 0 ? rawCount : 0;
+              return {
+                id,
+                name: entry.name as string,
+                content: entry.content as string,
+                category: cat || undefined,
+                usageCount,
+                createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : now,
+                updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt : now,
+              };
+            })
             .slice(0, MAX_TEMPLATES);
         }
       }

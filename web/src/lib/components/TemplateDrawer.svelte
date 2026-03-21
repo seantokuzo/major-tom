@@ -5,10 +5,10 @@
 
   let {
     open = $bindable(false),
-    onclose,
+    onClose,
   }: {
     open: boolean;
-    onclose: () => void;
+    onClose: () => void;
   } = $props();
 
   let searchQuery = $state('');
@@ -50,7 +50,7 @@
 
   function close() {
     open = false;
-    onclose();
+    onClose();
   }
 
   function handleKeydown(e: KeyboardEvent) {

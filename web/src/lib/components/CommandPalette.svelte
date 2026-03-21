@@ -3,6 +3,7 @@
   import { templates } from '../stores/templates.svelte';
 
   interface Command {
+    key: string;
     name: string;
     description: string;
     action: () => void;
@@ -26,6 +27,7 @@
 
   const commands: Command[] = [
     {
+      key: '/new',
       name: '/new',
       description: 'Start a fresh session',
       action: () => {
@@ -34,6 +36,7 @@
       },
     },
     {
+      key: '/clear',
       name: '/clear',
       description: 'Clear chat display (keep session)',
       action: () => {
@@ -42,6 +45,7 @@
       },
     },
     {
+      key: '/plan',
       name: '/plan',
       description: 'Enter plan mode',
       action: () => {
@@ -50,6 +54,7 @@
       },
     },
     {
+      key: '/compact',
       name: '/compact',
       description: 'Compact context window',
       action: () => {
@@ -58,6 +63,7 @@
       },
     },
     {
+      key: '/model sonnet',
       name: '/model sonnet',
       description: 'Switch to Sonnet',
       action: () => {
@@ -66,6 +72,7 @@
       },
     },
     {
+      key: '/model opus',
       name: '/model opus',
       description: 'Switch to Opus',
       action: () => {
@@ -74,6 +81,7 @@
       },
     },
     {
+      key: '/model haiku',
       name: '/model haiku',
       description: 'Switch to Haiku',
       action: () => {
@@ -82,6 +90,7 @@
       },
     },
     {
+      key: '/btw',
       name: '/btw',
       description: 'Quick side-question (won\'t derail Claude)',
       action: () => {
@@ -91,6 +100,7 @@
       },
     },
     {
+      key: '/save',
       name: '/save',
       description: 'Save current input as a template',
       action: () => {
@@ -99,6 +109,7 @@
       },
     },
     {
+      key: '/templates',
       name: '/templates',
       description: 'Browse saved prompt templates',
       action: () => {
@@ -134,6 +145,7 @@
       const matchingTemplates = templates.search(query).slice(0, 5);
       for (const tpl of matchingTemplates) {
         sorted.push({
+          key: `tpl-${tpl.id}`,
           name: `# ${tpl.name}`,
           description: tpl.content.length > 50 ? tpl.content.slice(0, 50) + '...' : tpl.content,
           action: () => {
@@ -225,7 +237,7 @@
         />
       </div>
       <div class="palette-list">
-        {#each filteredCommands as cmd, i (cmd.name)}
+        {#each filteredCommands as cmd, i (cmd.key)}
           <button
             class="palette-item"
             class:selected={i === selectedIndex}

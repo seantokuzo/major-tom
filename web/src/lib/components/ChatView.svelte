@@ -163,8 +163,8 @@
     onOpenTemplates={handleOpenTemplates}
     onOpenSaveTemplate={handleOpenSaveTemplate}
   />
-  <TemplateDrawer bind:open={templateDrawerOpen} onclose={handleTemplateDrawerClose} />
-  <TemplateSaveDialog bind:open={templateSaveOpen} onclose={handleTemplateSaveClose} initialContent={saveDialogContent} />
+  <TemplateDrawer bind:open={templateDrawerOpen} onClose={handleTemplateDrawerClose} />
+  <TemplateSaveDialog bind:open={templateSaveOpen} onClose={handleTemplateSaveClose} initialContent={saveDialogContent} />
 </div>
 
 <style>

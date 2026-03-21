@@ -4,11 +4,11 @@
 
   let {
     open = $bindable(false),
-    onclose,
+    onClose,
     initialContent = '',
   }: {
     open: boolean;
-    onclose: () => void;
+    onClose: () => void;
     initialContent: string;
   } = $props();
 
@@ -56,7 +56,7 @@
 
   function close() {
     open = false;
-    onclose();
+    onClose();
   }
 
   function handleKeydown(e: KeyboardEvent) {
