@@ -26,6 +26,7 @@ export interface SessionMeta {
   totalDuration: number;
 }
 
+
 export class Session {
   readonly id: string;
   readonly adapter: AdapterType;
@@ -91,6 +92,7 @@ export class Session {
       totalDuration: this.totalDuration,
     };
   }
+
 
   close(): void {
     this.status = 'closed';

@@ -450,6 +450,7 @@ class RelayStore {
     this.socket.send({ type: 'session.attach', sessionId });
   }
 
+
   // ── Command usage tracking ────────────────────────────────
 
   getCommandUsage(): Record<string, number> {

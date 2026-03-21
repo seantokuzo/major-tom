@@ -208,6 +208,7 @@ export interface SessionListResponseMessage {
   sessions: SessionMetaMessage[];
 }
 
+
 export type ServerMessage =
   | OutputMessage
   | ApprovalRequestMessage
