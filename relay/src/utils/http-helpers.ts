@@ -35,6 +35,9 @@ export function sendJson(
   };
   if (corsOrigin) {
     headers['Access-Control-Allow-Origin'] = corsOrigin;
+    if (corsOrigin !== '*') {
+      headers['Vary'] = 'Origin';
+    }
   }
   res.writeHead(status, headers);
   res.end(JSON.stringify(body));

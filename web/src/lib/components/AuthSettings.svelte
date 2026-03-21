@@ -26,6 +26,8 @@
       class="token-input"
       type={showToken ? 'text' : 'password'}
       placeholder="Auth token"
+      aria-label="Authentication token"
+      autocomplete="off"
       bind:value={tokenInput}
       onkeydown={handleKeydown}
     />

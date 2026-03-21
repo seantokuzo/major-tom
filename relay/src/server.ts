@@ -96,8 +96,7 @@ const httpServer = createServer(async (req, res) => {
         }
         return;
       }
-      const parsed = JSON.parse(body) as { subscription?: PushSubscriptionData };
-      const sub = parsed.subscription;
+      const sub = JSON.parse(body) as PushSubscriptionData;
       if (!sub?.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) {
         sendJson(res, 400, { error: 'Invalid subscription: requires endpoint, keys.p256dh, keys.auth' }, corsOrigin ?? undefined);
         return;
@@ -168,7 +167,7 @@ const httpServer = createServer(async (req, res) => {
 const wss = new WebSocketServer({ noServer: true });
 
 httpServer.on('upgrade', (req, socket, head) => {
-  const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+  const url = new URL(req.url ?? '/', 'http://localhost');
   const token = url.searchParams.get('token');
   if (token !== AUTH_TOKEN) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');

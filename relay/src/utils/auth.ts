@@ -1,7 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { logger } from './logger.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Read AUTH_TOKEN from process.env. If not set, generate a 32-char hex token,
@@ -18,7 +21,7 @@ export function getAuthToken(): string {
 
   // Append to .env file in the relay directory
   try {
-    const envPath = join(import.meta.dirname, '..', '..', '.env');
+    const envPath = join(__dirname, '..', '..', '.env');
     appendFileSync(envPath, `\nAUTH_TOKEN=${token}\n`);
     logger.info('Auto-generated auth token appended to .env file');
   } catch {

@@ -262,7 +262,10 @@ class RelayStore {
 
       const storedToken = localStorage.getItem(STORAGE_KEYS.authToken);
       if (storedToken) {
-        this.authToken = storedToken;
+        const trimmedToken = storedToken.trim();
+        if (trimmedToken) {
+          this.authToken = trimmedToken;
+        }
       }
     } catch {
       // localStorage unavailable (privacy mode, quota exceeded) — start fresh

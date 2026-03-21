@@ -125,6 +125,10 @@ export function createHookServer(approvalQueue: ApprovalQueue, port: number) {
       // 404
       sendJson(res, 404, { error: 'Not found' });
     } catch (err) {
+      if ((err as { code?: string }).code === 'BODY_TOO_LARGE') {
+        sendJson(res, 413, { error: 'Request body too large' });
+        return;
+      }
       logger.error({ err, url, method }, 'Hook server error');
       sendJson(res, 500, { error: 'Internal server error' });
     }
