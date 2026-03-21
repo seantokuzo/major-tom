@@ -58,6 +58,10 @@ export interface SettingsApprovalMessage {
   delaySeconds?: number;
 }
 
+export interface SessionListMessage {
+  type: 'session.list';
+}
+
 export type ClientMessage =
   | PromptMessage
   | ApprovalMessage
@@ -67,7 +71,8 @@ export type ClientMessage =
   | AgentChatMessage
   | WorkspaceTreeMessage
   | ContextAddMessage
-  | SettingsApprovalMessage;
+  | SettingsApprovalMessage
+  | SessionListMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -181,6 +186,24 @@ export interface ErrorMessage {
   message: string;
 }
 
+export interface SessionMeta {
+  id: string;
+  adapter: string;
+  workingDir: string;
+  status: string;
+  startedAt: string;
+  totalCost: number;
+  inputTokens: number;
+  outputTokens: number;
+  turnCount: number;
+  totalDuration: number;
+}
+
+export interface SessionListResponseMessage {
+  type: 'session.list.response';
+  sessions: SessionMeta[];
+}
+
 export type ServerMessage =
   | OutputMessage
   | ApprovalRequestMessage
@@ -196,4 +219,5 @@ export type ServerMessage =
   | SessionResultMessage
   | WorkspaceTreeResponseMessage
   | NotificationMessage
-  | ErrorMessage;
+  | ErrorMessage
+  | SessionListResponseMessage;

@@ -318,6 +318,12 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
       approvalQueue.setMode(message.mode, message.delaySeconds);
       break;
     }
+
+    case 'session.list': {
+      const sessions = sessionManager.listMeta();
+      sendToClient(ws, { type: 'session.list.response', sessions });
+      break;
+    }
   }
 }
 
@@ -374,6 +380,18 @@ cliAdapter.on('tool-complete', (result) => {
 });
 
 cliAdapter.on('session-result', (result) => {
+  // Accumulate stats on the session object
+  const session = sessionManager.tryGet(result.sessionId);
+  if (session) {
+    session.addResult({
+      costUsd: result.costUsd,
+      numTurns: result.numTurns,
+      durationMs: result.durationMs,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+    });
+  }
+
   broadcast({
     type: 'session.result',
     sessionId: result.sessionId,

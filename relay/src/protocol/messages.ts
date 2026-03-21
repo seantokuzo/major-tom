@@ -62,6 +62,10 @@ export interface SettingsApprovalMessage {
   delaySeconds?: number;
 }
 
+export interface SessionListMessage {
+  type: 'session.list';
+}
+
 export type ClientMessage =
   | PromptMessage
   | ApprovalMessage
@@ -71,7 +75,8 @@ export type ClientMessage =
   | AgentMessageMessage
   | WorkspaceTreeMessage
   | ContextAddMessage
-  | SettingsApprovalMessage;
+  | SettingsApprovalMessage
+  | SessionListMessage;
 
 // ── Server → Client (Relay → iOS) ──────────────────────────
 
@@ -185,6 +190,24 @@ export interface ErrorMessage {
   message: string;
 }
 
+export interface SessionMetaMessage {
+  id: string;
+  adapter: string;
+  workingDir: string;
+  status: string;
+  startedAt: string;
+  totalCost: number;
+  inputTokens: number;
+  outputTokens: number;
+  turnCount: number;
+  totalDuration: number;
+}
+
+export interface SessionListResponseMessage {
+  type: 'session.list.response';
+  sessions: SessionMetaMessage[];
+}
+
 export type ServerMessage =
   | OutputMessage
   | ApprovalRequestMessage
@@ -200,7 +223,8 @@ export type ServerMessage =
   | WorkspaceTreeResponseMessage
   | SessionResultMessage
   | NotificationMessage
-  | ErrorMessage;
+  | ErrorMessage
+  | SessionListResponseMessage;
 
 // ── Utilities ───────────────────────────────────────────────
 
