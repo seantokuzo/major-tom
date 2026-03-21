@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from './utils/logger.js';
 import { readBody, sendJson, getCorsOrigin, requireAuth } from './utils/http-helpers.js';
-import { getAuthToken, getAllowedOrigins } from './utils/auth.js';
+import { getAuthToken, getAllowedOrigins, validateAuthToken, deviceManager } from './utils/auth.js';
+import { pinManager } from './auth/pin-manager.js';
+import { runPairMode } from './cli/pair.js';
 import { SessionManager } from './sessions/session-manager.js';
 import { ClaudeCliAdapter } from './adapters/claude-cli.adapter.js';
 import { ApprovalQueue } from './hooks/approval-queue.js';
@@ -47,8 +49,8 @@ const httpServer = createServer(async (req, res) => {
 
   const corsOrigin = getCorsOrigin(req, ALLOWED_ORIGINS);
 
-  // CORS preflight for push endpoints
-  if (req.method === 'OPTIONS' && url.startsWith('/push/')) {
+  // CORS preflight for push and pair endpoints
+  if (req.method === 'OPTIONS' && (url.startsWith('/push/') || url === '/pair')) {
     const headers: Record<string, string> = {
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -71,6 +73,93 @@ const httpServer = createServer(async (req, res) => {
       sessions: sessionManager.list(),
       pendingApprovals: approvalQueue.size,
     }, corsOrigin ?? undefined);
+    return;
+  }
+
+  // ── PIN pairing endpoint ─────────────────────────────────
+
+  if (req.method === 'POST' && url === '/pair') {
+    const clientIp = req.socket.remoteAddress ?? 'unknown';
+
+    // Check rate limit
+    const rateCheck = pinManager.checkRateLimit(clientIp);
+    if (!rateCheck.allowed) {
+      sendJson(res, 429, {
+        error: 'Too many attempts',
+        retryAfter: rateCheck.retryAfter,
+      }, corsOrigin ?? undefined);
+      return;
+    }
+
+    try {
+      let body: string;
+      try {
+        body = await readBody(req);
+      } catch (err) {
+        if ((err as { code?: string }).code === 'BODY_TOO_LARGE') {
+          sendJson(res, 413, { error: 'Request body too large' }, corsOrigin ?? undefined);
+        } else {
+          sendJson(res, 400, { error: 'Bad request' }, corsOrigin ?? undefined);
+        }
+        return;
+      }
+
+      const parsed = JSON.parse(body) as { pin?: unknown; deviceName?: unknown };
+      if (!parsed.pin || !parsed.deviceName) {
+        sendJson(res, 400, { error: 'Missing pin or deviceName' }, corsOrigin ?? undefined);
+        return;
+      }
+      if (typeof parsed.pin !== 'string' || typeof parsed.deviceName !== 'string') {
+        sendJson(res, 400, { error: 'pin and deviceName must be strings' }, corsOrigin ?? undefined);
+        return;
+      }
+
+      // Sanitize device name: trim, strip control chars, enforce max length
+      let deviceName = parsed.deviceName
+        .trim()
+        .replace(/[\x00-\x1f\x7f]/g, '')
+        .slice(0, 100);
+      if (!deviceName) {
+        deviceName = 'Unknown Device';
+      }
+
+      // Record attempt for rate limiting (counts ALL attempts, not just failures)
+      pinManager.recordFailedAttempt(clientIp);
+
+      // Validate PIN first (don't consume yet)
+      if (!pinManager.validatePin(parsed.pin)) {
+        sendJson(res, 401, { error: 'Invalid or expired PIN' }, corsOrigin ?? undefined);
+        return;
+      }
+
+      // Register device (might fail on persistence)
+      let device;
+      try {
+        device = deviceManager.register(deviceName);
+      } catch (err) {
+        logger.error({ err }, 'Failed to register device');
+        sendJson(res, 500, { error: 'Device registration failed' }, corsOrigin ?? undefined);
+        return;
+      }
+
+      // Consume PIN after successful registration (TOCTOU guard)
+      if (!pinManager.consumePin(parsed.pin, deviceName)) {
+        // PIN was expired or claimed between validate and consume — rollback device
+        deviceManager.revoke(device.id);
+        sendJson(res, 409, { error: 'PIN expired or already claimed' }, corsOrigin ?? undefined);
+        return;
+      }
+
+      logger.info({ deviceId: device.id, name: deviceName }, 'Device paired via PIN');
+
+      sendJson(res, 200, {
+        token: device.token,
+        deviceId: device.id,
+      }, corsOrigin ?? undefined);
+    } catch (err: unknown) {
+      logger.error({ err }, 'Failed to process pair request');
+      sendJson(res, 400, { error: 'Invalid JSON body' }, corsOrigin ?? undefined);
+    }
     return;
   }
 
@@ -180,7 +269,7 @@ httpServer.on('upgrade', (req, socket, head) => {
     socket.destroy();
     return;
   }
-  if (token !== AUTH_TOKEN) {
+  if (!token || !validateAuthToken(token, AUTH_TOKEN)) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
     return;
@@ -463,6 +552,9 @@ async function shutdown(signal: string): Promise<void> {
     client.close(1001, 'Server shutting down');
   });
 
+  // Flush pending device registry writes
+  deviceManager.flush();
+
   // Dispose adapters
   await cliAdapter.dispose();
 
@@ -485,9 +577,23 @@ process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 
 // ── Start ───────────────────────────────────────────────────
 
-httpServer.listen(WS_PORT, () => {
-  logger.info(
-    { wsPort: WS_PORT, staticServing: serveStatic !== null },
-    'Major Tom relay server started',
-  );
-});
+// CLI pair mode: `node dist/server.js pair`
+// Start HTTP server first (needed for POST /pair endpoint), then run pair flow
+if (process.argv.includes('pair')) {
+  httpServer.listen(WS_PORT, () => {
+    logger.info({ wsPort: WS_PORT }, 'Major Tom relay server started (pair mode)');
+    runPairMode()
+      .then(() => shutdown('pair-complete'))
+      .catch((err: unknown) => {
+        logger.error({ err }, 'Pair mode failed');
+        void shutdown('pair-error');
+      });
+  });
+} else {
+  httpServer.listen(WS_PORT, () => {
+    logger.info(
+      { wsPort: WS_PORT, staticServing: serveStatic !== null },
+      'Major Tom relay server started',
+    );
+  });
+}

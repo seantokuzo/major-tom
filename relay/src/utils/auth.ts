@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { logger } from './logger.js';
+import { deviceManager } from '../auth/device-manager.js';
 
 /**
  * Load .env file from cwd if present. Respects existing env vars (no override).
@@ -62,6 +63,19 @@ export function getAuthToken(): string {
 }
 
 /**
+ * Validate a token against the master token OR any registered device token.
+ * Returns true if the token is valid (either master or device).
+ */
+export function validateAuthToken(token: string, masterToken: string): boolean {
+  // Check master token first (fast path)
+  if (token === masterToken) return true;
+
+  // Check device tokens
+  const device = deviceManager.validateToken(token);
+  return device !== null;
+}
+
+/**
  * Read CORS_ORIGINS from env, split by comma, trim, filter empty.
  * Returns ['*'] if not set (backwards compat for local dev).
  */
@@ -76,3 +90,6 @@ export function getAllowedOrigins(): string[] {
 
   return origins.length > 0 ? origins : ['*'];
 }
+
+// Re-export deviceManager for use by server
+export { deviceManager } from '../auth/device-manager.js';
