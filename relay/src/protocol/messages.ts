@@ -208,6 +208,19 @@ export interface SessionListResponseMessage {
   sessions: SessionMetaMessage[];
 }
 
+export interface TranscriptEntry {
+  type: 'user' | 'assistant' | 'tool' | 'system' | 'result';
+  content: string;
+  timestamp: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface SessionHistoryMessage {
+  type: 'session.history';
+  sessionId: string;
+  entries: TranscriptEntry[];
+}
+
 
 export type ServerMessage =
   | OutputMessage
@@ -225,7 +238,8 @@ export type ServerMessage =
   | SessionResultMessage
   | NotificationMessage
   | ErrorMessage
-  | SessionListResponseMessage;
+  | SessionListResponseMessage
+  | SessionHistoryMessage;
 
 // ── Utilities ───────────────────────────────────────────────
 

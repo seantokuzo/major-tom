@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
+import { SessionTranscript } from './session-transcript.js';
 
 export type AdapterType = 'cli' | 'vscode';
 export type SessionStatus = 'active' | 'idle' | 'closed';
@@ -34,6 +35,9 @@ export class Session {
   readonly startedAt: string;
   status: SessionStatus = 'active';
   tokenUsage?: { used: number; remaining: number };
+
+  // Transcript
+  readonly transcript = new SessionTranscript();
 
   // Accumulated metadata
   totalCost = 0;

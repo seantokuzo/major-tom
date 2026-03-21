@@ -5,6 +5,7 @@ import { RelaySocket, type ConnectionState } from '../protocol/websocket';
 import type {
   ApprovalDecision,
   ApprovalRequestMessage,
+  SessionHistoryMessage,
   SessionResultMessage,
   ServerMessage,
 } from '../protocol/messages';
@@ -180,6 +181,7 @@ class RelayStore {
 
   // Streaming state
   isWaitingForResponse = $state(false);
+  isViewingHistory = $state(false);
   activeToolName = $state<string | null>(null);
 
   // Tool activity feed
@@ -359,6 +361,7 @@ class RelayStore {
     // Tear down current session, clear everything, start fresh
     this.messages = [];
     this.sessionId = null;
+    this.isViewingHistory = false;
     this.pendingApprovals = [];
     this.agents = [];
     this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
@@ -665,6 +668,10 @@ class RelayStore {
       case 'session.list.response':
         sessionsStore.handleListResponse(message.sessions);
         break;
+
+      case 'session.history':
+        this.handleSessionHistory(message);
+        break;
     }
   }
 
@@ -692,6 +699,34 @@ class RelayStore {
       details: event.details,
       toolUseId,
       receivedAt: new Date(),
+    });
+  }
+
+  private handleSessionHistory(message: SessionHistoryMessage): void {
+    // Replace current messages with historical transcript (read-only mode)
+    this.isViewingHistory = true;
+    this.messages = message.entries.map((entry) => ({
+      id: uid(),
+      role: entry.type === 'result' ? 'system' as const : entry.type === 'tool' ? 'tool' as const : entry.type as 'user' | 'assistant' | 'system',
+      content: entry.content,
+      timestamp: new Date(entry.timestamp),
+      ...(entry.meta && entry.type === 'tool'
+        ? {
+            toolMeta: {
+              tool: (entry.meta['tool'] as string) ?? 'unknown',
+              input: entry.meta['input'] as Record<string, unknown> | undefined,
+              output: entry.meta['output'] as string | undefined,
+              success: entry.meta['success'] as boolean | undefined,
+            },
+          }
+        : {}),
+    }));
+    // Push a system message indicating this is history
+    this.messages.push({
+      id: uid(),
+      role: 'system',
+      content: 'Viewing closed session history (read-only)',
+      timestamp: new Date(),
     });
   }
 

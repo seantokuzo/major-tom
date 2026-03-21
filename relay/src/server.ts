@@ -8,6 +8,8 @@ import { getAuthToken, getAllowedOrigins, validateAuthToken, deviceManager } fro
 import { pinManager } from './auth/pin-manager.js';
 import { runPairMode } from './cli/pair.js';
 import { SessionManager } from './sessions/session-manager.js';
+import { SessionPersistence } from './sessions/session-persistence.js';
+import type { PersistedSession } from './sessions/session-persistence.js';
 import { ClaudeCliAdapter } from './adapters/claude-cli.adapter.js';
 import { ApprovalQueue } from './hooks/approval-queue.js';
 import { eventBus } from './events/event-bus.js';
@@ -29,7 +31,8 @@ const ALLOWED_ORIGINS = getAllowedOrigins();
 
 // ── Core services ───────────────────────────────────────────
 
-const sessionManager = new SessionManager();
+const sessionPersistence = new SessionPersistence();
+const sessionManager = new SessionManager(sessionPersistence);
 const approvalQueue = new ApprovalQueue();
 const cliAdapter = new ClaudeCliAdapter(sessionManager, approvalQueue);
 const pushManager = new PushManager();
@@ -341,6 +344,29 @@ wss.on('connection', (ws, req) => {
   });
 });
 
+// ── Persistence helpers ──────────────────────────────────────
+
+function buildPersistedSession(sessionId: string): PersistedSession | null {
+  const session = sessionManager.tryGet(sessionId);
+  if (!session) return null;
+  return {
+    id: session.id,
+    adapter: session.adapter,
+    workingDir: session.workingDir,
+    status: session.status,
+    startedAt: session.startedAt,
+    metadata: session.toMeta(),
+    transcript: session.transcript.getAll(),
+  };
+}
+
+function triggerPersistence(sessionId: string): void {
+  const data = buildPersistedSession(sessionId);
+  if (data) {
+    sessionPersistence.save(data);
+  }
+}
+
 // ── Message routing ─────────────────────────────────────────
 
 async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promise<void> {
@@ -358,6 +384,16 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
     }
 
     case 'session.attach': {
+      // Check if this is a persisted-only session (closed, transcript replay only)
+      if (sessionManager.isPersistedOnly(message.sessionId)) {
+        const transcript = await sessionManager.getPersistedTranscript(message.sessionId);
+        sendToClient(ws, {
+          type: 'session.history',
+          sessionId: message.sessionId,
+          entries: transcript,
+        });
+        break;
+      }
       const session = await cliAdapter.attach(message.sessionId);
       sendToClient(ws, {
         type: 'session.info',
@@ -369,6 +405,16 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
     }
 
     case 'prompt': {
+      // Append user message to transcript
+      const promptSession = sessionManager.tryGet(message.sessionId);
+      if (promptSession) {
+        promptSession.transcript.append({
+          type: 'user',
+          content: message.text,
+          timestamp: new Date().toISOString(),
+        });
+        triggerPersistence(message.sessionId);
+      }
       await cliAdapter.sendPrompt(message.sessionId, message.text, message.context);
       break;
     }
@@ -435,6 +481,16 @@ function broadcast(message: ServerMessage): void {
 
 // Forward adapter events to connected clients
 cliAdapter.on('output', (sessionId: string, chunk: string) => {
+  // Append to transcript
+  const session = sessionManager.tryGet(sessionId);
+  if (session) {
+    session.transcript.append({
+      type: 'assistant',
+      content: chunk,
+      timestamp: new Date().toISOString(),
+    });
+    triggerPersistence(sessionId);
+  }
   broadcast({ type: 'output', sessionId, chunk, format: 'plain' });
 });
 
@@ -450,6 +506,16 @@ cliAdapter.on('approval-request', (request) => {
 });
 
 cliAdapter.on('tool-start', (info) => {
+  const session = sessionManager.tryGet(info.sessionId);
+  if (session) {
+    session.transcript.append({
+      type: 'tool',
+      content: `Tool start: ${info.tool}`,
+      timestamp: new Date().toISOString(),
+      meta: { tool: info.tool, input: info.input },
+    });
+    triggerPersistence(info.sessionId);
+  }
   broadcast({
     type: 'tool.start',
     sessionId: info.sessionId,
@@ -459,6 +525,16 @@ cliAdapter.on('tool-start', (info) => {
 });
 
 cliAdapter.on('tool-complete', (result) => {
+  const session = sessionManager.tryGet(result.sessionId);
+  if (session) {
+    session.transcript.append({
+      type: 'tool',
+      content: `Tool complete: ${result.tool} (${result.success ? 'success' : 'failed'})`,
+      timestamp: new Date().toISOString(),
+      meta: { tool: result.tool, output: result.output, success: result.success },
+    });
+    triggerPersistence(result.sessionId);
+  }
   broadcast({
     type: 'tool.complete',
     sessionId: result.sessionId,
@@ -479,6 +555,19 @@ cliAdapter.on('session-result', (result) => {
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
     });
+    session.transcript.append({
+      type: 'result',
+      content: `Turn complete: $${result.costUsd.toFixed(4)}, ${result.numTurns} turns, ${result.durationMs}ms`,
+      timestamp: new Date().toISOString(),
+      meta: {
+        costUsd: result.costUsd,
+        numTurns: result.numTurns,
+        durationMs: result.durationMs,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+      },
+    });
+    triggerPersistence(result.sessionId);
   }
 
   broadcast({
@@ -564,6 +653,9 @@ async function shutdown(signal: string): Promise<void> {
     new Promise<void>((resolve) => httpServer.close(() => resolve())),
   ]);
 
+  // Flush pending persistence writes
+  sessionPersistence.dispose();
+
   clearInterval(heartbeatInterval);
   notificationBatcher.dispose();
   eventBus.removeAllListeners();
@@ -580,20 +672,44 @@ process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 // CLI pair mode: `node dist/server.js pair`
 // Start HTTP server first (needed for POST /pair endpoint), then run pair flow
 if (process.argv.includes('pair')) {
-  httpServer.listen(WS_PORT, () => {
-    logger.info({ wsPort: WS_PORT }, 'Major Tom relay server started (pair mode)');
-    runPairMode()
-      .then(() => shutdown('pair-complete'))
-      .catch((err: unknown) => {
-        logger.error({ err }, 'Pair mode failed');
-        void shutdown('pair-error');
-      });
+  sessionManager.restoreFromDisk().then(() => {
+    httpServer.listen(WS_PORT, () => {
+      logger.info({ wsPort: WS_PORT }, 'Major Tom relay server started (pair mode)');
+      runPairMode()
+        .then(() => shutdown('pair-complete'))
+        .catch((err: unknown) => {
+          logger.error({ err }, 'Pair mode failed');
+          void shutdown('pair-error');
+        });
+    });
+  }).catch((err: unknown) => {
+    logger.error({ err }, 'Failed to restore sessions from disk, starting anyway');
+    httpServer.listen(WS_PORT, () => {
+      logger.info({ wsPort: WS_PORT }, 'Major Tom relay server started (pair mode)');
+      runPairMode()
+        .then(() => shutdown('pair-complete'))
+        .catch((err2: unknown) => {
+          logger.error({ err: err2 }, 'Pair mode failed');
+          void shutdown('pair-error');
+        });
+    });
   });
 } else {
-  httpServer.listen(WS_PORT, () => {
-    logger.info(
-      { wsPort: WS_PORT, staticServing: serveStatic !== null },
-      'Major Tom relay server started',
-    );
+  // Restore persisted session metadata on startup, then listen
+  sessionManager.restoreFromDisk().then(() => {
+    httpServer.listen(WS_PORT, () => {
+      logger.info(
+        { wsPort: WS_PORT, staticServing: serveStatic !== null },
+        'Major Tom relay server started',
+      );
+    });
+  }).catch((err: unknown) => {
+    logger.error({ err }, 'Failed to restore sessions from disk, starting anyway');
+    httpServer.listen(WS_PORT, () => {
+      logger.info(
+        { wsPort: WS_PORT, staticServing: serveStatic !== null },
+        'Major Tom relay server started',
+      );
+    });
   });
 }
