@@ -167,6 +167,7 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
+
   // ── Push notification endpoints ──────────────────────────
 
   // GET /push/vapid-key — returns the VAPID public key for client subscription (public)
