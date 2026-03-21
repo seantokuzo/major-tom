@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from './utils/logger.js';
 import { readBody, sendJson, getCorsOrigin, requireAuth } from './utils/http-helpers.js';
-import { getAuthToken, getAllowedOrigins } from './utils/auth.js';
+import { getAuthToken, getAllowedOrigins, validateAuthToken, deviceManager } from './utils/auth.js';
+import { pinManager } from './auth/pin-manager.js';
+import { runPairMode } from './cli/pair.js';
 import { SessionManager } from './sessions/session-manager.js';
 import { ClaudeCliAdapter } from './adapters/claude-cli.adapter.js';
 import { ApprovalQueue } from './hooks/approval-queue.js';
@@ -47,8 +49,8 @@ const httpServer = createServer(async (req, res) => {
 
   const corsOrigin = getCorsOrigin(req, ALLOWED_ORIGINS);
 
-  // CORS preflight for push endpoints
-  if (req.method === 'OPTIONS' && url.startsWith('/push/')) {
+  // CORS preflight for push and pair endpoints
+  if (req.method === 'OPTIONS' && (url.startsWith('/push/') || url === '/pair')) {
     const headers: Record<string, string> = {
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -71,6 +73,62 @@ const httpServer = createServer(async (req, res) => {
       sessions: sessionManager.list(),
       pendingApprovals: approvalQueue.size,
     }, corsOrigin ?? undefined);
+    return;
+  }
+
+  // ── PIN pairing endpoint ─────────────────────────────────
+
+  if (req.method === 'POST' && url === '/pair') {
+    const clientIp = req.socket.remoteAddress ?? 'unknown';
+
+    // Check rate limit
+    const rateCheck = pinManager.checkRateLimit(clientIp);
+    if (!rateCheck.allowed) {
+      sendJson(res, 429, {
+        error: 'Too many attempts',
+        retryAfter: rateCheck.retryAfter,
+      }, corsOrigin ?? undefined);
+      return;
+    }
+
+    try {
+      let body: string;
+      try {
+        body = await readBody(req);
+      } catch (err) {
+        if ((err as { code?: string }).code === 'BODY_TOO_LARGE') {
+          sendJson(res, 413, { error: 'Request body too large' }, corsOrigin ?? undefined);
+        } else {
+          sendJson(res, 400, { error: 'Bad request' }, corsOrigin ?? undefined);
+        }
+        return;
+      }
+
+      const parsed = JSON.parse(body) as { pin?: string; deviceName?: string };
+      if (!parsed.pin || !parsed.deviceName) {
+        sendJson(res, 400, { error: 'Missing pin or deviceName' }, corsOrigin ?? undefined);
+        return;
+      }
+
+      const valid = pinManager.consumePin(parsed.pin, parsed.deviceName);
+      if (!valid) {
+        pinManager.recordFailedAttempt(clientIp);
+        sendJson(res, 401, { error: 'Invalid or expired PIN' }, corsOrigin ?? undefined);
+        return;
+      }
+
+      // PIN valid — register device
+      const device = deviceManager.register(parsed.deviceName);
+      logger.info({ deviceId: device.id, name: parsed.deviceName }, 'Device paired via PIN');
+
+      sendJson(res, 200, {
+        token: device.token,
+        deviceId: device.id,
+      }, corsOrigin ?? undefined);
+    } catch (err: unknown) {
+      logger.error({ err }, 'Failed to process pair request');
+      sendJson(res, 400, { error: 'Invalid JSON body' }, corsOrigin ?? undefined);
+    }
     return;
   }
 
@@ -180,7 +238,7 @@ httpServer.on('upgrade', (req, socket, head) => {
     socket.destroy();
     return;
   }
-  if (token !== AUTH_TOKEN) {
+  if (!token || !validateAuthToken(token, AUTH_TOKEN)) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
     return;
@@ -485,9 +543,19 @@ process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 
 // ── Start ───────────────────────────────────────────────────
 
-httpServer.listen(WS_PORT, () => {
-  logger.info(
-    { wsPort: WS_PORT, staticServing: serveStatic !== null },
-    'Major Tom relay server started',
-  );
-});
+// CLI pair mode: `node dist/server.js pair`
+if (process.argv.includes('pair')) {
+  runPairMode()
+    .then(() => process.exit(0))
+    .catch((err: unknown) => {
+      logger.error({ err }, 'Pair mode failed');
+      process.exit(1);
+    });
+} else {
+  httpServer.listen(WS_PORT, () => {
+    logger.info(
+      { wsPort: WS_PORT, staticServing: serveStatic !== null },
+      'Major Tom relay server started',
+    );
+  });
+}
