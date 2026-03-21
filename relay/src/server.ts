@@ -54,6 +54,9 @@ const httpServer = createServer(async (req, res) => {
     };
     if (corsOrigin) {
       headers['Access-Control-Allow-Origin'] = corsOrigin;
+      if (corsOrigin !== '*') {
+        headers['Vary'] = 'Origin';
+      }
     }
     res.writeHead(204, headers);
     res.end();
@@ -167,8 +170,15 @@ const httpServer = createServer(async (req, res) => {
 const wss = new WebSocketServer({ noServer: true });
 
 httpServer.on('upgrade', (req, socket, head) => {
-  const url = new URL(req.url ?? '/', 'http://localhost');
-  const token = url.searchParams.get('token');
+  let token: string | null = null;
+  try {
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    token = url.searchParams.get('token');
+  } catch {
+    socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+    socket.destroy();
+    return;
+  }
   if (token !== AUTH_TOKEN) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();

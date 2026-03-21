@@ -343,8 +343,8 @@ class RelayStore {
       }
     }
     // Reconnect with new token if currently connected
+    // connect() handles cleanup of existing connection (nulls onclose, closes ws)
     if (this.isConnected || this.isReconnecting) {
-      this.socket.disconnect();
       this.socket.connect(this.serverAddress, this.authToken ?? undefined);
     }
   }

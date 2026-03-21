@@ -1,10 +1,34 @@
 import { randomBytes } from 'node:crypto';
-import { appendFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { appendFileSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { logger } from './logger.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+/**
+ * Load .env file from cwd if present. Respects existing env vars (no override).
+ */
+function loadDotenv(): void {
+  try {
+    const envPath = join(process.cwd(), '.env');
+    const content = readFileSync(envPath, 'utf-8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx === -1) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      const value = trimmed.slice(eqIdx + 1).trim();
+      // Don't override existing env vars
+      if (!(key in process.env)) {
+        process.env[key] = value;
+      }
+    }
+  } catch {
+    // .env file doesn't exist — that's fine
+  }
+}
+
+// Load .env on module import
+loadDotenv();
 
 /**
  * Read AUTH_TOKEN from process.env. If not set, generate a 32-char hex token,
@@ -19,9 +43,9 @@ export function getAuthToken(): string {
 
   const token = randomBytes(16).toString('hex');
 
-  // Append to .env file in the relay directory
+  // Append to .env file in the relay directory (cwd)
   try {
-    const envPath = join(__dirname, '..', '..', '.env');
+    const envPath = join(process.cwd(), '.env');
     appendFileSync(envPath, `\nAUTH_TOKEN=${token}\n`);
     logger.info('Auto-generated auth token appended to .env file');
   } catch {

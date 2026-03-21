@@ -45,7 +45,12 @@ export class RelaySocket {
     const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
     const defaultScheme = isSecure ? 'wss://' : 'ws://';
     const baseUrl = host.startsWith('ws://') || host.startsWith('wss://') ? host : `${defaultScheme}${host}`;
-    this.url = this.token ? `${baseUrl}?token=${encodeURIComponent(this.token)}` : baseUrl;
+    if (this.token) {
+      const separator = baseUrl.includes('?') ? '&' : '?';
+      this.url = `${baseUrl}${separator}token=${encodeURIComponent(this.token)}`;
+    } else {
+      this.url = baseUrl;
+    }
     this.setState('connecting');
     this.establish();
   }

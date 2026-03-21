@@ -50,7 +50,7 @@ export function sendJson(
  */
 export function getCorsOrigin(req: IncomingMessage, allowedOrigins: string[]): string | null {
   if (allowedOrigins.includes('*')) return '*';
-  const origin = req.headers['origin'];
+  const origin = req.headers.origin;
   if (!origin) return null;
   return allowedOrigins.includes(origin) ? origin : null;
 }

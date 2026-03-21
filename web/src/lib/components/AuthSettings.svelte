@@ -7,6 +7,7 @@
 
   function handleSave() {
     const trimmed = tokenInput.trim();
+    tokenInput = trimmed;
     relay.setAuthToken(trimmed || null);
   }
 
