@@ -21,7 +21,15 @@ function loadFromStorage(): HistoryEntry[] {
     if (!json) return [];
     const parsed = JSON.parse(json);
     if (!Array.isArray(parsed)) return [];
-    return parsed as HistoryEntry[];
+    const entries = parsed
+      .filter((item: unknown): item is HistoryEntry => {
+        if (typeof item !== 'object' || item === null) return false;
+        const c = item as { text?: unknown; timestamp?: unknown; count?: unknown };
+        return typeof c.text === 'string' && typeof c.timestamp === 'string'
+          && typeof c.count === 'number' && Number.isFinite(c.count);
+      })
+      .slice(0, MAX_ENTRIES);
+    return entries;
   } catch {
     return [];
   }
