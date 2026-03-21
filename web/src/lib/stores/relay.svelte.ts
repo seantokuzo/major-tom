@@ -378,12 +378,13 @@ class RelayStore {
   }
 
   sendAgentMessage(agentId: string, text: string): void {
-    if (!text.trim() || !this.sessionId) return;
+    const trimmed = text.trim();
+    if (!trimmed || !this.sessionId) return;
 
     this.messages.push({
       id: uid(),
       role: 'user',
-      content: `[To agent ${agentId}]: ${text}`,
+      content: `[To agent ${agentId}]: ${trimmed}`,
       timestamp: new Date(),
     });
 
@@ -393,7 +394,7 @@ class RelayStore {
       type: 'agent.message',
       sessionId: this.sessionId,
       agentId,
-      text,
+      text: trimmed,
     });
   }
 
