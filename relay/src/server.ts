@@ -110,16 +110,36 @@ const httpServer = createServer(async (req, res) => {
         return;
       }
 
-      const valid = pinManager.consumePin(parsed.pin, parsed.deviceName);
-      if (!valid) {
+      // Sanitize device name: trim, strip control chars, enforce max length
+      let deviceName = parsed.deviceName
+        .trim()
+        .replace(/[\x00-\x1f\x7f]/g, '')
+        .slice(0, 100);
+      if (!deviceName) {
+        deviceName = 'Unknown Device';
+      }
+
+      // Validate PIN first (don't consume yet)
+      if (!pinManager.validatePin(parsed.pin)) {
         pinManager.recordFailedAttempt(clientIp);
         sendJson(res, 401, { error: 'Invalid or expired PIN' }, corsOrigin ?? undefined);
         return;
       }
 
-      // PIN valid — register device
-      const device = deviceManager.register(parsed.deviceName);
-      logger.info({ deviceId: device.id, name: parsed.deviceName }, 'Device paired via PIN');
+      // Register device (might fail on persistence)
+      let device;
+      try {
+        device = deviceManager.register(deviceName);
+      } catch (err) {
+        logger.error({ err }, 'Failed to register device');
+        sendJson(res, 500, { error: 'Device registration failed' }, corsOrigin ?? undefined);
+        return;
+      }
+
+      // Only consume PIN after successful registration
+      pinManager.consumePin(parsed.pin, deviceName);
+
+      logger.info({ deviceId: device.id, name: deviceName }, 'Device paired via PIN');
 
       sendJson(res, 200, {
         token: device.token,
@@ -521,6 +541,9 @@ async function shutdown(signal: string): Promise<void> {
     client.close(1001, 'Server shutting down');
   });
 
+  // Flush pending device registry writes
+  deviceManager.flush();
+
   // Dispose adapters
   await cliAdapter.dispose();
 
@@ -544,13 +567,20 @@ process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 // ── Start ───────────────────────────────────────────────────
 
 // CLI pair mode: `node dist/server.js pair`
+// Start HTTP server first (needed for POST /pair endpoint), then run pair flow
 if (process.argv.includes('pair')) {
-  runPairMode()
-    .then(() => process.exit(0))
-    .catch((err: unknown) => {
-      logger.error({ err }, 'Pair mode failed');
-      process.exit(1);
-    });
+  httpServer.listen(WS_PORT, () => {
+    logger.info({ wsPort: WS_PORT }, 'Major Tom relay server started (pair mode)');
+    runPairMode()
+      .then(() => {
+        deviceManager.flush();
+        process.exit(0);
+      })
+      .catch((err: unknown) => {
+        logger.error({ err }, 'Pair mode failed');
+        process.exit(1);
+      });
+  });
 } else {
   httpServer.listen(WS_PORT, () => {
     logger.info(

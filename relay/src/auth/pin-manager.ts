@@ -75,9 +75,18 @@ export class PinManager {
 
   /**
    * Check rate limit for a given IP. Max 5 failed attempts per 10-minute window.
+   * Also evicts expired entries to prevent unbounded map growth.
    */
   checkRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
     const now = Date.now();
+
+    // Evict expired entries to prevent memory leak
+    for (const [key, entry] of this.attempts) {
+      if (now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+        this.attempts.delete(key);
+      }
+    }
+
     const record = this.attempts.get(ip);
 
     if (!record || now - record.windowStart > RATE_LIMIT_WINDOW_MS) {
