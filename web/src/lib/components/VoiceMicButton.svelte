@@ -4,6 +4,17 @@
   import { relay as relayStore } from '../stores/relay.svelte';
 
   // Minimal Web Speech API type declarations (not yet in all TS libs)
+  interface SpeechRecognitionResult {
+    readonly isFinal: boolean;
+    readonly length: number;
+    [index: number]: { transcript: string; confidence: number };
+  }
+
+  interface SpeechRecognitionResultList {
+    readonly length: number;
+    [index: number]: SpeechRecognitionResult;
+  }
+
   interface SpeechRecognitionEvent {
     results: SpeechRecognitionResultList;
     resultIndex: number;
@@ -149,6 +160,7 @@
     class:mic-recording={recording}
     type="button"
     aria-label={recording ? 'Stop recording' : 'Voice input'}
+    aria-pressed={recording}
     onclick={toggle}
     {disabled}
   >
