@@ -1,4 +1,4 @@
-// Session transcript — in-memory circular buffer of conversation entries
+// Session transcript — in-memory bounded FIFO transcript of conversation entries
 
 export interface TranscriptEntry {
   type: 'user' | 'assistant' | 'tool' | 'system' | 'result';

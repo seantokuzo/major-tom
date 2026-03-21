@@ -497,6 +497,7 @@ class RelayStore {
 
       case 'session.info':
         this.sessionId = message.sessionId;
+        this.isViewingHistory = false;
         this.persistSessionId();
         // Only show "Session restored" when we were explicitly reattaching
         if (this.isReattaching && this.messages.length > 0) {
@@ -710,6 +711,11 @@ class RelayStore {
     this.sessionId = message.sessionId;
     // Don't persist as the live session — this is read-only history
     this.isViewingHistory = true;
+    this.pendingApprovals = [];
+    this.agents = [];
+    this.toolActivities = [];
+    this.activeToolName = null;
+    this.isWaitingForResponse = false;
     this.messages = message.entries.map((entry) => ({
       id: uid(),
       role: entry.type === 'result' ? 'system' as const : entry.type === 'tool' ? 'tool' as const : entry.type as 'user' | 'assistant' | 'system',
