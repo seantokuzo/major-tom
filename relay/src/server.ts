@@ -56,7 +56,7 @@ const httpServer = createServer(async (req, res) => {
   const corsOrigin = getCorsOrigin(req, ALLOWED_ORIGINS);
 
   // CORS preflight for push and pair endpoints
-  if (req.method === 'OPTIONS' && (url.startsWith('/push/') || url === '/pair')) {
+  if (req.method === 'OPTIONS' && (url.startsWith('/push/') || url.startsWith('/pair'))) {
     const headers: Record<string, string> = {
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -79,6 +79,22 @@ const httpServer = createServer(async (req, res) => {
       sessions: sessionManager.list(),
       pendingApprovals: approvalQueue.size,
     }, corsOrigin ?? undefined);
+    return;
+  }
+
+  // ── PIN generation endpoint (localhost-only) ─────────────
+
+  if (req.method === 'POST' && url === '/pair/generate') {
+    const clientIp = req.socket.remoteAddress ?? '';
+    const isLocal = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1';
+    if (!isLocal) {
+      sendJson(res, 403, { error: 'PIN generation is only available from localhost' }, corsOrigin ?? undefined);
+      return;
+    }
+
+    const { pin, expiresAt } = pinManager.generatePin();
+    logger.info({ expiresAt: expiresAt.toISOString() }, 'PIN generated via HTTP endpoint');
+    sendJson(res, 200, { pin, expiresAt: expiresAt.toISOString() }, corsOrigin ?? undefined);
     return;
   }
 

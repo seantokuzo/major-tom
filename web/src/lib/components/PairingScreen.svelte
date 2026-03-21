@@ -12,9 +12,13 @@
   let retryAfter = $state(0);
   let retryInterval: ReturnType<typeof setInterval> | null = null;
   let shaking = $state(false);
+  let generatedPin = $state<string | null>(null);
+  let generating = $state(false);
+  let pinExpiryTimer: ReturnType<typeof setTimeout> | null = null;
 
   onDestroy(() => {
     if (retryInterval) clearInterval(retryInterval);
+    if (pinExpiryTimer) clearTimeout(pinExpiryTimer);
   });
 
   let pin = $derived(digits.join(''));
@@ -166,6 +170,52 @@
     }
   }
 
+  async function handleGeneratePin() {
+    if (generating) return;
+    generating = true;
+    error = null;
+
+    try {
+      let baseUrl: string;
+      const addr = relay.serverAddress;
+      if (/^wss?:\/\//.test(addr)) {
+        const httpAddr = addr.replace(/^ws(s?):\/\//, (_, s: string) => `http${s}://`);
+        baseUrl = new URL(httpAddr).origin;
+      } else if (/^https?:\/\//.test(addr)) {
+        baseUrl = new URL(addr).origin;
+      } else {
+        baseUrl = new URL(`${window.location.protocol}//${addr}`).origin;
+      }
+
+      const res = await fetch(`${baseUrl}/pair/generate`, { method: 'POST' });
+
+      if (res.ok) {
+        const data = await res.json();
+        generatedPin = data.pin;
+
+        // Auto-fill the PIN digits
+        for (let i = 0; i < 6; i++) {
+          digits[i] = data.pin[i] || '';
+        }
+
+        // Auto-clear after expiry
+        if (pinExpiryTimer) clearTimeout(pinExpiryTimer);
+        const expiresIn = new Date(data.expiresAt).getTime() - Date.now();
+        pinExpiryTimer = setTimeout(() => {
+          generatedPin = null;
+        }, expiresIn);
+      } else if (res.status === 403) {
+        error = 'PIN generation only works from localhost';
+      } else {
+        error = 'Failed to generate PIN';
+      }
+    } catch {
+      error = 'Could not reach relay server';
+    } finally {
+      generating = false;
+    }
+  }
+
   function handleManualSave() {
     const trimmed = manualToken.trim();
     if (!trimmed) return;
@@ -220,9 +270,41 @@
 
     {#if !showManualEntry}
       <div class="pairing-form">
-        <p class="instructions">
-          Run <code>node dist/server.js pair</code> on your relay server to get a PIN
-        </p>
+        {#if generatedPin}
+          <p class="instructions">
+            Share this PIN with the device you want to pair
+          </p>
+          <div class="generated-pin">
+            {#each generatedPin.split('') as d}
+              <span class="generated-digit">{d}</span>
+            {/each}
+          </div>
+          <button
+            class="btn-generate"
+            onclick={handleGeneratePin}
+            disabled={generating}
+          >
+            Generate New PIN
+          </button>
+          <div class="divider">
+            <span class="divider-text">or enter a PIN from another device</span>
+          </div>
+        {:else}
+          <button
+            class="btn-pair"
+            onclick={handleGeneratePin}
+            disabled={generating}
+          >
+            {#if generating}
+              Generating...
+            {:else}
+              Generate Pairing PIN
+            {/if}
+          </button>
+          <div class="divider">
+            <span class="divider-text">or enter a PIN</span>
+          </div>
+        {/if}
 
         <div class="pin-inputs" class:shake={shaking}>
           {#each digits as digit, i}
@@ -484,5 +566,72 @@
 
   .manual-input::placeholder {
     color: var(--text-tertiary);
+  }
+
+  .generated-pin {
+    display: flex;
+    gap: var(--sp-sm);
+    justify-content: center;
+  }
+
+  .generated-digit {
+    width: 48px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+    border: 2px solid var(--accent);
+    border-radius: var(--r-md);
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .btn-generate {
+    width: 100%;
+    padding: 14px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-generate:hover:not(:disabled) {
+    border-color: var(--text-tertiary);
+    color: var(--text-primary);
+  }
+
+  .btn-generate:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .divider {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-md);
+  }
+
+  .divider::before,
+  .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .divider-text {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    white-space: nowrap;
   }
 </style>
