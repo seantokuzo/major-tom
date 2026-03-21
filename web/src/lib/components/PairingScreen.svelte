@@ -101,15 +101,18 @@
     error = null;
 
     try {
+      // Normalize to an HTTP(S) origin, stripping any path/query
       let baseUrl: string;
       const addr = relay.serverAddress;
-      if (addr.startsWith('ws://') || addr.startsWith('wss://')) {
-        // Map ws→http, wss→https
-        baseUrl = addr.replace(/^ws(s?):\/\//, (_, s) => `http${s}://`);
-      } else if (addr.startsWith('http://') || addr.startsWith('https://')) {
-        baseUrl = addr;
+      if (/^wss?:\/\//.test(addr)) {
+        // Map ws→http, wss→https then extract origin
+        const httpAddr = addr.replace(/^ws(s?):\/\//, (_, s) => `http${s}://`);
+        baseUrl = new URL(httpAddr).origin;
+      } else if (/^https?:\/\//.test(addr)) {
+        baseUrl = new URL(addr).origin;
       } else {
-        baseUrl = `${window.location.protocol}//${addr}`;
+        // Bare host:port — build a full URL so `new URL` can parse it
+        baseUrl = new URL(`${window.location.protocol}//${addr}`).origin;
       }
       const res = await fetch(`${baseUrl}/pair`, {
         method: 'POST',
@@ -123,6 +126,7 @@
       if (res.ok) {
         const data = await res.json();
         relay.setAuthToken(data.token);
+        relay.connect();
         toasts.success('Device paired successfully');
       } else if (res.status === 401) {
         error = 'Invalid or expired PIN';
@@ -182,7 +186,30 @@
   });
 </script>
 
-<div class="pairing-overlay">
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+  class="pairing-overlay"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Device pairing"
+  onkeydown={(e) => { if (e.key === 'Tab') {
+    // Focus trap: cycle focus within the dialog
+    const overlay = e.currentTarget as HTMLElement;
+    const focusable = overlay.querySelectorAll<HTMLElement>(
+      'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }}
+>
   <div class="pairing-container">
     <div class="branding">
       <h1 class="brand-title">Major Tom</h1>
