@@ -66,11 +66,13 @@
 
   function handleHistoryClose() {
     historyOpen = false;
+    promptHistory.resetNavigation();
     queueMicrotask(() => inputEl?.focus());
   }
 
   function handleHistorySelect(text: string) {
     relay.inputText = text;
+    promptHistory.resetNavigation();
     queueMicrotask(() => inputEl?.focus());
   }
 
@@ -184,7 +186,7 @@
       class="history-btn"
       type="button"
       aria-label="Prompt history"
-      onclick={() => historyOpen = true}
+      onclick={() => { promptHistory.resetNavigation(); historyOpen = true; }}
       disabled={inputDisabled}
       title="Prompt history"
     >
@@ -208,7 +210,7 @@
   />
   <TemplateDrawer bind:open={templateDrawerOpen} onClose={handleTemplateDrawerClose} />
   <TemplateSaveDialog bind:open={templateSaveOpen} onClose={handleTemplateSaveClose} initialContent={saveDialogContent} />
-  <PromptHistoryOverlay bind:open={historyOpen} onclose={handleHistoryClose} onselectentry={handleHistorySelect} />
+  <PromptHistoryOverlay bind:open={historyOpen} onClose={handleHistoryClose} onSelectEntry={handleHistorySelect} />
 </div>
 
 <style>

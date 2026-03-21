@@ -3,12 +3,12 @@
 
   let {
     open = $bindable(false),
-    onclose,
-    onselectentry,
+    onClose,
+    onSelectEntry,
   }: {
     open: boolean;
-    onclose: () => void;
-    onselectentry: (text: string) => void;
+    onClose: () => void;
+    onSelectEntry: (text: string) => void;
   } = $props();
 
   let searchText = $state('');
@@ -20,7 +20,7 @@
   });
 
   function selectEntry(entry: HistoryEntry) {
-    onselectentry(entry.text);
+    onSelectEntry(entry.text);
     close();
   }
 
@@ -28,7 +28,7 @@
     searchText = '';
     selectedIndex = 0;
     open = false;
-    onclose();
+    onClose();
   }
 
   function handleKeydown(e: KeyboardEvent) {
