@@ -1,8 +1,10 @@
 <script lang="ts">
   import { relay } from '../stores/relay.svelte';
+  import { promptHistory } from '../stores/prompt-history.svelte';
   import MessageBubble from './MessageBubble.svelte';
   import ApprovalCard from './ApprovalCard.svelte';
   import CommandPalette from './CommandPalette.svelte';
+  import PromptHistoryOverlay from './PromptHistoryOverlay.svelte';
   import StreamingIndicator from './StreamingIndicator.svelte';
   import ToolFeed from './ToolFeed.svelte';
   import VoiceMicButton from './VoiceMicButton.svelte';
@@ -16,6 +18,7 @@
   let templateDrawerOpen = $state(false);
   let templateSaveOpen = $state(false);
   let saveDialogContent = $state('');
+  let historyOpen = $state(false);
 
   function scrollToBottom() {
     messagesEnd?.scrollIntoView({ behavior: 'smooth' });
@@ -30,15 +33,47 @@
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       relay.sendPrompt();
+      return;
+    }
+
+    // Arrow-up: cycle through prompt history
+    if (e.key === 'ArrowUp' && (relay.inputText.trim() === '' || promptHistory.isNavigating)) {
+      e.preventDefault();
+      const result = promptHistory.navigate('up', relay.inputText);
+      if (result !== null) relay.inputText = result;
+      return;
+    }
+
+    // Arrow-down: cycle back through history
+    if (e.key === 'ArrowDown' && promptHistory.isNavigating) {
+      e.preventDefault();
+      const result = promptHistory.navigate('down', relay.inputText);
+      if (result !== null) relay.inputText = result;
+      return;
     }
   }
 
   function handleInput() {
+    // Reset history navigation when user types
+    promptHistory.resetNavigation();
+
     // Open command palette when / is typed as first character
     if (relay.inputText === '/') {
       relay.inputText = '';
       paletteOpen = true;
     }
+  }
+
+  function handleHistoryClose() {
+    historyOpen = false;
+    promptHistory.resetNavigation();
+    queueMicrotask(() => inputEl?.focus());
+  }
+
+  function handleHistorySelect(text: string) {
+    relay.inputText = text;
+    promptHistory.resetNavigation();
+    queueMicrotask(() => inputEl?.focus());
   }
 
   function handlePaletteClose() {
@@ -148,6 +183,16 @@
       &#9733;
     </button>
     <button
+      class="history-btn"
+      type="button"
+      aria-label="Prompt history"
+      onclick={() => { promptHistory.resetNavigation(); historyOpen = true; }}
+      disabled={inputDisabled}
+      title="Prompt history"
+    >
+      &#x29D6;
+    </button>
+    <button
       class="send-btn"
       type="submit"
       aria-label="Send message"
@@ -165,6 +210,7 @@
   />
   <TemplateDrawer bind:open={templateDrawerOpen} onClose={handleTemplateDrawerClose} />
   <TemplateSaveDialog bind:open={templateSaveOpen} onClose={handleTemplateSaveClose} initialContent={saveDialogContent} />
+  <PromptHistoryOverlay bind:open={historyOpen} onClose={handleHistoryClose} onSelectEntry={handleHistorySelect} />
 </div>
 
 <style>
@@ -257,6 +303,32 @@
   .template-btn:disabled {
     opacity: 0.4;
     cursor: default;
+  }
+
+  .history-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .history-btn:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .history-btn:disabled {
+    color: var(--text-tertiary);
+    border-color: var(--border);
+    cursor: default;
+    opacity: 0.4;
   }
 
   .send-btn {
