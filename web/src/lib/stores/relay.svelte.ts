@@ -6,6 +6,7 @@ import type {
   ApprovalDecision,
   ApprovalRequestMessage,
   SessionHistoryMessage,
+  DeviceInfo,
   SessionResultMessage,
   ServerMessage,
 } from '../protocol/messages';
@@ -186,6 +187,9 @@ class RelayStore {
 
   // Tool activity feed
   toolActivities = $state<ToolActivity[]>([]);
+
+  // Devices
+  devices = $state<DeviceInfo[]>([]);
 
   // Command palette
   inputPrefix = $state('');
@@ -456,6 +460,13 @@ class RelayStore {
     this.socket.send({ type: 'session.attach', sessionId });
   }
 
+  requestDeviceList(): void {
+    this.socket.send({ type: 'device.list' });
+  }
+
+  revokeDevice(deviceId: string): void {
+    this.socket.send({ type: 'device.revoke', deviceId });
+  }
 
   // ── Command usage tracking ────────────────────────────────
 
@@ -675,6 +686,22 @@ class RelayStore {
 
       case 'session.history':
         this.handleSessionHistory(message);
+        break;
+
+      case 'device.list.response':
+        this.devices = message.devices;
+        break;
+
+      case 'device.revoke.response':
+        if (message.success) {
+          this.devices = this.devices.filter((d) => d.id !== message.deviceId);
+          this.messages.push({
+            id: uid(),
+            role: 'system',
+            content: 'Device revoked successfully',
+            timestamp: new Date(),
+          });
+        }
         break;
     }
   }

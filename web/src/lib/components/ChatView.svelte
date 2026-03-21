@@ -6,6 +6,7 @@
   import CommandPalette from './CommandPalette.svelte';
   import PromptHistoryOverlay from './PromptHistoryOverlay.svelte';
   import SessionDrawer from './SessionDrawer.svelte';
+  import DeviceList from './DeviceList.svelte';
   import StreamingIndicator from './StreamingIndicator.svelte';
   import ToolFeed from './ToolFeed.svelte';
   import VoiceMicButton from './VoiceMicButton.svelte';
@@ -21,6 +22,7 @@
   let saveDialogContent = $state('');
   let historyOpen = $state(false);
   let sessionDrawerOpen = $state(false);
+  let devicesOpen = $state(false);
 
   function scrollToBottom() {
     messagesEnd?.scrollIntoView({ behavior: 'smooth' });
@@ -210,11 +212,22 @@
     onOpenTemplates={handleOpenTemplates}
     onOpenSaveTemplate={handleOpenSaveTemplate}
     onOpenSessions={() => { sessionDrawerOpen = true; }}
+    onOpenDevices={() => { devicesOpen = true; }}
   />
   <TemplateDrawer bind:open={templateDrawerOpen} onClose={handleTemplateDrawerClose} />
   <TemplateSaveDialog bind:open={templateSaveOpen} onClose={handleTemplateSaveClose} initialContent={saveDialogContent} />
   <PromptHistoryOverlay bind:open={historyOpen} onClose={handleHistoryClose} onSelectEntry={handleHistorySelect} />
   <SessionDrawer bind:open={sessionDrawerOpen} onclose={() => { sessionDrawerOpen = false; }} />
+
+  {#if devicesOpen}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal-backdrop" onclick={() => { devicesOpen = false; }} onkeydown={(e) => { if (e.key === 'Escape') devicesOpen = false; }} role="presentation">
+      <div class="modal-content" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Device management" aria-modal="true">
+        <button class="modal-close" onclick={() => { devicesOpen = false; }} aria-label="Close">&times;</button>
+        <DeviceList />
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -357,5 +370,44 @@
     border-color: var(--border);
     cursor: default;
     opacity: 0.4;
+  }
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .modal-content {
+    position: relative;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    max-height: 80vh;
+    overflow-y: auto;
+    width: 90%;
+    max-width: 500px;
+  }
+
+  .modal-close {
+    position: absolute;
+    top: var(--sp-sm);
+    right: var(--sp-sm);
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 1.3rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    line-height: 1;
+    z-index: 1;
+  }
+  .modal-close:hover {
+    color: var(--text-primary);
   }
 </style>

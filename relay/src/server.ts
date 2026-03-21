@@ -471,6 +471,23 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
       sendToClient(ws, { type: 'session.list.response', sessions });
       break;
     }
+
+    case 'device.list': {
+      const devices = deviceManager.list().map((d) => ({
+        id: d.id,
+        name: d.name,
+        createdAt: d.createdAt,
+        lastSeenAt: d.lastSeenAt,
+      }));
+      sendToClient(ws, { type: 'device.list.response', devices });
+      break;
+    }
+
+    case 'device.revoke': {
+      const success = deviceManager.revoke(message.deviceId);
+      sendToClient(ws, { type: 'device.revoke.response', deviceId: message.deviceId, success });
+      break;
+    }
   }
 }
 

@@ -62,6 +62,16 @@ export interface SessionListMessage {
   type: 'session.list';
 }
 
+export interface DeviceListMessage {
+  type: 'device.list';
+}
+
+export interface DeviceRevokeMessage {
+  type: 'device.revoke';
+  deviceId: string;
+}
+
+
 export type ClientMessage =
   | PromptMessage
   | ApprovalMessage
@@ -72,7 +82,9 @@ export type ClientMessage =
   | WorkspaceTreeMessage
   | ContextAddMessage
   | SettingsApprovalMessage
-  | SessionListMessage;
+  | SessionListMessage
+  | DeviceListMessage
+  | DeviceRevokeMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -180,6 +192,24 @@ export interface FileNode {
   children?: FileNode[];
 }
 
+export interface DeviceInfo {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastSeenAt: string;
+}
+
+export interface DeviceListResponseMessage {
+  type: 'device.list.response';
+  devices: DeviceInfo[];
+}
+
+export interface DeviceRevokedMessage {
+  type: 'device.revoke.response';
+  deviceId: string;
+  success: boolean;
+}
+
 export interface ErrorMessage {
   type: 'error';
   code: string;
@@ -233,6 +263,8 @@ export type ServerMessage =
   | SessionResultMessage
   | WorkspaceTreeResponseMessage
   | NotificationMessage
+  | DeviceListResponseMessage
+  | DeviceRevokedMessage
   | ErrorMessage
   | SessionListResponseMessage
   | SessionHistoryMessage;
