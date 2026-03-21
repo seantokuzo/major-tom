@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { relay } from '../stores/relay.svelte';
   import { toasts } from '../stores/toast.svelte';
 
@@ -11,6 +12,10 @@
   let retryAfter = $state(0);
   let retryInterval: ReturnType<typeof setInterval> | null = null;
   let shaking = $state(false);
+
+  onDestroy(() => {
+    if (retryInterval) clearInterval(retryInterval);
+  });
 
   let pin = $derived(digits.join(''));
   let pinComplete = $derived(pin.length === 6 && /^\d{6}$/.test(pin));
@@ -96,8 +101,16 @@
     error = null;
 
     try {
-      const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:';
-      const baseUrl = `${protocol}//${relay.serverAddress}`;
+      let baseUrl: string;
+      const addr = relay.serverAddress;
+      if (addr.startsWith('ws://') || addr.startsWith('wss://')) {
+        // Map ws→http, wss→https
+        baseUrl = addr.replace(/^ws(s?):\/\//, (_, s) => `http${s}://`);
+      } else if (addr.startsWith('http://') || addr.startsWith('https://')) {
+        baseUrl = addr;
+      } else {
+        baseUrl = `${window.location.protocol}//${addr}`;
+      }
       const res = await fetch(`${baseUrl}/pair`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -179,11 +192,10 @@
     {#if !showManualEntry}
       <div class="pairing-form">
         <p class="instructions">
-          Run <code>npm run pair</code> on your relay server to get a PIN
+          Run <code>node dist/server.js pair</code> on your relay server to get a PIN
         </p>
 
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="pin-inputs" class:shake={shaking} onpaste={handlePaste}>
+        <div class="pin-inputs" class:shake={shaking}>
           {#each digits as digit, i}
             <input
               bind:this={inputRefs[i]}
@@ -196,6 +208,7 @@
               value={digit}
               oninput={(e) => handleInput(i, e)}
               onkeydown={(e) => handleKeydown(i, e)}
+              onpaste={handlePaste}
               disabled={loading}
             />
           {/each}
