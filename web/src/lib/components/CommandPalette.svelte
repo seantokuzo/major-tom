@@ -14,11 +14,13 @@
     onClose,
     onOpenTemplates,
     onOpenSaveTemplate,
+    onOpenSessions,
   }: {
     open: boolean;
     onClose: () => void;
     onOpenTemplates?: () => void;
     onOpenSaveTemplate?: () => void;
+    onOpenSessions?: () => void;
   } = $props();
 
   let searchText = $state('');
@@ -115,6 +117,15 @@
       action: () => {
         relay.trackCommandUsage('/templates');
         onOpenTemplates?.();
+      },
+    },
+    {
+      key: '/sessions',
+      name: '/sessions',
+      description: 'View and switch sessions',
+      action: () => {
+        relay.trackCommandUsage('/sessions');
+        onOpenSessions?.();
       },
     },
   ];

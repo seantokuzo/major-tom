@@ -9,6 +9,7 @@ import type {
   ServerMessage,
 } from '../protocol/messages';
 import { promptHistory } from './prompt-history.svelte';
+import { sessionsStore } from './sessions.svelte';
 
 // ── Chat message model ──────────────────────────────────────
 
@@ -439,6 +440,16 @@ class RelayStore {
     this.socket.send({ type: 'cancel', sessionId: this.sessionId });
   }
 
+  requestSessionList(): void {
+    if (!this.isConnected) return;
+    sessionsStore.markLoading();
+    this.socket.send({ type: 'session.list' });
+  }
+
+  switchSession(sessionId: string): void {
+    this.socket.send({ type: 'session.attach', sessionId });
+  }
+
   // ── Command usage tracking ────────────────────────────────
 
   getCommandUsage(): Record<string, number> {
@@ -648,6 +659,10 @@ class RelayStore {
 
       case 'workspace.tree.response':
         // Not handled in chat view yet
+        break;
+
+      case 'session.list.response':
+        sessionsStore.handleListResponse(message.sessions);
         break;
     }
   }

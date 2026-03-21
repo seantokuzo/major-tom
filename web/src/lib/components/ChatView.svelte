@@ -5,6 +5,7 @@
   import ApprovalCard from './ApprovalCard.svelte';
   import CommandPalette from './CommandPalette.svelte';
   import PromptHistoryOverlay from './PromptHistoryOverlay.svelte';
+  import SessionDrawer from './SessionDrawer.svelte';
   import StreamingIndicator from './StreamingIndicator.svelte';
   import ToolFeed from './ToolFeed.svelte';
   import VoiceMicButton from './VoiceMicButton.svelte';
@@ -19,6 +20,7 @@
   let templateSaveOpen = $state(false);
   let saveDialogContent = $state('');
   let historyOpen = $state(false);
+  let sessionDrawerOpen = $state(false);
 
   function scrollToBottom() {
     messagesEnd?.scrollIntoView({ behavior: 'smooth' });
@@ -207,10 +209,12 @@
     onClose={handlePaletteClose}
     onOpenTemplates={handleOpenTemplates}
     onOpenSaveTemplate={handleOpenSaveTemplate}
+    onOpenSessions={() => { sessionDrawerOpen = true; }}
   />
   <TemplateDrawer bind:open={templateDrawerOpen} onClose={handleTemplateDrawerClose} />
   <TemplateSaveDialog bind:open={templateSaveOpen} onClose={handleTemplateSaveClose} initialContent={saveDialogContent} />
   <PromptHistoryOverlay bind:open={historyOpen} onClose={handleHistoryClose} onSelectEntry={handleHistorySelect} />
+  <SessionDrawer bind:open={sessionDrawerOpen} onclose={() => { sessionDrawerOpen = false; }} />
 </div>
 
 <style>

@@ -1,4 +1,4 @@
-import { Session, type AdapterType, type SessionInfo } from './session.js';
+import { Session, type AdapterType, type SessionInfo, type SessionMeta } from './session.js';
 import { logger } from '../utils/logger.js';
 
 export class SessionNotFoundError extends Error {
@@ -32,6 +32,10 @@ export class SessionManager {
 
   list(): SessionInfo[] {
     return [...this.sessions.values()].map((s) => s.toInfo());
+  }
+
+  listMeta(): SessionMeta[] {
+    return [...this.sessions.values()].map((s) => s.toMeta());
   }
 
   close(sessionId: string): void {
