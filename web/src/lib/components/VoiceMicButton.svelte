@@ -1,6 +1,36 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { toasts } from '../stores/toast.svelte';
   import { relay as relayStore } from '../stores/relay.svelte';
+
+  // Minimal Web Speech API type declarations (not yet in all TS libs)
+  interface SpeechRecognitionEvent {
+    results: SpeechRecognitionResultList;
+    resultIndex: number;
+  }
+
+  interface SpeechRecognitionErrorEvent {
+    error: string;
+  }
+
+  type SpeechRecognitionConstructor = new () => {
+    continuous: boolean;
+    interimResults: boolean;
+    lang: string;
+    onresult: ((event: SpeechRecognitionEvent) => void) | null;
+    onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+    onend: (() => void) | null;
+    start(): void;
+    stop(): void;
+    abort(): void;
+  };
+
+  declare global {
+    interface Window {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    }
+  }
 
   interface Props {
     relay: typeof relayStore;
@@ -12,12 +42,12 @@
   // Feature detection
   const SpeechRecognition =
     typeof window !== 'undefined'
-      ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      ? window.SpeechRecognition || window.webkitSpeechRecognition
       : null;
 
   let supported = $derived(SpeechRecognition != null);
   let recording = $state(false);
-  let recognition: any = null;
+  let recognition: InstanceType<SpeechRecognitionConstructor> | null = null;
 
   function toggle() {
     if (recording) {
@@ -35,10 +65,13 @@
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
-    // Capture whatever was in the input before we started
+    // Capture whatever was in the input before we started.
+    // Note: the input is effectively locked during recording — any manual edits
+    // will be overwritten by speech results. This is acceptable UX since the
+    // mic button visually indicates active recording.
     const preExistingText = relay.inputText;
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
       let interim = '';
       let final = '';
 
@@ -51,14 +84,15 @@
         }
       }
 
-      if (final) {
-        relay.inputText = preExistingText ? `${preExistingText} ${final}` : final;
-      } else if (interim) {
-        relay.inputText = preExistingText ? `${preExistingText} ${interim}` : interim;
+      // Compose final + interim so interim continues updating after
+      // the first finalized segment
+      const combined = final + interim;
+      if (combined) {
+        relay.inputText = preExistingText ? `${preExistingText} ${combined}` : combined;
       }
     };
 
-    recognition.onerror = (event: any) => {
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       recording = false;
       recognition = null;
 
@@ -97,6 +131,16 @@
     recording = false;
     recognition = null;
   }
+
+  // Stop recognition on component teardown (e.g., switching tabs)
+  onDestroy(() => stop());
+
+  // Stop recognition when disabled prop flips to true
+  $effect(() => {
+    if (disabled && recording) {
+      stop();
+    }
+  });
 </script>
 
 {#if supported}
