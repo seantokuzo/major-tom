@@ -3,6 +3,7 @@
   import type { OfficeAgent } from '../office/types';
   import { getCharacterConfig } from '../office/characters';
   import { STATUS_COLORS } from '../office/state.svelte';
+  import { relay } from '../stores/relay.svelte';
 
   interface Props {
     agent: OfficeAgent;
@@ -14,6 +15,7 @@
 
   let isRenaming = $state(false);
   let renameText = $state('');
+  let messageText = $state('');
   let now = $state(Date.now());
 
   // Tick every second so uptime updates reactively
@@ -35,6 +37,21 @@
 
   const truncatedId = $derived(agent.id.slice(0, 12) + '...');
   const deskLabel = $derived(agent.deskIndex !== null ? `Desk ${agent.deskIndex + 1}` : 'None');
+
+  const isTerminal = $derived(agent.status === 'complete' || agent.status === 'dismissed');
+
+  function sendMessage() {
+    if (!messageText.trim() || isTerminal) return;
+    relay.sendAgentMessage(agent.id, messageText.trim());
+    messageText = '';
+  }
+
+  function handleMessageKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
 
   function startRename() {
     renameText = agent.name;
@@ -110,6 +127,28 @@
     <div class="task-section">
       <span class="task-label">Current Task</span>
       <div class="task-content">{agent.currentTask}</div>
+    </div>
+  {/if}
+
+  <!-- Message agent -->
+  {#if !isTerminal}
+    <div class="message-section">
+      <span class="task-label">Message Agent</span>
+      <div class="message-input-row">
+        <input
+          class="message-input"
+          type="text"
+          placeholder="Send a message..."
+          bind:value={messageText}
+          onkeydown={handleMessageKeydown}
+          disabled={isTerminal}
+        />
+        <button
+          class="btn btn-accent"
+          onclick={sendMessage}
+          disabled={!messageText.trim() || isTerminal}
+        >Send</button>
+      </div>
     </div>
   {/if}
 
@@ -251,6 +290,38 @@
     padding: var(--sp-sm);
     border-radius: var(--r-sm);
     word-break: break-word;
+  }
+
+  .message-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-xs);
+  }
+
+  .message-input-row {
+    display: flex;
+    gap: var(--sp-xs);
+  }
+
+  .message-input {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 4px 8px;
+    outline: none;
+  }
+
+  .message-input:focus {
+    border-color: var(--accent);
+  }
+
+  .message-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .actions {
