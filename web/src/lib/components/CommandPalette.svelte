@@ -15,12 +15,14 @@
     onOpenTemplates,
     onOpenSaveTemplate,
     onOpenSessions,
+    onOpenDevices,
   }: {
     open: boolean;
     onClose: () => void;
     onOpenTemplates?: () => void;
     onOpenSaveTemplate?: () => void;
     onOpenSessions?: () => void;
+    onOpenDevices?: () => void;
   } = $props();
 
   let searchText = $state('');
@@ -126,6 +128,15 @@
       action: () => {
         relay.trackCommandUsage('/sessions');
         onOpenSessions?.();
+      },
+    },
+    {
+      key: '/devices',
+      name: '/devices',
+      description: 'View and manage paired devices',
+      action: () => {
+        relay.trackCommandUsage('/devices');
+        onOpenDevices?.();
       },
     },
   ];

@@ -279,11 +279,17 @@ httpServer.on('upgrade', (req, socket, head) => {
     socket.destroy();
     return;
   }
-  wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    (ws as AuthenticatedWebSocket).authToken = token;
+    wss.emit('connection', ws, req);
+  });
 });
 
-// Track connected clients
-const clients = new Set<WebSocket>();
+// Track connected clients with the token that authenticated them
+interface AuthenticatedWebSocket extends WebSocket {
+  authToken?: string;
+}
+const clients = new Set<AuthenticatedWebSocket>();
 
 // Heartbeat: detect dead connections
 function heartbeat(this: WebSocket) {
@@ -306,11 +312,11 @@ wss.on('close', () => {
   clearInterval(heartbeatInterval);
 });
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', (ws: AuthenticatedWebSocket, req) => {
   const ip = req.socket.remoteAddress;
   logger.info({ ip }, 'iOS client connected');
 
-  (ws as WebSocket & { isAlive: boolean }).isAlive = true;
+  (ws as AuthenticatedWebSocket & { isAlive: boolean }).isAlive = true;
   ws.on('pong', heartbeat);
   clients.add(ws);
 
@@ -371,7 +377,7 @@ function triggerPersistence(sessionId: string): void {
 
 // ── Message routing ─────────────────────────────────────────
 
-async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promise<void> {
+async function handleClientMessage(message: ClientMessage, ws: AuthenticatedWebSocket): Promise<void> {
   switch (message.type) {
     case 'session.start': {
       const workDir = message.workingDir ?? CLAUDE_WORK_DIR;
@@ -469,6 +475,43 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
     case 'session.list': {
       const sessions = sessionManager.listMeta();
       sendToClient(ws, { type: 'session.list.response', sessions });
+      break;
+    }
+
+    case 'device.list': {
+      // Intentionally available to all authenticated tokens — single-user app,
+      // all tokens are admin-equivalent by design. Revisit if multi-user is added.
+      const devices = deviceManager.list().map((d) => ({
+        id: d.id,
+        name: d.name,
+        createdAt: d.createdAt,
+        lastSeenAt: d.lastSeenAt,
+      }));
+      sendToClient(ws, { type: 'device.list.response', devices });
+      break;
+    }
+
+    case 'device.revoke': {
+      // Look up the device's token before revoking so we can disconnect active sessions
+      const deviceToRevoke = deviceManager.getById(message.deviceId);
+      const revokedToken = deviceToRevoke?.token;
+      const success = deviceManager.revoke(message.deviceId);
+      sendToClient(ws, { type: 'device.revoke.response', deviceId: message.deviceId, success });
+
+      // Close any active WebSocket connections authenticated with the revoked device's token
+      if (success && revokedToken) {
+        for (const client of clients) {
+          if (client !== ws && client.authToken === revokedToken) {
+            logger.info({ deviceId: message.deviceId }, 'Closing connection for revoked device');
+            client.close(1008, 'Device revoked');
+          }
+        }
+        // If the requester revoked its own token, close it too after the response was sent
+        if (ws.authToken === revokedToken) {
+          logger.info({ deviceId: message.deviceId }, 'Requester revoked own device — closing');
+          ws.close(1008, 'Device revoked');
+        }
+      }
       break;
     }
   }
