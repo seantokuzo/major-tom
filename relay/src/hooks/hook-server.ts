@@ -1,26 +1,13 @@
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { logger } from '../utils/logger.js';
+import { readBody, sendJson } from '../utils/http-helpers.js';
 import { ApprovalQueue } from './approval-queue.js';
 import { eventBus } from '../events/event-bus.js';
 
 // ── Hook HTTP Server ────────────────────────────────────────
 // Claude Code hook scripts POST to these endpoints.
 // pre-tool-use blocks until the iOS app sends an approval decision.
-
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-    req.on('error', reject);
-  });
-}
-
-function sendJson(res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(body));
-}
 
 export function createHookServer(approvalQueue: ApprovalQueue, port: number) {
   const server = createServer(async (req, res) => {
