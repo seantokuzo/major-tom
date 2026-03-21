@@ -43,7 +43,9 @@
 
   function handlePaletteClose() {
     paletteOpen = false;
-    queueMicrotask(() => inputEl?.focus());
+    if (!templateDrawerOpen && !templateSaveOpen) {
+      queueMicrotask(() => inputEl?.focus());
+    }
   }
 
   function handleOpenTemplates() {

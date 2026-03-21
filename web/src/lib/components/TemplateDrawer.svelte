@@ -88,9 +88,13 @@
 
       <div class="drawer-list">
         {#each results as tpl (tpl.id)}
-          <button
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
             class="template-item"
+            role="button"
+            tabindex="0"
             onclick={() => selectTemplate(tpl.id)}
+            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectTemplate(tpl.id); } }}
           >
             <div class="template-header">
               <span class="template-name">{tpl.name}</span>
@@ -110,7 +114,7 @@
                 {deleteConfirmId === tpl.id ? 'confirm?' : 'delete'}
               </button>
             </div>
-          </button>
+          </div>
         {/each}
         {#if results.length === 0}
           <div class="drawer-empty">
@@ -236,8 +240,10 @@
     text-align: left;
     color: var(--text-primary);
     transition: background 0.1s;
+    outline: none;
   }
-  .template-item:hover {
+  .template-item:hover,
+  .template-item:focus-visible {
     background: var(--surface-hover);
   }
   .template-item:last-child {
