@@ -12,6 +12,7 @@
   import NotificationToggle from './lib/components/NotificationToggle.svelte';
   import AuthSettings from './lib/components/AuthSettings.svelte';
   import PairingScreen from './lib/components/PairingScreen.svelte';
+  import CharacterGallery from './lib/components/CharacterGallery.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
   // ── Toast notifications for connection state ────────────────
@@ -58,7 +59,7 @@
 
   // ── Office state & tab management ─────────────────────────
 
-  type ViewTab = 'chat' | 'office';
+  type ViewTab = 'chat' | 'office' | 'characters';
   let activeTab = $state<ViewTab>('chat');
 
   const office = createOfficeState();
@@ -136,6 +137,13 @@
           <span class="agent-count">{office.agents.length}</span>
         {/if}
       </button>
+      <button
+        class="tab"
+        class:active={activeTab === 'characters'}
+        onclick={() => (activeTab = 'characters')}
+      >
+        Crew
+      </button>
     </nav>
     <div class="header-spacer"></div>
     <AuthSettings />
@@ -148,6 +156,8 @@
   <div class="main-content">
     {#if activeTab === 'chat'}
       <ChatView />
+    {:else if activeTab === 'characters'}
+      <CharacterGallery />
     {:else}
       <div class="office-wrapper">
         <OfficeCanvas

@@ -108,7 +108,7 @@
                 {#each filteredCategories as cat (cat)}
                   <button
                     class="category-suggestion"
-                    onmousedown|preventDefault={() => selectCategory(cat)}
+                    onmousedown={(e: MouseEvent) => { e.preventDefault(); selectCategory(cat); }}
                   >
                     {cat}
                   </button>

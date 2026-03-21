@@ -184,16 +184,9 @@
       setTimeout(() => focusInput(0), 100);
     }
   });
-</script>
 
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div
-  class="pairing-overlay"
-  role="dialog"
-  aria-modal="true"
-  aria-label="Device pairing"
-  onkeydown={(e) => { if (e.key === 'Tab') {
-    // Focus trap: cycle focus within the dialog
+  function handleFocusTrap(e: KeyboardEvent) {
+    if (e.key !== 'Tab') return;
     const overlay = e.currentTarget as HTMLElement;
     const focusable = overlay.querySelectorAll<HTMLElement>(
       'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -208,7 +201,16 @@
       e.preventDefault();
       first.focus();
     }
-  }}
+  }
+</script>
+
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+  class="pairing-overlay"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Device pairing"
+  onkeydown={handleFocusTrap}
 >
   <div class="pairing-container">
     <div class="branding">

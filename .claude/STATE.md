@@ -7,7 +7,7 @@
 
 ## Current Phase
 
-**Phase 3: "Never Miss an Approval"** — Push notifications + stable tunnel — COMPLETE
+**Phase 5: "Power User"** — Voice, templates, history, sessions, pairing, file context — COMPLETE
 
 ## Strategy
 
@@ -73,16 +73,54 @@
 - [x] Named Cloudflare Tunnel with one-time setup + daily `npm run dev:remote`
 - [x] SW gated behind production mode (no dev HMR breakage)
 
-## Phase 4 — Not Started
+## Completed — Phase 4: "Steering & Security"
 
-### Candidates (pick next session)
-- [ ] Agent steering (send prompts to specific agents from inspector)
-- [ ] Voice prompts (Speech-to-text input)
-- [ ] Prompt templates (save, organize, reuse)
-- [ ] Apple Watch companion app
-- [ ] Auth/security hardening (token auth for push endpoints, CORS restriction)
-- [ ] HTTP helper deduplication (extract shared readBody/sendJson utils)
+### Track A: Agent Steering
+- [x] Agent message routing with context wrapping — relay wraps user text with agent role/task (PR #29)
+- [x] Agent inspector message UI — text input + send in Office inspector (PR #29)
+- [x] Agent tracker populated on lifecycle events for context lookup (PR #29)
+
+### Track B: Auth & Security Hardening
+- [x] Shared HTTP helpers — readBody (with size limit), sendJson, getCorsOrigin, requireAuth (PR #30)
+- [x] Token auth — auto-generated 32-char hex token, WS upgrade auth, push endpoint auth (PR #30)
+- [x] CORS hardening — origin whitelist, Vary: Origin headers (PR #30)
+- [x] PWA auth settings UI — token input, localStorage persistence, reconnect on change (PR #30)
+- [x] Dotenv loading — inline loader + --env-file flag for .env persistence (PR #30)
+
+### Phase 4 Success Criteria — ALL MET
+- [x] Click agent in Office → type message → send → routed with context to main session
+- [x] WS connections without valid token rejected with 401
+- [x] Push subscribe/unsubscribe require Bearer token
+- [x] Health check and VAPID key remain public
+- [x] CORS uses configured origins (not hardcoded `*`)
+- [x] hook-server readBody has size limit (fixes DoS)
+- [x] PWA settings UI for token entry, persists in localStorage
+
+## Completed — Phase 5: "Power User"
+
+### Wave 1
+- [x] A1: Voice Input (PR #31) — Web Speech API mic button
+- [x] A2: Prompt Templates (PR #32) — save/search/reuse prompts
+- [x] A3: Prompt History (PR #33) — arrow-up cycling, search overlay
+- [x] B1: Session List + Metadata (PR #34) — session drawer, cost/token tracking
+- [x] C1: PIN Pairing Relay (PR #35) — 6-digit PIN, device registry, rate limiting
+
+### Wave 2
+- [x] B2: Session Persistence (PR #37) — transcript replay, disk persistence
+- [x] C2: PWA Pairing Flow (PR #36) — PIN entry screen, auto-connect
+- [x] C3: Device Management (PR #38) — device list, revoke paired devices
+- [x] A4: @file Context (PR #39) — workspace tree browser, context chips
+
+### Phase 5 Success Criteria — ALL MET
+- [x] Voice input via Web Speech API
+- [x] Prompt templates with save/search/reuse
+- [x] Prompt history with arrow-up cycling and search
+- [x] Session list with metadata and history replay
+- [x] Session persistence across relay restarts
+- [x] PIN pairing for new device onboarding
+- [x] Device management with revoke capability
+- [x] @file context attachment for workspace files
 
 ---
 
-_Last updated: 2026-03-20_
+_Last updated: 2026-03-21_
