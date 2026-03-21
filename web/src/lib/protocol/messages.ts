@@ -48,8 +48,15 @@ export interface WorkspaceTreeMessage {
 
 export interface ContextAddMessage {
   type: 'context.add';
+  sessionId: string;
   path: string;
   contextType: 'file' | 'folder';
+}
+
+export interface ContextRemoveMessage {
+  type: 'context.remove';
+  sessionId: string;
+  path: string;
 }
 
 export interface SettingsApprovalMessage {
@@ -81,6 +88,7 @@ export type ClientMessage =
   | AgentChatMessage
   | WorkspaceTreeMessage
   | ContextAddMessage
+  | ContextRemoveMessage
   | SettingsApprovalMessage
   | SessionListMessage
   | DeviceListMessage
@@ -210,6 +218,20 @@ export interface DeviceRevokeResponseMessage {
   success: boolean;
 }
 
+export interface ContextAddResponseMessage {
+  type: 'context.add.response';
+  path: string;
+  success: boolean;
+  error?: string;
+  totalContextSize: number;
+}
+
+export interface ContextRemoveResponseMessage {
+  type: 'context.remove.response';
+  path: string;
+  success: boolean;
+  totalContextSize: number;
+}
 export interface ErrorMessage {
   type: 'error';
   code: string;
@@ -262,6 +284,8 @@ export type ServerMessage =
   | SessionInfoMessage
   | SessionResultMessage
   | WorkspaceTreeResponseMessage
+  | ContextAddResponseMessage
+  | ContextRemoveResponseMessage
   | NotificationMessage
   | DeviceListResponseMessage
   | DeviceRevokeResponseMessage

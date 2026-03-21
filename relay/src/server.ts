@@ -19,6 +19,8 @@ import { truncateMetaField } from './sessions/session-transcript.js';
 import { createStaticHandler } from './static.js';
 import { PushManager } from './push/push-manager.js';
 import { NotificationBatcher } from './push/notification-batcher.js';
+import { scanWorkspaceTree } from './workspace/tree-scanner.js';
+import { readFileSync } from 'node:fs';
 import type { ClientMessage, ServerMessage } from './protocol/messages.js';
 import type { PushSubscriptionData } from './push/push-manager.js';
 
@@ -455,13 +457,61 @@ async function handleClientMessage(message: ClientMessage, ws: AuthenticatedWebS
     }
 
     case 'workspace.tree': {
-      logger.info('Workspace tree not yet implemented');
-      sendToClient(ws, { type: 'workspace.tree.response', files: [] });
+      // Use the first active session's workingDir, or fall back to CLAUDE_WORK_DIR
+      const sessions = sessionManager.list();
+      const activeSession = sessions.length > 0 ? sessionManager.get(sessions[0]!.id) : null;
+      const workDir = activeSession?.workingDir ?? CLAUDE_WORK_DIR;
+      const tree = scanWorkspaceTree(workDir, message.path);
+      sendToClient(ws, {
+        type: 'workspace.tree.response',
+        files: tree.map(function mapNode(n): import('./protocol/messages.js').FileNode {
+          return {
+            name: n.name,
+            path: n.path,
+            isDirectory: n.type === 'directory',
+            children: n.children?.map(mapNode),
+          };
+        }),
+      });
       break;
     }
 
     case 'context.add': {
-      logger.info({ path: message.path }, 'Context add not yet implemented');
+      const session = sessionManager.get(message.sessionId);
+      const filePath = join(session.workingDir, message.path);
+
+      try {
+        const content = readFileSync(filePath, 'utf-8');
+        const result = session.addContextFile(message.path, content);
+
+        sendToClient(ws, {
+          type: 'context.add.response',
+          path: message.path,
+          success: result.ok,
+          error: result.error,
+          totalContextSize: session.contextSize,
+        });
+      } catch (err) {
+        sendToClient(ws, {
+          type: 'context.add.response',
+          path: message.path,
+          success: false,
+          error: err instanceof Error ? err.message : 'Failed to read file',
+          totalContextSize: session.contextSize,
+        });
+      }
+      break;
+    }
+
+    case 'context.remove': {
+      const session = sessionManager.get(message.sessionId);
+      session.removeContextFile(message.path);
+      sendToClient(ws, {
+        type: 'context.remove.response',
+        path: message.path,
+        success: true,
+        totalContextSize: session.contextSize,
+      });
       break;
     }
 

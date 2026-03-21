@@ -95,8 +95,12 @@ export class ClaudeCliAdapter implements IAdapter {
       throw new Error(`No SDK session for ${sessionId}`);
     }
 
-    await entry.sdkSession.send(text);
-    logger.info({ sessionId, textLength: text.length }, 'Prompt sent via SDK');
+    // Prepend attached file context if any
+    const contextText = entry.session.getContextText();
+    const finalText = contextText ? `${contextText}${text}` : text;
+
+    await entry.sdkSession.send(finalText);
+    logger.info({ sessionId, textLength: finalText.length, hasContext: !!contextText }, 'Prompt sent via SDK');
   }
 
   async sendAgentMessage(sessionId: string, agentId: string, text: string): Promise<void> {

@@ -12,6 +12,7 @@ import type {
 } from '../protocol/messages';
 import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
+import { contextStore } from './context.svelte';
 
 // ── Chat message model ──────────────────────────────────────
 
@@ -374,6 +375,7 @@ class RelayStore {
     this.toolActivities = [];
     this.inputText = '';
     this.inputPrefix = '';
+    contextStore.clear();
     this.persistSessionId();
     if (this.isConnected) {
       this.startSession();
@@ -466,6 +468,32 @@ class RelayStore {
 
   revokeDevice(deviceId: string): void {
     this.socket.send({ type: 'device.revoke', deviceId });
+  }
+
+  // ── Workspace tree & context ───────────────────────────
+
+  requestWorkspaceTree(path?: string): void {
+    contextStore.isLoadingTree = true;
+    this.socket.send({ type: 'workspace.tree', path });
+  }
+
+  addContext(path: string): void {
+    if (!this.sessionId) return;
+    this.socket.send({
+      type: 'context.add',
+      sessionId: this.sessionId,
+      path,
+      contextType: 'file',
+    });
+  }
+
+  removeContext(path: string): void {
+    if (!this.sessionId) return;
+    this.socket.send({
+      type: 'context.remove',
+      sessionId: this.sessionId,
+      path,
+    });
   }
 
   // ── Command usage tracking ────────────────────────────────
@@ -677,7 +705,15 @@ class RelayStore {
         break;
 
       case 'workspace.tree.response':
-        // Not handled in chat view yet
+        contextStore.handleTreeResponse(message.files);
+        break;
+
+      case 'context.add.response':
+        contextStore.handleContextAddResponse(message);
+        break;
+
+      case 'context.remove.response':
+        contextStore.handleContextRemoveResponse(message);
         break;
 
       case 'session.list.response':
