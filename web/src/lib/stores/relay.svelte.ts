@@ -5,6 +5,7 @@ import { RelaySocket, type ConnectionState } from '../protocol/websocket';
 import type {
   ApprovalDecision,
   ApprovalRequestMessage,
+  SessionHistoryMessage,
   SessionResultMessage,
   ServerMessage,
 } from '../protocol/messages';
@@ -180,6 +181,7 @@ class RelayStore {
 
   // Streaming state
   isWaitingForResponse = $state(false);
+  isViewingHistory = $state(false);
   activeToolName = $state<string | null>(null);
 
   // Tool activity feed
@@ -359,6 +361,7 @@ class RelayStore {
     // Tear down current session, clear everything, start fresh
     this.messages = [];
     this.sessionId = null;
+    this.isViewingHistory = false;
     this.pendingApprovals = [];
     this.agents = [];
     this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
@@ -378,6 +381,7 @@ class RelayStore {
   }
 
   sendPrompt(overrideText?: string): void {
+    if (this.isViewingHistory) return;
     const text = overrideText ?? this.inputText.trim();
     if (!text || !this.sessionId) return;
 
@@ -407,6 +411,7 @@ class RelayStore {
   }
 
   sendApproval(requestId: string, decision: ApprovalDecision): void {
+    if (this.isViewingHistory) return;
     const approval = this.pendingApprovals.find((a) => a.id === requestId);
     const toolUseId = approval?.toolUseId;
     this.socket.send({ type: 'approval', requestId, decision, toolUseId });
@@ -414,6 +419,7 @@ class RelayStore {
   }
 
   sendAgentMessage(agentId: string, text: string): void {
+    if (this.isViewingHistory) return;
     const trimmed = text.trim();
     if (!trimmed || !this.sessionId) return;
 
@@ -449,6 +455,7 @@ class RelayStore {
   switchSession(sessionId: string): void {
     this.socket.send({ type: 'session.attach', sessionId });
   }
+
 
   // ── Command usage tracking ────────────────────────────────
 
@@ -490,6 +497,7 @@ class RelayStore {
 
       case 'session.info':
         this.sessionId = message.sessionId;
+        this.isViewingHistory = false;
         this.persistSessionId();
         // Only show "Session restored" when we were explicitly reattaching
         if (this.isReattaching && this.messages.length > 0) {
@@ -664,6 +672,10 @@ class RelayStore {
       case 'session.list.response':
         sessionsStore.handleListResponse(message.sessions);
         break;
+
+      case 'session.history':
+        this.handleSessionHistory(message);
+        break;
     }
   }
 
@@ -691,6 +703,41 @@ class RelayStore {
       details: event.details,
       toolUseId,
       receivedAt: new Date(),
+    });
+  }
+
+  private handleSessionHistory(message: SessionHistoryMessage): void {
+    // Replace current messages with historical transcript (read-only mode)
+    this.sessionId = message.sessionId;
+    // Don't persist as the live session — this is read-only history
+    this.isViewingHistory = true;
+    this.pendingApprovals = [];
+    this.agents = [];
+    this.toolActivities = [];
+    this.activeToolName = null;
+    this.isWaitingForResponse = false;
+    this.messages = message.entries.map((entry) => ({
+      id: uid(),
+      role: entry.type === 'result' ? 'system' as const : entry.type === 'tool' ? 'tool' as const : entry.type as 'user' | 'assistant' | 'system',
+      content: entry.content,
+      timestamp: new Date(entry.timestamp),
+      ...(entry.meta && entry.type === 'tool'
+        ? {
+            toolMeta: {
+              tool: (entry.meta['tool'] as string) ?? 'unknown',
+              input: entry.meta['input'] as Record<string, unknown> | undefined,
+              output: entry.meta['output'] as string | undefined,
+              success: entry.meta['success'] as boolean | undefined,
+            },
+          }
+        : {}),
+    }));
+    // Push a system message indicating this is history
+    this.messages.push({
+      id: uid(),
+      role: 'system',
+      content: 'Viewing closed session history (read-only)',
+      timestamp: new Date(),
     });
   }
 
