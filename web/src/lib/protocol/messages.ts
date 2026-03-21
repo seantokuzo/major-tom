@@ -189,7 +189,7 @@ export interface ErrorMessage {
 export interface SessionMeta {
   id: string;
   adapter: string;
-  workingDir: string;
+  workingDirName: string;
   status: string;
   startedAt: string;
   totalCost: number;

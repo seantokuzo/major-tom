@@ -16,7 +16,7 @@ export interface SessionInfo {
 export interface SessionMeta {
   id: string;
   adapter: AdapterType;
-  workingDir: string;
+  workingDirName: string;
   status: SessionStatus;
   startedAt: string;
   totalCost: number;
@@ -81,7 +81,7 @@ export class Session {
     return {
       id: this.id,
       adapter: this.adapter,
-      workingDir: basename(this.workingDir),
+      workingDirName: basename(this.workingDir),
       status: this.status,
       startedAt: this.startedAt,
       totalCost: this.totalCost,

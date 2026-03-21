@@ -193,7 +193,7 @@ export interface ErrorMessage {
 export interface SessionMetaMessage {
   id: string;
   adapter: string;
-  workingDir: string;
+  workingDirName: string;
   status: string;
   startedAt: string;
   totalCost: number;

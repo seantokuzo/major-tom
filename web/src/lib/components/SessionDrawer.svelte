@@ -35,11 +35,6 @@
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  function dirName(path: string): string {
-    const parts = path.split(/[\\/]/);
-    return parts[parts.length - 1] || path;
-  }
-
   function handleSwitch(sessionId: string) {
     relay.switchSession(sessionId);
     onclose();
@@ -75,7 +70,7 @@
                 <span class="session-status" class:active={session.status === 'active'} class:idle={session.status === 'idle'} class:closed={session.status === 'closed'}>
                   {session.status}
                 </span>
-                <span class="session-dir" title={session.workingDir}>{dirName(session.workingDir)}</span>
+                <span class="session-dir" title={session.workingDirName}>{session.workingDirName}</span>
                 {#if session.id === relay.sessionId}
                   <span class="session-current-badge">current</span>
                 {/if}
