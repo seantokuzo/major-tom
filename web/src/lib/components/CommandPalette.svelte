@@ -16,6 +16,7 @@
     onOpenSaveTemplate,
     onOpenSessions,
     onOpenDevices,
+    onOpenFiles,
   }: {
     open: boolean;
     onClose: () => void;
@@ -23,6 +24,7 @@
     onOpenSaveTemplate?: () => void;
     onOpenSessions?: () => void;
     onOpenDevices?: () => void;
+    onOpenFiles?: () => void;
   } = $props();
 
   let searchText = $state('');
@@ -91,6 +93,15 @@
       action: () => {
         relay.trackCommandUsage('/model haiku');
         relay.sendPrompt('/model haiku');
+      },
+    },
+    {
+      key: '/files',
+      name: '/files',
+      description: 'Browse and attach workspace files',
+      action: () => {
+        relay.trackCommandUsage('/files');
+        onOpenFiles?.();
       },
     },
     {

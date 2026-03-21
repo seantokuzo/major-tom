@@ -27,6 +27,10 @@ export interface SessionMeta {
   totalDuration: number;
 }
 
+// ── Context file limits ─────────────────────────────────────
+
+const MAX_FILE_SIZE = 50 * 1024;       // 50 KB per file
+const MAX_TOTAL_CONTEXT = 200 * 1024;  // 200 KB total
 
 export class Session {
   readonly id: string;
@@ -45,6 +49,11 @@ export class Session {
   outputTokens = 0;
   turnCount = 0;
   totalDuration = 0;
+
+  /** path → file content */
+  contextFiles: Map<string, string> = new Map();
+  /** total bytes of all context files */
+  contextSize: number = 0;
 
   constructor(adapter: AdapterType, workingDir: string) {
     this.id = randomUUID();
@@ -95,6 +104,51 @@ export class Session {
       turnCount: this.turnCount,
       totalDuration: this.totalDuration,
     };
+  }
+
+  // ── Context file management ────────────────────────────────
+
+  addContextFile(path: string, content: string): { ok: boolean; error?: string } {
+    const size = Buffer.byteLength(content, 'utf-8');
+
+    if (size > MAX_FILE_SIZE) {
+      return { ok: false, error: `File too large: ${(size / 1024).toFixed(1)} KB exceeds ${MAX_FILE_SIZE / 1024} KB limit` };
+    }
+
+    // If replacing an existing file, subtract its old size first
+    const existing = this.contextFiles.get(path);
+    const existingSize = existing ? Buffer.byteLength(existing, 'utf-8') : 0;
+    const newTotal = this.contextSize - existingSize + size;
+
+    if (newTotal > MAX_TOTAL_CONTEXT) {
+      return { ok: false, error: `Total context would be ${(newTotal / 1024).toFixed(1)} KB, exceeds ${MAX_TOTAL_CONTEXT / 1024} KB limit` };
+    }
+
+    this.contextFiles.set(path, content);
+    this.contextSize = newTotal;
+    return { ok: true };
+  }
+
+  removeContextFile(path: string): void {
+    const content = this.contextFiles.get(path);
+    if (content) {
+      this.contextSize -= Buffer.byteLength(content, 'utf-8');
+      this.contextFiles.delete(path);
+    }
+  }
+
+  getContextText(): string {
+    if (this.contextFiles.size === 0) return '';
+
+    const parts: string[] = ['<attached-files>'];
+    for (const [filePath, content] of this.contextFiles) {
+      const escapedPath = filePath.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      parts.push(`<file path="${escapedPath}">`);
+      parts.push(content);
+      parts.push('</file>');
+    }
+    parts.push('</attached-files>\n\n');
+    return parts.join('\n');
   }
 
 
