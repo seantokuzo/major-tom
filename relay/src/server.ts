@@ -104,9 +104,13 @@ const httpServer = createServer(async (req, res) => {
         return;
       }
 
-      const parsed = JSON.parse(body) as { pin?: string; deviceName?: string };
+      const parsed = JSON.parse(body) as { pin?: unknown; deviceName?: unknown };
       if (!parsed.pin || !parsed.deviceName) {
         sendJson(res, 400, { error: 'Missing pin or deviceName' }, corsOrigin ?? undefined);
+        return;
+      }
+      if (typeof parsed.pin !== 'string' || typeof parsed.deviceName !== 'string') {
+        sendJson(res, 400, { error: 'pin and deviceName must be strings' }, corsOrigin ?? undefined);
         return;
       }
 
@@ -119,9 +123,11 @@ const httpServer = createServer(async (req, res) => {
         deviceName = 'Unknown Device';
       }
 
+      // Record attempt for rate limiting (counts ALL attempts, not just failures)
+      pinManager.recordFailedAttempt(clientIp);
+
       // Validate PIN first (don't consume yet)
       if (!pinManager.validatePin(parsed.pin)) {
-        pinManager.recordFailedAttempt(clientIp);
         sendJson(res, 401, { error: 'Invalid or expired PIN' }, corsOrigin ?? undefined);
         return;
       }
@@ -136,8 +142,13 @@ const httpServer = createServer(async (req, res) => {
         return;
       }
 
-      // Only consume PIN after successful registration
-      pinManager.consumePin(parsed.pin, deviceName);
+      // Consume PIN after successful registration (TOCTOU guard)
+      if (!pinManager.consumePin(parsed.pin, deviceName)) {
+        // PIN was expired or claimed between validate and consume — rollback device
+        deviceManager.revoke(device.id);
+        sendJson(res, 409, { error: 'PIN expired or already claimed' }, corsOrigin ?? undefined);
+        return;
+      }
 
       logger.info({ deviceId: device.id, name: deviceName }, 'Device paired via PIN');
 
@@ -572,13 +583,10 @@ if (process.argv.includes('pair')) {
   httpServer.listen(WS_PORT, () => {
     logger.info({ wsPort: WS_PORT }, 'Major Tom relay server started (pair mode)');
     runPairMode()
-      .then(() => {
-        deviceManager.flush();
-        process.exit(0);
-      })
+      .then(() => shutdown('pair-complete'))
       .catch((err: unknown) => {
         logger.error({ err }, 'Pair mode failed');
-        process.exit(1);
+        void shutdown('pair-error');
       });
   });
 } else {

@@ -119,8 +119,8 @@ export class DeviceManager {
    * Persist device registry to disk. Throws on failure.
    */
   private persist(): void {
-    mkdirSync(MAJOR_TOM_DIR, { recursive: true });
-    writeFileSync(DEVICES_FILE, JSON.stringify(this.devices, null, 2), 'utf-8');
+    mkdirSync(MAJOR_TOM_DIR, { recursive: true, mode: 0o700 });
+    writeFileSync(DEVICES_FILE, JSON.stringify(this.devices, null, 2), { encoding: 'utf-8', mode: 0o600 });
   }
 
   /**
