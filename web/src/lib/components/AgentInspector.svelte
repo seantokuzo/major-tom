@@ -41,8 +41,10 @@
   const isTerminal = $derived(agent.status === 'complete' || agent.status === 'dismissed');
 
   function sendMessage() {
-    if (!messageText.trim() || isTerminal) return;
-    relay.sendAgentMessage(agent.id, messageText.trim());
+    const trimmed = messageText.trim();
+    if (!trimmed || isTerminal) return;
+    if (!relay.sessionId || !relay.isConnected) return;
+    relay.sendAgentMessage(agent.id, trimmed);
     messageText = '';
   }
 

@@ -389,6 +389,7 @@ class RelayStore {
     });
 
     this.isWaitingForResponse = true;
+    this.activeToolName = null;
 
     this.socket.send({
       type: 'agent.message',
