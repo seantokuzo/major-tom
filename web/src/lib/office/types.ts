@@ -5,22 +5,34 @@
 export type AgentStatus = 'spawning' | 'walking' | 'working' | 'idle' | 'celebrating' | 'leaving';
 
 export type CharacterType =
-  | 'dev'
-  | 'officeWorker'
-  | 'pm'
-  | 'clown'
-  | 'frankenstein'
+  // Humans
+  | 'architect'
+  | 'leadEngineer'
+  | 'engManager'
+  | 'backendEngineer'
+  | 'frontendEngineer'
+  | 'uxDesigner'
+  | 'projectManager'
+  | 'productManager'
+  | 'devops'
+  | 'databaseGuru'
+  // Dogs
   | 'dachshund'
   | 'cattleDog'
   | 'schnauzerBlack'
   | 'schnauzerPepper';
 
 export const ALL_CHARACTER_TYPES: CharacterType[] = [
-  'dev',
-  'officeWorker',
-  'pm',
-  'clown',
-  'frankenstein',
+  'architect',
+  'leadEngineer',
+  'engManager',
+  'backendEngineer',
+  'frontendEngineer',
+  'uxDesigner',
+  'projectManager',
+  'productManager',
+  'devops',
+  'databaseGuru',
   'dachshund',
   'cattleDog',
   'schnauzerBlack',
