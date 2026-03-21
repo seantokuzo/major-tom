@@ -42,12 +42,12 @@
     {#if dirty}
       <button class="btn btn-save" onclick={handleSave}>Save</button>
     {/if}
-    {#if relay.authToken}
-      <button class="btn btn-clear" onclick={handleClear}>Clear</button>
-    {/if}
   </div>
   {#if relay.authToken}
     <span class="status-text authenticated">Token set</span>
+    <button class="btn btn-repair" onclick={handleClear} title="Clear token and re-pair device">
+      Re-pair
+    </button>
   {:else}
     <span class="status-text unauthenticated">No token</span>
   {/if}
@@ -124,7 +124,7 @@
     color: #000;
   }
 
-  .btn-clear {
+  .btn-repair {
     background: var(--surface-hover);
     color: var(--text-secondary);
     border: 1px solid var(--border);
