@@ -84,7 +84,7 @@ echo ""
 echo " PWA:   http://localhost:5173"
 echo " Relay: http://localhost:9090"
 if [ "$LOCAL_ONLY" = false ] && [ -f "${TUNNEL_DIR}/config.yml" ]; then
-  HOSTNAME="$(grep -E '^[[:space:]]*hostname:' "${TUNNEL_DIR}/config.yml" | head -n1 | sed 's/^[[:space:]]*hostname:[[:space:]]*//' | sed 's/[[:space:]]*$//')"
+  HOSTNAME="$(grep -E 'hostname:' "${TUNNEL_DIR}/config.yml" | head -n1 | sed 's/^.*hostname:[[:space:]]*//' | sed 's/[[:space:]]*$//')" || true
   if [ -n "$HOSTNAME" ]; then
     echo " Tunnel: https://${HOSTNAME}"
   fi
