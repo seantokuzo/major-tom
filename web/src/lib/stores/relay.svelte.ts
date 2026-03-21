@@ -701,6 +701,13 @@ class RelayStore {
             content: 'Device revoked successfully',
             timestamp: new Date(),
           });
+        } else {
+          this.messages.push({
+            id: uid(),
+            role: 'system',
+            content: `Failed to revoke device ${message.deviceId}`,
+            timestamp: new Date(),
+          });
         }
         break;
     }

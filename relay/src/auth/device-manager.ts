@@ -66,6 +66,13 @@ export class DeviceManager {
   }
 
   /**
+   * Get a device by id. Returns null if not found.
+   */
+  getById(deviceId: string): Device | null {
+    return this.devices.find((d) => d.id === deviceId) ?? null;
+  }
+
+  /**
    * Revoke a device by id. Returns true if found and removed.
    */
   revoke(deviceId: string): boolean {

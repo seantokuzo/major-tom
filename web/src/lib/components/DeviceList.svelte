@@ -4,21 +4,21 @@
 
   let loading = $state(true);
   let confirmingId = $state<string | null>(null);
+  let initialDevices: DeviceInfo[] | null = null;
 
   // Request device list on mount
   $effect(() => {
+    initialDevices = relay.devices;
     relay.requestDeviceList();
-    // Loading clears when device.list.response arrives
+    // Fallback timeout in case response never arrives
     const timeout = setTimeout(() => { loading = false; }, 5000);
     return () => clearTimeout(timeout);
   });
 
-  // Clear loading when devices arrive
+  // Clear loading when devices array reference changes (response arrived)
   $effect(() => {
-    if (relay.devices.length >= 0 && loading) {
-      // Give a tick for the response to arrive
-      const timer = setTimeout(() => { loading = false; }, 300);
-      return () => clearTimeout(timer);
+    if (loading && initialDevices !== null && relay.devices !== initialDevices) {
+      loading = false;
     }
   });
 

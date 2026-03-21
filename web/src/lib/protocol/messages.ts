@@ -204,7 +204,7 @@ export interface DeviceListResponseMessage {
   devices: DeviceInfo[];
 }
 
-export interface DeviceRevokedMessage {
+export interface DeviceRevokeResponseMessage {
   type: 'device.revoke.response';
   deviceId: string;
   success: boolean;
@@ -264,7 +264,7 @@ export type ServerMessage =
   | WorkspaceTreeResponseMessage
   | NotificationMessage
   | DeviceListResponseMessage
-  | DeviceRevokedMessage
+  | DeviceRevokeResponseMessage
   | ErrorMessage
   | SessionListResponseMessage
   | SessionHistoryMessage;

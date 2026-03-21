@@ -129,6 +129,18 @@
     return () => clearTimeout(persistTimer);
   });
 
+  // Window-level Escape listener to close devices modal (fires even when focus is in textarea)
+  $effect(() => {
+    if (!devicesOpen) return;
+    function onKeydown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        devicesOpen = false;
+      }
+    }
+    window.addEventListener('keydown', onKeydown);
+    return () => window.removeEventListener('keydown', onKeydown);
+  });
+
   /** Disable input when not connected or reconnecting */
   let inputDisabled = $derived(!relay.hasSession || !relay.isConnected);
 
@@ -221,7 +233,7 @@
 
   {#if devicesOpen}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="modal-backdrop" onclick={() => { devicesOpen = false; }} onkeydown={(e) => { if (e.key === 'Escape') devicesOpen = false; }} role="presentation">
+    <div class="modal-backdrop" onclick={() => { devicesOpen = false; }} role="presentation">
       <div class="modal-content" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Device management" aria-modal="true">
         <button class="modal-close" onclick={() => { devicesOpen = false; }} aria-label="Close">&times;</button>
         <DeviceList />
