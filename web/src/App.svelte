@@ -11,6 +11,7 @@
   import { createOfficeState } from './lib/office/state.svelte';
   import NotificationToggle from './lib/components/NotificationToggle.svelte';
   import AuthSettings from './lib/components/AuthSettings.svelte';
+  import PairingScreen from './lib/components/PairingScreen.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
   // ── Toast notifications for connection state ────────────────
@@ -165,6 +166,10 @@
     {/if}
   </div>
   <Toast />
+
+  {#if !relay.authToken}
+    <PairingScreen />
+  {/if}
 </div>
 
 <style>

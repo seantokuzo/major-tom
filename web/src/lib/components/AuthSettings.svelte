@@ -48,6 +48,9 @@
   </div>
   {#if relay.authToken}
     <span class="status-text authenticated">Token set</span>
+    <button class="btn btn-repaid" onclick={handleClear} title="Clear token and re-pair device">
+      Re-pair
+    </button>
   {:else}
     <span class="status-text unauthenticated">No token</span>
   {/if}
@@ -125,6 +128,12 @@
   }
 
   .btn-clear {
+    background: var(--surface-hover);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+
+  .btn-repaid {
     background: var(--surface-hover);
     color: var(--text-secondary);
     border: 1px solid var(--border);
