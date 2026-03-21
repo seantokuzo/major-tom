@@ -5,6 +5,7 @@
   import CommandPalette from './CommandPalette.svelte';
   import StreamingIndicator from './StreamingIndicator.svelte';
   import ToolFeed from './ToolFeed.svelte';
+  import VoiceMicButton from './VoiceMicButton.svelte';
   import type { ApprovalDecision } from '../protocol/messages';
 
   let messagesEnd: HTMLDivElement | undefined;
@@ -108,6 +109,7 @@
       rows="1"
       disabled={inputDisabled}
     ></textarea>
+    <VoiceMicButton relay={relay} disabled={inputDisabled} />
     <button
       class="send-btn"
       type="submit"
