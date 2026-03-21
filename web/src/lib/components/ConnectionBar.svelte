@@ -126,18 +126,20 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--sp-sm) var(--sp-lg);
+    padding: var(--sp-sm) var(--sp-sm);
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
-    gap: var(--sp-md);
+    gap: var(--sp-sm);
+    overflow: hidden;
   }
 
   .left {
     display: flex;
     align-items: center;
-    gap: var(--sp-sm);
+    gap: var(--sp-xs);
     min-width: 0;
+    overflow: hidden;
   }
 
   .status-dot {
@@ -162,9 +164,13 @@
     border: none;
     color: var(--text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     cursor: pointer;
     padding: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 120px;
   }
   .address-label:hover { color: var(--text-primary); }
 
@@ -185,6 +191,9 @@
     color: var(--text-tertiary);
     text-transform: capitalize;
     transition: color 0.3s;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .state-text.state-error {

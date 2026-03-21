@@ -394,15 +394,18 @@
     align-items: center;
     justify-content: center;
     padding: var(--sp-lg);
+    padding-top: max(var(--sp-lg), env(safe-area-inset-top));
+    padding-bottom: max(var(--sp-lg), env(safe-area-inset-bottom));
+    overflow: hidden;
   }
 
   .pairing-container {
     width: 100%;
-    max-width: 380px;
+    max-width: 340px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--sp-xxl);
+    gap: var(--sp-xl);
   }
 
   .branding {
@@ -460,14 +463,14 @@
   }
 
   .pin-box {
-    width: 48px;
-    height: 56px;
+    width: 44px;
+    height: 52px;
     background: var(--surface);
     border: 2px solid var(--border);
     border-radius: var(--r-md);
     color: var(--text-primary);
     font-family: var(--font-mono);
-    font-size: 1.5rem;
+    font-size: 1.4rem;
     font-weight: 700;
     text-align: center;
     outline: none;
@@ -504,7 +507,7 @@
 
   .btn-pair {
     width: 100%;
-    padding: 14px;
+    padding: 16px;
     background: var(--accent);
     color: #000;
     border: none;
@@ -516,6 +519,7 @@
     transition: opacity 0.15s;
     letter-spacing: 0.05em;
     text-transform: uppercase;
+    min-height: 48px;
   }
 
   .btn-pair:hover:not(:disabled) {
@@ -575,8 +579,8 @@
   }
 
   .generated-digit {
-    width: 48px;
-    height: 56px;
+    width: 44px;
+    height: 52px;
     display: flex;
     align-items: center;
     justify-content: center;

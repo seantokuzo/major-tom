@@ -299,8 +299,9 @@
   .input-bar {
     display: flex;
     align-items: flex-end;
-    gap: var(--sp-sm);
-    padding: var(--sp-sm) var(--sp-md);
+    gap: var(--sp-xs);
+    padding: var(--sp-sm) var(--sp-sm);
+    padding-bottom: max(var(--sp-sm), env(safe-area-inset-bottom));
     background: var(--surface);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
@@ -323,6 +324,7 @@
 
   .input-field {
     flex: 1;
+    min-width: 0;
     background: transparent;
     border: none;
     outline: none;
@@ -341,16 +343,19 @@
   }
 
   .template-btn {
-    width: 28px;
-    height: 28px;
+    width: 36px;
+    height: 36px;
     border-radius: var(--r-sm);
     border: 1px solid var(--border);
     background: transparent;
     color: var(--text-tertiary);
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     cursor: pointer;
     transition: all 0.15s;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .template-btn:hover:not(:disabled) {
     color: var(--accent);
@@ -362,8 +367,8 @@
   }
 
   .history-btn {
-    width: 28px;
-    height: 28px;
+    width: 36px;
+    height: 36px;
     border-radius: var(--r-sm);
     border: 1px solid var(--border);
     background: transparent;
@@ -388,12 +393,12 @@
   }
 
   .file-btn {
-    width: 28px;
-    height: 28px;
+    width: 36px;
+    height: 36px;
     border-radius: var(--r-sm);
     border: 1px solid var(--border);
     background: transparent;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     cursor: pointer;
     transition: all 0.15s;
     flex-shrink: 0;
@@ -411,13 +416,13 @@
   }
 
   .send-btn {
-    width: 28px;
-    height: 28px;
+    width: 36px;
+    height: 36px;
     border-radius: var(--r-sm);
     border: 1px solid var(--border);
     background: transparent;
     color: var(--accent);
-    font-size: 0.9rem;
+    font-size: 1rem;
     font-weight: 700;
     cursor: pointer;
     transition: all 0.15s;

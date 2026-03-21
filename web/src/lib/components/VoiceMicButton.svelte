@@ -190,8 +190,8 @@
 <style>
   .mic-btn {
     position: relative;
-    width: 28px;
-    height: 28px;
+    width: 36px;
+    height: 36px;
     border-radius: var(--r-sm);
     border: 1px solid var(--border);
     background: transparent;

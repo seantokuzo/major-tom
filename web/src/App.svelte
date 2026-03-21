@@ -118,7 +118,7 @@
 
 <div class="app">
   <header class="header">
-    <h1 class="title">Major Tom</h1>
+    <h1 class="title">MT</h1>
     <nav class="tabs">
       <button
         class="tab"
@@ -146,8 +146,10 @@
       </button>
     </nav>
     <div class="header-spacer"></div>
-    <AuthSettings />
-    <NotificationToggle />
+    <div class="header-actions">
+      <AuthSettings />
+      <NotificationToggle />
+    </div>
   </header>
   <ConnectionBar />
   <ConnectionStatus />
@@ -190,21 +192,23 @@
   }
 
   .header {
-    padding: var(--sp-xs) var(--sp-lg);
+    padding: var(--sp-xs) var(--sp-sm);
     background: var(--bg);
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: var(--sp-lg);
+    gap: var(--sp-sm);
+    overflow: hidden;
   }
 
   .title {
     font-family: var(--font-mono);
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-weight: 700;
     color: var(--accent);
     letter-spacing: 0.08em;
     text-transform: uppercase;
+    flex-shrink: 0;
   }
 
   .tabs {
@@ -213,6 +217,7 @@
     background: var(--surface);
     border-radius: var(--r-sm);
     padding: 2px;
+    flex-shrink: 0;
   }
 
   .tab {
@@ -222,13 +227,14 @@
     color: var(--text-tertiary);
     background: transparent;
     border: none;
-    padding: 4px 12px;
+    padding: 6px 10px;
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.15s;
     display: flex;
     align-items: center;
     gap: 6px;
+    min-height: 32px;
   }
 
   .tab:hover {
@@ -242,6 +248,21 @@
 
   .header-spacer {
     flex: 1;
+    min-width: 0;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-sm);
+    flex-shrink: 0;
+  }
+
+  /* Hide auth & notification settings on mobile — accessible via ConnectionBar */
+  @media (max-width: 600px) {
+    .header-actions {
+      display: none;
+    }
   }
 
   .agent-count {

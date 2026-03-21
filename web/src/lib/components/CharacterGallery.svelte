@@ -34,12 +34,8 @@
     // Nearest-neighbor scaling for crisp pixel art
     ctx.imageSmoothingEnabled = false;
 
-    // Flip vertically (sprites are Y-up from SpriteKit)
-    ctx.save();
-    ctx.translate(x + drawW / 2, y + drawH / 2);
-    ctx.scale(1, -1);
-    ctx.drawImage(sprite.canvas, -drawW / 2, -drawH / 2, drawW, drawH);
-    ctx.restore();
+    // renderCharacter already applies the Y-flip, so draw directly
+    ctx.drawImage(sprite.canvas, x, y, drawW, drawH);
   }
 
   // Access the sprite cache builder directly
@@ -162,6 +158,12 @@
 >
   <canvas bind:this={canvas}></canvas>
 
+  <!-- Character info -->
+  <div class="character-info">
+    <h2 class="character-name">{currentCharacter.displayName}</h2>
+    <p class="character-role">{currentCharacter.type}</p>
+  </div>
+
   <!-- Dot indicators -->
   <div class="dots">
     {#each characters as _, i}
@@ -210,23 +212,57 @@
     inset: 0;
   }
 
+  .character-info {
+    position: absolute;
+    bottom: 60px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .character-name {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+
+  .character-role {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+  }
+
   .dots {
     position: absolute;
     bottom: var(--sp-xl);
     display: flex;
-    gap: var(--sp-sm);
+    gap: var(--sp-md);
     z-index: 1;
   }
 
   .dot {
-    width: 8px;
-    height: 8px;
+    width: 12px;
+    height: 12px;
     border-radius: var(--r-full);
-    border: 1.5px solid var(--text-tertiary);
+    border: 2px solid var(--text-tertiary);
     background: transparent;
     padding: 0;
     cursor: pointer;
     transition: all 0.2s;
+    /* Ensure 44px touch target */
+    position: relative;
+  }
+
+  .dot::before {
+    content: '';
+    position: absolute;
+    inset: -16px;
   }
 
   .dot.active {
