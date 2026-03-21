@@ -381,6 +381,7 @@ class RelayStore {
   }
 
   sendPrompt(overrideText?: string): void {
+    if (this.isViewingHistory) return;
     const text = overrideText ?? this.inputText.trim();
     if (!text || !this.sessionId) return;
 
@@ -410,6 +411,7 @@ class RelayStore {
   }
 
   sendApproval(requestId: string, decision: ApprovalDecision): void {
+    if (this.isViewingHistory) return;
     const approval = this.pendingApprovals.find((a) => a.id === requestId);
     const toolUseId = approval?.toolUseId;
     this.socket.send({ type: 'approval', requestId, decision, toolUseId });
@@ -417,6 +419,7 @@ class RelayStore {
   }
 
   sendAgentMessage(agentId: string, text: string): void {
+    if (this.isViewingHistory) return;
     const trimmed = text.trim();
     if (!trimmed || !this.sessionId) return;
 
@@ -704,6 +707,8 @@ class RelayStore {
 
   private handleSessionHistory(message: SessionHistoryMessage): void {
     // Replace current messages with historical transcript (read-only mode)
+    this.sessionId = message.sessionId;
+    // Don't persist as the live session — this is read-only history
     this.isViewingHistory = true;
     this.messages = message.entries.map((entry) => ({
       id: uid(),

@@ -41,6 +41,9 @@ export class SessionPersistence {
   private filePath(sessionId: string): string {
     // Sanitize sessionId to prevent path traversal
     const safe = sessionId.replace(/[^a-zA-Z0-9\-]/g, '');
+    if (!safe || safe !== sessionId) {
+      throw new Error(`Invalid session ID: ${sessionId}`);
+    }
     return join(SESSIONS_DIR, `${safe}.json`);
   }
 
@@ -119,6 +122,20 @@ export class SessionPersistence {
       logger.info({ sessionId }, 'Persisted session deleted');
     } catch {
       // File may not exist — that's fine
+    }
+  }
+
+  /** Flush all pending debounced writes immediately (call before dispose) */
+  async saveAllImmediate(buildSession: (id: string) => PersistedSession | null): Promise<void> {
+    const pendingIds = [...this.debounceTimers.keys()];
+    for (const id of pendingIds) {
+      const timer = this.debounceTimers.get(id);
+      if (timer) clearTimeout(timer);
+      this.debounceTimers.delete(id);
+      const session = buildSession(id);
+      if (session) {
+        await this.writeToDisk(session);
+      }
     }
   }
 

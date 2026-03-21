@@ -15,6 +15,7 @@ import { ApprovalQueue } from './hooks/approval-queue.js';
 import { eventBus } from './events/event-bus.js';
 import { agentTracker } from './events/agent-tracker.js';
 import { encodeServerMessage, safeDecode } from './protocol/codec.js';
+import { truncateMetaField } from './sessions/session-transcript.js';
 import { createStaticHandler } from './static.js';
 import { PushManager } from './push/push-manager.js';
 import { NotificationBatcher } from './push/notification-batcher.js';
@@ -386,6 +387,16 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
     case 'session.attach': {
       // Check if this is a persisted-only session (closed, transcript replay only)
       if (sessionManager.isPersistedOnly(message.sessionId)) {
+        // Send session.info so the client can update its sessionId
+        const meta = sessionManager.getPersistedMeta(message.sessionId);
+        if (meta) {
+          sendToClient(ws, {
+            type: 'session.info',
+            sessionId: message.sessionId,
+            adapter: meta.adapter ?? 'cli',
+            startedAt: meta.startedAt ?? new Date().toISOString(),
+          });
+        }
         const transcript = await sessionManager.getPersistedTranscript(message.sessionId);
         sendToClient(ws, {
           type: 'session.history',
@@ -512,7 +523,7 @@ cliAdapter.on('tool-start', (info) => {
       type: 'tool',
       content: `Tool start: ${info.tool}`,
       timestamp: new Date().toISOString(),
-      meta: { tool: info.tool, input: info.input },
+      meta: { tool: info.tool, input: truncateMetaField(info.input) },
     });
     triggerPersistence(info.sessionId);
   }
@@ -531,7 +542,7 @@ cliAdapter.on('tool-complete', (result) => {
       type: 'tool',
       content: `Tool complete: ${result.tool} (${result.success ? 'success' : 'failed'})`,
       timestamp: new Date().toISOString(),
-      meta: { tool: result.tool, output: result.output, success: result.success },
+      meta: { tool: result.tool, output: truncateMetaField(result.output), success: result.success },
     });
     triggerPersistence(result.sessionId);
   }
@@ -653,7 +664,8 @@ async function shutdown(signal: string): Promise<void> {
     new Promise<void>((resolve) => httpServer.close(() => resolve())),
   ]);
 
-  // Flush pending persistence writes
+  // Flush pending persistence writes before disposing
+  await sessionPersistence.saveAllImmediate((id) => buildPersistedSession(id));
   sessionPersistence.dispose();
 
   clearInterval(heartbeatInterval);

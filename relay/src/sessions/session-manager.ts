@@ -76,6 +76,11 @@ export class SessionManager {
     return [...result.values()];
   }
 
+  /** Get persisted metadata for a closed session */
+  getPersistedMeta(sessionId: string): SessionMeta | undefined {
+    return this.persistedMetas.get(sessionId);
+  }
+
   async getPersistedTranscript(sessionId: string): Promise<TranscriptEntry[]> {
     const persisted = await this.persistence.load(sessionId);
     return persisted?.transcript ?? [];
