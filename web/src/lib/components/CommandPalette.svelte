@@ -1,5 +1,6 @@
 <script lang="ts">
   import { relay } from '../stores/relay.svelte';
+  import { templates } from '../stores/templates.svelte';
 
   interface Command {
     name: string;
@@ -7,7 +8,17 @@
     action: () => void;
   }
 
-  let { open = $bindable(false), onClose }: { open: boolean; onClose: () => void } = $props();
+  let {
+    open = $bindable(false),
+    onClose,
+    onOpenTemplates,
+    onOpenSaveTemplate,
+  }: {
+    open: boolean;
+    onClose: () => void;
+    onOpenTemplates?: () => void;
+    onOpenSaveTemplate?: () => void;
+  } = $props();
 
   let searchText = $state('');
   let selectedIndex = $state(0);
@@ -79,6 +90,22 @@
         // Close palette and let user type their question
       },
     },
+    {
+      name: '/save',
+      description: 'Save current input as a template',
+      action: () => {
+        relay.trackCommandUsage('/save');
+        onOpenSaveTemplate?.();
+      },
+    },
+    {
+      name: '/templates',
+      description: 'Browse saved prompt templates',
+      action: () => {
+        relay.trackCommandUsage('/templates');
+        onOpenTemplates?.();
+      },
+    },
   ];
 
   let filteredCommands = $derived.by(() => {
@@ -95,12 +122,31 @@
     }
 
     // Sort by usage count (descending), then alphabetically
-    return [...filtered].sort((a, b) => {
+    const sorted = [...filtered].sort((a, b) => {
       const aCount = usage[a.name] || 0;
       const bCount = usage[b.name] || 0;
       if (bCount !== aCount) return bCount - aCount;
       return a.name.localeCompare(b.name);
     });
+
+    // Append matching templates when user has typed a query
+    if (query) {
+      const matchingTemplates = templates.search(query).slice(0, 5);
+      for (const tpl of matchingTemplates) {
+        sorted.push({
+          name: `# ${tpl.name}`,
+          description: tpl.content.length > 50 ? tpl.content.slice(0, 50) + '...' : tpl.content,
+          action: () => {
+            const used = templates.use(tpl.id);
+            if (used) {
+              relay.inputText = used.content;
+            }
+          },
+        });
+      }
+    }
+
+    return sorted;
   });
 
   function selectCommand(cmd: Command) {
