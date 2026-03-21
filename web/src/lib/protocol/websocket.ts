@@ -15,6 +15,7 @@ const MAX_RECONNECT_DELAY = 30_000;
 export class RelaySocket {
   private ws: WebSocket | null = null;
   private url: string = '';
+  private token: string | null = null;
   private intentionalClose = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -26,7 +27,7 @@ export class RelaySocket {
   onReconnectAttempt: ReconnectHandler | null = null;
   onMaxRetriesExceeded: MaxRetriesHandler | null = null;
 
-  connect(host: string): void {
+  connect(host: string, token?: string): void {
     // Clean up any existing connection first
     if (this.ws) {
       this.ws.onclose = null; // prevent reconnect from firing
@@ -40,9 +41,11 @@ export class RelaySocket {
 
     this.intentionalClose = false;
     this.reconnectAttempt = 0;
+    this.token = token ?? null;
     const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
     const defaultScheme = isSecure ? 'wss://' : 'ws://';
-    this.url = host.startsWith('ws://') || host.startsWith('wss://') ? host : `${defaultScheme}${host}`;
+    const baseUrl = host.startsWith('ws://') || host.startsWith('wss://') ? host : `${defaultScheme}${host}`;
+    this.url = this.token ? `${baseUrl}?token=${encodeURIComponent(this.token)}` : baseUrl;
     this.setState('connecting');
     this.establish();
   }

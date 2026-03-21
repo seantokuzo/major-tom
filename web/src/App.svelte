@@ -10,6 +10,7 @@
   import { toasts } from './lib/stores/toast.svelte';
   import { createOfficeState } from './lib/office/state.svelte';
   import NotificationToggle from './lib/components/NotificationToggle.svelte';
+  import AuthSettings from './lib/components/AuthSettings.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
   // ── Toast notifications for connection state ────────────────
@@ -25,7 +26,7 @@
 
     if (state === 'connected') {
       // Re-send push subscription on every connect (relay may have restarted)
-      resendPushSubscription();
+      resendPushSubscription(relay.authToken ?? undefined);
 
       if (wasReconnecting) {
         toasts.success('Reconnected to relay');
@@ -136,6 +137,7 @@
       </button>
     </nav>
     <div class="header-spacer"></div>
+    <AuthSettings />
     <NotificationToggle />
   </header>
   <ConnectionBar />

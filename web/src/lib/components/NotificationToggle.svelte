@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { initPushNotifications, unsubscribeFromPush } from '../push/push-manager';
+  import { relay } from '../stores/relay.svelte';
   import { toasts } from '../stores/toast.svelte';
 
   let permission = $state<NotificationPermission | 'unsupported'>(
@@ -32,7 +33,7 @@
   async function handleEnable(): Promise<void> {
     loading = true;
     try {
-      const status = await initPushNotifications();
+      const status = await initPushNotifications(relay.authToken ?? undefined);
       permission = status.permission === 'unsupported' ? 'unsupported' : status.permission;
       subscribed = status.subscribed;
 
@@ -60,7 +61,7 @@
       }
       const sub = await registration.pushManager.getSubscription();
       if (sub) {
-        await unsubscribeFromPush(sub);
+        await unsubscribeFromPush(sub, relay.authToken ?? undefined);
       }
       subscribed = false;
       toasts.info('Notifications disabled');
