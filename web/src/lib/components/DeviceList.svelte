@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { relay } from '../stores/relay.svelte';
   import type { DeviceInfo } from '../protocol/messages';
 
@@ -6,8 +7,8 @@
   let confirmingId = $state<string | null>(null);
   let initialDevices: DeviceInfo[] | null = null;
 
-  // Request device list on mount
-  $effect(() => {
+  // Request device list on mount (onMount avoids reactive re-trigger loops)
+  onMount(() => {
     initialDevices = relay.devices;
     relay.requestDeviceList();
     // Fallback timeout in case response never arrives
@@ -70,7 +71,9 @@
     <h3 class="device-list-title">Paired Devices</h3>
   </div>
 
-  {#if loading}
+  {#if !relay.isConnected}
+    <div class="device-list-empty">Not connected to relay</div>
+  {:else if loading}
     <div class="device-list-loading">Loading devices...</div>
   {:else if relay.devices.length === 0}
     <div class="device-list-empty">No paired devices</div>

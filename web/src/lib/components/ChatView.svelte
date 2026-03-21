@@ -235,7 +235,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal-backdrop" onclick={() => { devicesOpen = false; }} role="presentation">
       <div class="modal-content" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Device management" aria-modal="true">
-        <button class="modal-close" onclick={() => { devicesOpen = false; }} aria-label="Close">&times;</button>
+        <button class="modal-close" onclick={() => { devicesOpen = false; }} aria-label="Close" autofocus>&times;</button>
         <DeviceList />
       </div>
     </div>

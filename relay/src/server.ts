@@ -506,6 +506,11 @@ async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promi
             client.close(1008, 'Device revoked');
           }
         }
+        // If the requester revoked its own token, close it too after the response was sent
+        if (ws.authToken === revokedToken) {
+          logger.info({ deviceId: message.deviceId }, 'Requester revoked own device — closing');
+          ws.close(1008, 'Device revoked');
+        }
       }
       break;
     }
