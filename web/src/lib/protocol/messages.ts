@@ -44,6 +44,7 @@ export interface AgentChatMessage {
 export interface WorkspaceTreeMessage {
   type: 'workspace.tree';
   path?: string;
+  sessionId?: string;
 }
 
 export interface ContextAddMessage {

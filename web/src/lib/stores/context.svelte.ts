@@ -6,6 +6,7 @@ import type {
   ContextAddResponseMessage,
   ContextRemoveResponseMessage,
 } from '../protocol/messages';
+import { toasts } from './toast.svelte';
 
 // ── Context file info ───────────────────────────────────────
 
@@ -42,6 +43,8 @@ class ContextStore {
         });
       }
       this.totalContextSize = response.totalContextSize;
+    } else {
+      toasts.error(response.error ?? `Failed to add ${response.path}`);
     }
   }
 
@@ -60,6 +63,8 @@ class ContextStore {
 
   clear(): void {
     this.contextFiles = [];
+    this.treeCache = [];
+    this.isLoadingTree = false;
     this.totalContextSize = 0;
   }
 

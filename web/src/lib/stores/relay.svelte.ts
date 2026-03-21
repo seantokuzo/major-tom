@@ -474,7 +474,13 @@ class RelayStore {
 
   requestWorkspaceTree(path?: string): void {
     contextStore.isLoadingTree = true;
-    this.socket.send({ type: 'workspace.tree', path });
+    // Safety timeout — clear loading state if no response within 10s
+    setTimeout(() => {
+      if (contextStore.isLoadingTree) {
+        contextStore.isLoadingTree = false;
+      }
+    }, 10_000);
+    this.socket.send({ type: 'workspace.tree', path, sessionId: this.sessionId ?? undefined });
   }
 
   addContext(path: string): void {

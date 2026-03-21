@@ -1,6 +1,9 @@
-import { execSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { join, relative, sep } from 'node:path';
 import { logger } from '../utils/logger.js';
+
+const execFileAsync = promisify(execFile);
 
 // ── Tree Node type ──────────────────────────────────────────
 
@@ -25,20 +28,20 @@ const MAX_FILES = 1000;
  * @param workingDir — absolute path to the git repo root
  * @param subPath — optional relative path within the repo to scope the listing
  */
-export function scanWorkspaceTree(workingDir: string, subPath?: string): TreeNode[] {
+export async function scanWorkspaceTree(workingDir: string, subPath?: string): Promise<TreeNode[]> {
   const scanRoot = subPath ? join(workingDir, subPath) : workingDir;
 
   let fileList: string[];
   try {
     // git ls-files outputs tracked files relative to cwd, one per line
     // Using --cached --others --exclude-standard to include untracked but not ignored files
-    const raw = execSync('git ls-files --cached --others --exclude-standard', {
+    const { stdout } = await execFileAsync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], {
       cwd: scanRoot,
       encoding: 'utf-8',
       maxBuffer: 2 * 1024 * 1024,
       timeout: 10_000,
     });
-    fileList = raw.split('\n').filter(Boolean);
+    fileList = stdout.split('\n').filter(Boolean);
   } catch (err) {
     logger.warn({ err, workingDir, subPath }, 'git ls-files failed, falling back to empty tree');
     return [];

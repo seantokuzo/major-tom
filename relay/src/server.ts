@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from './utils/logger.js';
@@ -457,11 +457,15 @@ async function handleClientMessage(message: ClientMessage, ws: AuthenticatedWebS
     }
 
     case 'workspace.tree': {
-      // Use the first active session's workingDir, or fall back to CLAUDE_WORK_DIR
-      const sessions = sessionManager.list();
-      const activeSession = sessions.length > 0 ? sessionManager.get(sessions[0]!.id) : null;
-      const workDir = activeSession?.workingDir ?? CLAUDE_WORK_DIR;
-      const tree = scanWorkspaceTree(workDir, message.path);
+      // Look up specific session if provided, otherwise fall back to first active session
+      const session = message.sessionId
+        ? sessionManager.tryGet(message.sessionId)
+        : (() => {
+            const sessions = sessionManager.list();
+            return sessions.length > 0 ? sessionManager.tryGet(sessions[0]!.id) : undefined;
+          })();
+      const workDir = session?.workingDir ?? CLAUDE_WORK_DIR;
+      const tree = await scanWorkspaceTree(workDir, message.path);
       sendToClient(ws, {
         type: 'workspace.tree.response',
         files: tree.map(function mapNode(n): import('./protocol/messages.js').FileNode {
@@ -477,11 +481,33 @@ async function handleClientMessage(message: ClientMessage, ws: AuthenticatedWebS
     }
 
     case 'context.add': {
-      const session = sessionManager.get(message.sessionId);
-      const filePath = join(session.workingDir, message.path);
+      const session = sessionManager.tryGet(message.sessionId);
+      if (!session) {
+        sendToClient(ws, {
+          type: 'context.add.response',
+          path: message.path,
+          success: false,
+          error: 'Session not found',
+          totalContextSize: 0,
+        });
+        break;
+      }
+
+      // Guard against path traversal
+      const resolved = resolve(session.workingDir, message.path);
+      if (!resolved.startsWith(session.workingDir + '/') && resolved !== session.workingDir) {
+        sendToClient(ws, {
+          type: 'context.add.response',
+          path: message.path,
+          success: false,
+          error: 'Invalid path',
+          totalContextSize: session.contextSize,
+        });
+        break;
+      }
 
       try {
-        const content = readFileSync(filePath, 'utf-8');
+        const content = readFileSync(resolved, 'utf-8');
         const result = session.addContextFile(message.path, content);
 
         sendToClient(ws, {
@@ -504,7 +530,16 @@ async function handleClientMessage(message: ClientMessage, ws: AuthenticatedWebS
     }
 
     case 'context.remove': {
-      const session = sessionManager.get(message.sessionId);
+      const session = sessionManager.tryGet(message.sessionId);
+      if (!session) {
+        sendToClient(ws, {
+          type: 'context.remove.response',
+          path: message.path,
+          success: false,
+          totalContextSize: 0,
+        });
+        break;
+      }
       session.removeContextFile(message.path);
       sendToClient(ws, {
         type: 'context.remove.response',

@@ -65,6 +65,7 @@
       class="tree-item tree-dir"
       style="padding-left: {12 + depth * 16}px"
       onclick={() => toggleDir(node.path)}
+      aria-expanded={expandedDirs.has(node.path)}
     >
       <span class="tree-icon">{expandedDirs.has(node.path) ? '\u25BE' : '\u25B8'}</span>
       <span class="tree-name">{node.name}/</span>
@@ -82,6 +83,9 @@
       style="padding-left: {12 + depth * 16}px"
       onclick={() => toggleFile(node.path)}
       disabled={contextStore.isFileAttached(node.path)}
+      role="checkbox"
+      aria-checked={contextStore.isFileAttached(node.path) || selectedFiles.has(node.path)}
+      aria-label={node.name}
     >
       <span class="tree-checkbox">
         {#if contextStore.isFileAttached(node.path)}
