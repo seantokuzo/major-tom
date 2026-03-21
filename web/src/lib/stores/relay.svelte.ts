@@ -75,6 +75,7 @@ const STORAGE_KEYS = {
   messages: 'mt-chat-messages',
   sessionId: 'mt-session-id',
   commandUsage: 'mt-command-usage',
+  authToken: 'mt-auth-token',
 } as const;
 
 // ── Serialization helpers ───────────────────────────────────
@@ -154,6 +155,7 @@ class RelayStore {
   // Connection
   connectionState = $state<ConnectionState>('disconnected');
   serverAddress = $state(detectServerAddress());
+  authToken = $state<string | null>(null);
   sessionId = $state<string | null>(null);
   reconnectAttempt = $state(0);
   maxReconnectAttempts = $state(20);
@@ -257,6 +259,14 @@ class RelayStore {
         this.storedSessionId = storedSessionId;
         // Don't set sessionId yet — wait for successful reattach
       }
+
+      const storedToken = localStorage.getItem(STORAGE_KEYS.authToken);
+      if (storedToken) {
+        const trimmedToken = storedToken.trim();
+        if (trimmedToken) {
+          this.authToken = trimmedToken;
+        }
+      }
     } catch {
       // localStorage unavailable (privacy mode, quota exceeded) — start fresh
     }
@@ -302,7 +312,7 @@ class RelayStore {
 
   connect(): void {
     this.connectionError = null;
-    this.socket.connect(this.serverAddress);
+    this.socket.connect(this.serverAddress, this.authToken ?? undefined);
   }
 
   disconnect(): void {
@@ -315,7 +325,28 @@ class RelayStore {
   retry(): void {
     this.connectionError = null;
     this.reconnectAttempt = 0;
-    this.socket.connect(this.serverAddress);
+    this.socket.connect(this.serverAddress, this.authToken ?? undefined);
+  }
+
+  /** Set or clear the auth token. Persists to localStorage and reconnects if connected. */
+  setAuthToken(token: string | null): void {
+    this.authToken = token;
+    if (typeof window !== 'undefined') {
+      try {
+        if (token) {
+          localStorage.setItem(STORAGE_KEYS.authToken, token);
+        } else {
+          localStorage.removeItem(STORAGE_KEYS.authToken);
+        }
+      } catch {
+        // localStorage unavailable — in-memory only
+      }
+    }
+    // Reconnect with new token if currently connected
+    // connect() handles cleanup of existing connection (nulls onclose, closes ws)
+    if (this.isConnected || this.isReconnecting) {
+      this.socket.connect(this.serverAddress, this.authToken ?? undefined);
+    }
   }
 
   startSession(): void {

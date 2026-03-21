@@ -3,6 +3,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from './utils/logger.js';
+import { readBody, sendJson, getCorsOrigin, requireAuth } from './utils/http-helpers.js';
+import { getAuthToken, getAllowedOrigins } from './utils/auth.js';
 import { SessionManager } from './sessions/session-manager.js';
 import { ClaudeCliAdapter } from './adapters/claude-cli.adapter.js';
 import { ApprovalQueue } from './hooks/approval-queue.js';
@@ -20,6 +22,8 @@ import type { PushSubscriptionData } from './push/push-manager.js';
 const WS_PORT = parseInt(process.env['WS_PORT'] ?? '9090', 10);
 const CLAUDE_WORK_DIR = process.env['CLAUDE_WORK_DIR'] ?? process.cwd();
 const DISABLE_STATIC = process.env['NO_STATIC'] === '1' || process.argv.includes('--no-static');
+const AUTH_TOKEN = getAuthToken();
+const ALLOWED_ORIGINS = getAllowedOrigins();
 
 // ── Core services ───────────────────────────────────────────
 
@@ -36,122 +40,108 @@ const WEB_DIST_DIR = join(__dirname, '..', '..', 'web', 'dist');
 
 const serveStatic = DISABLE_STATIC ? null : createStaticHandler(WEB_DIST_DIR);
 
-// ── HTTP helpers ─────────────────────────────────────────────
-
-function readBody(req: import('node:http').IncomingMessage, maxBytes = 65_536): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on('data', (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > maxBytes) {
-        req.destroy();
-        reject(Object.assign(new Error('Request body too large'), { code: 'BODY_TOO_LARGE' }));
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-    req.on('error', reject);
-  });
-}
-
-function sendJson(res: import('node:http').ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-  });
-  res.end(JSON.stringify(body));
-}
-
 // ── HTTP server (health check + push endpoints + static PWA files) ───
 
 const httpServer = createServer(async (req, res) => {
   const url = req.url ?? '/';
 
+  const corsOrigin = getCorsOrigin(req, ALLOWED_ORIGINS);
+
   // CORS preflight for push endpoints
   if (req.method === 'OPTIONS' && url.startsWith('/push/')) {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
+    const headers: Record<string, string> = {
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    });
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    };
+    if (corsOrigin) {
+      headers['Access-Control-Allow-Origin'] = corsOrigin;
+      if (corsOrigin !== '*') {
+        headers['Vary'] = 'Origin';
+      }
+    }
+    res.writeHead(204, headers);
     res.end();
     return;
   }
 
-  // Health check endpoint
+  // Health check endpoint (public — no auth required)
   if (req.method === 'GET' && url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
+    sendJson(res, 200, {
       status: 'ok',
       sessions: sessionManager.list(),
       pendingApprovals: approvalQueue.size,
-    }));
+    }, corsOrigin ?? undefined);
     return;
   }
 
   // ── Push notification endpoints ──────────────────────────
 
-  // GET /push/vapid-key — returns the VAPID public key for client subscription
+  // GET /push/vapid-key — returns the VAPID public key for client subscription (public)
   if (req.method === 'GET' && url === '/push/vapid-key') {
-    sendJson(res, 200, { publicKey: pushManager.getVapidPublicKey() });
+    sendJson(res, 200, { publicKey: pushManager.getVapidPublicKey() }, corsOrigin ?? undefined);
     return;
   }
 
-  // POST /push/subscribe — stores a push subscription
+  // POST /push/subscribe — stores a push subscription (auth required)
   if (req.method === 'POST' && url === '/push/subscribe') {
+    if (!requireAuth(req, AUTH_TOKEN)) {
+      sendJson(res, 401, { error: 'Unauthorized' }, corsOrigin ?? undefined);
+      return;
+    }
     try {
       let body: string;
       try {
         body = await readBody(req);
       } catch (err) {
         if ((err as { code?: string }).code === 'BODY_TOO_LARGE') {
-          sendJson(res, 413, { error: 'Request body too large' });
+          sendJson(res, 413, { error: 'Request body too large' }, corsOrigin ?? undefined);
         } else {
-          sendJson(res, 400, { error: 'Bad request' });
+          sendJson(res, 400, { error: 'Bad request' }, corsOrigin ?? undefined);
         }
         return;
       }
-      const parsed = JSON.parse(body) as { subscription?: PushSubscriptionData };
-      const sub = parsed.subscription;
+      const sub = JSON.parse(body) as PushSubscriptionData;
       if (!sub?.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) {
-        sendJson(res, 400, { error: 'Invalid subscription: requires endpoint, keys.p256dh, keys.auth' });
+        sendJson(res, 400, { error: 'Invalid subscription: requires endpoint, keys.p256dh, keys.auth' }, corsOrigin ?? undefined);
         return;
       }
       pushManager.subscribe(sub);
-      sendJson(res, 200, { status: 'ok' });
+      sendJson(res, 200, { status: 'ok' }, corsOrigin ?? undefined);
     } catch (err: unknown) {
       logger.error({ err }, 'Failed to process push subscribe');
-      sendJson(res, 400, { error: 'Invalid JSON body' });
+      sendJson(res, 400, { error: 'Invalid JSON body' }, corsOrigin ?? undefined);
     }
     return;
   }
 
-  // POST /push/unsubscribe — removes a push subscription
+  // POST /push/unsubscribe — removes a push subscription (auth required)
   if (req.method === 'POST' && url === '/push/unsubscribe') {
+    if (!requireAuth(req, AUTH_TOKEN)) {
+      sendJson(res, 401, { error: 'Unauthorized' }, corsOrigin ?? undefined);
+      return;
+    }
     try {
       let body: string;
       try {
         body = await readBody(req);
       } catch (err) {
         if ((err as { code?: string }).code === 'BODY_TOO_LARGE') {
-          sendJson(res, 413, { error: 'Request body too large' });
+          sendJson(res, 413, { error: 'Request body too large' }, corsOrigin ?? undefined);
         } else {
-          sendJson(res, 400, { error: 'Bad request' });
+          sendJson(res, 400, { error: 'Bad request' }, corsOrigin ?? undefined);
         }
         return;
       }
       const parsed = JSON.parse(body) as { endpoint?: string };
       if (!parsed.endpoint) {
-        sendJson(res, 400, { error: 'Missing endpoint field' });
+        sendJson(res, 400, { error: 'Missing endpoint field' }, corsOrigin ?? undefined);
         return;
       }
       pushManager.unsubscribe(parsed.endpoint);
-      sendJson(res, 200, { status: 'ok' });
+      sendJson(res, 200, { status: 'ok' }, corsOrigin ?? undefined);
     } catch (err: unknown) {
       logger.error({ err }, 'Failed to process push unsubscribe');
-      sendJson(res, 400, { error: 'Invalid JSON body' });
+      sendJson(res, 400, { error: 'Invalid JSON body' }, corsOrigin ?? undefined);
     }
     return;
   }
@@ -178,7 +168,25 @@ const httpServer = createServer(async (req, res) => {
 
 // ── WebSocket server (iOS app connects here) ────────────────
 
-const wss = new WebSocketServer({ server: httpServer });
+const wss = new WebSocketServer({ noServer: true });
+
+httpServer.on('upgrade', (req, socket, head) => {
+  let token: string | null = null;
+  try {
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    token = url.searchParams.get('token');
+  } catch {
+    socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  if (token !== AUTH_TOKEN) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+});
 
 // Track connected clients
 const clients = new Set<WebSocket>();
