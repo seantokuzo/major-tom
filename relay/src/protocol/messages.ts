@@ -38,6 +38,11 @@ export interface SessionAttachMessage {
   sessionId: string;
 }
 
+export interface SessionEndMessage {
+  type: 'session.end';
+  sessionId: string;
+}
+
 export interface AgentMessageMessage {
   type: 'agent.message';
   sessionId: string;
@@ -90,6 +95,7 @@ export type ClientMessage =
   | CancelMessage
   | SessionStartMessage
   | SessionAttachMessage
+  | SessionEndMessage
   | AgentMessageMessage
   | WorkspaceTreeMessage
   | ContextAddMessage
@@ -239,6 +245,11 @@ export interface DeviceRevokeResponseMessage {
   success: boolean;
 }
 
+export interface SessionEndedMessage {
+  type: 'session.ended';
+  sessionId: string;
+}
+
 export interface ErrorMessage {
   type: 'error';
   code: string;
@@ -296,6 +307,7 @@ export type ServerMessage =
   | NotificationMessage
   | DeviceListResponseMessage
   | DeviceRevokeResponseMessage
+  | SessionEndedMessage
   | ErrorMessage
   | SessionListResponseMessage
   | SessionHistoryMessage;
