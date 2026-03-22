@@ -10,10 +10,16 @@ const PORT = parseInt(process.env['WS_PORT'] ?? '9090', 10);
 const CLAUDE_WORK_DIR = process.env['CLAUDE_WORK_DIR'] ?? process.cwd();
 
 async function main() {
-  const app = await buildApp({
-    port: PORT,
-    claudeWorkDir: CLAUDE_WORK_DIR,
-  });
+  let app;
+  try {
+    app = await buildApp({
+      port: PORT,
+      claudeWorkDir: CLAUDE_WORK_DIR,
+    });
+  } catch (err) {
+    console.error('Failed to build app:', err);
+    process.exit(1);
+  }
 
   // Graceful shutdown
   const shutdown = async (signal: string) => {

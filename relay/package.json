@@ -34,7 +34,6 @@
     "ws": "8.19.0"
   },
   "devDependencies": {
-    "@types/cookie": "^1.0.0",
     "@types/node": "25.5.0",
     "@types/web-push": "3.6.4",
     "@types/ws": "8.18.1",

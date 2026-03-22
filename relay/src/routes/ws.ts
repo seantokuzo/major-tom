@@ -28,7 +28,7 @@ interface WsDeps {
 
 /**
  * WebSocket route — handles all real-time communication.
- * Auth via session cookie (verified on upgrade via preValidation hook).
+ * Auth via session cookie (verified within the WebSocket handler logic).
  */
 export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   const {
@@ -310,6 +310,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
   // ── Adapter → Broadcast Event Wiring ─────────────────────
 
+  const serverMessageHandler = (message: ServerMessage) => {
+    broadcast(message);
+  };
+
   function wireAdapterEvents(): void {
     cliAdapter.on('output', (sessionId: string, chunk: string) => {
       const session = sessionManager.tryGet(sessionId);
@@ -440,9 +444,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
     });
 
-    eventBus.on('server.message', (message: ServerMessage) => {
-      broadcast(message);
-    });
+    eventBus.on('server.message', serverMessageHandler);
   }
 
   // ── Plugin Registration ──────────────────────────────────
@@ -542,7 +544,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     fastify.addHook('onClose', () => {
       clearInterval(heartbeatInterval);
       notificationBatcher.dispose();
-      eventBus.removeAllListeners();
+      eventBus.off('server.message', serverMessageHandler);
       for (const client of clients) {
         client.close(1001, 'Server shutting down');
       }

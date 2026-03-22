@@ -34,6 +34,12 @@ export const staticPlugin: FastifyPluginAsync = async (fastify) => {
     cacheControl: true,
     maxAge: '30d',
     immutable: true,
+    setHeaders(res, filePath) {
+      // Never long-cache HTML — hashed assets get 30d, but index.html must revalidate
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
   });
 
   // SPA fallback: unmatched routes serve index.html

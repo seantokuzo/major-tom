@@ -42,7 +42,7 @@ const authPluginImpl: FastifyPluginAsync = async (fastify) => {
     if (isPublicPath(request.url)) return;
 
     // Static files are handled by @fastify/static before this hook
-    // WebSocket upgrade auth is handled in the WS route's preValidation hook
+    // WebSocket upgrade auth is handled inside the WS route's WebSocket handler
 
     const token = request.cookies?.[SESSION_COOKIE];
     if (!token) {
@@ -79,6 +79,6 @@ export const authPlugin = fp(authPluginImpl, {
  */
 export async function requireSession(request: FastifyRequest, reply: FastifyReply) {
   if (!request.sessionUser) {
-    reply.code(401).send({ error: 'Authentication required' });
+    return reply.code(401).send({ error: 'Authentication required' });
   }
 }

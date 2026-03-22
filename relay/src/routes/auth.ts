@@ -64,8 +64,13 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           return reply.code(403).send({ error: 'Access denied' });
         }
 
+        if (!payload.sub) {
+          logger.error({ payload }, 'Google token payload missing sub claim');
+          return reply.code(401).send({ error: 'Invalid Google credential' });
+        }
+
         // Mint session JWT
-        const sessionToken = await createSessionToken(payload.sub!, payload.email);
+        const sessionToken = await createSessionToken(payload.sub, payload.email);
 
         // Set httpOnly cookie
         reply.setCookie(SESSION_COOKIE, sessionToken, getSessionCookieOptions(isSecure));
