@@ -1,6 +1,6 @@
 <script lang="ts">
   import { SCENE_WIDTH, SCENE_HEIGHT, AREAS, DOOR_POSITION } from '../office/layout';
-  import { renderCharacter, getCharacterSize } from '../office/pixel-art';
+  import { renderCharacterAnimated, getCharacterSize } from '../office/pixel-art';
   import type { OfficeEngine, EngineAgent } from '../office/engine';
 
   interface Props {
@@ -173,16 +173,17 @@
   function renderAgent(ctx: CanvasRenderingContext2D, agent: EngineAgent) {
     const x = agent.position.x + agent.animOffset.x;
     const y = agent.position.y + agent.animOffset.y;
+    const now = performance.now();
 
     // Draw sprite with rotation if celebrating
     if (agent.rotation !== 0) {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(agent.rotation);
-      renderCharacter(ctx, agent.characterType, 0, 0, agent.alpha);
+      renderCharacterAnimated(ctx, agent.characterType, 0, 0, now, agent.alpha);
       ctx.restore();
     } else {
-      renderCharacter(ctx, agent.characterType, x, y, agent.alpha);
+      renderCharacterAnimated(ctx, agent.characterType, x, y, now, agent.alpha);
     }
 
     if (agent.alpha <= 0) return;

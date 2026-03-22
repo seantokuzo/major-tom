@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { CHARACTER_CATALOG } from '../office/characters';
   import type { CharacterType } from '../office/types';
-  import { getCharacterSize } from '../office/pixel-art';
+  import { getCharacterSprite, getIdleAnimation, getCharacterSize } from '../office/pixel-art';
 
   let currentIndex = $state(0);
   let canvas = $state<HTMLCanvasElement | null>(null);
@@ -15,11 +16,12 @@
   const characters = CHARACTER_CATALOG;
   const currentCharacter = $derived(characters[currentIndex]);
 
-  // Draw the current character scaled up to fill the canvas
-  function drawCharacter(ctx: CanvasRenderingContext2D, type: CharacterType, w: number, h: number, offsetX: number = 0) {
-    // Import pixel data and draw manually at large scale
-    const { buildCachedSprite } = getSpriteBuilder();
-    const sprite = buildCachedSprite(type);
+  // Animation loop
+  let rafId: number | null = null;
+
+  function drawCharacter(ctx: CanvasRenderingContext2D, type: CharacterType, w: number, h: number, time: number, offsetX: number = 0) {
+    const sprite = getCharacterSprite(type, time);
+    const { breathOffset } = getIdleAnimation(time);
 
     // Calculate scale to fit ~60% of the smaller dimension
     const targetSize = Math.min(w, h) * 0.6;
@@ -29,53 +31,19 @@
     const drawW = sprite.width * scale;
     const drawH = sprite.height * scale;
     const x = (w - drawW) / 2 + offsetX;
-    const y = (h - drawH) / 2;
+    const y = (h - drawH) / 2 - breathOffset * scale;
 
-    // Nearest-neighbor scaling for crisp pixel art
     ctx.imageSmoothingEnabled = false;
 
-    // renderCharacter already applies the Y-flip, so draw directly
-    ctx.drawImage(sprite.canvas, x, y, drawW, drawH);
+    // Flip vertically — sprites are stored Y-up (SpriteKit convention)
+    ctx.save();
+    ctx.translate(x + drawW / 2, y + drawH / 2);
+    ctx.scale(1, -1);
+    ctx.drawImage(sprite.canvas, -drawW / 2, -drawH / 2, drawW, drawH);
+    ctx.restore();
   }
 
-  // Access the sprite cache builder directly
-  function getSpriteBuilder() {
-    // We need to replicate the cache logic since it's not exported
-    // Instead, use the existing renderCharacter but at a large scale
-    // Actually, let's import and use getPixels indirectly via the cached sprite
-    return { buildCachedSprite: buildCachedSpriteLocal };
-  }
-
-  // Local sprite cache that mirrors pixel-art.ts logic but is accessible here
-  const localCache = new Map<CharacterType, { canvas: OffscreenCanvas | HTMLCanvasElement; width: number; height: number }>();
-
-  function buildCachedSpriteLocal(type: CharacterType): { canvas: OffscreenCanvas | HTMLCanvasElement; width: number; height: number } {
-    let cached = localCache.get(type);
-    if (cached) return cached;
-
-    // Use getCharacterSize to know dimensions, then render at 1x via renderCharacter
-    // and capture to an offscreen canvas
-    const size = getCharacterSize(type);
-
-    const offscreen = document.createElement('canvas');
-    offscreen.width = size.width;
-    offscreen.height = size.height;
-    const offCtx = offscreen.getContext('2d')!;
-
-    // renderCharacter draws centered at (x,y) with Y-flip
-    // So we center at (w/2, h/2)
-    const { renderCharacter } = pixelArtModule;
-    renderCharacter(offCtx, type, size.width / 2, size.height / 2);
-
-    cached = { canvas: offscreen, width: size.width, height: size.height };
-    localCache.set(type, cached);
-    return cached;
-  }
-
-  // Import the module
-  import * as pixelArtModule from '../office/pixel-art';
-
-  function redraw() {
+  function redraw(time: number) {
     if (!canvas || !containerEl) return;
     const w = containerEl.clientWidth;
     const h = containerEl.clientHeight;
@@ -91,29 +59,43 @@
     ctx.clearRect(0, 0, w, h);
 
     // Draw current character with swipe offset
-    drawCharacter(ctx, currentCharacter.type, w, h, touchDeltaX);
+    drawCharacter(ctx, currentCharacter.type, w, h, time, touchDeltaX);
 
     // Draw peek of adjacent characters during swipe
     if (touchDeltaX > 0 && currentIndex > 0) {
-      drawCharacter(ctx, characters[currentIndex - 1].type, w, h, touchDeltaX - w);
+      drawCharacter(ctx, characters[currentIndex - 1].type, w, h, time, touchDeltaX - w);
     }
     if (touchDeltaX < 0 && currentIndex < characters.length - 1) {
-      drawCharacter(ctx, characters[currentIndex + 1].type, w, h, touchDeltaX + w);
+      drawCharacter(ctx, characters[currentIndex + 1].type, w, h, time, touchDeltaX + w);
     }
   }
 
+  function tick(now: number) {
+    redraw(now);
+    rafId = requestAnimationFrame(tick);
+  }
+
+  // Start animation loop when canvas and container are ready
   $effect(() => {
-    // Re-trigger on currentIndex or touchDeltaX change
-    currentIndex;
-    touchDeltaX;
-    redraw();
+    if (!canvas || !containerEl) return;
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
   });
 
   $effect(() => {
     if (!containerEl) return;
-    const observer = new ResizeObserver(() => redraw());
+    const observer = new ResizeObserver(() => redraw(performance.now()));
     observer.observe(containerEl);
     return () => observer.disconnect();
+  });
+
+  onDestroy(() => {
+    if (rafId !== null) cancelAnimationFrame(rafId);
   });
 
   function onTouchStart(e: TouchEvent) {

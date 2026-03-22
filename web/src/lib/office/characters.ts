@@ -78,7 +78,7 @@ export const CHARACTER_CATALOG: CharacterConfig[] = [
   // ── Dogs ────────────────────────────────────────────────────
   {
     type: 'dachshund',
-    displayName: 'Dachshund',
+    displayName: 'Elvito (Señor)',
     spriteColor: 'rgb(184, 107, 46)',
     breakBehaviors: ['dogCorner', 'dogPark', 'kitchen'],
     needsBlanket: true,
@@ -92,14 +92,14 @@ export const CHARACTER_CATALOG: CharacterConfig[] = [
   },
   {
     type: 'schnauzerBlack',
-    displayName: 'Black Schnauzer',
+    displayName: 'Hoku',
     spriteColor: 'rgb(38, 38, 51)',
     breakBehaviors: ['dogCorner', 'dogPark', 'breakRoom'],
     needsBlanket: false,
   },
   {
     type: 'schnauzerPepper',
-    displayName: 'Pepper Schnauzer',
+    displayName: 'Kai',
     spriteColor: 'rgb(89, 89, 102)',
     breakBehaviors: ['dogCorner', 'dogPark', 'breakRoom'],
     needsBlanket: false,

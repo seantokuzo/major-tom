@@ -27,12 +27,17 @@ for arg in "$@"; do
   esac
 done
 
+# Prevent macOS from sleeping / dimming display while relay is running
+caffeinate -dims -w $$ &
+CAFFEINE_PID=$!
+
 # Track child PIDs for cleanup
 PIDS=()
 
 cleanup() {
   echo ""
   echo "Shutting down..."
+  kill "$CAFFEINE_PID" 2>/dev/null || true
   for pid in "${PIDS[@]}"; do
     kill "$pid" 2>/dev/null || true
   done
