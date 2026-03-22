@@ -4,7 +4,7 @@
  */
 import { SignJWT, jwtVerify, type JWTPayload } from 'jose';
 import { randomBytes } from 'node:crypto';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { logger } from '../utils/logger.js';
 
@@ -34,7 +34,9 @@ export function getSessionSecret(): Uint8Array {
 
   try {
     const envPath = resolve(process.cwd(), '.env');
+    const isNew = !existsSync(envPath);
     appendFileSync(envPath, `\nSESSION_SECRET=${generated}\n`);
+    if (isNew) chmodSync(envPath, 0o600); // owner-only for new .env files
     logger.info('Session secret generated and saved to .env');
   } catch {
     logger.warn('Could not persist session secret to .env — will regenerate on restart');

@@ -34,14 +34,13 @@ const authPluginImpl: FastifyPluginAsync = async (fastify) => {
   // Decorate request with null default
   fastify.decorateRequest('sessionUser', null);
 
-  fastify.addHook('onRequest', async (request: FastifyRequest, _reply: FastifyReply) => {
+  fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
     // Always set to null initially
     request.sessionUser = null;
 
     // Skip auth for public paths
     if (isPublicPath(request.url)) return;
 
-    // Static files are handled by @fastify/static before this hook
     // WebSocket upgrade auth is handled inside the WS route's WebSocket handler
 
     const token = request.cookies?.[SESSION_COOKIE];
@@ -63,7 +62,8 @@ const authPluginImpl: FastifyPluginAsync = async (fastify) => {
 
       request.sessionUser = payload;
     } catch {
-      // Invalid/expired token — clear it silently
+      // Invalid/expired token — clear cookie so we don't re-verify on every request
+      reply.clearCookie(SESSION_COOKIE, { path: '/' });
       request.sessionUser = null;
     }
   });

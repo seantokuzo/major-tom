@@ -33,12 +33,11 @@ export const securityPlugin: FastifyPluginAsync = async (fastify) => {
   });
 
   // Global rate limiting (generous defaults, tightened per-route)
+  // Uses request.ip which respects Fastify's trustProxy setting
   await fastify.register(rateLimit, {
     global: true,
     max: 200,
     timeWindow: '1 minute',
-    keyGenerator: (request) =>
-      (request.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-      || request.ip,
+    keyGenerator: (request) => request.ip,
   });
 };

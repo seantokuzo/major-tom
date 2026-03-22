@@ -26,7 +26,7 @@ export const corsPlugin: FastifyPluginAsync = async (fastify) => {
       if (!allowedOrigins || allowedOrigins.includes('*')) return cb(null, true);
       // Check whitelist
       if (allowedOrigins.includes(origin)) return cb(null, true);
-      cb(new Error('CORS origin not allowed'), false);
+      cb(null, false);
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

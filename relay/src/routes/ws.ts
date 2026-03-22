@@ -453,16 +453,9 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     // Wire adapter events once
     wireAdapterEvents();
 
-    // Expose broadcast + cleanup for shutdown
-    fastify.decorate('wsBroadcast', broadcast);
-    fastify.decorate('wsClients', clients);
-    fastify.decorate('wsNotificationBatcher', notificationBatcher);
-    fastify.decorate('wsBuildPersistedSession', buildPersistedSession);
-
     // WebSocket route with session cookie auth
     fastify.get('/ws', { websocket: true }, (socket, request) => {
-      // Auth check: verify session cookie was set by preValidation
-      // The cookie is automatically sent on WebSocket upgrade
+      // Auth check: verify session cookie inline (sent automatically on WS upgrade)
       const token = request.cookies?.[SESSION_COOKIE];
       if (!token) {
         logger.warn({ ip: request.ip }, 'WS connection attempt without session cookie');
