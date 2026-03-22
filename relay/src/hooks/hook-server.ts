@@ -1,9 +1,31 @@
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { logger } from '../utils/logger.js';
-import { readBody, sendJson } from '../utils/http-helpers.js';
 import { ApprovalQueue } from './approval-queue.js';
 import { eventBus } from '../events/event-bus.js';
+
+function readBody(req: IncomingMessage, maxBytes = 65_536): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        req.destroy();
+        reject(Object.assign(new Error('Request body too large'), { code: 'BODY_TOO_LARGE' }));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+    req.on('error', reject);
+  });
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
 
 // ── Hook HTTP Server ────────────────────────────────────────
 // Claude Code hook scripts POST to these endpoints.
@@ -46,7 +68,8 @@ export function createHookServer(approvalQueue: ApprovalQueue, port: number) {
         });
 
         // Block until iOS responds
-        const decision = await approvalQueue.waitForDecision(requestId, tool);
+        const description = toolInput ? JSON.stringify(toolInput) : '';
+        const decision = await approvalQueue.waitForDecision(requestId, tool, description, hookData);
 
         // Map our decision to Claude Code's expected format
         // Claude Code expects: { hookSpecificOutput: { hookEventName, permissionDecision } }

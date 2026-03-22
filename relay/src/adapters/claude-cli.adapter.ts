@@ -157,7 +157,13 @@ export class ClaudeCliAdapter implements IAdapter {
     logger.info({ sessionId, requestId, toolName, toolUseId }, 'Permission requested');
 
     // Block until the client responds
-    const decision = await this.approvalQueue.waitForDecision(requestId, toolName);
+    const description = JSON.stringify(input);
+    const details: Record<string, unknown> = {
+      tool_name: toolName,
+      tool_input: input,
+      tool_use_id: toolUseId,
+    };
+    const decision = await this.approvalQueue.waitForDecision(requestId, toolName, description, details);
 
     logger.info({ sessionId, requestId, toolName, decision }, 'Permission decision received');
 

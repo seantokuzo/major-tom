@@ -6,6 +6,8 @@ export type ApprovalMode = 'manual' | 'auto' | 'delay';
 interface PendingApproval {
   requestId: string;
   tool: string;
+  description: string;
+  details: Record<string, unknown>;
   resolve: (decision: ApprovalDecision) => void;
   timer: ReturnType<typeof setTimeout>;
   /** Optional delay timer for 'delay' mode auto-approval */
@@ -93,7 +95,7 @@ export class ApprovalQueue {
    * Returns a Promise that resolves when the iOS app responds.
    * The hook script blocks on this.
    */
-  waitForDecision(requestId: string, tool: string): Promise<ApprovalDecision> {
+  waitForDecision(requestId: string, tool: string, description = '', details: Record<string, unknown> = {}): Promise<ApprovalDecision> {
     // Auto mode: immediately allow without queuing
     if (this.mode === 'auto') {
       logger.info({ requestId, tool, mode: 'auto' }, 'Auto-approving (ClaudeGod mode)');
@@ -112,6 +114,8 @@ export class ApprovalQueue {
       const entry: PendingApproval = {
         requestId,
         tool,
+        description,
+        details,
         resolve,
         timer,
         createdAt: Date.now(),
@@ -157,6 +161,16 @@ export class ApprovalQueue {
   /** Get all pending approval request IDs */
   getPending(): string[] {
     return [...this.pending.keys()];
+  }
+
+  /** Get all pending approvals with full details (for re-broadcasting on reconnect) */
+  getPendingDetails(): Array<{ requestId: string; tool: string; description: string; details: Record<string, unknown> }> {
+    return [...this.pending.values()].map((p) => ({
+      requestId: p.requestId,
+      tool: p.tool,
+      description: p.description,
+      details: p.details,
+    }));
   }
 
   /** Check if a specific request is pending */

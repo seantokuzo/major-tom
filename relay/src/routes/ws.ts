@@ -1,0 +1,547 @@
+import type { FastifyPluginAsync } from 'fastify';
+import { WebSocket } from 'ws';
+import { resolve, relative } from 'node:path';
+import { readFileSync, statSync } from 'node:fs';
+import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
+import type { SessionManager } from '../sessions/session-manager.js';
+import type { SessionPersistence, PersistedSession } from '../sessions/session-persistence.js';
+import type { ClaudeCliAdapter } from '../adapters/claude-cli.adapter.js';
+import type { ApprovalQueue } from '../hooks/approval-queue.js';
+import { NotificationBatcher } from '../push/notification-batcher.js';
+import type { PushManager } from '../push/push-manager.js';
+import { eventBus } from '../events/event-bus.js';
+import { agentTracker } from '../events/agent-tracker.js';
+import { encodeServerMessage, safeDecode } from '../protocol/codec.js';
+import { truncateMetaField } from '../sessions/session-transcript.js';
+import { scanWorkspaceTree } from '../workspace/tree-scanner.js';
+import type { ClientMessage, ServerMessage, FileNode } from '../protocol/messages.js';
+import { logger } from '../utils/logger.js';
+
+interface WsDeps {
+  sessionManager: SessionManager;
+  sessionPersistence: SessionPersistence;
+  cliAdapter: ClaudeCliAdapter;
+  approvalQueue: ApprovalQueue;
+  pushManager: PushManager;
+  claudeWorkDir: string;
+}
+
+/**
+ * WebSocket route — handles all real-time communication.
+ * Auth via session cookie (verified within the WebSocket handler logic).
+ */
+export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
+  const {
+    sessionManager,
+    sessionPersistence,
+    cliAdapter,
+    approvalQueue,
+    pushManager,
+    claudeWorkDir,
+  } = deps;
+
+  const notificationBatcher = new NotificationBatcher(pushManager);
+  const clients = new Set<WebSocket>();
+
+  // ── Helpers ──────────────────────────────────────────────
+
+  function sendToClient(ws: WebSocket, message: ServerMessage): void {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(encodeServerMessage(message));
+    }
+  }
+
+  function broadcast(message: ServerMessage): void {
+    const encoded = encodeServerMessage(message);
+    for (const client of clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(encoded);
+      }
+    }
+  }
+
+  function buildPersistedSession(sessionId: string): PersistedSession | null {
+    const session = sessionManager.tryGet(sessionId);
+    if (!session) return null;
+    return {
+      id: session.id,
+      adapter: session.adapter,
+      workingDir: session.workingDir,
+      status: session.status,
+      startedAt: session.startedAt,
+      metadata: session.toMeta(),
+      transcript: session.transcript.getAll(),
+    };
+  }
+
+  function triggerPersistence(sessionId: string): void {
+    const data = buildPersistedSession(sessionId);
+    if (data) sessionPersistence.save(data);
+  }
+
+  // ── Message Router ───────────────────────────────────────
+
+  async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promise<void> {
+    switch (message.type) {
+      case 'session.start': {
+        const workDir = message.workingDir ?? claudeWorkDir;
+        const session = await cliAdapter.start(workDir);
+        sendToClient(ws, {
+          type: 'session.info',
+          sessionId: session.id,
+          adapter: session.adapter,
+          startedAt: session.startedAt,
+        });
+        break;
+      }
+
+      case 'session.attach': {
+        if (sessionManager.isPersistedOnly(message.sessionId)) {
+          const meta = sessionManager.getPersistedMeta(message.sessionId);
+          if (meta) {
+            sendToClient(ws, {
+              type: 'session.info',
+              sessionId: message.sessionId,
+              adapter: meta.adapter ?? 'cli',
+              startedAt: meta.startedAt ?? new Date().toISOString(),
+            });
+          }
+          const transcript = await sessionManager.getPersistedTranscript(message.sessionId);
+          sendToClient(ws, {
+            type: 'session.history',
+            sessionId: message.sessionId,
+            entries: transcript,
+          });
+          break;
+        }
+        const session = await cliAdapter.attach(message.sessionId);
+        sendToClient(ws, {
+          type: 'session.info',
+          sessionId: session.id,
+          adapter: session.adapter,
+          startedAt: session.startedAt,
+        });
+        // Re-broadcast pending approvals
+        const pending = approvalQueue.getPendingDetails();
+        for (const req of pending) {
+          sendToClient(ws, {
+            type: 'approval.request',
+            requestId: req.requestId,
+            tool: req.tool,
+            description: req.description,
+            details: req.details,
+          });
+        }
+        break;
+      }
+
+      case 'session.end': {
+        const session = sessionManager.tryGet(message.sessionId);
+        if (session) {
+          triggerPersistence(message.sessionId);
+          sessionManager.close(message.sessionId);
+        }
+        broadcast({ type: 'session.ended', sessionId: message.sessionId });
+        break;
+      }
+
+      case 'prompt': {
+        const promptSession = sessionManager.tryGet(message.sessionId);
+        if (promptSession) {
+          promptSession.transcript.append({
+            type: 'user',
+            content: message.text,
+            timestamp: new Date().toISOString(),
+          });
+          triggerPersistence(message.sessionId);
+        }
+        await cliAdapter.sendPrompt(message.sessionId, message.text, message.context);
+        break;
+      }
+
+      case 'approval': {
+        approvalQueue.resolve(message.requestId, message.decision);
+        break;
+      }
+
+      case 'cancel': {
+        await cliAdapter.cancelOperation(message.sessionId);
+        break;
+      }
+
+      case 'agent.message': {
+        await cliAdapter.sendAgentMessage(message.sessionId, message.agentId, message.text);
+        break;
+      }
+
+      case 'workspace.tree': {
+        const session = message.sessionId
+          ? sessionManager.tryGet(message.sessionId)
+          : (() => {
+              const sessions = sessionManager.list();
+              return sessions.length > 0 ? sessionManager.tryGet(sessions[0]!.id) : undefined;
+            })();
+        const workDir = session?.workingDir ?? claudeWorkDir;
+        const resolvedTreePath = message.path ? resolve(workDir, message.path) : workDir;
+        const relTreePath = relative(workDir, resolvedTreePath);
+        if (relTreePath.startsWith('..')) {
+          sendToClient(ws, { type: 'workspace.tree.response', files: [] });
+          break;
+        }
+        const tree = await scanWorkspaceTree(workDir, message.path);
+        sendToClient(ws, {
+          type: 'workspace.tree.response',
+          files: tree.map(function mapNode(n): FileNode {
+            return {
+              name: n.name,
+              path: n.path,
+              isDirectory: n.type === 'directory',
+              children: n.children?.map(mapNode),
+            };
+          }),
+        });
+        break;
+      }
+
+      case 'context.add': {
+        const session = sessionManager.tryGet(message.sessionId);
+        if (!session) {
+          sendToClient(ws, {
+            type: 'context.add.response',
+            path: message.path,
+            success: false,
+            error: 'Session not found',
+            totalContextSize: 0,
+          });
+          break;
+        }
+        if (message.contextType !== 'file') {
+          sendToClient(ws, {
+            type: 'context.add.response',
+            path: message.path,
+            success: false,
+            error: `Unsupported contextType: '${message.contextType}'. Only 'file' is supported.`,
+            totalContextSize: session.contextSize,
+          });
+          break;
+        }
+        const resolved = resolve(session.workingDir, message.path);
+        const rel = relative(session.workingDir, resolved);
+        if (rel.startsWith('..') || rel.startsWith('/')) {
+          sendToClient(ws, {
+            type: 'context.add.response',
+            path: message.path,
+            success: false,
+            error: 'Invalid path',
+            totalContextSize: session.contextSize,
+          });
+          break;
+        }
+        try {
+          const MAX_FILE_BYTES = 50 * 1024;
+          const stat = statSync(resolved);
+          if (stat.size > MAX_FILE_BYTES) {
+            sendToClient(ws, {
+              type: 'context.add.response',
+              path: message.path,
+              success: false,
+              error: `File exceeds 50 KB limit (${(stat.size / 1024).toFixed(1)} KB)`,
+              totalContextSize: session.contextSize,
+            });
+            break;
+          }
+          const content = readFileSync(resolved, 'utf-8');
+          const result = session.addContextFile(message.path, content);
+          sendToClient(ws, {
+            type: 'context.add.response',
+            path: message.path,
+            success: result.ok,
+            error: result.error,
+            totalContextSize: session.contextSize,
+          });
+        } catch (err) {
+          sendToClient(ws, {
+            type: 'context.add.response',
+            path: message.path,
+            success: false,
+            error: err instanceof Error ? err.message : 'Failed to read file',
+            totalContextSize: session.contextSize,
+          });
+        }
+        break;
+      }
+
+      case 'context.remove': {
+        const session = sessionManager.tryGet(message.sessionId);
+        if (!session) {
+          sendToClient(ws, {
+            type: 'context.remove.response',
+            path: message.path,
+            success: false,
+            error: 'Session not found',
+            totalContextSize: 0,
+          });
+          break;
+        }
+        session.removeContextFile(message.path);
+        sendToClient(ws, {
+          type: 'context.remove.response',
+          path: message.path,
+          success: true,
+          totalContextSize: session.contextSize,
+        });
+        break;
+      }
+
+      case 'settings.approval': {
+        approvalQueue.setMode(message.mode, message.delaySeconds);
+        break;
+      }
+
+      case 'session.list': {
+        const sessions = sessionManager.listMeta();
+        sendToClient(ws, { type: 'session.list.response', sessions });
+        break;
+      }
+
+      // Device list/revoke removed — replaced by Google OAuth single-user auth
+    }
+  }
+
+  // ── Adapter → Broadcast Event Wiring ─────────────────────
+
+  const serverMessageHandler = (message: ServerMessage) => {
+    broadcast(message);
+  };
+
+  function wireAdapterEvents(): void {
+    cliAdapter.on('output', (sessionId: string, chunk: string) => {
+      const session = sessionManager.tryGet(sessionId);
+      if (session) {
+        session.transcript.append({
+          type: 'assistant',
+          content: chunk,
+          timestamp: new Date().toISOString(),
+        });
+        triggerPersistence(sessionId);
+      }
+      broadcast({ type: 'output', sessionId, chunk, format: 'plain' });
+    });
+
+    cliAdapter.on('approval-request', (request) => {
+      broadcast({
+        type: 'approval.request',
+        requestId: request.requestId,
+        tool: request.tool,
+        description: request.description,
+        details: request.details,
+      });
+      notificationBatcher.addApprovalRequest(request.tool, request.requestId);
+    });
+
+    cliAdapter.on('tool-start', (info) => {
+      const session = sessionManager.tryGet(info.sessionId);
+      if (session) {
+        session.transcript.append({
+          type: 'tool',
+          content: `Tool start: ${info.tool}`,
+          timestamp: new Date().toISOString(),
+          meta: { tool: info.tool, input: truncateMetaField(info.input) },
+        });
+        triggerPersistence(info.sessionId);
+      }
+      broadcast({
+        type: 'tool.start',
+        sessionId: info.sessionId,
+        tool: info.tool,
+        input: info.input,
+      });
+    });
+
+    cliAdapter.on('tool-complete', (result) => {
+      const session = sessionManager.tryGet(result.sessionId);
+      if (session) {
+        session.transcript.append({
+          type: 'tool',
+          content: `Tool complete: ${result.tool} (${result.success ? 'success' : 'failed'})`,
+          timestamp: new Date().toISOString(),
+          meta: { tool: result.tool, output: truncateMetaField(result.output), success: result.success },
+        });
+        triggerPersistence(result.sessionId);
+      }
+      broadcast({
+        type: 'tool.complete',
+        sessionId: result.sessionId,
+        tool: result.tool,
+        output: result.output,
+        success: result.success,
+      });
+    });
+
+    cliAdapter.on('session-result', (result) => {
+      const session = sessionManager.tryGet(result.sessionId);
+      if (session) {
+        session.addResult({
+          costUsd: result.costUsd,
+          numTurns: result.numTurns,
+          durationMs: result.durationMs,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+        });
+        session.transcript.append({
+          type: 'result',
+          content: `Turn complete: $${result.costUsd.toFixed(4)}, ${result.numTurns} turns, ${result.durationMs}ms`,
+          timestamp: new Date().toISOString(),
+          meta: {
+            costUsd: result.costUsd,
+            numTurns: result.numTurns,
+            durationMs: result.durationMs,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
+          },
+        });
+        triggerPersistence(result.sessionId);
+      }
+      broadcast({
+        type: 'session.result',
+        sessionId: result.sessionId,
+        costUsd: result.costUsd,
+        numTurns: result.numTurns,
+        durationMs: result.durationMs,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+      });
+    });
+
+    cliAdapter.on('agent-lifecycle', (event) => {
+      switch (event.event) {
+        case 'spawn':
+          agentTracker.spawn(event.agentId, event.role ?? 'subagent', event.task ?? '', event.parentId);
+          broadcast({
+            type: 'agent.spawn',
+            agentId: event.agentId,
+            parentId: event.parentId,
+            task: event.task ?? '',
+            role: event.role ?? 'subagent',
+          });
+          break;
+        case 'working':
+          agentTracker.working(event.agentId, event.task ?? '');
+          broadcast({ type: 'agent.working', agentId: event.agentId, task: event.task ?? '' });
+          break;
+        case 'idle':
+          agentTracker.idle(event.agentId);
+          broadcast({ type: 'agent.idle', agentId: event.agentId });
+          break;
+        case 'complete':
+          agentTracker.complete(event.agentId, event.result ?? '');
+          broadcast({ type: 'agent.complete', agentId: event.agentId, result: event.result ?? '' });
+          break;
+        case 'dismissed':
+          agentTracker.dismiss(event.agentId);
+          broadcast({ type: 'agent.dismissed', agentId: event.agentId });
+          break;
+      }
+    });
+
+    eventBus.on('server.message', serverMessageHandler);
+  }
+
+  // ── Plugin Registration ──────────────────────────────────
+
+  return async (fastify) => {
+    // Wire adapter events once
+    wireAdapterEvents();
+
+    // WebSocket route with session cookie auth
+    fastify.get('/ws', { websocket: true }, (socket, request) => {
+      // Auth check: verify session cookie inline (sent automatically on WS upgrade)
+      const token = request.cookies?.[SESSION_COOKIE];
+      if (!token) {
+        logger.warn({ ip: request.ip }, 'WS connection attempt without session cookie');
+        socket.close(1008, 'Authentication required');
+        return;
+      }
+
+      verifySessionToken(token)
+        .then((payload) => {
+          const allowedEmail = process.env['ALLOWED_EMAIL'];
+          if (allowedEmail && payload.email.toLowerCase() !== allowedEmail.toLowerCase()) {
+            logger.warn({ email: payload.email }, 'WS connection from non-allowed email');
+            socket.close(1008, 'Access denied');
+            return;
+          }
+
+          // Authenticated — set up connection
+          const ip = request.ip;
+          logger.info({ ip, email: payload.email }, 'Client connected via WebSocket');
+
+          (socket as WebSocket & { isAlive: boolean }).isAlive = true;
+          socket.on('pong', () => {
+            (socket as WebSocket & { isAlive: boolean }).isAlive = true;
+          });
+          clients.add(socket);
+
+          socket.on('error', (err) => {
+            logger.error({ err }, 'WebSocket error');
+          });
+
+          socket.on('close', () => {
+            clients.delete(socket);
+            logger.info({ ip }, 'Client disconnected');
+          });
+
+          socket.on('message', (data) => {
+            const raw = data.toString();
+            const message = safeDecode(raw);
+            if (!message) return;
+
+            handleClientMessage(message, socket).catch((err: unknown) => {
+              logger.error({ err, type: message.type }, 'Error handling client message');
+              sendToClient(socket, {
+                type: 'error',
+                code: 'HANDLER_ERROR',
+                message: err instanceof Error ? err.message : 'Unknown error',
+              });
+            });
+          });
+
+          // Send connection status
+          sendToClient(socket, {
+            type: 'connection.status',
+            status: 'connected',
+            adapter: 'cli',
+          });
+        })
+        .catch(() => {
+          socket.close(1008, 'Invalid session');
+        });
+    });
+
+    // Heartbeat interval
+    const heartbeatInterval = setInterval(() => {
+      for (const client of clients) {
+        const conn = client as WebSocket & { isAlive: boolean };
+        if (conn.isAlive === false) {
+          logger.info('Terminating dead WebSocket connection');
+          conn.terminate();
+          clients.delete(client);
+          continue;
+        }
+        conn.isAlive = false;
+        conn.ping();
+      }
+    }, 30_000);
+
+    // Cleanup on server close
+    fastify.addHook('onClose', () => {
+      clearInterval(heartbeatInterval);
+      notificationBatcher.dispose();
+      eventBus.off('server.message', serverMessageHandler);
+      for (const client of clients) {
+        client.close(1001, 'Server shutting down');
+      }
+      clients.clear();
+    });
+  };
+}
