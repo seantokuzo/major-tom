@@ -149,12 +149,13 @@
       </button>
     </nav>
     <button
-      class="panic-btn"
-      class:active={office.panicMode}
-      onclick={() => office.togglePanic()}
-      title={office.panicMode ? 'Calm down' : 'PANIC!'}
+      class="demo-btn"
+      class:active={office.demoMode}
+      disabled={!office.canDemo && !office.demoMode}
+      onclick={() => office.toggleDemo()}
+      title={office.demoMode ? 'Exit demo' : 'Launch demo office'}
     >
-      !!!
+      {office.demoMode ? '■ Demo' : '▶ Demo'}
     </button>
     <div class="header-spacer"></div>
     <div class="header-actions">
@@ -172,7 +173,7 @@
     {:else if activeTab === 'characters'}
       <CharacterGallery />
     {:else}
-      <div class="office-wrapper" class:panic-active={office.panicMode}>
+      <div class="office-wrapper" class:demo-active={office.demoMode}>
         <OfficeCanvas
           engine={office.engine}
           desks={office.desks}
@@ -301,18 +302,18 @@
     min-height: 0;
   }
 
-  .office-wrapper.panic-active {
-    box-shadow: inset 0 0 20px rgba(200, 60, 60, 0.3);
+  .office-wrapper.demo-active {
+    box-shadow: inset 0 0 20px rgba(77, 217, 115, 0.15);
   }
 
-  .panic-btn {
-    padding: 2px 8px;
+  .demo-btn {
+    padding: 2px 10px;
     font-family: Menlo, monospace;
     font-size: 11px;
     font-weight: bold;
-    color: rgb(200, 60, 60);
+    color: rgb(77, 217, 115);
     background: transparent;
-    border: 1px solid rgb(200, 60, 60);
+    border: 1px solid rgb(77, 217, 115);
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.15s;
@@ -320,18 +321,23 @@
     flex-shrink: 0;
   }
 
-  .panic-btn:hover {
-    background: rgba(200, 60, 60, 0.15);
+  .demo-btn:hover:not(:disabled) {
+    background: rgba(77, 217, 115, 0.15);
   }
 
-  .panic-btn.active {
-    background: rgb(200, 60, 60);
-    color: white;
-    animation: panic-pulse 0.5s infinite alternate;
+  .demo-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
   }
 
-  @keyframes panic-pulse {
-    from { box-shadow: 0 0 4px rgba(200, 60, 60, 0.5); }
-    to { box-shadow: 0 0 12px rgba(200, 60, 60, 0.8); }
+  .demo-btn.active {
+    background: rgb(77, 217, 115);
+    color: rgb(30, 30, 30);
+    animation: demo-pulse 1.5s infinite alternate;
+  }
+
+  @keyframes demo-pulse {
+    from { box-shadow: 0 0 4px rgba(77, 217, 115, 0.4); }
+    to { box-shadow: 0 0 10px rgba(77, 217, 115, 0.6); }
   }
 </style>

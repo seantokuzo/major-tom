@@ -7,7 +7,7 @@ import { DESKS, DOOR_POSITION, randomPosition, getViewForArea } from './layout';
 import { getCharacterConfig, DOG_TYPES } from './characters';
 import { OfficeEngine } from './engine';
 import { findPath, findNearestWalkable, pathDuration } from './navigation';
-import { pickPanicStart, pickJobComplete, pickDogBark, pickDogBeg, pickGeneralIdle } from './speech';
+import { pickJobComplete, pickDogBark, pickDogBeg, pickGeneralIdle } from './speech';
 
 // ── Status colors ────────────────────────────────────────────
 
@@ -59,9 +59,12 @@ export interface OfficeState {
   engine: OfficeEngine;
 
   readonly selectedAgent: OfficeAgent | null;
-  panicMode: boolean;
+  /** Demo mode active — fake agents populating the office */
+  demoMode: boolean;
+  /** Whether demo toggle is available (no real agents present) */
+  readonly canDemo: boolean;
 
-  togglePanic(): void;
+  toggleDemo(): void;
   handleSpawn(id: string, role: string, task: string): void;
   handleWorking(id: string, task: string): void;
   handleIdle(id: string): void;
@@ -78,14 +81,26 @@ export function createOfficeState(): OfficeState {
   let agents = $state<OfficeAgent[]>([]);
   let desks = $state<Desk[]>(DESKS.map((d) => ({ ...d, occupantId: null })));
   let selectedAgentId = $state<string | null>(null);
-  let panicMode = $state(false);
+  let demoMode = $state(false);
   let nextCharacterIndex = 0;
 
   const engine = new OfficeEngine();
 
-  /** Idle cycle duration — shorter in panic mode so agents scramble faster */
+  /** Demo agent ID prefix — used to distinguish fake agents from real ones */
+  const DEMO_PREFIX = 'demo-';
+
+  /** Check if an agent is a demo agent */
+  function isDemoAgent(id: string): boolean {
+    return id.startsWith(DEMO_PREFIX);
+  }
+
+  /** Whether demo toggle is available (no real agents present) */
+  const canDemo = $derived.by(() => {
+    return agents.every((a) => isDemoAgent(a.id));
+  });
+
+  /** Idle cycle duration */
   function randomIdleDuration(): number {
-    if (panicMode) return 2000 + Math.random() * 3000;
     return 45_000 + Math.random() * 45_000;
   }
 
@@ -320,76 +335,129 @@ export function createOfficeState(): OfficeState {
     if (selectedAgentId === id) selectedAgentId = null;
   }
 
-  // ── Panic Mode ─────────────────────────────────────────────
+  // ── Demo Mode ──────────────────────────────────────────────
 
-  function togglePanic(): void {
-    panicMode = !panicMode;
+  /** Demo agent roster — mix of desk workers and break room wanderers */
+  const DEMO_ROSTER: { role: string; behavior: 'desk' | 'idle' }[] = [
+    { role: 'Architect', behavior: 'desk' },
+    { role: 'Backend', behavior: 'desk' },
+    { role: 'Frontend', behavior: 'desk' },
+    { role: 'DevOps', behavior: 'desk' },
+    { role: 'Designer', behavior: 'idle' },
+    { role: 'PM', behavior: 'idle' },
+    { role: 'Rex', behavior: 'idle' },     // dachshund
+    { role: 'Pepper', behavior: 'idle' },   // schnauzer
+  ];
 
-    if (panicMode) {
-      // Activate panic — everyone looks busy
-      for (const agent of agents) {
-        engine.setSpeechBubble(agent.id, pickPanicStart());
-
-        if (agent.status === 'idle') {
-          if (agent.deskIndex !== null) {
-            // Has a desk — rush back to it
-            clearIdleTimer(agent.id);
-            clearPingPongTimer(agent.id);
-            clearPairing(agent.id);
-
-            const deskPos = desks[agent.deskIndex].position;
-            const seatPos = { x: deskPos.x, y: deskPos.y + 20 };
-            const currentPos = engine.agents.get(agent.id)?.position ?? DOOR_POSITION;
-            const path = findPath(currentPos, seatPos);
-            const walkSpeed = 180; // running back to desk
-
-            engine.setStatusColor(agent.id, STATUS_COLORS.walking);
-            engine.setAnimation(agent.id, 'none');
-            engine.setCurrentView(agent.id, 'office');
-
-            if (path.length > 0) {
-              engine.moveAgentAlongPath(agent.id, path, walkSpeed);
-            } else {
-              engine.moveAgent(agent.id, seatPos, 1000);
-            }
-
-            const walkDuration = path.length > 0 ? pathDuration(path, walkSpeed) : 1000;
-
-            // After arrival, set frantic work
-            const agentId = agent.id;
-            setTimeout(() => {
-              const current = agents.find((a) => a.id === agentId);
-              if (!current || !panicMode) return;
-              current.status = 'working';
-              current.idleActivity = null;
-              engine.setIdleActivity(agentId, null);
-              agents = [...agents];
-              engine.setStatusColor(agentId, STATUS_COLORS.working);
-              engine.setAnimation(agentId, 'frantic-work');
-              engine.setFacing(agentId, 'up');
-            }, walkDuration + 200);
-          }
-          // No desk — let natural fast cycling handle it
-        } else if (agent.status === 'working') {
-          // Already working — just make it frantic
-          engine.setAnimation(agent.id, 'frantic-work');
-        }
-      }
-    } else {
-      // Deactivate panic — calm down
-      for (const agent of agents) {
-        const ea = engine.agents.get(agent.id);
-        if (ea && ea.animation.type === 'frantic-work') {
-          engine.setAnimation(agent.id, 'work-shake');
-        }
-      }
+  function dismissAllDemoAgents(): void {
+    const demoAgents = agents.filter((a) => isDemoAgent(a.id));
+    for (const agent of demoAgents) {
+      engine.setAnimation(agent.id, 'fade-out');
     }
+    // Remove after fade-out completes
+    setTimeout(() => {
+      const demoIds = new Set(demoAgents.map((a) => a.id));
+      for (const id of demoIds) {
+        clearIdleTimer(id);
+        clearPingPongTimer(id);
+        clearPairing(id);
+        releaseDesk(id);
+        engine.removeAgent(id);
+      }
+      agents = agents.filter((a) => !demoIds.has(a.id));
+      if (selectedAgentId && demoIds.has(selectedAgentId)) selectedAgentId = null;
+      nextCharacterIndex = 0;
+    }, 600);
+  }
+
+  function toggleDemo(): void {
+    if (demoMode) {
+      // Deactivate demo — dismiss all demo agents
+      demoMode = false;
+      dismissAllDemoAgents();
+      return;
+    }
+
+    // Can't activate demo if real agents are present
+    if (!canDemo) return;
+
+    demoMode = true;
+
+    // Spawn demo agents with staggered entrance
+    DEMO_ROSTER.forEach((entry, i) => {
+      const id = `${DEMO_PREFIX}${i}`;
+      const characterType = assignNextCharacterType();
+      const deskIndex = entry.behavior === 'desk' ? assignNextAvailableDesk(id) : null;
+
+      const agent: OfficeAgent = {
+        id,
+        name: entry.role,
+        role: entry.role.toLowerCase(),
+        characterType,
+        status: 'spawning',
+        currentTask: entry.behavior === 'desk' ? 'Working on tasks' : null,
+        deskIndex,
+        spawnedAt: new Date(),
+        idleActivity: null,
+      };
+
+      // Stagger spawns by 300ms each
+      setTimeout(() => {
+        if (!demoMode) return; // bail if demo was cancelled during stagger
+
+        agents.push(agent);
+        engine.addAgent(id, characterType, agent.name, DOOR_POSITION);
+        engine.setStatusColor(id, STATUS_COLORS.spawning);
+
+        if (entry.behavior === 'desk' && deskIndex !== null) {
+          // Walk to desk, then work
+          const deskPos = desks[deskIndex].position;
+          const seatPos = { x: deskPos.x, y: deskPos.y + 20 };
+          const path = findPath(DOOR_POSITION, seatPos);
+          const walkSpeed = 120;
+
+          agent.status = 'walking';
+          engine.setStatusColor(id, STATUS_COLORS.walking);
+          agents = [...agents];
+
+          if (path.length > 0) {
+            engine.moveAgentAlongPath(id, path, walkSpeed);
+          } else {
+            engine.moveAgent(id, seatPos, 1500);
+          }
+
+          const walkDuration = path.length > 0 ? pathDuration(path, walkSpeed) : 1500;
+          setTimeout(() => {
+            if (!demoMode) return;
+            const current = agents.find((a) => a.id === id);
+            if (!current) return;
+            current.status = 'working';
+            current.idleActivity = null;
+            agents = [...agents];
+            engine.setStatusColor(id, STATUS_COLORS.working);
+            engine.setAnimation(id, 'work-shake');
+            engine.setFacing(id, 'up');
+          }, walkDuration + 200);
+        } else {
+          // Idle agent — send to break room / kitchen activity
+          agent.status = 'walking';
+          agents = [...agents];
+          handleIdle(id);
+        }
+      }, i * 300);
+    });
   }
 
   // ── Lifecycle Handlers ─────────────────────────────────────
 
   function handleSpawn(id: string, role: string, task: string): void {
     if (agents.some((a) => a.id === id)) return;
+
+    // Auto-dismiss demo agents when a real session starts
+    if (demoMode) {
+      demoMode = false;
+      dismissAllDemoAgents();
+    }
 
     const characterType = assignNextCharacterType();
     const deskIndex = assignNextAvailableDesk(id);
@@ -616,10 +684,11 @@ export function createOfficeState(): OfficeState {
     get selectedAgentId() { return selectedAgentId; },
     set selectedAgentId(v) { selectedAgentId = v; },
     get selectedAgent() { return selectedAgent; },
-    get panicMode() { return panicMode; },
+    get demoMode() { return demoMode; },
+    get canDemo() { return canDemo; },
     engine,
 
-    togglePanic,
+    toggleDemo,
     handleSpawn,
     handleWorking,
     handleIdle,
