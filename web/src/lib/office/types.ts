@@ -130,43 +130,45 @@ export interface Rect {
 export interface IdleActivity {
   label: string;
   area: OfficeAreaType;
+  /** Specific position near furniture — agent walks here instead of random room spot */
+  target?: Point;
 }
 
 /** Idle activities available per area — humans */
 export const HUMAN_IDLE_ACTIVITIES: Record<string, IdleActivity[]> = {
   strategyRoom: [
-    { label: 'Planning at whiteboard', area: 'strategyRoom' },
-    { label: 'Discussing strategy', area: 'strategyRoom' },
-    { label: 'Reviewing architecture', area: 'strategyRoom' },
-    { label: 'Brainstorming', area: 'strategyRoom' },
+    { label: 'Planning at whiteboard', area: 'strategyRoom', target: { x: 90, y: 50 } },
+    { label: 'Discussing strategy', area: 'strategyRoom', target: { x: 115, y: 110 } },
+    { label: 'Reviewing architecture', area: 'strategyRoom', target: { x: 140, y: 110 } },
+    { label: 'Brainstorming', area: 'strategyRoom', target: { x: 70, y: 50 } },
   ],
   kitchen: [
-    { label: 'Making coffee', area: 'kitchen' },
-    { label: 'Toasting bread', area: 'kitchen' },
-    { label: 'Raiding the fridge', area: 'kitchen' },
-    { label: 'Doing dishes', area: 'kitchen' },
-    { label: 'Microwaving lunch', area: 'kitchen' },
+    { label: 'Making coffee', area: 'kitchen', target: { x: 110, y: 235 } },
+    { label: 'Toasting bread', area: 'kitchen', target: { x: 20, y: 258 } },
+    { label: 'Raiding the fridge', area: 'kitchen', target: { x: 207, y: 260 } },
+    { label: 'Doing dishes', area: 'kitchen', target: { x: 62, y: 235 } },
+    { label: 'Microwaving lunch', area: 'kitchen', target: { x: 151, y: 235 } },
   ],
   breakRoom: [
-    { label: 'Playing ping pong', area: 'breakRoom' },
-    { label: 'Playing video games', area: 'breakRoom' },
-    { label: 'Watching TV', area: 'breakRoom' },
-    { label: 'Napping on couch', area: 'breakRoom' },
-    { label: 'Chilling in bean bag', area: 'breakRoom' },
+    { label: 'Playing ping pong', area: 'breakRoom', target: { x: 370, y: 468 } },
+    { label: 'Playing video games', area: 'breakRoom', target: { x: 90, y: 450 } },
+    { label: 'Watching TV', area: 'breakRoom', target: { x: 90, y: 450 } },
+    { label: 'Napping on couch', area: 'breakRoom', target: { x: 90, y: 475 } },
+    { label: 'Chilling in bean bag', area: 'breakRoom', target: { x: 170, y: 478 } },
   ],
 };
 
 /** Idle activities available per area — dogs */
 export const DOG_IDLE_ACTIVITIES: Record<string, IdleActivity[]> = {
   kitchen: [
-    { label: 'Begging for scraps', area: 'kitchen' },
-    { label: 'Sniffing the floor', area: 'kitchen' },
-    { label: 'Staring at the fridge', area: 'kitchen' },
+    { label: 'Begging for scraps', area: 'kitchen', target: { x: 115, y: 340 } },
+    { label: 'Sniffing the floor', area: 'kitchen', target: { x: 60, y: 320 } },
+    { label: 'Staring at the fridge', area: 'kitchen', target: { x: 207, y: 260 } },
   ],
   breakRoom: [
-    { label: 'Napping on couch', area: 'breakRoom' },
-    { label: 'Watching TV (confused)', area: 'breakRoom' },
-    { label: 'Chasing ping pong ball', area: 'breakRoom' },
+    { label: 'Napping on couch', area: 'breakRoom', target: { x: 90, y: 475 } },
+    { label: 'Watching TV (confused)', area: 'breakRoom', target: { x: 90, y: 450 } },
+    { label: 'Chasing ping pong ball', area: 'breakRoom', target: { x: 370, y: 500 } },
   ],
 };
 

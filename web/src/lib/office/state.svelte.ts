@@ -7,6 +7,7 @@ import { DESKS, DOOR_POSITION, randomPosition, getViewForArea } from './layout';
 import { getCharacterConfig, DOG_TYPES } from './characters';
 import { OfficeEngine } from './engine';
 import { findPath, findNearestWalkable, pathDuration } from './navigation';
+import { pickPanicStart, pickJobComplete, pickDogBark, pickDogBeg, pickGeneralIdle } from './speech';
 
 // ── Status colors ────────────────────────────────────────────
 
@@ -29,16 +30,8 @@ const BREAK_TO_AREA: Record<BreakDestination, OfficeAreaType> = {
 
 // ── Idle Activity Cycling ────────────────────────────────────
 
-/** Min/max time (ms) an agent stays on one idle activity before switching */
-const IDLE_CYCLE_MIN = 45_000;
-const IDLE_CYCLE_MAX = 90_000;
-
 /** Initial stagger window — agents start cycling at random offsets so they don't all switch at once */
 const IDLE_STAGGER_MAX = 20_000;
-
-function randomIdleDuration(): number {
-  return IDLE_CYCLE_MIN + Math.random() * (IDLE_CYCLE_MAX - IDLE_CYCLE_MIN);
-}
 
 /** Pick a random idle activity for a character based on their break destinations */
 function pickIdleActivity(characterType: CharacterType): IdleActivity | null {
@@ -66,7 +59,9 @@ export interface OfficeState {
   engine: OfficeEngine;
 
   readonly selectedAgent: OfficeAgent | null;
+  panicMode: boolean;
 
+  togglePanic(): void;
   handleSpawn(id: string, role: string, task: string): void;
   handleWorking(id: string, task: string): void;
   handleIdle(id: string): void;
@@ -83,9 +78,16 @@ export function createOfficeState(): OfficeState {
   let agents = $state<OfficeAgent[]>([]);
   let desks = $state<Desk[]>(DESKS.map((d) => ({ ...d, occupantId: null })));
   let selectedAgentId = $state<string | null>(null);
+  let panicMode = $state(false);
   let nextCharacterIndex = 0;
 
   const engine = new OfficeEngine();
+
+  /** Idle cycle duration — shorter in panic mode so agents scramble faster */
+  function randomIdleDuration(): number {
+    if (panicMode) return 2000 + Math.random() * 3000;
+    return 45_000 + Math.random() * 45_000;
+  }
 
   /** Per-agent idle cycling timers (agent id → timeout handle) */
   const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -226,8 +228,9 @@ export function createOfficeState(): OfficeState {
     engine.setIdleActivity(id, activity.label);
     agents = [...agents];
 
-    // Walk to new position in the activity's area via pathfinding
-    const pos = findNearestWalkable(randomPosition(activity.area));
+    // Walk to furniture target (or fallback to random room position)
+    const rawPos = activity.target ?? randomPosition(activity.area);
+    const pos = findNearestWalkable(rawPos);
     const currentPos = engine.agents.get(id)?.position ?? DOOR_POSITION;
     const path = findPath(currentPos, pos);
     const walkSpeed = 100; // casual walking pace
@@ -257,6 +260,20 @@ export function createOfficeState(): OfficeState {
       // Set up ping pong pairing if applicable
       if (activity.label === 'Playing ping pong') {
         setupPingPong(id);
+      }
+
+      // Speech bubble triggers
+      const isDog = DOG_TYPES.has(current.characterType);
+      if (isDog) {
+        if (activity.label === 'Begging for scraps') {
+          engine.setSpeechBubble(id, pickDogBeg());
+        } else if (Math.random() < 0.15) {
+          engine.setSpeechBubble(id, pickDogBark());
+        }
+      } else {
+        if (Math.random() < 0.05) {
+          engine.setSpeechBubble(id, pickGeneralIdle());
+        }
       }
     }, walkDuration + 200);
 
@@ -301,6 +318,72 @@ export function createOfficeState(): OfficeState {
     engine.removeAgent(id);
     agents = agents.filter((a) => a.id !== id);
     if (selectedAgentId === id) selectedAgentId = null;
+  }
+
+  // ── Panic Mode ─────────────────────────────────────────────
+
+  function togglePanic(): void {
+    panicMode = !panicMode;
+
+    if (panicMode) {
+      // Activate panic — everyone looks busy
+      for (const agent of agents) {
+        engine.setSpeechBubble(agent.id, pickPanicStart());
+
+        if (agent.status === 'idle') {
+          if (agent.deskIndex !== null) {
+            // Has a desk — rush back to it
+            clearIdleTimer(agent.id);
+            clearPingPongTimer(agent.id);
+            clearPairing(agent.id);
+
+            const deskPos = desks[agent.deskIndex].position;
+            const seatPos = { x: deskPos.x, y: deskPos.y + 20 };
+            const currentPos = engine.agents.get(agent.id)?.position ?? DOOR_POSITION;
+            const path = findPath(currentPos, seatPos);
+            const walkSpeed = 180; // running back to desk
+
+            engine.setStatusColor(agent.id, STATUS_COLORS.walking);
+            engine.setAnimation(agent.id, 'none');
+            engine.setCurrentView(agent.id, 'office');
+
+            if (path.length > 0) {
+              engine.moveAgentAlongPath(agent.id, path, walkSpeed);
+            } else {
+              engine.moveAgent(agent.id, seatPos, 1000);
+            }
+
+            const walkDuration = path.length > 0 ? pathDuration(path, walkSpeed) : 1000;
+
+            // After arrival, set frantic work
+            const agentId = agent.id;
+            setTimeout(() => {
+              const current = agents.find((a) => a.id === agentId);
+              if (!current || !panicMode) return;
+              current.status = 'working';
+              current.idleActivity = null;
+              engine.setIdleActivity(agentId, null);
+              agents = [...agents];
+              engine.setStatusColor(agentId, STATUS_COLORS.working);
+              engine.setAnimation(agentId, 'frantic-work');
+              engine.setFacing(agentId, 'up');
+            }, walkDuration + 200);
+          }
+          // No desk — let natural fast cycling handle it
+        } else if (agent.status === 'working') {
+          // Already working — just make it frantic
+          engine.setAnimation(agent.id, 'frantic-work');
+        }
+      }
+    } else {
+      // Deactivate panic — calm down
+      for (const agent of agents) {
+        const ea = engine.agents.get(agent.id);
+        if (ea && ea.animation.type === 'frantic-work') {
+          engine.setAnimation(agent.id, 'work-shake');
+        }
+      }
+    }
   }
 
   // ── Lifecycle Handlers ─────────────────────────────────────
@@ -386,7 +469,8 @@ export function createOfficeState(): OfficeState {
     // Pick an initial idle activity
     const activity = pickIdleActivity(agent.characterType);
     const areaType = activity?.area ?? 'breakRoom';
-    const pos = findNearestWalkable(randomPosition(areaType));
+    const rawPos = activity?.target ?? randomPosition(areaType);
+    const pos = findNearestWalkable(rawPos);
     const currentPos = engine.agents.get(id)?.position ?? DOOR_POSITION;
     const path = findPath(currentPos, pos);
     const walkSpeed = 100;
@@ -425,6 +509,20 @@ export function createOfficeState(): OfficeState {
         }
       }
 
+      // Speech bubble triggers
+      const isDog = DOG_TYPES.has(current.characterType);
+      if (isDog) {
+        if (activity?.label === 'Begging for scraps') {
+          engine.setSpeechBubble(id, pickDogBeg());
+        } else if (Math.random() < 0.15) {
+          engine.setSpeechBubble(id, pickDogBark());
+        }
+      } else {
+        if (Math.random() < 0.05) {
+          engine.setSpeechBubble(id, pickGeneralIdle());
+        }
+      }
+
       // Start cycling with a staggered initial delay so agents don't all switch together
       const stagger = Math.random() * IDLE_STAGGER_MAX;
       startIdleCycle(id, randomIdleDuration() + stagger);
@@ -445,6 +543,7 @@ export function createOfficeState(): OfficeState {
     engine.setStatusColor(id, STATUS_COLORS.celebrating);
     engine.setAnimation(id, 'celebrate');
     engine.setFacing(id, 'down'); // face camera for celebration
+    engine.setSpeechBubble(id, pickJobComplete());
 
     // After celebration, walk to door and leave
     setTimeout(() => {
@@ -517,8 +616,10 @@ export function createOfficeState(): OfficeState {
     get selectedAgentId() { return selectedAgentId; },
     set selectedAgentId(v) { selectedAgentId = v; },
     get selectedAgent() { return selectedAgent; },
+    get panicMode() { return panicMode; },
     engine,
 
+    togglePanic,
     handleSpawn,
     handleWorking,
     handleIdle,

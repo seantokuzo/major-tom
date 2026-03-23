@@ -5,7 +5,13 @@ import type { CharacterType, Point } from './types';
 
 // ── Animation Types ──────────────────────────────────────────
 
-export type AnimationType = 'none' | 'idle' | 'work-shake' | 'celebrate' | 'shiver' | 'fade-out';
+export type AnimationType = 'none' | 'idle' | 'work-shake' | 'frantic-work' | 'celebrate' | 'shiver' | 'fade-out';
+
+export interface SpeechBubble {
+  text: string;
+  startTime: number;
+  duration: number;
+}
 
 /** Direction the character sprite faces */
 export type FacingDirection = 'down' | 'up' | 'left' | 'right';
@@ -47,6 +53,8 @@ export interface EngineAgent {
   walkPhase: number;
   /** ID of partner agent for paired activities (e.g. ping pong) */
   pairedWith: string | null;
+  /** Active speech bubble (auto-expires) */
+  speechBubble: SpeechBubble | null;
 }
 
 // ── Engine ───────────────────────────────────────────────────
@@ -111,6 +119,7 @@ export class OfficeEngine {
       isMoving: false,
       walkPhase: 0,
       pairedWith: null,
+      speechBubble: null,
     });
   }
 
@@ -189,6 +198,12 @@ export class OfficeEngine {
     if (agent) agent.pairedWith = partnerId;
   }
 
+  setSpeechBubble(id: string, text: string, duration: number = 2500): void {
+    const agent = this.agents.get(id);
+    if (!agent) return;
+    agent.speechBubble = { text, startTime: performance.now(), duration };
+  }
+
   getAgentAtPoint(point: Point, hitSize: number = 20): EngineAgent | null {
     // Check agents in reverse order (top-most first)
     const entries = Array.from(this.agents.values()).reverse();
@@ -253,6 +268,13 @@ export class OfficeEngine {
   }
 
   private updateAnimation(agent: EngineAgent, now: number): void {
+    // Auto-expire speech bubbles
+    if (agent.speechBubble) {
+      if (now - agent.speechBubble.startTime > agent.speechBubble.duration) {
+        agent.speechBubble = null;
+      }
+    }
+
     const elapsed = now - agent.animation.startTime;
     const ms = elapsed;
 
@@ -280,6 +302,17 @@ export class OfficeEngine {
         } else {
           agent.animOffset.x = 0;
         }
+        break;
+      }
+
+      case 'frantic-work': {
+        // Same as work-shake but 2x speed, 1.5x amplitude, no pause — pure panic
+        const cycle = 300;
+        const phase = ms % cycle;
+        const shakePhase = (phase % 75) / 75;
+        agent.animOffset.x = Math.sin(shakePhase * Math.PI * 2) * 3;
+        // Occasional tiny Y jitter for extra stress
+        agent.animOffset.y = Math.sin(ms * 0.02) * 0.5;
         break;
       }
 

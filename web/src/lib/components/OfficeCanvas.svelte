@@ -15,42 +15,86 @@
   let canvasEl: HTMLCanvasElement | undefined = $state();
   let containerEl: HTMLDivElement | undefined = $state();
   let scale = $state(1);
+  let isMobile = $state(false);
+
+  // Mobile room canvases — keyed by area type
+  let roomCanvasEls: Record<string, HTMLCanvasElement | undefined> = $state({});
+
+  // Room display order for mobile layout
+  const ROOM_ORDER: Array<{ type: string; label: string }> = [
+    { type: 'mainOffice', label: 'Main Office' },
+    { type: 'strategyRoom', label: 'Strategy Room' },
+    { type: 'breakRoom', label: 'Break Room' },
+    { type: 'kitchen', label: 'Kitchen' },
+  ];
 
   // ── Responsive scaling ─────────────────────────────────────
 
   function updateScale() {
     if (!containerEl) return;
-    const { clientWidth, clientHeight } = containerEl;
-    const scaleX = clientWidth / SCENE_WIDTH;
-    const scaleY = clientHeight / SCENE_HEIGHT;
-    scale = Math.min(scaleX, scaleY);
+    // Use window.innerWidth for mobile detection — the container itself may be
+    // inflated by the canvas dimensions, giving a false reading.
+    isMobile = window.innerWidth < 640;
+    if (!isMobile) {
+      const { clientWidth, clientHeight } = containerEl;
+      const scaleX = clientWidth / SCENE_WIDTH;
+      const scaleY = clientHeight / SCENE_HEIGHT;
+      scale = Math.min(scaleX, scaleY);
+    }
   }
 
   $effect(() => {
     if (!containerEl) return;
     const observer = new ResizeObserver(() => updateScale());
     observer.observe(containerEl);
+    // Also listen for window resize to catch viewport changes (e.g. orientation)
+    window.addEventListener('resize', updateScale);
     updateScale();
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateScale);
+    };
   });
 
   // ── Engine render loop ─────────────────────────────────────
 
   $effect(() => {
-    if (!canvasEl) return;
-    const ctx = canvasEl.getContext('2d');
-    if (!ctx) return;
+    if (isMobile) {
+      // Mobile: render each room canvas separately
+      engine.onRender = () => {
+        for (const room of ROOM_ORDER) {
+          const canvas = roomCanvasEls[room.type];
+          if (!canvas) continue;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) continue;
+          const area = AREAS.find(a => a.type === room.type);
+          if (!area) continue;
+          renderRoom(ctx, engine, area);
+        }
+      };
 
-    engine.onRender = () => {
-      renderScene(ctx, engine);
-    };
+      engine.start();
 
-    engine.start();
+      return () => {
+        engine.onRender = null;
+        engine.stop();
+      };
+    } else {
+      if (!canvasEl) return;
+      const ctx = canvasEl.getContext('2d');
+      if (!ctx) return;
 
-    return () => {
-      engine.onRender = null;
-      engine.stop();
-    };
+      engine.onRender = () => {
+        renderScene(ctx, engine);
+      };
+
+      engine.start();
+
+      return () => {
+        engine.onRender = null;
+        engine.stop();
+      };
+    }
   });
 
   // ── Click handler ──────────────────────────────────────────
@@ -80,6 +124,21 @@
     const y = (event.clientY - rect.top) / scale;
 
     const agent = engine.getAgentAtPoint({ x, y });
+    if (agent) {
+      onAgentClick(agent.id);
+    }
+  }
+
+  function handleRoomClick(event: MouseEvent, area: OfficeArea) {
+    if (!onAgentClick) return;
+    const canvas = event.currentTarget as HTMLCanvasElement;
+    const rect = canvas.getBoundingClientRect();
+    const roomScale = rect.width / area.bounds.width;
+    // Convert click coords back to scene space
+    const sceneX = (event.clientX - rect.left) / roomScale + area.bounds.x;
+    const sceneY = (event.clientY - rect.top) / roomScale + area.bounds.y;
+
+    const agent = engine.getAgentAtPoint({ x: sceneX, y: sceneY });
     if (agent) {
       onAgentClick(agent.id);
     }
@@ -1504,6 +1563,113 @@
     }
   }
 
+  // ── Mobile room rendering ──────────────────────────────────
+
+  function isAgentInArea(agent: EngineAgent, area: OfficeArea, padding: number = 20): boolean {
+    const ax = agent.position.x;
+    const ay = agent.position.y;
+    const b = area.bounds;
+    return ax >= b.x - padding && ax <= b.x + b.width + padding &&
+           ay >= b.y - padding && ay <= b.y + b.height + padding;
+  }
+
+  function renderRoom(ctx: CanvasRenderingContext2D, eng: OfficeEngine, area: OfficeArea) {
+    const now = performance.now();
+    const b = area.bounds;
+
+    // Clear canvas
+    ctx.fillStyle = 'rgb(20, 20, 26)';
+    ctx.fillRect(0, 0, b.width, b.height);
+
+    ctx.save();
+    // Shift coordinate system so room renders at (0,0)
+    ctx.translate(-b.x, -b.y);
+
+    // Floor
+    ctx.fillStyle = area.color;
+    ctx.fillRect(b.x, b.y, b.width, b.height);
+
+    // Floor pattern
+    drawFloorPattern(ctx, area);
+
+    // Room label (subtle, in corner)
+    ctx.fillStyle = 'rgba(160, 160, 170, 0.25)';
+    ctx.font = '8px Menlo, monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(area.name.toUpperCase(), b.x + 8, b.y + 8);
+
+    // Furniture with animated overlays
+    if (area.furniture) {
+      for (const item of area.furniture) {
+        if (item.type === 'tvScreen') {
+          drawAnimatedTv(ctx, item.position.x, item.position.y, item.width, item.height, eng, now);
+        } else if (item.type === 'arcadeMachine') {
+          drawFurniture(ctx, item);
+          drawAnimatedArcade(ctx, item.position.x, item.position.y, item.width, item.height, eng, now, item.color);
+        } else {
+          drawFurniture(ctx, item);
+        }
+
+        if (item.type === 'toaster') {
+          drawToasterFire(ctx, item.position.x, item.position.y, eng, now);
+        }
+      }
+    }
+
+    // Desks (only for mainOffice)
+    if (area.type === 'mainOffice') {
+      for (const d of desks) {
+        renderDesk(ctx, d);
+
+        const isOccupiedWorking = d.occupantId !== null &&
+          eng.agents.get(d.occupantId)?.animation.type === 'work-shake';
+
+        const deskFurniturePositions = [
+          { fx: 280, fy: 45, fw: 56 },
+          { fx: 420, fy: 45, fw: 56 },
+          { fx: 560, fy: 45, fw: 56 },
+          { fx: 280, fy: 165, fw: 56 },
+          { fx: 420, fy: 165, fw: 56 },
+          { fx: 560, fy: 165, fw: 56 },
+        ];
+
+        if (d.id >= 0 && d.id < deskFurniturePositions.length) {
+          const fp = deskFurniturePositions[d.id];
+          const mw = 16, mh = 10;
+          const mx = fp.fx + (fp.fw - mw) / 2;
+          const my = fp.fy + 6;
+          drawAnimatedMonitor(ctx, mx, my, mw, mh, isOccupiedWorking, now);
+        }
+      }
+
+      // Door (only in mainOffice)
+      renderDoor(ctx);
+    }
+
+    // Agents within this room
+    for (const agent of eng.agents.values()) {
+      if (isAgentInArea(agent, area)) {
+        renderAgent(ctx, agent);
+      }
+    }
+
+    // Ping pong ball (only for breakRoom)
+    if (area.type === 'breakRoom') {
+      drawPingPongBall(ctx, eng, now);
+    }
+
+    ctx.restore();
+
+    // Draw subtle border around room canvas
+    ctx.strokeStyle = 'rgba(100, 100, 120, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, b.width, b.height);
+
+    // Reset text baseline
+    ctx.textBaseline = 'alphabetic';
+  }
+
   // ── Main rendering ─────────────────────────────────────────
 
   function renderScene(ctx: CanvasRenderingContext2D, eng: OfficeEngine) {
@@ -1682,6 +1848,74 @@
     ctx.restore();
   }
 
+  function drawSpeechBubble(ctx: CanvasRenderingContext2D, agent: EngineAgent) {
+    if (!agent.speechBubble) return;
+
+    const now = performance.now();
+    const elapsed = now - agent.speechBubble.startTime;
+    const remaining = agent.speechBubble.duration - elapsed;
+    if (remaining <= 0) return;
+
+    // Calculate alpha — full opacity, fade out in last 500ms
+    const fadeStart = 500;
+    const alpha = remaining < fadeStart ? remaining / fadeStart : 1;
+
+    const x = agent.position.x + agent.animOffset.x;
+    const y = agent.position.y + agent.animOffset.y;
+    const size = getCharacterSize(agent.characterType);
+
+    ctx.save();
+    ctx.globalAlpha = alpha * agent.alpha;
+
+    // Measure text to size the bubble
+    ctx.font = '7px Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const textWidth = ctx.measureText(agent.speechBubble.text).width;
+
+    const padH = 6;
+    const padV = 4;
+    const bubbleW = textWidth + padH * 2;
+    const bubbleH = 12 + padV * 2;
+    const bubbleX = x - bubbleW / 2;
+    const bubbleY = y - size.height / 2 - 14 - bubbleH; // above name + status dot
+    const tailSize = 4;
+
+    // Bubble background
+    safeRoundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 4);
+    ctx.fillStyle = 'rgb(240, 240, 245)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgb(60, 60, 70)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Tail triangle pointing down to agent
+    ctx.beginPath();
+    ctx.moveTo(x - tailSize, bubbleY + bubbleH);
+    ctx.lineTo(x, bubbleY + bubbleH + tailSize);
+    ctx.lineTo(x + tailSize, bubbleY + bubbleH);
+    ctx.closePath();
+    ctx.fillStyle = 'rgb(240, 240, 245)';
+    ctx.fill();
+    // Tail border (just the two angled sides)
+    ctx.beginPath();
+    ctx.moveTo(x - tailSize, bubbleY + bubbleH);
+    ctx.lineTo(x, bubbleY + bubbleH + tailSize);
+    ctx.lineTo(x + tailSize, bubbleY + bubbleH);
+    ctx.strokeStyle = 'rgb(60, 60, 70)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Cover the border line where tail meets bubble
+    ctx.fillStyle = 'rgb(240, 240, 245)';
+    ctx.fillRect(x - tailSize + 1, bubbleY + bubbleH - 1, tailSize * 2 - 2, 2);
+
+    // Text
+    ctx.fillStyle = 'rgb(30, 30, 40)';
+    ctx.fillText(agent.speechBubble.text, x, bubbleY + bubbleH / 2);
+
+    ctx.restore();
+  }
+
   function renderAgent(ctx: CanvasRenderingContext2D, agent: EngineAgent) {
     const x = agent.position.x + agent.animOffset.x;
     const y = agent.position.y + agent.animOffset.y;
@@ -1729,22 +1963,49 @@
     ctx.fill();
 
     ctx.globalAlpha = prevAlpha;
+
+    // Speech bubble (drawn after restoring alpha so it has its own fade logic)
+    drawSpeechBubble(ctx, agent);
   }
 </script>
 
 <div class="office-wrapper">
-  <!-- Canvas container — single unified view, no tabs -->
   <div class="office-container" bind:this={containerEl}>
-    <canvas
-      bind:this={canvasEl}
-      width={SCENE_WIDTH}
-      height={SCENE_HEIGHT}
-      style="width: {SCENE_WIDTH * scale}px; height: {SCENE_HEIGHT * scale}px;"
-      onclick={handleClick}
-      role="application"
-      tabindex="0"
-      aria-label="Office visualization — click agents to inspect"
-    ></canvas>
+    {#if isMobile}
+      <!-- Mobile: stacked room canvases -->
+      <div class="mobile-room-stack">
+        {#each ROOM_ORDER as room}
+          {@const area = AREAS.find(a => a.type === room.type)}
+          {#if area}
+            <div class="mobile-room-section">
+              <div class="mobile-room-label">{room.label}</div>
+              <canvas
+                bind:this={roomCanvasEls[room.type]}
+                width={area.bounds.width}
+                height={area.bounds.height}
+                style="width: 100%;"
+                onclick={(e) => handleRoomClick(e, area)}
+                role="application"
+                tabindex="0"
+                aria-label="{room.label} — click agents to inspect"
+              ></canvas>
+            </div>
+          {/if}
+        {/each}
+      </div>
+    {:else}
+      <!-- Desktop: single unified canvas -->
+      <canvas
+        bind:this={canvasEl}
+        width={SCENE_WIDTH}
+        height={SCENE_HEIGHT}
+        style="width: {SCENE_WIDTH * scale}px; height: {SCENE_HEIGHT * scale}px;"
+        onclick={handleClick}
+        role="application"
+        tabindex="0"
+        aria-label="Office visualization — click agents to inspect"
+      ></canvas>
+    {/if}
   </div>
 </div>
 
@@ -1770,5 +2031,39 @@
   canvas {
     cursor: pointer;
     image-rendering: pixelated;
+  }
+
+  /* ── Mobile stacked layout ── */
+
+  .mobile-room-stack {
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+  }
+
+  .mobile-room-section {
+    flex-shrink: 0;
+  }
+
+  .mobile-room-label {
+    font-family: Menlo, monospace;
+    font-size: 10px;
+    color: rgba(200, 200, 210, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 4px 4px 2px;
+  }
+
+  .mobile-room-section canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 2px;
   }
 </style>

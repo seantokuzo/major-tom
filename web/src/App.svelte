@@ -148,6 +148,14 @@
         Crew
       </button>
     </nav>
+    <button
+      class="panic-btn"
+      class:active={office.panicMode}
+      onclick={() => office.togglePanic()}
+      title={office.panicMode ? 'Calm down' : 'PANIC!'}
+    >
+      !!!
+    </button>
     <div class="header-spacer"></div>
     <div class="header-actions">
       <AuthSettings />
@@ -164,7 +172,7 @@
     {:else if activeTab === 'characters'}
       <CharacterGallery />
     {:else}
-      <div class="office-wrapper">
+      <div class="office-wrapper" class:panic-active={office.panicMode}>
         <OfficeCanvas
           engine={office.engine}
           desks={office.desks}
@@ -291,5 +299,39 @@
     position: relative;
     display: flex;
     min-height: 0;
+  }
+
+  .office-wrapper.panic-active {
+    box-shadow: inset 0 0 20px rgba(200, 60, 60, 0.3);
+  }
+
+  .panic-btn {
+    padding: 2px 8px;
+    font-family: Menlo, monospace;
+    font-size: 11px;
+    font-weight: bold;
+    color: rgb(200, 60, 60);
+    background: transparent;
+    border: 1px solid rgb(200, 60, 60);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-left: 8px;
+    flex-shrink: 0;
+  }
+
+  .panic-btn:hover {
+    background: rgba(200, 60, 60, 0.15);
+  }
+
+  .panic-btn.active {
+    background: rgb(200, 60, 60);
+    color: white;
+    animation: panic-pulse 0.5s infinite alternate;
+  }
+
+  @keyframes panic-pulse {
+    from { box-shadow: 0 0 4px rgba(200, 60, 60, 0.5); }
+    to { box-shadow: 0 0 12px rgba(200, 60, 60, 0.8); }
   }
 </style>
