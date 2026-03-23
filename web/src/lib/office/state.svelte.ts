@@ -87,6 +87,8 @@ export interface OfficeState {
   readonly canDemo: boolean;
 
   toggleDemo(): void;
+  /** Auto-start idle demo if no real agents present. Idempotent — safe to call repeatedly. */
+  ensureAutoIdle(): void;
   handleSpawn(id: string, role: string, task: string): void;
   handleWorking(id: string, task: string): void;
   handleIdle(id: string): void;
@@ -186,11 +188,11 @@ export function createOfficeState(): OfficeState {
 
   /** Set up ping pong pairing for an agent arriving at the table */
   function setupPingPong(agentId: string): void {
-    // Ping pong table center is at approximately {x: 370, y: 468}
-    // (table position {x: 320, y: 440} + {w: 100, h: 56} / 2)
-    const tableCenter = { x: 370, y: 468 };
-    const leftPos = { x: 310, y: tableCenter.y };
-    const rightPos = { x: 430, y: tableCenter.y };
+    // Ping pong table center is at approximately {x: 480, y: 579}
+    // (table position {x: 420, y: 545} + {w: 120, h: 68} / 2)
+    const tableCenter = { x: 480, y: 579 };
+    const leftPos = { x: 410, y: tableCenter.y };
+    const rightPos = { x: 550, y: tableCenter.y };
 
     // Find another agent already at ping pong without a partner
     const partner = agents.find((a) =>
@@ -361,15 +363,15 @@ export function createOfficeState(): OfficeState {
   // ── Demo Mode ──────────────────────────────────────────────
 
   /** Demo agent roster — mix of desk workers and break room wanderers */
-  const DEMO_ROSTER: { role: string; behavior: 'desk' | 'idle' }[] = [
-    { role: 'Architect', behavior: 'desk' },
-    { role: 'Backend', behavior: 'desk' },
-    { role: 'Frontend', behavior: 'desk' },
-    { role: 'DevOps', behavior: 'desk' },
-    { role: 'Designer', behavior: 'idle' },
-    { role: 'PM', behavior: 'idle' },
-    { role: 'Rex', behavior: 'idle' },     // dachshund
-    { role: 'Pepper', behavior: 'idle' },   // schnauzer
+  const DEMO_ROSTER: { role: string; behavior: 'desk' | 'idle'; char: CharacterType }[] = [
+    { role: 'Architect', behavior: 'desk', char: 'architect' },
+    { role: 'Backend', behavior: 'desk', char: 'backendEngineer' },
+    { role: 'Frontend', behavior: 'desk', char: 'frontendEngineer' },
+    { role: 'DevOps', behavior: 'desk', char: 'devops' },
+    { role: 'Designer', behavior: 'idle', char: 'uxDesigner' },
+    { role: 'PM', behavior: 'idle', char: 'productManager' },
+    { role: 'Rex', behavior: 'idle', char: 'dachshund' },
+    { role: 'Pepper', behavior: 'idle', char: 'schnauzerPepper' },
   ];
 
   function dismissAllDemoAgents(): void {
@@ -409,7 +411,7 @@ export function createOfficeState(): OfficeState {
     // Spawn demo agents with staggered entrance
     DEMO_ROSTER.forEach((entry, i) => {
       const id = `${DEMO_PREFIX}${i}`;
-      const characterType = assignNextCharacterType();
+      const characterType = entry.char;
       const deskIndex = entry.behavior === 'desk' ? assignNextAvailableDesk(id) : null;
 
       const agent: OfficeAgent = {
@@ -713,6 +715,9 @@ export function createOfficeState(): OfficeState {
     engine,
 
     toggleDemo,
+    ensureAutoIdle() {
+      if (!demoMode && canDemo) toggleDemo();
+    },
     handleSpawn,
     handleWorking,
     handleIdle,

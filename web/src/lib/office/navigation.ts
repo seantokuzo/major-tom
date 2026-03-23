@@ -7,8 +7,8 @@ import { SCENE_WIDTH, SCENE_HEIGHT, getAreasForView } from './layout';
 // ── Grid Constants ────────────────────────────────────────────
 
 const CELL_SIZE = 8; // pixels per grid cell
-const GRID_W = Math.ceil(SCENE_WIDTH / CELL_SIZE);   // 100
-const GRID_H = Math.ceil(SCENE_HEIGHT / CELL_SIZE);   // 75
+const GRID_W = Math.ceil(SCENE_WIDTH / CELL_SIZE);   // 125
+const GRID_H = Math.ceil(SCENE_HEIGHT / CELL_SIZE);   // 94
 
 /** Cost multiplier for diagonal steps (sqrt(2)) */
 const DIAG_COST = 1.4142135623730951;
@@ -26,42 +26,42 @@ interface DoorwayDef {
 
 const VIEW_DOORWAYS: Record<OfficeView, DoorwayDef[]> = {
   office: [
-    // Strategy Room <-> Main Office (vertical wall x=225-235, around y=100)
-    { x: 222, y: 85, width: 20, height: 35 },
-    // Kitchen <-> Main Office (vertical wall x=225-235, around y=300)
-    { x: 222, y: 285, width: 20, height: 35 },
-    // Strategy Room <-> Kitchen (horizontal wall y=195-205, around x=115)
-    { x: 100, y: 192, width: 35, height: 20 },
-    // Main Office <-> Break Room (horizontal wall y=395-405, around x=500)
-    { x: 485, y: 392, width: 35, height: 20 },
-    // Kitchen <-> Break Room (horizontal wall y=395-405, around x=115)
-    { x: 100, y: 392, width: 35, height: 20 },
+    // Strategy Room <-> Main Office (vertical wall at x=275, around y=110)
+    { x: 272, y: 110, width: 20, height: 40 },
+    // Kitchen <-> Main Office (vertical wall at x=275, around y=360)
+    { x: 272, y: 360, width: 20, height: 40 },
+    // Strategy Room <-> Kitchen (horizontal wall at y=245, around x=120)
+    { x: 120, y: 242, width: 40, height: 20 },
+    // Main Office <-> Break Room (horizontal wall at y=490, around x=610)
+    { x: 610, y: 487, width: 40, height: 20 },
+    // Kitchen <-> Break Room (horizontal wall at y=490, around x=120)
+    { x: 120, y: 487, width: 40, height: 20 },
     // Main entrance (right wall of main office, the DOOR furniture area)
-    { x: 755, y: 180, width: 20, height: 45 },
+    { x: 955, y: 225, width: 20, height: 50 },
   ],
   dogPark: [
-    // Dog Park Field <-> Agility Course (right side, vertical split around x=490)
-    { x: 478, y: 400, width: 25, height: 40 },
-    // Dog Park Field <-> Dog Pond (right side, vertical split around x=490)
-    { x: 478, y: 150, width: 25, height: 40 },
-    // Agility Course <-> Dog Pond (horizontal split around y=305)
-    { x: 600, y: 298, width: 40, height: 20 },
+    // Dog Park Field <-> Agility Course (vertical split around x=610)
+    { x: 598, y: 500, width: 25, height: 45 },
+    // Dog Park Field <-> Dog Pond (vertical split around x=610)
+    { x: 598, y: 190, width: 25, height: 45 },
+    // Agility Course <-> Dog Pond (horizontal split around y=385)
+    { x: 750, y: 378, width: 45, height: 25 },
   ],
   gym: [
-    // Gym Floor <-> Yoga Studio (vertical split around x=490)
-    { x: 478, y: 400, width: 25, height: 40 },
-    // Gym Floor <-> Locker Room (vertical split around x=490)
-    { x: 478, y: 150, width: 25, height: 40 },
-    // Yoga Studio <-> Locker Room (horizontal split around y=305)
-    { x: 600, y: 298, width: 40, height: 20 },
+    // Gym Floor <-> Yoga Studio (vertical split around x=610)
+    { x: 598, y: 500, width: 25, height: 45 },
+    // Gym Floor <-> Locker Room (vertical split around x=610)
+    { x: 598, y: 190, width: 25, height: 45 },
+    // Yoga Studio <-> Locker Room (horizontal split around y=385)
+    { x: 750, y: 378, width: 45, height: 25 },
   ],
   themePark: [
-    // Main Plaza <-> Roller Coaster Zone (horizontal split around y=300)
-    { x: 150, y: 292, width: 40, height: 20 },
-    // Main Plaza <-> Arcade Hall (horizontal split around y=300)
-    { x: 550, y: 292, width: 40, height: 20 },
-    // Roller Coaster Zone <-> Arcade Hall (vertical split around x=400)
-    { x: 392, y: 450, width: 20, height: 40 },
+    // Main Plaza <-> Roller Coaster Zone (horizontal split around y=375)
+    { x: 190, y: 368, width: 45, height: 25 },
+    // Main Plaza <-> Arcade Hall (horizontal split around y=375)
+    { x: 690, y: 368, width: 45, height: 25 },
+    // Roller Coaster Zone <-> Arcade Hall (vertical split around x=500)
+    { x: 492, y: 565, width: 25, height: 45 },
   ],
 };
 

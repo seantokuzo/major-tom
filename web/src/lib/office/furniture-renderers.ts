@@ -186,96 +186,96 @@ export function drawOfficeWalls(ctx: CanvasRenderingContext2D) {
   // ── Outer walls ──
   // Top wall
   ctx.fillStyle = wallColor;
-  ctx.fillRect(0, 0, 800, wallThickness);
+  ctx.fillRect(0, 0, 1000, wallThickness);
   ctx.fillStyle = wallHighlight;
-  ctx.fillRect(0, 0, 800, 1);
+  ctx.fillRect(0, 0, 1000, 1);
 
   // Left wall
   ctx.fillStyle = wallColor;
-  ctx.fillRect(0, 0, wallThickness, 600);
+  ctx.fillRect(0, 0, wallThickness, 750);
   ctx.fillStyle = wallHighlight;
-  ctx.fillRect(0, 0, 1, 600);
+  ctx.fillRect(0, 0, 1, 750);
 
   // Right wall (with door gap)
   ctx.fillStyle = wallColor;
-  ctx.fillRect(795, 0, wallThickness, 180);   // above door
+  ctx.fillRect(995, 0, wallThickness, 225);   // above door
   ctx.fillStyle = wallColor;
-  ctx.fillRect(795, 225, wallThickness, 175);  // between door and break room
+  ctx.fillRect(995, 275, wallThickness, 215);  // between door and break room
   ctx.fillStyle = wallColor;
-  ctx.fillRect(795, 400, wallThickness, 200); // break room right wall
+  ctx.fillRect(995, 490, wallThickness, 260); // break room right wall
 
   // Bottom wall
   ctx.fillStyle = wallColor;
-  ctx.fillRect(0, 595, 800, wallThickness);
+  ctx.fillRect(0, 745, 1000, wallThickness);
   ctx.fillStyle = wallShadow;
-  ctx.fillRect(0, 599, 800, 1);
+  ctx.fillRect(0, 749, 1000, 1);
 
   // ── Interior walls ──
 
-  // Vertical divider: strategy room / kitchen | main office
+  // Vertical divider: strategy room / kitchen | main office (at x=275)
   // With doorway gaps
   ctx.fillStyle = wallColor;
-  ctx.fillRect(225, 0, wallThickness, 120);      // top portion
+  ctx.fillRect(275, 0, wallThickness, 110);      // top portion
   ctx.fillStyle = wallHighlight;
-  ctx.fillRect(225, 0, 1, 120);
-  // Doorway gap (120-150) — strategy room to main office
+  ctx.fillRect(275, 0, 1, 110);
+  // Doorway gap (110-150) — strategy room to main office
   ctx.fillStyle = wallColor;
-  ctx.fillRect(225, 155, wallThickness, 45);     // between doors
+  ctx.fillRect(275, 150, wallThickness, 95);     // between doors
   ctx.fillStyle = wallHighlight;
-  ctx.fillRect(225, 155, 1, 45);
-  // Doorway gap (200-230) — where vertical wall meets horizontal
+  ctx.fillRect(275, 150, 1, 95);
+  // Doorway gap (245-250) — where vertical wall meets horizontal
   ctx.fillStyle = wallColor;
-  ctx.fillRect(225, 240, wallThickness, 60);     // kitchen portion
+  ctx.fillRect(275, 290, wallThickness, 70);     // kitchen portion
   ctx.fillStyle = wallHighlight;
-  ctx.fillRect(225, 240, 1, 60);
-  // Doorway gap (300-330) — kitchen to main office
+  ctx.fillRect(275, 290, 1, 70);
+  // Doorway gap (360-400) — kitchen to main office
   ctx.fillStyle = wallColor;
-  ctx.fillRect(225, 335, wallThickness, 65);     // bottom of kitchen wall
+  ctx.fillRect(275, 400, wallThickness, 90);     // bottom of kitchen wall
   ctx.fillStyle = wallHighlight;
-  ctx.fillRect(225, 335, 1, 65);
+  ctx.fillRect(275, 400, 1, 90);
 
-  // Horizontal divider: strategy room | kitchen
+  // Horizontal divider: strategy room | kitchen (at y=245)
   ctx.fillStyle = wallColor;
-  ctx.fillRect(0, 195, 140, wallThickness);      // left of doorway
+  ctx.fillRect(0, 245, 120, wallThickness);      // left of doorway
   ctx.fillStyle = wallShadow;
-  ctx.fillRect(0, 195, 140, 1);
-  // Doorway gap
+  ctx.fillRect(0, 245, 120, 1);
+  // Doorway gap (120-160)
   ctx.fillStyle = wallColor;
-  ctx.fillRect(175, 195, 55, wallThickness);     // right of doorway
+  ctx.fillRect(160, 245, 120, wallThickness);     // right of doorway
   ctx.fillStyle = wallShadow;
-  ctx.fillRect(175, 195, 55, 1);
+  ctx.fillRect(160, 245, 120, 1);
 
-  // Horizontal divider: main office + kitchen | break room
+  // Horizontal divider: main office + kitchen | break room (at y=490)
   ctx.fillStyle = wallColor;
-  ctx.fillRect(0, 395, 200, wallThickness);      // left portion (under kitchen)
+  ctx.fillRect(0, 490, 120, wallThickness);      // left portion (under kitchen)
   ctx.fillStyle = wallShadow;
-  ctx.fillRect(0, 395, 200, 1);
-  // Doorway gap from kitchen to break room
+  ctx.fillRect(0, 490, 120, 1);
+  // Doorway gap from kitchen to break room (120-160)
   ctx.fillStyle = wallColor;
-  ctx.fillRect(240, 395, 260, wallThickness);    // middle portion
+  ctx.fillRect(160, 490, 450, wallThickness);    // middle portion
   ctx.fillStyle = wallShadow;
-  ctx.fillRect(240, 395, 260, 1);
-  // Doorway gap from main office to break room
+  ctx.fillRect(160, 490, 450, 1);
+  // Doorway gap from main office to break room (610-650)
   ctx.fillStyle = wallColor;
-  ctx.fillRect(540, 395, 260, wallThickness);    // right portion
+  ctx.fillRect(650, 490, 350, wallThickness);    // right portion
   ctx.fillStyle = wallShadow;
-  ctx.fillRect(540, 395, 260, 1);
+  ctx.fillRect(650, 490, 350, 1);
 
   // ── Doorway floor markers (subtle) ──
   const doorwayColor = 'rgba(120, 95, 65, 0.15)';
   ctx.fillStyle = doorwayColor;
   // Strategy room to main office
-  ctx.fillRect(225, 120, wallThickness, 35);
+  ctx.fillRect(275, 110, wallThickness, 40);
   // Kitchen to main office
-  ctx.fillRect(225, 300, wallThickness, 35);
+  ctx.fillRect(275, 360, wallThickness, 40);
   // Strategy to kitchen
-  ctx.fillRect(140, 195, 35, wallThickness);
+  ctx.fillRect(120, 245, 40, wallThickness);
   // Kitchen to break room
-  ctx.fillRect(200, 395, 40, wallThickness);
+  ctx.fillRect(120, 490, 40, wallThickness);
   // Main office to break room
-  ctx.fillRect(500, 395, 40, wallThickness);
+  ctx.fillRect(610, 490, 40, wallThickness);
   // Main entrance door
-  ctx.fillRect(795, 180, wallThickness, 45);
+  ctx.fillRect(995, 225, wallThickness, 50);
 }
 
 // ── Furniture dispatch ─────────────────────────────────────────
@@ -1537,8 +1537,8 @@ export function drawPingPongBall(
     if (agent.id > partner.id) continue;
 
     // Check they're in the ping pong area (break room, near table)
-    const tableCenterX = 370;
-    const tableCenterY = 468;
+    const tableCenterX = 480;
+    const tableCenterY = 579;
     const avgX = (agent.position.x + partner.position.x) / 2;
     const avgY = (agent.position.y + partner.position.y) / 2;
     if (Math.abs(avgX - tableCenterX) > 100 || Math.abs(avgY - tableCenterY) > 60) continue;

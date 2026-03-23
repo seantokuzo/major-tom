@@ -111,6 +111,15 @@
     }
   });
 
+  // Auto-populate office with idle characters when tab is active and nothing is going on
+  $effect(() => {
+    if (activeTab === 'office') {
+      // Small delay so canvas mounts and engine starts first
+      const timer = setTimeout(() => office.ensureAutoIdle(), 150);
+      return () => clearTimeout(timer);
+    }
+  });
+
   function handleAgentClick(agentId: string) {
     office.selectAgent(agentId);
   }
@@ -195,6 +204,7 @@
           engine={office.engine}
           desks={office.desks}
           onAgentClick={handleAgentClick}
+          onEmptyClick={() => office.dismissInspector()}
           activeView={activeView}
         />
         {#if office.selectedAgent}

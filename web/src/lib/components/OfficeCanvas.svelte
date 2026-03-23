@@ -19,10 +19,11 @@
     engine: OfficeEngine;
     desks: Array<{ id: number; position: { x: number; y: number }; occupantId: string | null; label?: string; width?: number; height?: number }>;
     onAgentClick?: (agentId: string) => void;
+    onEmptyClick?: () => void;
     activeView?: OfficeView;
   }
 
-  let { engine, desks, onAgentClick, activeView = 'office' as OfficeView }: Props = $props();
+  let { engine, desks, onAgentClick, onEmptyClick, activeView = 'office' as OfficeView }: Props = $props();
 
   let canvasEl: HTMLCanvasElement | undefined = $state();
   let containerEl: HTMLDivElement | undefined = $state();
@@ -108,19 +109,20 @@
   // ── Click handler ──────────────────────────────────────────
 
   function handleClick(event: MouseEvent) {
-    if (!canvasEl || !onAgentClick) return;
+    if (!canvasEl) return;
     const rect = canvasEl.getBoundingClientRect();
     const x = (event.clientX - rect.left) / scale;
     const y = (event.clientY - rect.top) / scale;
 
     const agent = engine.getAgentAtPoint({ x, y });
     if (agent) {
-      onAgentClick(agent.id);
+      onAgentClick?.(agent.id);
+    } else {
+      onEmptyClick?.();
     }
   }
 
   function handleRoomClick(event: MouseEvent, area: OfficeArea) {
-    if (!onAgentClick) return;
     const canvas = event.currentTarget as HTMLCanvasElement;
     const rect = canvas.getBoundingClientRect();
     const roomScale = rect.width / area.bounds.width;
@@ -130,7 +132,9 @@
 
     const agent = engine.getAgentAtPoint({ x: sceneX, y: sceneY });
     if (agent) {
-      onAgentClick(agent.id);
+      onAgentClick?.(agent.id);
+    } else {
+      onEmptyClick?.();
     }
   }
 
@@ -163,12 +167,18 @@
     // Floor pattern
     drawFloorPattern(ctx, area);
 
-    // Room label (subtle, in corner)
-    ctx.fillStyle = 'rgba(160, 160, 170, 0.25)';
+    // Room label (subtle, in corner — shadow for contrast on light floors)
+    ctx.save();
     ctx.font = '8px Menlo, monospace';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowBlur = 2;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 1;
+    ctx.fillStyle = 'rgba(180, 180, 190, 0.55)';
     ctx.fillText(area.name.toUpperCase(), b.x + 8, b.y + 8);
+    ctx.restore();
 
     // Furniture with animated overlays
     if (area.furniture) {
@@ -197,12 +207,12 @@
           eng.agents.get(d.occupantId)?.animation.type === 'work-shake';
 
         const deskFurniturePositions = [
-          { fx: 280, fy: 45, fw: 56 },
-          { fx: 420, fy: 45, fw: 56 },
-          { fx: 560, fy: 45, fw: 56 },
-          { fx: 280, fy: 165, fw: 56 },
-          { fx: 420, fy: 165, fw: 56 },
-          { fx: 560, fy: 165, fw: 56 },
+          { fx: 400, fy: 100, fw: 56 },  // Desk 0
+          { fx: 560, fy: 100, fw: 56 },  // Desk 1
+          { fx: 720, fy: 100, fw: 56 },  // Desk 2
+          { fx: 400, fy: 260, fw: 56 },  // Desk 3
+          { fx: 560, fy: 260, fw: 56 },  // Desk 4
+          { fx: 720, fy: 260, fw: 56 },  // Desk 5
         ];
 
         if (d.id >= 0 && d.id < deskFurniturePositions.length) {
@@ -269,15 +279,21 @@
       drawOfficeWalls(ctx);
     }
 
-    // Draw area labels (subtle, in corner)
+    // Draw area labels (subtle, in corner — shadow for contrast on light floors)
+    ctx.save();
+    ctx.font = '8px Menlo, monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowBlur = 2;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 1;
+    ctx.fillStyle = 'rgba(180, 180, 190, 0.55)';
     for (const area of viewAreas) {
       const { x, y } = area.bounds;
-      ctx.fillStyle = 'rgba(160, 160, 170, 0.25)';
-      ctx.font = '8px Menlo, monospace';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
       ctx.fillText(area.name.toUpperCase(), x + 8, y + 8);
     }
+    ctx.restore();
 
     // Draw furniture for active view areas, with animated overlays
     for (const area of viewAreas) {
@@ -317,12 +333,12 @@
         // Desks: Row 1 seats at y=85, desks at y=45. Row 2 seats at y=205, desks at y=165
         // Monitor positions: centered on desk furniture
         const deskFurniturePositions = [
-          { fx: 280, fy: 45, fw: 56 },  // Desk 0
-          { fx: 420, fy: 45, fw: 56 },  // Desk 1
-          { fx: 560, fy: 45, fw: 56 },  // Desk 2
-          { fx: 280, fy: 165, fw: 56 }, // Desk 3
-          { fx: 420, fy: 165, fw: 56 }, // Desk 4
-          { fx: 560, fy: 165, fw: 56 }, // Desk 5
+          { fx: 400, fy: 100, fw: 56 },  // Desk 0
+          { fx: 560, fy: 100, fw: 56 },  // Desk 1
+          { fx: 720, fy: 100, fw: 56 },  // Desk 2
+          { fx: 400, fy: 260, fw: 56 },  // Desk 3
+          { fx: 560, fy: 260, fw: 56 },  // Desk 4
+          { fx: 720, fy: 260, fw: 56 },  // Desk 5
         ];
 
         if (d.id >= 0 && d.id < deskFurniturePositions.length) {
@@ -389,9 +405,9 @@
       ctx.fillRect(x - 4, dy + 3, 8, 5);
     }
 
-    // Name label below desk
-    if (d.label) {
-      ctx.fillStyle = isOccupied ? 'rgba(242, 200, 120, 0.7)' : 'rgba(160, 150, 130, 0.5)';
+    // Name label below desk (hide when occupied — agent name is shown above)
+    if (d.label && !isOccupied) {
+      ctx.fillStyle = 'rgba(160, 150, 130, 0.5)';
       ctx.font = '7px Menlo, monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';

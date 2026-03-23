@@ -190,38 +190,38 @@ export interface IdleActivity {
 /** Idle activities available per area — humans */
 export const HUMAN_IDLE_ACTIVITIES: Record<string, IdleActivity[]> = {
   strategyRoom: [
-    { label: 'Planning at whiteboard', area: 'strategyRoom', target: { x: 90, y: 50 } },
-    { label: 'Discussing strategy', area: 'strategyRoom', target: { x: 115, y: 110 } },
-    { label: 'Reviewing architecture', area: 'strategyRoom', target: { x: 140, y: 110 } },
-    { label: 'Brainstorming', area: 'strategyRoom', target: { x: 70, y: 50 } },
+    { label: 'Planning at whiteboard', area: 'strategyRoom', target: { x: 112, y: 62 } },
+    { label: 'Discussing strategy', area: 'strategyRoom', target: { x: 143, y: 138 } },
+    { label: 'Reviewing architecture', area: 'strategyRoom', target: { x: 175, y: 138 } },
+    { label: 'Brainstorming', area: 'strategyRoom', target: { x: 88, y: 62 } },
   ],
   kitchen: [
-    { label: 'Making coffee', area: 'kitchen', target: { x: 110, y: 235 } },
-    { label: 'Toasting bread', area: 'kitchen', target: { x: 20, y: 258 } },
-    { label: 'Raiding the fridge', area: 'kitchen', target: { x: 207, y: 260 } },
-    { label: 'Doing dishes', area: 'kitchen', target: { x: 62, y: 235 } },
-    { label: 'Microwaving lunch', area: 'kitchen', target: { x: 151, y: 235 } },
+    { label: 'Making coffee', area: 'kitchen', target: { x: 137, y: 290 } },
+    { label: 'Toasting bread', area: 'kitchen', target: { x: 25, y: 316 } },
+    { label: 'Raiding the fridge', area: 'kitchen', target: { x: 252, y: 310 } },
+    { label: 'Doing dishes', area: 'kitchen', target: { x: 76, y: 290 } },
+    { label: 'Microwaving lunch', area: 'kitchen', target: { x: 188, y: 290 } },
   ],
   breakRoom: [
-    { label: 'Playing ping pong', area: 'breakRoom', target: { x: 370, y: 468 } },
-    { label: 'Playing video games', area: 'breakRoom', target: { x: 90, y: 450 } },
-    { label: 'Watching TV', area: 'breakRoom', target: { x: 90, y: 450 } },
-    { label: 'Napping on couch', area: 'breakRoom', target: { x: 90, y: 475 } },
-    { label: 'Chilling in bean bag', area: 'breakRoom', target: { x: 170, y: 478 } },
+    { label: 'Playing ping pong', area: 'breakRoom', target: { x: 480, y: 579 } },
+    { label: 'Playing video games', area: 'breakRoom', target: { x: 112, y: 555 } },
+    { label: 'Watching TV', area: 'breakRoom', target: { x: 112, y: 555 } },
+    { label: 'Napping on couch', area: 'breakRoom', target: { x: 110, y: 582 } },
+    { label: 'Chilling in bean bag', area: 'breakRoom', target: { x: 215, y: 594 } },
   ],
 };
 
 /** Idle activities available per area — dogs */
 export const DOG_IDLE_ACTIVITIES: Record<string, IdleActivity[]> = {
   kitchen: [
-    { label: 'Begging for scraps', area: 'kitchen', target: { x: 115, y: 340 } },
-    { label: 'Sniffing the floor', area: 'kitchen', target: { x: 60, y: 320 } },
-    { label: 'Staring at the fridge', area: 'kitchen', target: { x: 207, y: 260 } },
+    { label: 'Begging for scraps', area: 'kitchen', target: { x: 142, y: 420 } },
+    { label: 'Sniffing the floor', area: 'kitchen', target: { x: 75, y: 400 } },
+    { label: 'Staring at the fridge', area: 'kitchen', target: { x: 252, y: 310 } },
   ],
   breakRoom: [
-    { label: 'Napping on couch', area: 'breakRoom', target: { x: 90, y: 475 } },
-    { label: 'Watching TV (confused)', area: 'breakRoom', target: { x: 90, y: 450 } },
-    { label: 'Chasing ping pong ball', area: 'breakRoom', target: { x: 370, y: 500 } },
+    { label: 'Napping on couch', area: 'breakRoom', target: { x: 110, y: 582 } },
+    { label: 'Watching TV (confused)', area: 'breakRoom', target: { x: 112, y: 555 } },
+    { label: 'Chasing ping pong ball', area: 'breakRoom', target: { x: 480, y: 620 } },
   ],
 };
 
@@ -230,41 +230,41 @@ export const DOG_IDLE_ACTIVITIES: Record<string, IdleActivity[]> = {
 /** Dog Park idle activities — humans */
 export const DOG_PARK_HUMAN_ACTIVITIES: Record<string, IdleActivity[]> = {
   dogParkField: [
-    { label: 'Throwing ball', area: 'dogParkField', target: { x: 300, y: 200 } },
-    { label: 'Sitting on bench', area: 'dogParkField', target: { x: 420, y: 330 } },
-    { label: 'Reading on bench', area: 'dogParkField', target: { x: 140, y: 330 } },
-    { label: 'Chatting with dog owner', area: 'dogParkField', target: { x: 250, y: 280 } },
+    { label: 'Throwing ball', area: 'dogParkField', target: { x: 375, y: 250 } },
+    { label: 'Sitting on bench', area: 'dogParkField', target: { x: 525, y: 412 } },
+    { label: 'Reading on bench', area: 'dogParkField', target: { x: 175, y: 412 } },
+    { label: 'Chatting with dog owner', area: 'dogParkField', target: { x: 312, y: 350 } },
   ],
   agilityCourse: [
-    { label: 'Coaching agility run', area: 'agilityCourse', target: { x: 200, y: 470 } },
-    { label: 'Setting up hoops', area: 'agilityCourse', target: { x: 100, y: 450 } },
-    { label: 'Cheering from sideline', area: 'agilityCourse', target: { x: 350, y: 540 } },
+    { label: 'Coaching agility run', area: 'agilityCourse', target: { x: 700, y: 588 } },
+    { label: 'Setting up hoops', area: 'agilityCourse', target: { x: 680, y: 562 } },
+    { label: 'Cheering from sideline', area: 'agilityCourse', target: { x: 850, y: 675 } },
   ],
   dogPondArea: [
-    { label: 'Watching dogs swim', area: 'dogPondArea', target: { x: 660, y: 250 } },
-    { label: 'Sitting by the pond', area: 'dogPondArea', target: { x: 640, y: 400 } },
+    { label: 'Watching dogs swim', area: 'dogPondArea', target: { x: 825, y: 312 } },
+    { label: 'Sitting by the pond', area: 'dogPondArea', target: { x: 700, y: 310 } },
   ],
 };
 
 /** Dog Park idle activities — dogs */
 export const DOG_PARK_DOG_ACTIVITIES: Record<string, IdleActivity[]> = {
   dogParkField: [
-    { label: 'Playing fetch', area: 'dogParkField', target: { x: 350, y: 180 } },
-    { label: 'Sniffing fire hydrant', area: 'dogParkField', target: { x: 80, y: 120 } },
-    { label: 'Chasing squirrel', area: 'dogParkField', target: { x: 480, y: 100 } },
-    { label: 'Rolling in grass', area: 'dogParkField', target: { x: 250, y: 250 } },
-    { label: 'Drinking water', area: 'dogParkField', target: { x: 200, y: 80 } },
-    { label: 'Napping under tree', area: 'dogParkField', target: { x: 500, y: 60 } },
+    { label: 'Playing fetch', area: 'dogParkField', target: { x: 438, y: 225 } },
+    { label: 'Sniffing fire hydrant', area: 'dogParkField', target: { x: 100, y: 150 } },
+    { label: 'Chasing squirrel', area: 'dogParkField', target: { x: 500, y: 125 } },
+    { label: 'Rolling in grass', area: 'dogParkField', target: { x: 312, y: 312 } },
+    { label: 'Drinking water', area: 'dogParkField', target: { x: 250, y: 100 } },
+    { label: 'Napping under tree', area: 'dogParkField', target: { x: 475, y: 75 } },
   ],
   agilityCourse: [
-    { label: 'Running agility course', area: 'agilityCourse', target: { x: 200, y: 480 } },
-    { label: 'Jumping through hoop', area: 'agilityCourse', target: { x: 100, y: 460 } },
-    { label: 'Running up ramp', area: 'agilityCourse', target: { x: 280, y: 460 } },
+    { label: 'Running agility course', area: 'agilityCourse', target: { x: 750, y: 600 } },
+    { label: 'Jumping through hoop', area: 'agilityCourse', target: { x: 680, y: 575 } },
+    { label: 'Running up ramp', area: 'agilityCourse', target: { x: 737, y: 575 } },
   ],
   dogPondArea: [
-    { label: 'Swimming in pond', area: 'dogPondArea', target: { x: 670, y: 200 } },
-    { label: 'Shaking off water', area: 'dogPondArea', target: { x: 620, y: 300 } },
-    { label: 'Chasing ducks', area: 'dogPondArea', target: { x: 680, y: 150 } },
+    { label: 'Swimming in pond', area: 'dogPondArea', target: { x: 788, y: 156 } },
+    { label: 'Shaking off water', area: 'dogPondArea', target: { x: 725, y: 280 } },
+    { label: 'Chasing ducks', area: 'dogPondArea', target: { x: 800, y: 125 } },
   ],
 };
 
@@ -273,40 +273,40 @@ export const DOG_PARK_DOG_ACTIVITIES: Record<string, IdleActivity[]> = {
 /** Gym idle activities — humans */
 export const GYM_HUMAN_ACTIVITIES: Record<string, IdleActivity[]> = {
   gymFloor: [
-    { label: 'Running on treadmill', area: 'gymFloor', target: { x: 300, y: 60 } },
-    { label: 'Lifting weights', area: 'gymFloor', target: { x: 450, y: 200 } },
-    { label: 'Boxing punching bag', area: 'gymFloor', target: { x: 350, y: 300 } },
-    { label: 'Checking mirror form', area: 'gymFloor', target: { x: 260, y: 200 } },
-    { label: 'Spotting a friend', area: 'gymFloor', target: { x: 470, y: 200 } },
+    { label: 'Running on treadmill', area: 'gymFloor', target: { x: 250, y: 75 } },
+    { label: 'Lifting weights', area: 'gymFloor', target: { x: 488, y: 250 } },
+    { label: 'Boxing punching bag', area: 'gymFloor', target: { x: 275, y: 375 } },
+    { label: 'Checking mirror form', area: 'gymFloor', target: { x: 50, y: 250 } },
+    { label: 'Spotting a friend', area: 'gymFloor', target: { x: 500, y: 250 } },
   ],
   yogaStudio: [
-    { label: 'Doing yoga', area: 'yogaStudio', target: { x: 100, y: 470 } },
-    { label: 'Stretching', area: 'yogaStudio', target: { x: 200, y: 470 } },
-    { label: 'Balancing on exercise ball', area: 'yogaStudio', target: { x: 300, y: 480 } },
-    { label: 'Meditating', area: 'yogaStudio', target: { x: 150, y: 530 } },
+    { label: 'Doing yoga', area: 'yogaStudio', target: { x: 675, y: 500 } },
+    { label: 'Stretching', area: 'yogaStudio', target: { x: 762, y: 500 } },
+    { label: 'Balancing on exercise ball', area: 'yogaStudio', target: { x: 940, y: 500 } },
+    { label: 'Meditating', area: 'yogaStudio', target: { x: 725, y: 575 } },
   ],
   lockerRoom: [
-    { label: 'Getting water', area: 'lockerRoom', target: { x: 660, y: 400 } },
-    { label: 'Checking locker', area: 'lockerRoom', target: { x: 620, y: 150 } },
-    { label: 'Fixing hair in mirror', area: 'lockerRoom', target: { x: 660, y: 250 } },
+    { label: 'Getting water', area: 'lockerRoom', target: { x: 675, y: 55 } },
+    { label: 'Checking locker', area: 'lockerRoom', target: { x: 950, y: 100 } },
+    { label: 'Fixing hair in mirror', area: 'lockerRoom', target: { x: 750, y: 312 } },
   ],
 };
 
 /** Gym idle activities — dogs */
 export const GYM_DOG_ACTIVITIES: Record<string, IdleActivity[]> = {
   gymFloor: [
-    { label: 'Running on treadmill (slowly)', area: 'gymFloor', target: { x: 380, y: 60 } },
-    { label: 'Napping on weight bench', area: 'gymFloor', target: { x: 450, y: 220 } },
-    { label: 'Barking at punching bag', area: 'gymFloor', target: { x: 370, y: 300 } },
+    { label: 'Running on treadmill (slowly)', area: 'gymFloor', target: { x: 300, y: 75 } },
+    { label: 'Napping on weight bench', area: 'gymFloor', target: { x: 488, y: 275 } },
+    { label: 'Barking at punching bag', area: 'gymFloor', target: { x: 275, y: 400 } },
   ],
   yogaStudio: [
-    { label: 'Downward dog (for real)', area: 'yogaStudio', target: { x: 120, y: 480 } },
-    { label: 'Rolling on yoga mat', area: 'yogaStudio', target: { x: 200, y: 490 } },
-    { label: 'Chewing exercise ball', area: 'yogaStudio', target: { x: 310, y: 480 } },
+    { label: 'Downward dog (for real)', area: 'yogaStudio', target: { x: 675, y: 525 } },
+    { label: 'Rolling on yoga mat', area: 'yogaStudio', target: { x: 762, y: 525 } },
+    { label: 'Chewing exercise ball', area: 'yogaStudio', target: { x: 940, y: 512 } },
   ],
   lockerRoom: [
-    { label: 'Drinking from fountain', area: 'lockerRoom', target: { x: 660, y: 420 } },
-    { label: 'Sniffing lockers', area: 'lockerRoom', target: { x: 620, y: 170 } },
+    { label: 'Drinking from fountain', area: 'lockerRoom', target: { x: 675, y: 55 } },
+    { label: 'Sniffing lockers', area: 'lockerRoom', target: { x: 950, y: 130 } },
   ],
 };
 
@@ -315,40 +315,40 @@ export const GYM_DOG_ACTIVITIES: Record<string, IdleActivity[]> = {
 /** Theme Park idle activities — humans */
 export const THEME_PARK_HUMAN_ACTIVITIES: Record<string, IdleActivity[]> = {
   mainPlaza: [
-    { label: 'Eating hot dog', area: 'mainPlaza', target: { x: 350, y: 200 } },
-    { label: 'Getting cotton candy', area: 'mainPlaza', target: { x: 200, y: 200 } },
-    { label: 'Buying tickets', area: 'mainPlaza', target: { x: 100, y: 100 } },
-    { label: 'Getting balloons', area: 'mainPlaza', target: { x: 450, y: 100 } },
-    { label: 'Taking a selfie', area: 'mainPlaza', target: { x: 300, y: 300 } },
+    { label: 'Eating hot dog', area: 'mainPlaza', target: { x: 438, y: 200 } },
+    { label: 'Getting cotton candy', area: 'mainPlaza', target: { x: 625, y: 200 } },
+    { label: 'Buying tickets', area: 'mainPlaza', target: { x: 125, y: 100 } },
+    { label: 'Getting balloons', area: 'mainPlaza', target: { x: 835, y: 125 } },
+    { label: 'Taking a selfie', area: 'mainPlaza', target: { x: 500, y: 300 } },
   ],
   rollerCoasterZone: [
-    { label: 'Riding roller coaster', area: 'rollerCoasterZone', target: { x: 280, y: 470 } },
-    { label: 'Watching ferris wheel', area: 'rollerCoasterZone', target: { x: 450, y: 480 } },
-    { label: 'Waiting in line', area: 'rollerCoasterZone', target: { x: 200, y: 540 } },
+    { label: 'Riding roller coaster', area: 'rollerCoasterZone', target: { x: 200, y: 588 } },
+    { label: 'Watching ferris wheel', area: 'rollerCoasterZone', target: { x: 412, y: 600 } },
+    { label: 'Waiting in line', area: 'rollerCoasterZone', target: { x: 150, y: 650 } },
   ],
   arcadeHall: [
-    { label: 'Playing carnival games', area: 'arcadeHall', target: { x: 660, y: 200 } },
-    { label: 'Riding carousel', area: 'arcadeHall', target: { x: 680, y: 400 } },
-    { label: 'Winning prizes', area: 'arcadeHall', target: { x: 650, y: 300 } },
+    { label: 'Playing carnival games', area: 'arcadeHall', target: { x: 850, y: 450 } },
+    { label: 'Riding carousel', area: 'arcadeHall', target: { x: 700, y: 537 } },
+    { label: 'Winning prizes', area: 'arcadeHall', target: { x: 560, y: 675 } },
   ],
 };
 
 /** Theme Park idle activities — dogs */
 export const THEME_PARK_DOG_ACTIVITIES: Record<string, IdleActivity[]> = {
   mainPlaza: [
-    { label: 'Begging for hot dog', area: 'mainPlaza', target: { x: 360, y: 220 } },
-    { label: 'Tangled in balloon strings', area: 'mainPlaza', target: { x: 460, y: 120 } },
-    { label: 'Sniffing cotton candy', area: 'mainPlaza', target: { x: 210, y: 220 } },
-    { label: 'Chasing pigeons', area: 'mainPlaza', target: { x: 300, y: 280 } },
+    { label: 'Begging for hot dog', area: 'mainPlaza', target: { x: 440, y: 210 } },
+    { label: 'Tangled in balloon strings', area: 'mainPlaza', target: { x: 840, y: 130 } },
+    { label: 'Sniffing cotton candy', area: 'mainPlaza', target: { x: 628, y: 210 } },
+    { label: 'Chasing pigeons', area: 'mainPlaza', target: { x: 500, y: 280 } },
   ],
   rollerCoasterZone: [
-    { label: 'Watching coaster (scared)', area: 'rollerCoasterZone', target: { x: 300, y: 540 } },
-    { label: 'Barking at ferris wheel', area: 'rollerCoasterZone', target: { x: 460, y: 500 } },
+    { label: 'Watching coaster (scared)', area: 'rollerCoasterZone', target: { x: 200, y: 650 } },
+    { label: 'Barking at ferris wheel', area: 'rollerCoasterZone', target: { x: 412, y: 625 } },
   ],
   arcadeHall: [
-    { label: 'Chasing carousel horses', area: 'arcadeHall', target: { x: 690, y: 420 } },
-    { label: 'Napping under game booth', area: 'arcadeHall', target: { x: 660, y: 220 } },
-    { label: 'Stealing prizes', area: 'arcadeHall', target: { x: 650, y: 320 } },
+    { label: 'Chasing carousel horses', area: 'arcadeHall', target: { x: 700, y: 550 } },
+    { label: 'Napping under game booth', area: 'arcadeHall', target: { x: 850, y: 475 } },
+    { label: 'Stealing prizes', area: 'arcadeHall', target: { x: 560, y: 680 } },
   ],
 };
 
