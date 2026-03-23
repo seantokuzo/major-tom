@@ -5,7 +5,10 @@ import type { CharacterType, Point } from './types';
 
 // ── Animation Types ──────────────────────────────────────────
 
-export type AnimationType = 'none' | 'idle-bob' | 'work-shake' | 'celebrate' | 'shiver' | 'fade-out';
+export type AnimationType = 'none' | 'idle' | 'work-shake' | 'celebrate' | 'shiver' | 'fade-out';
+
+/** Direction the character sprite faces */
+export type FacingDirection = 'down' | 'up' | 'left' | 'right';
 
 interface AnimationState {
   type: AnimationType;
@@ -15,10 +18,9 @@ interface AnimationState {
 }
 
 interface MoveState {
-  from: Point;
-  to: Point;
-  startTime: number;
-  duration: number; // ms
+  waypoints: Point[];     // remaining waypoints to visit
+  currentTarget: Point;   // current waypoint being moved toward
+  speed: number;          // pixels per second
 }
 
 export interface EngineAgent {
@@ -33,12 +35,18 @@ export interface EngineAgent {
   /** Visual offset from animation (bob, shake, etc.) */
   animOffset: Point;
   statusColor: string;
-}
-
-// ── Easing ───────────────────────────────────────────────────
-
-function easeInOut(t: number): number {
-  return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+  /** Current idle activity label (shown under name in canvas) */
+  idleActivity: string | null;
+  /** Which office view this agent is currently in */
+  currentView: import('./types').OfficeView | null;
+  /** Direction the sprite faces */
+  facing: FacingDirection;
+  /** Whether the agent is currently walking (auto-set by engine) */
+  isMoving: boolean;
+  /** Walking animation phase (0-1, cycles while moving) */
+  walkPhase: number;
+  /** ID of partner agent for paired activities (e.g. ping pong) */
+  pairedWith: string | null;
 }
 
 // ── Engine ───────────────────────────────────────────────────
@@ -69,11 +77,12 @@ export class OfficeEngine {
 
     // ~30fps throttle
     if (now - this.lastTime < 30) return;
+    const dt = (now - this.lastTime) / 1000; // seconds since last frame
     this.lastTime = now;
 
     // Update all agents
     for (const agent of this.agents.values()) {
-      this.updateMove(agent, now);
+      this.updateMove(agent, dt);
       this.updateAnimation(agent, now);
     }
 
@@ -96,6 +105,12 @@ export class OfficeEngine {
       move: null,
       animOffset: { x: 0, y: 0 },
       statusColor: 'rgb(153, 153, 153)',
+      idleActivity: null,
+      currentView: 'office',
+      facing: 'down',
+      isMoving: false,
+      walkPhase: 0,
+      pairedWith: null,
     });
   }
 
@@ -107,15 +122,28 @@ export class OfficeEngine {
     this.agents.clear();
   }
 
+  /** Move agent along a series of waypoints at a given speed (px/s). */
+  moveAgentAlongPath(id: string, waypoints: Point[], speed: number = 120): void {
+    const agent = this.agents.get(id);
+    if (!agent || waypoints.length === 0) return;
+    const remaining = [...waypoints];
+    const first = remaining.shift()!;
+    agent.move = {
+      waypoints: remaining,
+      currentTarget: { ...first },
+      speed,
+    };
+  }
+
+  /** Backwards-compatible convenience: move to a single point over a duration. */
   moveAgent(id: string, to: Point, durationMs: number): void {
     const agent = this.agents.get(id);
     if (!agent) return;
-    agent.move = {
-      from: { ...agent.position },
-      to: { ...to },
-      startTime: performance.now(),
-      duration: durationMs,
-    };
+    const dx = to.x - agent.position.x;
+    const dy = to.y - agent.position.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const speed = dist / (durationMs / 1000) || 120;
+    this.moveAgentAlongPath(id, [to], speed);
   }
 
   setAnimation(id: string, type: AnimationType): void {
@@ -141,6 +169,26 @@ export class OfficeEngine {
     if (agent) agent.name = name;
   }
 
+  setIdleActivity(id: string, activity: string | null): void {
+    const agent = this.agents.get(id);
+    if (agent) agent.idleActivity = activity;
+  }
+
+  setCurrentView(id: string, view: import('./types').OfficeView | null): void {
+    const agent = this.agents.get(id);
+    if (agent) agent.currentView = view;
+  }
+
+  setFacing(id: string, facing: FacingDirection): void {
+    const agent = this.agents.get(id);
+    if (agent) agent.facing = facing;
+  }
+
+  setPairedWith(id: string, partnerId: string | null): void {
+    const agent = this.agents.get(id);
+    if (agent) agent.pairedWith = partnerId;
+  }
+
   getAgentAtPoint(point: Point, hitSize: number = 20): EngineAgent | null {
     // Check agents in reverse order (top-most first)
     const entries = Array.from(this.agents.values()).reverse();
@@ -156,20 +204,51 @@ export class OfficeEngine {
 
   // ── Update Helpers ───────────────────────────────────────
 
-  private updateMove(agent: EngineAgent, now: number): void {
-    if (!agent.move) return;
-    const { from, to, startTime, duration } = agent.move;
-    const elapsed = now - startTime;
-    const t = Math.min(elapsed / duration, 1);
-    const eased = easeInOut(t);
+  private updateMove(agent: EngineAgent, dt: number): void {
+    if (!agent.move) {
+      agent.isMoving = false;
+      return;
+    }
 
-    agent.position.x = from.x + (to.x - from.x) * eased;
-    agent.position.y = from.y + (to.y - from.y) * eased;
+    agent.isMoving = true;
 
-    if (t >= 1) {
-      agent.position.x = to.x;
-      agent.position.y = to.y;
-      agent.move = null;
+    const { currentTarget, speed } = agent.move;
+    const dx = currentTarget.x - agent.position.x;
+    const dy = currentTarget.y - agent.position.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // Update facing based on movement direction
+    if (dist > 1) {
+      if (Math.abs(dx) > Math.abs(dy)) {
+        agent.facing = dx > 0 ? 'right' : 'left';
+      } else {
+        agent.facing = dy > 0 ? 'down' : 'up';
+      }
+    }
+
+    // Advance walk animation phase (~3 steps per second)
+    agent.walkPhase = (agent.walkPhase + dt * 3) % 1;
+
+    const step = speed * dt;
+
+    if (step >= dist) {
+      // Reached current waypoint
+      agent.position.x = currentTarget.x;
+      agent.position.y = currentTarget.y;
+
+      // Advance to next waypoint, or finish
+      if (agent.move.waypoints.length > 0) {
+        agent.move.currentTarget = agent.move.waypoints.shift()!;
+      } else {
+        agent.move = null;
+        agent.isMoving = false;
+        agent.walkPhase = 0;
+      }
+    } else {
+      // Move toward current waypoint
+      const ratio = step / dist;
+      agent.position.x += dx * ratio;
+      agent.position.y += dy * ratio;
     }
   }
 
@@ -181,11 +260,11 @@ export class OfficeEngine {
       case 'none':
         break;
 
-      case 'idle-bob': {
-        // ±3px vertical, 0.8s per direction (1.6s full cycle)
-        const cycle = 1600;
-        const phase = (ms % cycle) / cycle;
-        agent.animOffset.y = Math.sin(phase * Math.PI * 2) * 3;
+      case 'idle': {
+        // No offset — idle animations are rendered as pixel overlays
+        // in renderCharacterAnimated() for natural per-character movement.
+        agent.animOffset.x = 0;
+        agent.animOffset.y = 0;
         break;
       }
 

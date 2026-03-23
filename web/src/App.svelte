@@ -64,6 +64,9 @@
 
   const office = createOfficeState();
 
+  // Expose for debug/demo
+  (window as any).__office = office;
+
   // Wire relay agent events to office state.
   // We track which agents have been processed to avoid duplicate handling.
   // Composite key includes status + task so task changes within the same status are caught.
