@@ -9,6 +9,8 @@
   import { relay } from './lib/stores/relay.svelte';
   import { toasts } from './lib/stores/toast.svelte';
   import { createOfficeState } from './lib/office/state.svelte';
+  import type { OfficeView } from './lib/office/types';
+  import { OFFICE_VIEWS } from './lib/office/layout';
   import NotificationToggle from './lib/components/NotificationToggle.svelte';
   import AuthSettings from './lib/components/AuthSettings.svelte';
   import PairingScreen from './lib/components/PairingScreen.svelte';
@@ -61,6 +63,7 @@
 
   type ViewTab = 'chat' | 'office' | 'characters';
   let activeTab = $state<ViewTab>('chat');
+  let activeView = $state<OfficeView>('office');
 
   const office = createOfficeState();
 
@@ -167,6 +170,20 @@
   <ConnectionStatus />
   <SessionInfo />
 
+  {#if activeTab === 'office'}
+    <nav class="view-tabs">
+      {#each OFFICE_VIEWS as view}
+        <button
+          class="view-tab"
+          class:active={activeView === view.id}
+          onclick={() => (activeView = view.id)}
+        >
+          {view.label}
+        </button>
+      {/each}
+    </nav>
+  {/if}
+
   <div class="main-content">
     {#if activeTab === 'chat'}
       <ChatView />
@@ -178,6 +195,7 @@
           engine={office.engine}
           desks={office.desks}
           onAgentClick={handleAgentClick}
+          activeView={activeView}
         />
         {#if office.selectedAgent}
           <AgentInspector
@@ -285,6 +303,37 @@
     padding: 1px 5px;
     border-radius: var(--r-full);
     line-height: 1.2;
+  }
+
+  .view-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 0 var(--sp-sm);
+    padding-bottom: 4px;
+    background: var(--bg);
+    flex-shrink: 0;
+  }
+
+  .view-tab {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .view-tab:hover {
+    color: var(--text-secondary);
+  }
+
+  .view-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
   }
 
   .main-content {

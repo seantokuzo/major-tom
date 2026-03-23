@@ -27,6 +27,21 @@ export const OFFICE_VIEWS: OfficeViewConfig[] = [
     label: 'Office',
     areas: ['mainOffice', 'strategyRoom', 'kitchen', 'breakRoom'],
   },
+  {
+    id: 'dogPark',
+    label: 'Dog Park',
+    areas: ['dogParkField', 'agilityCourse', 'dogPondArea'],
+  },
+  {
+    id: 'gym',
+    label: 'Gym',
+    areas: ['gymFloor', 'yogaStudio', 'lockerRoom'],
+  },
+  {
+    id: 'themePark',
+    label: 'Theme Park',
+    areas: ['mainPlaza', 'rollerCoasterZone', 'arcadeHall'],
+  },
 ];
 
 export const DEFAULT_VIEW: OfficeView = 'office';
@@ -36,14 +51,61 @@ export const DEFAULT_VIEW: OfficeView = 'office';
 // Main entrance — right side of the main office
 export const DOOR_POSITION: Point = { x: 770, y: 200 };
 
+/** Per-view door/entrance positions */
+export const VIEW_DOOR_POSITIONS: Record<OfficeView, Point> = {
+  office: { x: 770, y: 200 },
+  dogPark: { x: 10, y: 300 },
+  gym: { x: 10, y: 300 },
+  themePark: { x: 400, y: 10 },
+};
+
+/** Per-view room order for mobile layout */
+export const VIEW_ROOM_ORDERS: Record<OfficeView, Array<{ type: string; label: string }>> = {
+  office: [
+    { type: 'mainOffice', label: 'Main Office' },
+    { type: 'strategyRoom', label: 'Strategy Room' },
+    { type: 'breakRoom', label: 'Break Room' },
+    { type: 'kitchen', label: 'Kitchen' },
+  ],
+  dogPark: [
+    { type: 'dogParkField', label: 'Dog Park' },
+    { type: 'agilityCourse', label: 'Agility Course' },
+    { type: 'dogPondArea', label: 'Dog Pond' },
+  ],
+  gym: [
+    { type: 'gymFloor', label: 'Gym Floor' },
+    { type: 'yogaStudio', label: 'Yoga Studio' },
+    { type: 'lockerRoom', label: 'Locker Room' },
+  ],
+  themePark: [
+    { type: 'mainPlaza', label: 'Main Plaza' },
+    { type: 'rollerCoasterZone', label: 'Roller Coaster' },
+    { type: 'arcadeHall', label: 'Arcade Hall' },
+  ],
+};
+
 // ── Color palette ────────────────────────────────────────────
 
 const COLORS = {
-  // Floors
+  // Floors — Office
   mainOfficeCarpet: 'rgb(52, 56, 68)',     // Blue-grey corporate carpet
   strategyCarpet:   'rgb(48, 52, 64)',     // Slightly darker blue carpet
   kitchenTile:      'rgb(58, 54, 50)',     // Warm kitchen tile
   breakWood:        'rgb(56, 48, 42)',     // Warm wood flooring
+
+  // Floors — Dog Park
+  parkGrass:        'rgb(62, 105, 48)',    // Lush green grass
+  parkGrassDark:    'rgb(52, 90, 40)',     // Darker grass (agility course)
+  pondBlue:         'rgb(60, 110, 140)',   // Pond water area
+
+  // Floors — Gym
+  gymWood:          'rgb(120, 90, 60)',    // Gym hardwood floor
+  gymTile:          'rgb(180, 185, 190)',  // Clean studio/locker tile
+  gymTileDark:      'rgb(160, 165, 172)',  // Slightly darker tile
+
+  // Floors — Theme Park
+  parkCobblestone:  'rgb(140, 135, 125)',  // Cobblestone pathways
+  parkConcrete:     'rgb(120, 115, 110)',  // Ride zones concrete
 
   // Walls
   wall:             'rgb(72, 72, 82)',     // Interior walls
@@ -229,6 +291,253 @@ export const AREAS: OfficeArea[] = [
       { type: 'desk', position: { x: 660, y: 500 }, width: 50, height: 24, color: 'rgb(100, 75, 50)' },
     ],
   },
+
+  // ════════════════════════════════════════════════════════════
+  // DOG PARK
+  // ════════════════════════════════════════════════════════════
+
+  // ── Dog Park Field (left ~60%, large grassy area) ──────────
+  {
+    type: 'dogParkField',
+    name: 'Dog Park Field',
+    bounds: { x: 5, y: 5, width: 480, height: 590 },
+    capacity: 8,
+    color: COLORS.parkGrass,
+    view: 'dogPark',
+    floorPattern: 'grass',
+    furniture: [
+      // Trees
+      { type: 'tree', position: { x: 40, y: 30 }, width: 40, height: 50, color: 'rgb(45, 90, 35)' },
+      { type: 'tree', position: { x: 350, y: 80 }, width: 36, height: 46, color: 'rgb(50, 95, 40)' },
+
+      // Fire hydrant
+      { type: 'fireHydrant', position: { x: 120, y: 100 }, width: 14, height: 20, color: 'rgb(200, 50, 40)' },
+
+      // Dog bowl
+      { type: 'dogBowl', position: { x: 200, y: 60 }, width: 16, height: 10, color: 'rgb(160, 160, 170)' },
+
+      // Ball launcher
+      { type: 'ballLauncher', position: { x: 280, y: 200 }, width: 24, height: 24, color: 'rgb(220, 140, 40)' },
+
+      // Park benches
+      { type: 'bench', position: { x: 60, y: 350 }, width: 50, height: 16, color: 'rgb(110, 80, 50)' },
+      { type: 'bench', position: { x: 300, y: 450 }, width: 50, height: 16, color: 'rgb(110, 80, 50)' },
+
+      // Fence along the right edge
+      { type: 'fence', position: { x: 475, y: 10 }, width: 8, height: 580, color: 'rgb(160, 130, 80)' },
+
+      // Door / entrance gate
+      { type: 'door', position: { x: 5, y: 285 }, width: 10, height: 36, color: COLORS.doorFrame, label: 'GATE' },
+    ],
+  },
+
+  // ── Agility Course (bottom-right quarter) ──────────────────
+  {
+    type: 'agilityCourse',
+    name: 'Agility Course',
+    bounds: { x: 495, y: 310, width: 300, height: 285 },
+    capacity: 4,
+    color: COLORS.parkGrassDark,
+    view: 'dogPark',
+    floorPattern: 'grass',
+    furniture: [
+      // Agility hoops
+      { type: 'agilityHoop', position: { x: 530, y: 370 }, width: 24, height: 30, color: 'rgb(200, 60, 60)' },
+      { type: 'agilityHoop', position: { x: 640, y: 370 }, width: 24, height: 30, color: 'rgb(60, 60, 200)' },
+
+      // Agility ramp
+      { type: 'agilityRamp', position: { x: 570, y: 450 }, width: 40, height: 20, color: 'rgb(180, 140, 60)' },
+
+      // Fences (course boundary)
+      { type: 'fence', position: { x: 500, y: 315 }, width: 290, height: 6, color: 'rgb(160, 130, 80)' },
+      { type: 'fence', position: { x: 500, y: 585 }, width: 290, height: 6, color: 'rgb(160, 130, 80)' },
+      { type: 'fence', position: { x: 500, y: 315 }, width: 6, height: 280, color: 'rgb(160, 130, 80)' },
+    ],
+  },
+
+  // ── Dog Pond (top-right quarter) ───────────────────────────
+  {
+    type: 'dogPondArea',
+    name: 'Dog Pond',
+    bounds: { x: 495, y: 5, width: 300, height: 295 },
+    capacity: 4,
+    color: COLORS.pondBlue,
+    view: 'dogPark',
+    floorPattern: 'concrete',
+    furniture: [
+      // Pond water (large)
+      { type: 'pondWater', position: { x: 530, y: 50 }, width: 200, height: 150, color: 'rgb(50, 100, 140)' },
+
+      // Tree
+      { type: 'tree', position: { x: 750, y: 30 }, width: 36, height: 46, color: 'rgb(48, 92, 38)' },
+
+      // Bench by the pond
+      { type: 'bench', position: { x: 540, y: 230 }, width: 50, height: 16, color: 'rgb(110, 80, 50)' },
+
+      // Dog house
+      { type: 'dogHouse', position: { x: 720, y: 220 }, width: 36, height: 32, color: 'rgb(140, 90, 50)' },
+    ],
+  },
+
+  // ════════════════════════════════════════════════════════════
+  // GYM
+  // ════════════════════════════════════════════════════════════
+
+  // ── Gym Floor (left ~60%, main weight room) ────────────────
+  {
+    type: 'gymFloor',
+    name: 'Gym Floor',
+    bounds: { x: 5, y: 5, width: 480, height: 590 },
+    capacity: 8,
+    color: COLORS.gymWood,
+    view: 'gym',
+    floorPattern: 'wood',
+    furniture: [
+      // Treadmills in a row
+      { type: 'treadmill', position: { x: 100, y: 30 }, width: 36, height: 50, color: 'rgb(50, 50, 55)' },
+      { type: 'treadmill', position: { x: 160, y: 30 }, width: 36, height: 50, color: 'rgb(50, 50, 55)' },
+      { type: 'treadmill', position: { x: 220, y: 30 }, width: 36, height: 50, color: 'rgb(50, 50, 55)' },
+
+      // Weight rack
+      { type: 'weightRack', position: { x: 350, y: 150 }, width: 80, height: 30, color: 'rgb(70, 70, 75)' },
+
+      // Punching bag
+      { type: 'punchingBag', position: { x: 200, y: 300 }, width: 20, height: 40, color: 'rgb(140, 50, 40)' },
+
+      // Mirror on wall (left side)
+      { type: 'mirror', position: { x: 12, y: 130 }, width: 8, height: 160, color: 'rgb(180, 200, 220)' },
+
+      // Water fountain
+      { type: 'waterFountain', position: { x: 420, y: 30 }, width: 20, height: 24, color: 'rgb(160, 170, 180)' },
+
+      // Door
+      { type: 'door', position: { x: 5, y: 285 }, width: 10, height: 36, color: COLORS.doorFrame, label: 'DOOR' },
+    ],
+  },
+
+  // ── Yoga Studio (bottom-right) ─────────────────────────────
+  {
+    type: 'yogaStudio',
+    name: 'Yoga Studio',
+    bounds: { x: 495, y: 310, width: 300, height: 285 },
+    capacity: 4,
+    color: COLORS.gymTile,
+    view: 'gym',
+    floorPattern: 'tile',
+    furniture: [
+      // Yoga mats
+      { type: 'yogaMat', position: { x: 520, y: 370 }, width: 40, height: 60, color: 'rgb(120, 60, 140)' },
+      { type: 'yogaMat', position: { x: 590, y: 370 }, width: 40, height: 60, color: 'rgb(60, 140, 120)' },
+      { type: 'yogaMat', position: { x: 660, y: 370 }, width: 40, height: 60, color: 'rgb(140, 120, 60)' },
+
+      // Exercise ball
+      { type: 'exerciseBall', position: { x: 740, y: 380 }, width: 26, height: 26, color: 'rgb(200, 80, 80)' },
+
+      // Mirror on top wall
+      { type: 'mirror', position: { x: 520, y: 315 }, width: 200, height: 8, color: 'rgb(180, 200, 220)' },
+    ],
+  },
+
+  // ── Locker Room (top-right) ────────────────────────────────
+  {
+    type: 'lockerRoom',
+    name: 'Locker Room',
+    bounds: { x: 495, y: 5, width: 300, height: 295 },
+    capacity: 4,
+    color: COLORS.gymTileDark,
+    view: 'gym',
+    floorPattern: 'tile',
+    furniture: [
+      // Lockers
+      { type: 'locker', position: { x: 740, y: 20 }, width: 30, height: 40, color: 'rgb(100, 110, 130)' },
+      { type: 'locker', position: { x: 740, y: 70 }, width: 30, height: 40, color: 'rgb(100, 110, 130)' },
+      { type: 'locker', position: { x: 740, y: 120 }, width: 30, height: 40, color: 'rgb(110, 100, 130)' },
+
+      // Water fountain
+      { type: 'waterFountain', position: { x: 520, y: 20 }, width: 20, height: 24, color: 'rgb(160, 170, 180)' },
+
+      // Bench
+      { type: 'bench', position: { x: 560, y: 180 }, width: 60, height: 16, color: 'rgb(110, 80, 50)' },
+
+      // Mirror
+      { type: 'mirror', position: { x: 560, y: 240 }, width: 80, height: 8, color: 'rgb(180, 200, 220)' },
+    ],
+  },
+
+  // ════════════════════════════════════════════════════════════
+  // THEME PARK
+  // ════════════════════════════════════════════════════════════
+
+  // ── Main Plaza (top half of canvas) ────────────────────────
+  {
+    type: 'mainPlaza',
+    name: 'Main Plaza',
+    bounds: { x: 5, y: 5, width: 790, height: 290 },
+    capacity: 8,
+    color: COLORS.parkCobblestone,
+    view: 'themePark',
+    floorPattern: 'cobblestone',
+    furniture: [
+      // Ticket booth
+      { type: 'ticketBooth', position: { x: 60, y: 40 }, width: 50, height: 40, color: 'rgb(180, 50, 50)' },
+
+      // Hot dog stand
+      { type: 'hotDogStand', position: { x: 300, y: 120 }, width: 50, height: 36, color: 'rgb(200, 160, 40)' },
+
+      // Cotton candy cart
+      { type: 'cottonCandyCart', position: { x: 480, y: 120 }, width: 44, height: 36, color: 'rgb(240, 140, 200)' },
+
+      // Balloon cart
+      { type: 'balloonCart', position: { x: 650, y: 50 }, width: 36, height: 40, color: 'rgb(80, 160, 220)' },
+
+      // Benches
+      { type: 'bench', position: { x: 200, y: 230 }, width: 50, height: 16, color: 'rgb(110, 80, 50)' },
+      { type: 'bench', position: { x: 550, y: 230 }, width: 50, height: 16, color: 'rgb(110, 80, 50)' },
+
+      // Door / entrance gate (top center)
+      { type: 'door', position: { x: 395, y: 5 }, width: 36, height: 10, color: COLORS.doorFrame, label: 'GATE' },
+    ],
+  },
+
+  // ── Roller Coaster Zone (bottom-left) ──────────────────────
+  {
+    type: 'rollerCoasterZone',
+    name: 'Roller Coaster Zone',
+    bounds: { x: 5, y: 305, width: 390, height: 290 },
+    capacity: 6,
+    color: COLORS.parkConcrete,
+    view: 'themePark',
+    floorPattern: 'concrete',
+    furniture: [
+      // Roller coaster track (large)
+      { type: 'rollerCoasterTrack', position: { x: 30, y: 330 }, width: 250, height: 120, color: 'rgb(180, 50, 50)' },
+
+      // Ferris wheel
+      { type: 'ferrisWheel', position: { x: 280, y: 400 }, width: 100, height: 100, color: 'rgb(220, 180, 60)' },
+    ],
+  },
+
+  // ── Arcade Hall (bottom-right) ─────────────────────────────
+  {
+    type: 'arcadeHall',
+    name: 'Arcade Hall',
+    bounds: { x: 405, y: 305, width: 390, height: 290 },
+    capacity: 6,
+    color: COLORS.parkCobblestone,
+    view: 'themePark',
+    floorPattern: 'cobblestone',
+    furniture: [
+      // Carousel
+      { type: 'carousel', position: { x: 500, y: 370 }, width: 120, height: 120, color: 'rgb(200, 160, 80)' },
+
+      // Arcade machines
+      { type: 'arcadeMachine', position: { x: 660, y: 330 }, width: 30, height: 44, color: 'rgb(40, 35, 90)' },
+      { type: 'arcadeMachine', position: { x: 710, y: 330 }, width: 30, height: 44, color: 'rgb(90, 35, 40)' },
+
+      // Ticket booth
+      { type: 'ticketBooth', position: { x: 430, y: 520 }, width: 50, height: 40, color: 'rgb(180, 50, 50)' },
+    ],
+  },
 ];
 
 // ── Desks (agent assignment targets) ─────────────────────────
@@ -277,8 +586,9 @@ export function randomPosition(areaType: OfficeAreaType): Point {
 }
 
 /** Get the view that contains this area type */
-export function getViewForArea(_areaType: OfficeAreaType): OfficeView {
-  return 'office';
+export function getViewForArea(areaType: OfficeAreaType): OfficeView {
+  const area = areasByType.get(areaType);
+  return area?.view ?? 'office';
 }
 
 /** Get the area at a given point. */

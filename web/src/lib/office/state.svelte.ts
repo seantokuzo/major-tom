@@ -2,7 +2,13 @@
 // Ported from iOS OfficeViewModel.swift
 
 import type { OfficeAgent, CharacterType, Desk, OfficeAreaType, BreakDestination, IdleActivity } from './types';
-import { ALL_CHARACTER_TYPES, HUMAN_IDLE_ACTIVITIES, DOG_IDLE_ACTIVITIES } from './types';
+import {
+  ALL_CHARACTER_TYPES,
+  HUMAN_IDLE_ACTIVITIES, DOG_IDLE_ACTIVITIES,
+  DOG_PARK_HUMAN_ACTIVITIES, DOG_PARK_DOG_ACTIVITIES,
+  GYM_HUMAN_ACTIVITIES, GYM_DOG_ACTIVITIES,
+  THEME_PARK_HUMAN_ACTIVITIES, THEME_PARK_DOG_ACTIVITIES,
+} from './types';
 import { DESKS, DOOR_POSITION, randomPosition, getViewForArea } from './layout';
 import { getCharacterConfig, DOG_TYPES } from './characters';
 import { OfficeEngine } from './engine';
@@ -26,6 +32,18 @@ const BREAK_TO_AREA: Record<BreakDestination, OfficeAreaType> = {
   strategyRoom: 'strategyRoom',
   breakRoom: 'breakRoom',
   kitchen: 'kitchen',
+  // Dog Park
+  dogParkField: 'dogParkField',
+  agilityCourse: 'agilityCourse',
+  dogPondArea: 'dogPondArea',
+  // Gym
+  gymFloor: 'gymFloor',
+  yogaStudio: 'yogaStudio',
+  lockerRoom: 'lockerRoom',
+  // Theme Park
+  mainPlaza: 'mainPlaza',
+  rollerCoasterZone: 'rollerCoasterZone',
+  arcadeHall: 'arcadeHall',
 };
 
 // ── Idle Activity Cycling ────────────────────────────────────
@@ -37,13 +55,17 @@ const IDLE_STAGGER_MAX = 20_000;
 function pickIdleActivity(characterType: CharacterType): IdleActivity | null {
   const config = getCharacterConfig(characterType);
   const isDog = DOG_TYPES.has(characterType);
-  const activityMap = isDog ? DOG_IDLE_ACTIVITIES : HUMAN_IDLE_ACTIVITIES;
+
+  // Merge all activity maps (office + new views)
+  const allActivities: Record<string, IdleActivity[]> = isDog
+    ? { ...DOG_IDLE_ACTIVITIES, ...DOG_PARK_DOG_ACTIVITIES, ...GYM_DOG_ACTIVITIES, ...THEME_PARK_DOG_ACTIVITIES }
+    : { ...HUMAN_IDLE_ACTIVITIES, ...DOG_PARK_HUMAN_ACTIVITIES, ...GYM_HUMAN_ACTIVITIES, ...THEME_PARK_HUMAN_ACTIVITIES };
 
   // Collect all available activities from this character's allowed break areas
   const available: IdleActivity[] = [];
   for (const dest of config.breakBehaviors) {
     const areaKey = BREAK_TO_AREA[dest];
-    const activities = activityMap[areaKey] ?? activityMap[dest];
+    const activities = allActivities[areaKey] ?? allActivities[dest];
     if (activities) available.push(...activities);
   }
   if (available.length === 0) return null;
@@ -245,14 +267,15 @@ export function createOfficeState(): OfficeState {
 
     // Walk to furniture target (or fallback to random room position)
     const rawPos = activity.target ?? randomPosition(activity.area);
-    const pos = findNearestWalkable(rawPos);
+    const view = getViewForArea(activity.area);
+    const pos = findNearestWalkable(rawPos, view);
     const currentPos = engine.agents.get(id)?.position ?? DOOR_POSITION;
-    const path = findPath(currentPos, pos);
+    const path = findPath(currentPos, pos, view);
     const walkSpeed = 100; // casual walking pace
 
     engine.setStatusColor(id, STATUS_COLORS.walking);
     engine.setAnimation(id, 'none');
-    engine.setCurrentView(id, getViewForArea(activity.area));
+    engine.setCurrentView(id, view);
 
     if (path.length > 0) {
       engine.moveAgentAlongPath(id, path, walkSpeed);
@@ -538,14 +561,15 @@ export function createOfficeState(): OfficeState {
     const activity = pickIdleActivity(agent.characterType);
     const areaType = activity?.area ?? 'breakRoom';
     const rawPos = activity?.target ?? randomPosition(areaType);
-    const pos = findNearestWalkable(rawPos);
+    const view = getViewForArea(areaType);
+    const pos = findNearestWalkable(rawPos, view);
     const currentPos = engine.agents.get(id)?.position ?? DOOR_POSITION;
-    const path = findPath(currentPos, pos);
+    const path = findPath(currentPos, pos, view);
     const walkSpeed = 100;
 
     engine.setStatusColor(id, STATUS_COLORS.walking);
     engine.setAnimation(id, 'none');
-    engine.setCurrentView(id, getViewForArea(areaType));
+    engine.setCurrentView(id, view);
 
     if (path.length > 0) {
       engine.moveAgentAlongPath(id, path, walkSpeed);

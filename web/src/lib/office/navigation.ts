@@ -1,8 +1,8 @@
 // A* grid-based pathfinding for office agents
-// Builds a walkability grid from AREAS + furniture data, with doorways punched through walls.
+// Builds a per-view walkability grid from areas + furniture data, with doorways punched through walls.
 
-import type { Point } from './types';
-import { AREAS, SCENE_WIDTH, SCENE_HEIGHT } from './layout';
+import type { Point, OfficeView } from './types';
+import { SCENE_WIDTH, SCENE_HEIGHT, getAreasForView } from './layout';
 
 // ── Grid Constants ────────────────────────────────────────────
 
@@ -24,20 +24,46 @@ interface DoorwayDef {
   height: number;
 }
 
-const DOORWAYS: DoorwayDef[] = [
-  // Strategy Room <-> Main Office (vertical wall x=225-235, around y=100)
-  { x: 222, y: 85, width: 20, height: 35 },
-  // Kitchen <-> Main Office (vertical wall x=225-235, around y=300)
-  { x: 222, y: 285, width: 20, height: 35 },
-  // Strategy Room <-> Kitchen (horizontal wall y=195-205, around x=115)
-  { x: 100, y: 192, width: 35, height: 20 },
-  // Main Office <-> Break Room (horizontal wall y=395-405, around x=500)
-  { x: 485, y: 392, width: 35, height: 20 },
-  // Kitchen <-> Break Room (horizontal wall y=395-405, around x=115)
-  { x: 100, y: 392, width: 35, height: 20 },
-  // Main entrance (right wall of main office, the DOOR furniture area)
-  { x: 755, y: 180, width: 20, height: 45 },
-];
+const VIEW_DOORWAYS: Record<OfficeView, DoorwayDef[]> = {
+  office: [
+    // Strategy Room <-> Main Office (vertical wall x=225-235, around y=100)
+    { x: 222, y: 85, width: 20, height: 35 },
+    // Kitchen <-> Main Office (vertical wall x=225-235, around y=300)
+    { x: 222, y: 285, width: 20, height: 35 },
+    // Strategy Room <-> Kitchen (horizontal wall y=195-205, around x=115)
+    { x: 100, y: 192, width: 35, height: 20 },
+    // Main Office <-> Break Room (horizontal wall y=395-405, around x=500)
+    { x: 485, y: 392, width: 35, height: 20 },
+    // Kitchen <-> Break Room (horizontal wall y=395-405, around x=115)
+    { x: 100, y: 392, width: 35, height: 20 },
+    // Main entrance (right wall of main office, the DOOR furniture area)
+    { x: 755, y: 180, width: 20, height: 45 },
+  ],
+  dogPark: [
+    // Dog Park Field <-> Agility Course (right side, vertical split around x=490)
+    { x: 478, y: 400, width: 25, height: 40 },
+    // Dog Park Field <-> Dog Pond (right side, vertical split around x=490)
+    { x: 478, y: 150, width: 25, height: 40 },
+    // Agility Course <-> Dog Pond (horizontal split around y=305)
+    { x: 600, y: 298, width: 40, height: 20 },
+  ],
+  gym: [
+    // Gym Floor <-> Yoga Studio (vertical split around x=490)
+    { x: 478, y: 400, width: 25, height: 40 },
+    // Gym Floor <-> Locker Room (vertical split around x=490)
+    { x: 478, y: 150, width: 25, height: 40 },
+    // Yoga Studio <-> Locker Room (horizontal split around y=305)
+    { x: 600, y: 298, width: 40, height: 20 },
+  ],
+  themePark: [
+    // Main Plaza <-> Roller Coaster Zone (horizontal split around y=300)
+    { x: 150, y: 292, width: 40, height: 20 },
+    // Main Plaza <-> Arcade Hall (horizontal split around y=300)
+    { x: 550, y: 292, width: 40, height: 20 },
+    // Roller Coaster Zone <-> Arcade Hall (vertical split around x=400)
+    { x: 392, y: 450, width: 20, height: 40 },
+  ],
+};
 
 // Furniture types that should NOT block movement (wall decorations, flat items)
 const NON_BLOCKING_FURNITURE = new Set([
@@ -46,12 +72,14 @@ const NON_BLOCKING_FURNITURE = new Set([
   'whiteboard',
   'tvScreen',
   'door',         // the door graphic itself is not an obstacle
+  'mirror',       // wall-mounted
+  'pondWater',    // flat ground feature
 ]);
 
 // ── Grid Construction ─────────────────────────────────────────
 
-/** 1D flat array: true = walkable */
-const grid: boolean[] = new Array(GRID_W * GRID_H).fill(false);
+/** Lazily-cached per-view grids: true = walkable */
+const gridCache = new Map<OfficeView, boolean[]>();
 
 function idx(gx: number, gy: number): number {
   return gy * GRID_W + gx;
@@ -72,52 +100,71 @@ function clampGrid(gx: number, gy: number): [number, number] {
   ];
 }
 
-/** Mark a rectangular region (pixel coords) as walkable or blocked */
-function fillRect(px: number, py: number, pw: number, ph: number, walkable: boolean): void {
+/** Mark a rectangular region (pixel coords) as walkable or blocked on a specific grid */
+function fillRect(
+  targetGrid: boolean[],
+  px: number, py: number, pw: number, ph: number,
+  walkable: boolean,
+): void {
   const [x0, y0] = clampGrid(...toGrid(px, py));
   const [x1, y1] = clampGrid(...toGrid(px + pw - 1, py + ph - 1));
   for (let gy = y0; gy <= y1; gy++) {
     for (let gx = x0; gx <= x1; gx++) {
-      grid[idx(gx, gy)] = walkable;
+      targetGrid[idx(gx, gy)] = walkable;
     }
   }
 }
 
-// Step 1: Everything starts blocked (walls everywhere)
-// (already filled with false)
-
-// Step 2: Mark area interiors as walkable (with ~5px wall padding)
 const WALL_PAD = 5;
-for (const area of AREAS) {
-  const { x, y, width, height } = area.bounds;
-  fillRect(
-    x + WALL_PAD,
-    y + WALL_PAD,
-    width - WALL_PAD * 2,
-    height - WALL_PAD * 2,
-    true,
-  );
-}
-
-// Step 3: Block furniture (with ~4px padding around each piece)
 const FURN_PAD = 4;
-for (const area of AREAS) {
-  if (!area.furniture) continue;
-  for (const f of area.furniture) {
-    if (NON_BLOCKING_FURNITURE.has(f.type)) continue;
+
+/** Build (or return cached) walkability grid for a view */
+function getGrid(view: OfficeView): boolean[] {
+  const cached = gridCache.get(view);
+  if (cached) return cached;
+
+  const viewGrid: boolean[] = new Array(GRID_W * GRID_H).fill(false);
+
+  // Step 1: Everything starts blocked (already false)
+
+  // Step 2: Mark area interiors as walkable (with ~5px wall padding)
+  const areas = getAreasForView(view);
+  for (const area of areas) {
+    const { x, y, width, height } = area.bounds;
     fillRect(
-      f.position.x - FURN_PAD,
-      f.position.y - FURN_PAD,
-      f.width + FURN_PAD * 2,
-      f.height + FURN_PAD * 2,
-      false,
+      viewGrid,
+      x + WALL_PAD,
+      y + WALL_PAD,
+      width - WALL_PAD * 2,
+      height - WALL_PAD * 2,
+      true,
     );
   }
-}
 
-// Step 4: Punch doorways through walls
-for (const d of DOORWAYS) {
-  fillRect(d.x, d.y, d.width, d.height, true);
+  // Step 3: Block furniture (with ~4px padding around each piece)
+  for (const area of areas) {
+    if (!area.furniture) continue;
+    for (const f of area.furniture) {
+      if (NON_BLOCKING_FURNITURE.has(f.type)) continue;
+      fillRect(
+        viewGrid,
+        f.position.x - FURN_PAD,
+        f.position.y - FURN_PAD,
+        f.width + FURN_PAD * 2,
+        f.height + FURN_PAD * 2,
+        false,
+      );
+    }
+  }
+
+  // Step 4: Punch doorways through walls
+  const doorways = VIEW_DOORWAYS[view] ?? [];
+  for (const d of doorways) {
+    fillRect(viewGrid, d.x, d.y, d.width, d.height, true);
+  }
+
+  gridCache.set(view, viewGrid);
+  return viewGrid;
 }
 
 // ── A* Implementation ─────────────────────────────────────────
@@ -197,6 +244,7 @@ function heuristic(ax: number, ay: number, bx: number, by: number): number {
 function astarGrid(
   sx: number, sy: number,
   ex: number, ey: number,
+  viewGrid: boolean[],
 ): [number, number][] | null {
   const totalCells = GRID_W * GRID_H;
   const startIdx = idx(sx, sy);
@@ -241,12 +289,12 @@ function astarGrid(
       if (nx < 0 || nx >= GRID_W || ny < 0 || ny >= GRID_H) continue;
 
       const ni = idx(nx, ny);
-      if (closed[ni] || !grid[ni]) continue;
+      if (closed[ni] || !viewGrid[ni]) continue;
 
       // For diagonal moves, check that both adjacent cardinal cells are walkable
       // to prevent cutting corners through blocked cells
       if (ddx !== 0 && ddy !== 0) {
-        if (!grid[idx(cx + ddx, cy)] || !grid[idx(cx, cy + ddy)]) continue;
+        if (!viewGrid[idx(cx + ddx, cy)] || !viewGrid[idx(cx, cy + ddy)]) continue;
       }
 
       const moveCost = (ddx !== 0 && ddy !== 0) ? DIAG_COST : 1;
@@ -304,9 +352,10 @@ function smoothPath(path: Point[]): Point[] {
  * Find a walkable grid cell nearest to the given pixel point.
  * Uses BFS expanding outward from the target cell.
  */
-export function findNearestWalkable(point: Point): Point {
+export function findNearestWalkable(point: Point, view: OfficeView = 'office'): Point {
+  const viewGrid = getGrid(view);
   const [gx, gy] = clampGrid(...toGrid(point.x, point.y));
-  if (grid[idx(gx, gy)]) return toPixel(gx, gy);
+  if (viewGrid[idx(gx, gy)]) return toPixel(gx, gy);
 
   // BFS outward
   const visited = new Set<number>();
@@ -322,7 +371,7 @@ export function findNearestWalkable(point: Point): Point {
       const ni = idx(nx, ny);
       if (visited.has(ni)) continue;
       visited.add(ni);
-      if (grid[ni]) return toPixel(nx, ny);
+      if (viewGrid[ni]) return toPixel(nx, ny);
       queue.push([nx, ny]);
     }
   }
@@ -334,9 +383,10 @@ export function findNearestWalkable(point: Point): Point {
 /**
  * Check if a pixel point is on a walkable grid cell.
  */
-export function isWalkable(point: Point): boolean {
+export function isWalkable(point: Point, view: OfficeView = 'office'): boolean {
+  const viewGrid = getGrid(view);
   const [gx, gy] = clampGrid(...toGrid(point.x, point.y));
-  return grid[idx(gx, gy)];
+  return viewGrid[idx(gx, gy)];
 }
 
 /**
@@ -345,10 +395,12 @@ export function isWalkable(point: Point): boolean {
  * Returns empty array if no path is found.
  * Start and end points are snapped to nearest walkable cells if needed.
  */
-export function findPath(from: Point, to: Point): Point[] {
+export function findPath(from: Point, to: Point, view: OfficeView = 'office'): Point[] {
+  const viewGrid = getGrid(view);
+
   // Snap to walkable cells
-  const startWalkable = findNearestWalkable(from);
-  const endWalkable = findNearestWalkable(to);
+  const startWalkable = findNearestWalkable(from, view);
+  const endWalkable = findNearestWalkable(to, view);
 
   const [sx, sy] = clampGrid(...toGrid(startWalkable.x, startWalkable.y));
   const [ex, ey] = clampGrid(...toGrid(endWalkable.x, endWalkable.y));
@@ -356,7 +408,7 @@ export function findPath(from: Point, to: Point): Point[] {
   // Already there?
   if (sx === ex && sy === ey) return [toPixel(ex, ey)];
 
-  const gridPath = astarGrid(sx, sy, ex, ey);
+  const gridPath = astarGrid(sx, sy, ex, ey, viewGrid);
   if (!gridPath) return []; // no path found
 
   // Convert grid cells to pixel coordinates

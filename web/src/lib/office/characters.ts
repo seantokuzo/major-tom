@@ -1,6 +1,6 @@
 // Character catalog — 10 tech specialists + 4 dogs
 
-import type { CharacterConfig, CharacterType } from './types';
+import type { BreakDestination, CharacterConfig, CharacterType, OfficeView } from './types';
 
 export const CHARACTER_CATALOG: CharacterConfig[] = [
   // ── Humans ──────────────────────────────────────────────────
@@ -105,6 +105,44 @@ export const CHARACTER_CATALOG: CharacterConfig[] = [
     needsBlanket: false,
   },
 ];
+
+// ── View preferences ────────────────────────────────────────
+
+/** Extra break destinations available per view — humans */
+export const VIEW_BREAK_DESTINATIONS_HUMAN: Record<OfficeView, BreakDestination[]> = {
+  office: ['strategyRoom', 'kitchen', 'breakRoom'],
+  dogPark: ['dogParkField', 'dogPondArea'],
+  gym: ['gymFloor', 'yogaStudio', 'lockerRoom'],
+  themePark: ['mainPlaza', 'rollerCoasterZone', 'arcadeHall'],
+};
+
+/** Extra break destinations available per view — dogs */
+export const VIEW_BREAK_DESTINATIONS_DOG: Record<OfficeView, BreakDestination[]> = {
+  office: ['kitchen', 'breakRoom'],
+  dogPark: ['dogParkField', 'agilityCourse', 'dogPondArea'],
+  gym: ['gymFloor', 'yogaStudio'],
+  themePark: ['mainPlaza', 'arcadeHall'],
+};
+
+/** Preferred views per character type — dogs gravitate to the park */
+export const CHARACTER_VIEW_PREFERENCES: Record<CharacterType, OfficeView[]> = {
+  // Humans can visit gym and theme park on breaks
+  architect:        ['office', 'gym', 'themePark'],
+  leadEngineer:     ['office', 'gym', 'themePark'],
+  engManager:       ['office', 'gym', 'themePark'],
+  backendEngineer:  ['office', 'gym'],
+  frontendEngineer: ['office', 'themePark'],
+  uxDesigner:       ['office', 'themePark'],
+  projectManager:   ['office', 'gym'],
+  productManager:   ['office', 'themePark'],
+  devops:           ['office', 'gym'],
+  databaseGuru:     ['office', 'gym'],
+  // Dogs strongly prefer the dog park
+  dachshund:        ['office', 'dogPark'],
+  cattleDog:        ['office', 'dogPark'],
+  schnauzerBlack:   ['office', 'dogPark'],
+  schnauzerPepper:  ['office', 'dogPark'],
+};
 
 const configByType = new Map<CharacterType, CharacterConfig>(
   CHARACTER_CATALOG.map((c) => [c.type, c])
