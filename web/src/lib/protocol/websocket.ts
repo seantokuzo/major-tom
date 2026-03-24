@@ -45,8 +45,12 @@ export class RelaySocket {
     const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
     const defaultScheme = isSecure ? 'wss://' : 'ws://';
     const rawUrl = host.startsWith('ws://') || host.startsWith('wss://') ? host : `${defaultScheme}${host}`;
-    // Ensure /ws path for Fastify relay
-    const baseUrl = rawUrl.replace(/\/?$/, '/ws');
+    // Ensure /ws path for Fastify relay (avoid doubling if already present)
+    const parsedUrl = new URL(rawUrl);
+    if (!parsedUrl.pathname.endsWith('/ws')) {
+      parsedUrl.pathname = parsedUrl.pathname.replace(/\/?$/, '/ws');
+    }
+    const baseUrl = parsedUrl.toString().replace(/\/$/, '');
     if (this.token) {
       const separator = baseUrl.includes('?') ? '&' : '?';
       this.url = `${baseUrl}${separator}token=${encodeURIComponent(this.token)}`;

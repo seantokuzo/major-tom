@@ -495,15 +495,17 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
     // WebSocket route with session cookie auth (+ legacy token fallback for dev)
     fastify.get('/ws', { websocket: true }, (socket, request) => {
-      // Auth check: session cookie (primary) or ?token=AUTH_TOKEN (legacy/dev fallback)
+      // Auth check: session cookie (primary) or ?token=AUTH_TOKEN (dev-only fallback)
       const sessionCookie = request.cookies?.[SESSION_COOKIE];
-      const queryToken = (request.query as Record<string, string>)?.token;
+      const { token: rawQueryToken } = request.query as { token?: string | string[] };
+      const queryToken = Array.isArray(rawQueryToken) ? undefined : rawQueryToken;
       const legacyAuthToken = process.env['AUTH_TOKEN'];
+      const isDevMode = process.env['NODE_ENV'] !== 'production';
 
-      // Legacy token auth: if ?token= matches AUTH_TOKEN env var, skip OAuth
-      if (queryToken && legacyAuthToken && queryToken === legacyAuthToken) {
+      // Legacy token auth: dev-only, if ?token= matches AUTH_TOKEN env var, skip OAuth
+      if (isDevMode && queryToken && legacyAuthToken && queryToken === legacyAuthToken) {
         const ip = request.ip;
-        logger.info({ ip }, 'Client connected via WebSocket (legacy token auth)');
+        logger.info({ ip }, 'Client connected via WebSocket (legacy token auth, dev mode)');
         setupSocket(socket, ip);
         return;
       }

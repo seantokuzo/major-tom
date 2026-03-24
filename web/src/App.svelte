@@ -67,8 +67,10 @@
 
   const office = createOfficeState();
 
-  // Expose for debug/demo
-  (window as any).__office = office;
+  // Expose for debug/demo (dev-only)
+  if (import.meta.env.DEV) {
+    (window as any).__office = office;
+  }
 
   // Wire relay agent events to office state.
   // We track which agents have been processed to avoid duplicate handling.
