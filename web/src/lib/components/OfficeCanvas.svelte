@@ -209,12 +209,12 @@
           eng.agents.get(d.occupantId)?.animation.type === 'work-shake';
 
         const deskFurniturePositions = [
-          { fx: 368, fy: 120, fw: 56 },  // Desk 0
-          { fx: 522, fy: 120, fw: 56 },  // Desk 1
-          { fx: 368, fy: 300, fw: 56 },  // Desk 2
-          { fx: 522, fy: 300, fw: 56 },  // Desk 3
-          { fx: 368, fy: 480, fw: 56 },  // Desk 4
-          { fx: 522, fy: 480, fw: 56 },  // Desk 5
+          { fx: 368, fy: 90, fw: 56 },   // Desk 0
+          { fx: 522, fy: 90, fw: 56 },   // Desk 1
+          { fx: 368, fy: 222, fw: 56 },  // Desk 2
+          { fx: 522, fy: 222, fw: 56 },  // Desk 3
+          { fx: 368, fy: 355, fw: 56 },  // Desk 4
+          { fx: 522, fy: 355, fw: 56 },  // Desk 5
         ];
 
         if (d.id >= 0 && d.id < deskFurniturePositions.length) {
@@ -335,12 +335,12 @@
         // Desks: Row 1 seats at y=85, desks at y=45. Row 2 seats at y=205, desks at y=165
         // Monitor positions: centered on desk furniture
         const deskFurniturePositions = [
-          { fx: 368, fy: 120, fw: 56 },  // Desk 0
-          { fx: 522, fy: 120, fw: 56 },  // Desk 1
-          { fx: 368, fy: 300, fw: 56 },  // Desk 2
-          { fx: 522, fy: 300, fw: 56 },  // Desk 3
-          { fx: 368, fy: 480, fw: 56 },  // Desk 4
-          { fx: 522, fy: 480, fw: 56 },  // Desk 5
+          { fx: 368, fy: 90, fw: 56 },   // Desk 0
+          { fx: 522, fy: 90, fw: 56 },   // Desk 1
+          { fx: 368, fy: 222, fw: 56 },  // Desk 2
+          { fx: 522, fy: 222, fw: 56 },  // Desk 3
+          { fx: 368, fy: 355, fw: 56 },  // Desk 4
+          { fx: 522, fy: 355, fw: 56 },  // Desk 5
         ];
 
         if (d.id >= 0 && d.id < deskFurniturePositions.length) {

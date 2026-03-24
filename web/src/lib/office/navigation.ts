@@ -8,7 +8,7 @@ import { SCENE_WIDTH, SCENE_HEIGHT, getAreasForView } from './layout';
 
 const CELL_SIZE = 8; // pixels per grid cell
 const GRID_W = Math.ceil(SCENE_WIDTH / CELL_SIZE);   // 125
-const GRID_H = Math.ceil(SCENE_HEIGHT / CELL_SIZE);   // 94
+const GRID_H = Math.ceil(SCENE_HEIGHT / CELL_SIZE);   // 70
 
 /** Cost multiplier for diagonal steps (sqrt(2)) */
 const DIAG_COST = 1.4142135623730951;
@@ -26,32 +26,32 @@ interface DoorwayDef {
 
 const VIEW_DOORWAYS: Record<OfficeView, DoorwayDef[]> = {
   office: [
-    // Strategy Room <-> Main Office (vertical wall at x=275, around y=180)
-    { x: 272, y: 160, width: 20, height: 40 },
-    // Kitchen <-> Main Office (vertical wall at x=275, around y=560)
-    { x: 272, y: 540, width: 20, height: 40 },
-    // Strategy Room <-> Kitchen (horizontal wall at y=375, around x=120)
-    { x: 120, y: 372, width: 40, height: 20 },
-    // Main Office <-> Break Room (vertical wall at x=670, around y=350)
-    { x: 667, y: 340, width: 20, height: 40 },
+    // Strategy Room <-> Main Office (vertical wall at x=275, around y=120)
+    { x: 272, y: 120, width: 20, height: 40 },
+    // Kitchen <-> Main Office (vertical wall at x=275, around y=400)
+    { x: 272, y: 400, width: 20, height: 40 },
+    // Strategy Room <-> Kitchen (horizontal wall at y=275, around x=120)
+    { x: 120, y: 275, width: 40, height: 20 },
+    // Main Office <-> Break Room (vertical wall at x=670, around y=252)
+    { x: 667, y: 252, width: 20, height: 40 },
     // Main entrance (right wall of main office, the DOOR furniture area)
-    { x: 650, y: 380, width: 20, height: 50 },
+    { x: 650, y: 276, width: 20, height: 50 },
   ],
   dogPark: [
     // Dog Park Field <-> Agility Course (vertical split around x=610)
-    { x: 598, y: 500, width: 25, height: 45 },
+    { x: 598, y: 370, width: 25, height: 45 },
     // Dog Park Field <-> Dog Pond (vertical split around x=610)
-    { x: 598, y: 190, width: 25, height: 45 },
-    // Agility Course <-> Dog Pond (horizontal split around y=385)
-    { x: 750, y: 378, width: 45, height: 25 },
+    { x: 598, y: 140, width: 25, height: 45 },
+    // Agility Course <-> Dog Pond (horizontal split around y=275)
+    { x: 750, y: 275, width: 45, height: 25 },
   ],
   gym: [
     // Gym Floor <-> Yoga Studio (vertical split around x=610)
-    { x: 598, y: 500, width: 25, height: 45 },
+    { x: 598, y: 370, width: 25, height: 45 },
     // Gym Floor <-> Locker Room (vertical split around x=610)
-    { x: 598, y: 190, width: 25, height: 45 },
-    // Yoga Studio <-> Locker Room (horizontal split around y=385)
-    { x: 750, y: 378, width: 45, height: 25 },
+    { x: 598, y: 140, width: 25, height: 45 },
+    // Yoga Studio <-> Locker Room (horizontal split around y=275)
+    { x: 750, y: 275, width: 45, height: 25 },
   ],
   spriteStreet: (() => {
     // Generate doorways for the 7×2 bedroom grid (compact rooms: 135×110)
