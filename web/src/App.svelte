@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import ConnectionBar from './lib/components/ConnectionBar.svelte';
   import ConnectionStatus from './lib/components/ConnectionStatus.svelte';
   import SessionInfo from './lib/components/SessionInfo.svelte';
@@ -78,39 +79,45 @@
   let processedAgentStates = $state<Map<string, string>>(new Map());
 
   $effect(() => {
-    // Clear tracking and office state when relay agents are reset (e.g. newSession)
-    if (relay.agents.length === 0 && processedAgentStates.size > 0) {
-      processedAgentStates.clear();
-      office.reset();
-      return;
-    }
-
+    // Subscribe to relay.agents (the trigger) but untrack office mutations
+    // to avoid read-write cycles on office.agents within this effect.
     const agents = relay.agents;
-    for (const agent of agents) {
-      const key = `${agent.status}::${agent.task}`;
-      const prevKey = processedAgentStates.get(agent.id);
-      if (prevKey === key) continue;
+    const stateSize = processedAgentStates.size;
 
-      processedAgentStates.set(agent.id, key);
-
-      switch (agent.status) {
-        case 'spawned':
-          office.handleSpawn(agent.id, agent.role, agent.task);
-          break;
-        case 'working':
-          office.handleWorking(agent.id, agent.task);
-          break;
-        case 'idle':
-          office.handleIdle(agent.id);
-          break;
-        case 'complete':
-          office.handleComplete(agent.id, agent.result ?? agent.task);
-          break;
-        case 'dismissed':
-          office.handleDismissed(agent.id);
-          break;
+    untrack(() => {
+      // Clear tracking and office state when relay agents are reset (e.g. newSession)
+      if (agents.length === 0 && stateSize > 0) {
+        processedAgentStates.clear();
+        office.reset();
+        return;
       }
-    }
+
+      for (const agent of agents) {
+        const key = `${agent.status}::${agent.task}`;
+        const prevKey = processedAgentStates.get(agent.id);
+        if (prevKey === key) continue;
+
+        processedAgentStates.set(agent.id, key);
+
+        switch (agent.status) {
+          case 'spawned':
+            office.handleSpawn(agent.id, agent.role, agent.task);
+            break;
+          case 'working':
+            office.handleWorking(agent.id, agent.task);
+            break;
+          case 'idle':
+            office.handleIdle(agent.id);
+            break;
+          case 'complete':
+            office.handleComplete(agent.id, agent.result ?? agent.task);
+            break;
+          case 'dismissed':
+            office.handleDismissed(agent.id);
+            break;
+        }
+      }
+    });
   });
 
   // Session mode: when relay is connected with an active session, populate crew as idle

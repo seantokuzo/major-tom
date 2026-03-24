@@ -232,10 +232,12 @@ export class OfficeEngine {
     agent.speechBubble = { text, startTime: performance.now(), duration };
   }
 
-  getAgentAtPoint(point: Point, hitSize: number = 20): EngineAgent | null {
+  getAgentAtPoint(point: Point, hitSize: number = 20, view?: import('./types').OfficeView): EngineAgent | null {
     // Check agents in reverse order (top-most first)
     const entries = Array.from(this.agents.values()).reverse();
     for (const agent of entries) {
+      // Skip agents in other views — prevents clicking invisible sprites
+      if (view != null && (agent.currentView ?? 'office') !== view) continue;
       const dx = point.x - agent.position.x;
       const dy = point.y - agent.position.y;
       if (Math.abs(dx) <= hitSize && Math.abs(dy) <= hitSize) {

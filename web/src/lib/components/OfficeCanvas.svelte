@@ -114,7 +114,7 @@
     const x = (event.clientX - rect.left) / scale;
     const y = (event.clientY - rect.top) / scale;
 
-    const agent = engine.getAgentAtPoint({ x, y });
+    const agent = engine.getAgentAtPoint({ x, y }, 20, activeView);
     if (agent) {
       onAgentClick?.(agent.id);
     } else {
@@ -130,7 +130,7 @@
     const sceneX = (event.clientX - rect.left) / roomScale + area.bounds.x;
     const sceneY = (event.clientY - rect.top) / roomScale + area.bounds.y;
 
-    const agent = engine.getAgentAtPoint({ x: sceneX, y: sceneY });
+    const agent = engine.getAgentAtPoint({ x: sceneX, y: sceneY }, 20, activeView);
     if (agent) {
       onAgentClick?.(agent.id);
     } else {

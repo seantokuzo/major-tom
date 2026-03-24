@@ -43,6 +43,81 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   const notificationBatcher = new NotificationBatcher(pushManager);
   const clients = new Set<WebSocket>();
 
+  // ── Session keepalive: 10-minute timeout when all clients disconnect ──
+  const SESSION_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+  /** Maps sessionId → Set of WebSocket clients attached to that session */
+  const sessionClients = new Map<string, Set<WebSocket>>();
+  /** Maps sessionId → cleanup timeout (fires when no clients remain) */
+  const sessionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Maps WebSocket → sessionId for cleanup on disconnect */
+  const clientSessions = new Map<WebSocket, string>();
+
+  function trackClientSession(ws: WebSocket, sessionId: string): void {
+    // Remove from previous session if switching
+    const prevSessionId = clientSessions.get(ws);
+    if (prevSessionId && prevSessionId !== sessionId) {
+      untrackClientSession(ws);
+    }
+
+    clientSessions.set(ws, sessionId);
+    let clientSet = sessionClients.get(sessionId);
+    if (!clientSet) {
+      clientSet = new Set();
+      sessionClients.set(sessionId, clientSet);
+    }
+    clientSet.add(ws);
+
+    // Cancel any pending timeout — a client is connected
+    const timeout = sessionTimeouts.get(sessionId);
+    if (timeout) {
+      clearTimeout(timeout);
+      sessionTimeouts.delete(sessionId);
+      logger.info({ sessionId }, 'Session timeout cancelled — client reconnected');
+    }
+  }
+
+  function untrackClientSession(ws: WebSocket): void {
+    const sessionId = clientSessions.get(ws);
+    if (!sessionId) return;
+    clientSessions.delete(ws);
+
+    const clientSet = sessionClients.get(sessionId);
+    if (clientSet) {
+      clientSet.delete(ws);
+      if (clientSet.size === 0) {
+        sessionClients.delete(sessionId);
+        startSessionTimeout(sessionId);
+      }
+    }
+  }
+
+  function startSessionTimeout(sessionId: string): void {
+    // Don't double-set
+    if (sessionTimeouts.has(sessionId)) return;
+    // Only timeout sessions that actually have an SDK session
+    if (!cliAdapter.hasSession(sessionId)) return;
+
+    logger.info({ sessionId, timeoutMs: SESSION_TIMEOUT_MS }, 'All clients disconnected — starting session timeout');
+
+    const timeout = setTimeout(() => {
+      sessionTimeouts.delete(sessionId);
+      // Check again — a client might have reconnected in the meantime
+      const clientSet = sessionClients.get(sessionId);
+      if (clientSet && clientSet.size > 0) return;
+
+      logger.info({ sessionId }, 'Session timeout fired — destroying abandoned session');
+      cliAdapter.destroySession(sessionId);
+      sessionManager.close(sessionId);
+
+      // Persist before cleanup
+      const data = buildPersistedSession(sessionId);
+      if (data) sessionPersistence.save(data);
+      sessionManager.destroy(sessionId);
+    }, SESSION_TIMEOUT_MS);
+
+    sessionTimeouts.set(sessionId, timeout);
+  }
+
   // ── Helpers ──────────────────────────────────────────────
 
   function sendToClient(ws: WebSocket, message: ServerMessage): void {
@@ -86,6 +161,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       case 'session.start': {
         const workDir = message.workingDir ?? claudeWorkDir;
         const session = await cliAdapter.start(workDir);
+        trackClientSession(ws, session.id);
         sendToClient(ws, {
           type: 'session.info',
           sessionId: session.id,
@@ -115,6 +191,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           break;
         }
         const session = await cliAdapter.attach(message.sessionId);
+        trackClientSession(ws, session.id);
         sendToClient(ws, {
           type: 'session.info',
           sessionId: session.id,
@@ -136,10 +213,22 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'session.end': {
+        // Cancel any pending timeout for this session
+        const endTimeout = sessionTimeouts.get(message.sessionId);
+        if (endTimeout) {
+          clearTimeout(endTimeout);
+          sessionTimeouts.delete(message.sessionId);
+        }
+        sessionClients.delete(message.sessionId);
+
         const session = sessionManager.tryGet(message.sessionId);
         if (session) {
           triggerPersistence(message.sessionId);
           sessionManager.close(message.sessionId);
+        }
+        // Properly destroy the SDK session (kills Claude process)
+        if (cliAdapter.hasSession(message.sessionId)) {
+          cliAdapter.destroySession(message.sessionId);
         }
         broadcast({ type: 'session.ended', sessionId: message.sessionId });
         break;
@@ -467,6 +556,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       socket.on('close', () => {
         clients.delete(socket);
+        untrackClientSession(socket);
         logger.info({ ip }, 'Client disconnected');
       });
 
@@ -556,6 +646,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       clearInterval(heartbeatInterval);
       notificationBatcher.dispose();
       eventBus.off('server.message', serverMessageHandler);
+      // Clear all session timeouts
+      for (const timeout of sessionTimeouts.values()) {
+        clearTimeout(timeout);
+      }
+      sessionTimeouts.clear();
+      sessionClients.clear();
+      clientSessions.clear();
       for (const client of clients) {
         client.close(1001, 'Server shutting down');
       }
