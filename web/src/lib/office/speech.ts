@@ -96,6 +96,70 @@ const BREAK_ROOM_CHAT = [
   'GG',
 ];
 
+// ── Social interaction pools ─────────────────────────────
+
+const SOCIAL_INVITE = [
+  'Ping pong?',
+  'Wanna play?',
+  'Game of PP?',
+  'Hey, you down?',
+  'Quick game?',
+  'Challenge you',
+];
+
+const SOCIAL_ACCEPT = [
+  'Sure!',
+  "Let's go!",
+  "You're on!",
+  'Hell yeah',
+  'Down',
+  'Ready to lose?',
+];
+
+const SOCIAL_DECLINE = [
+  'Nah',
+  'Maybe later',
+  'Pass',
+  "I'm good",
+  'Too lazy rn',
+  'After this...',
+];
+
+const PING_PONG_RALLY = [
+  'Nice!',
+  'Oh!',
+  'Take that!',
+  'Damn!',
+  'Close!',
+  'Haha!',
+  'Again!',
+  '*whiff*',
+  'MY POINT!',
+  'Ugh',
+  'Rematch!',
+  'Lucky shot',
+  'YOOO',
+  'No way',
+  'Cheater!',
+];
+
+const CASUAL_CHAT = [
+  'Hey',
+  "What's up",
+  'Sup',
+  'Busy day huh',
+  'Coffee?',
+  'You good?',
+  'Same tbh',
+  'FR',
+  'Lol',
+  'Heard that',
+  'Big mood',
+  'Facts',
+  'Tell me about it',
+  'Ugh, Mondays',
+];
+
 export function pickToasterFire(): string { return pick(TOASTER_FIRE); }
 export function pickDogBark(): string { return pick(DOG_BARK); }
 export function pickDogBeg(): string { return pick(DOG_BEG); }
@@ -105,3 +169,8 @@ export function pickPanicStart(): string { return pick(PANIC_START); }
 export function pickGeneralIdle(): string { return pick(GENERAL_IDLE); }
 export function pickKitchenChat(): string { return pick(KITCHEN_CHAT); }
 export function pickBreakRoomChat(): string { return pick(BREAK_ROOM_CHAT); }
+export function pickSocialInvite(): string { return pick(SOCIAL_INVITE); }
+export function pickSocialAccept(): string { return pick(SOCIAL_ACCEPT); }
+export function pickSocialDecline(): string { return pick(SOCIAL_DECLINE); }
+export function pickPingPongRally(): string { return pick(PING_PONG_RALLY); }
+export function pickCasualChat(): string { return pick(CASUAL_CHAT); }
