@@ -1,5 +1,6 @@
 <script lang="ts">
   import { relay } from '../stores/relay.svelte';
+  import PermissionModeSwitcher from './PermissionModeSwitcher.svelte';
 
   let editing = $state(false);
   let addressInput = $state(relay.serverAddress);
@@ -98,6 +99,12 @@
 
     <span class="state-text" class:state-error={relay.connectionError}>{stateLabel}</span>
   </div>
+
+  {#if relay.isConnected && relay.hasSession}
+    <div class="mode-area">
+      <PermissionModeSwitcher />
+    </div>
+  {/if}
 
   <div class="right">
     {#if relay.isConnected && !relay.hasSession}
@@ -199,6 +206,11 @@
   .state-text.state-error {
     color: var(--deny);
     text-transform: none;
+  }
+
+  .mode-area {
+    flex-shrink: 0;
+    margin-left: auto;
   }
 
   .right {

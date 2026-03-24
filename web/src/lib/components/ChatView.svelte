@@ -14,6 +14,7 @@
   import TemplateSaveDialog from './TemplateSaveDialog.svelte';
   import FileTreeBrowser from './FileTreeBrowser.svelte';
   import ContextChips from './ContextChips.svelte';
+  import CountdownToast from './CountdownToast.svelte';
   import type { ApprovalDecision } from '../protocol/messages';
 
   let messagesEnd: HTMLDivElement | undefined;
@@ -26,6 +27,7 @@
   let sessionDrawerOpen = $state(false);
   let devicesOpen = $state(false);
   let fileTreeOpen = $state(false);
+  let countdownToastRef: CountdownToast | undefined;
 
   function scrollToBottom() {
     messagesEnd?.scrollIntoView({ behavior: 'smooth' });
@@ -153,6 +155,12 @@
     return () => window.removeEventListener('keydown', onKeydown);
   });
 
+  // Filter approvals — in delay mode, hide approvals with active countdown toasts
+  let visibleApprovals = $derived.by(() => {
+    const countdownIds = countdownToastRef?.getCountdownIds() ?? new Set<string>();
+    return relay.pendingApprovals.filter(a => !countdownIds.has(a.id));
+  });
+
   /** Disable input when not connected or reconnecting */
   let inputDisabled = $derived(!relay.hasSession || !relay.isConnected);
 
@@ -166,10 +174,13 @@
 </script>
 
 <div class="chat-view">
-  <!-- Approvals bar -->
-  {#if relay.pendingApprovals.length > 0}
+  <!-- Countdown toasts (delay mode) -->
+  <CountdownToast bind:this={countdownToastRef} />
+
+  <!-- Approvals bar — in delay mode, only show approvals that were cancelled from countdown -->
+  {#if visibleApprovals.length > 0}
     <div class="approvals-bar">
-      {#each relay.pendingApprovals as request (request.id)}
+      {#each visibleApprovals as request (request.id)}
         <ApprovalCard {request} onDecision={handleApproval} />
       {/each}
     </div>

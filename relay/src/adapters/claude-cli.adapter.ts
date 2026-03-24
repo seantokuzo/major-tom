@@ -9,6 +9,8 @@ import {
 import { Session } from '../sessions/session.js';
 import { SessionManager } from '../sessions/session-manager.js';
 import { ApprovalQueue } from '../hooks/approval-queue.js';
+import { PermissionFilter } from '../permissions/permission-filter.js';
+import type { AutoAllowReason } from '../permissions/permission-filter.js';
 import type {
   IAdapter,
   ApprovalRequest,
@@ -56,16 +58,25 @@ function classifyAgentRole(description: string): string {
   return 'engineer';
 }
 
+/** Auto-allowed tool event — emitted when permission filter auto-approves */
+export interface AutoAllowEvent {
+  tool: string;
+  description: string;
+  reason: AutoAllowReason;
+}
+
 export class ClaudeCliAdapter implements IAdapter {
   readonly type = 'cli' as const;
   private emitter = new EventEmitter();
   private sessions = new Map<string, SdkSessionEntry>();
   private sessionManager: SessionManager;
   private approvalQueue: ApprovalQueue;
+  readonly permissionFilter: PermissionFilter;
 
   constructor(sessionManager: SessionManager, approvalQueue: ApprovalQueue) {
     this.sessionManager = sessionManager;
     this.approvalQueue = approvalQueue;
+    this.permissionFilter = new PermissionFilter();
   }
 
   async start(workingDir: string): Promise<Session> {
@@ -170,34 +181,51 @@ export class ClaudeCliAdapter implements IAdapter {
     input: Record<string, unknown>,
     toolUseId: string,
   ): Promise<PermissionResult> {
+    // ── Check permission filter first (smart/god auto-allow) ──
+    const filterResult = this.permissionFilter.check(toolName, input);
+    if (filterResult.allowed) {
+      logger.info(
+        { sessionId, toolName, reason: filterResult.reason, toolUseId },
+        'Auto-allowed by permission filter',
+      );
+      this.emitter.emit('auto-allow', {
+        tool: toolName,
+        description: JSON.stringify(input),
+        reason: filterResult.reason,
+      } satisfies AutoAllowEvent);
+      return { behavior: 'allow', toolUseID: toolUseId };
+    }
+
+    // ── Not auto-allowed — queue for manual/delay approval ──
     const requestId = randomUUID();
-
-    // Emit approval request to connected clients
-    this.emitter.emit('approval-request', {
-      requestId,
-      tool: toolName,
-      description: JSON.stringify(input),
-      details: {
-        tool_name: toolName,
-        tool_input: input,
-        tool_use_id: toolUseId,
-      },
-    } satisfies ApprovalRequest);
-
-    logger.info({ sessionId, requestId, toolName, toolUseId }, 'Permission requested');
-
-    // Block until the client responds
     const description = JSON.stringify(input);
     const details: Record<string, unknown> = {
       tool_name: toolName,
       tool_input: input,
       tool_use_id: toolUseId,
     };
+
+    // Emit approval request to connected clients
+    this.emitter.emit('approval-request', {
+      requestId,
+      tool: toolName,
+      description,
+      details,
+    } satisfies ApprovalRequest);
+
+    logger.info({ sessionId, requestId, toolName, toolUseId }, 'Permission requested');
+
     const decision = await this.approvalQueue.waitForDecision(requestId, toolName, description, details);
 
     logger.info({ sessionId, requestId, toolName, decision }, 'Permission decision received');
 
-    if (decision === 'allow' || decision === 'allow_always') {
+    if (decision === 'allow_always') {
+      // Add to session allowlist for future auto-approval
+      this.permissionFilter.addSessionAllow(toolName);
+      return { behavior: 'allow', toolUseID: toolUseId };
+    }
+
+    if (decision === 'allow') {
       return { behavior: 'allow', toolUseID: toolUseId };
     }
 
@@ -491,6 +519,7 @@ export class ClaudeCliAdapter implements IAdapter {
 
   on(event: 'output', handler: (sessionId: string, chunk: string) => void): void;
   on(event: 'approval-request', handler: (request: ApprovalRequest) => void): void;
+  on(event: 'auto-allow', handler: (event: AutoAllowEvent) => void): void;
   on(event: 'tool-start', handler: (info: ToolInfo) => void): void;
   on(event: 'tool-complete', handler: (result: ToolResult) => void): void;
   on(event: 'agent-lifecycle', handler: (event: AgentEvent) => void): void;

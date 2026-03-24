@@ -66,9 +66,12 @@
     {#if !collapsed}
       <div class="feed-list" bind:this={feedEl}>
         {#each activities as activity (activity.id)}
-          <div class="feed-entry" class:running={!activity.completedAt} class:failed={activity.success === false}>
+          <div class="feed-entry" class:running={!activity.completedAt} class:failed={activity.success === false} class:auto-allowed={!!activity.autoAllowed}>
             <span class="entry-icon">{toolIcon(activity.tool)}</span>
             <span class="entry-tool">{activity.tool}</span>
+            {#if activity.autoAllowed}
+              <span class="auto-badge">{activity.autoAllowed.startsWith('god') ? 'GOD' : 'AUTO'}</span>
+            {/if}
             <span class="entry-desc">{describeInput(activity.tool, activity.input)}</span>
             <span class="entry-meta">
               {#if !activity.completedAt}
@@ -161,6 +164,19 @@
     color: var(--text-primary);
     font-weight: 600;
     flex-shrink: 0;
+  }
+  .auto-badge {
+    font-size: 0.5rem;
+    font-weight: 700;
+    color: var(--allow);
+    background: rgba(74, 222, 128, 0.12);
+    padding: 0 4px;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+  }
+  .feed-entry.auto-allowed {
+    opacity: 0.5;
   }
   .entry-desc {
     flex: 1;

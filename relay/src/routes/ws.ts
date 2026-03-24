@@ -383,7 +383,22 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'settings.approval': {
-        approvalQueue.setMode(message.mode, message.delaySeconds);
+        // Map high-level permission modes to queue-level modes
+        const permFilter = cliAdapter.permissionFilter;
+        permFilter.setMode(message.mode, message.delaySeconds, message.godSubMode);
+
+        // Map to queue mode: god/smart use manual queue (filter handles auto-allow),
+        // delay uses delay queue, manual uses manual queue
+        const queueMode = message.mode === 'delay' ? 'delay' : 'manual';
+        approvalQueue.setMode(queueMode, message.delaySeconds);
+
+        // Broadcast updated mode to all clients
+        broadcast({
+          type: 'permission.mode',
+          mode: message.mode,
+          delaySeconds: permFilter.getMode().delaySeconds,
+          godSubMode: permFilter.getMode().godSubMode,
+        });
         break;
       }
 
@@ -426,6 +441,15 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         details: request.details,
       });
       notificationBatcher.addApprovalRequest(request.tool, request.requestId);
+    });
+
+    cliAdapter.on('auto-allow', (event) => {
+      broadcast({
+        type: 'approval.auto',
+        tool: event.tool,
+        description: event.description,
+        reason: event.reason,
+      });
     });
 
     cliAdapter.on('tool-start', (info) => {
@@ -580,6 +604,15 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         type: 'connection.status',
         status: 'connected',
         adapter: 'cli',
+      });
+
+      // Send current permission mode so client can sync
+      const modeState = cliAdapter.permissionFilter.getMode();
+      sendToClient(socket, {
+        type: 'permission.mode',
+        mode: modeState.mode,
+        delaySeconds: modeState.delaySeconds,
+        godSubMode: modeState.godSubMode,
       });
     }
 

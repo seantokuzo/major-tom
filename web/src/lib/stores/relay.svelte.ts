@@ -9,6 +9,7 @@ import type {
   DeviceInfo,
   SessionResultMessage,
   ServerMessage,
+  PermissionModeMessage,
 } from '../protocol/messages';
 import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
@@ -72,6 +73,19 @@ export interface ToolActivity {
   success: boolean | null;
   duration: number | null;
   input?: Record<string, unknown>;
+  /** Set when tool was auto-allowed by permission filter */
+  autoAllowed?: 'smart:settings' | 'smart:session' | 'god:yolo' | 'god:normal';
+}
+
+// ── Permission mode model ────────────────────────────────────
+
+export type PermissionMode = 'manual' | 'smart' | 'delay' | 'god';
+export type GodSubMode = 'normal' | 'yolo';
+
+export interface PermissionModeState {
+  mode: PermissionMode;
+  delaySeconds: number;
+  godSubMode: GodSubMode;
 }
 
 // ── Auth user model ─────────────────────────────────────────
@@ -202,6 +216,13 @@ class RelayStore {
 
   // Command palette
   inputPrefix = $state('');
+
+  // Permission mode (synced with relay)
+  permissionMode = $state<PermissionModeState>({
+    mode: 'smart',
+    delaySeconds: 5,
+    godSubMode: 'normal',
+  });
 
   // Manual disconnect flag — prevents auto-reconnect after user clicks Disconnect
   manuallyDisconnected = $state(false);
@@ -542,6 +563,23 @@ class RelayStore {
     this.socket.send({ type: 'cancel', sessionId: this.sessionId });
   }
 
+  setPermissionMode(
+    mode: PermissionMode,
+    delaySeconds?: number,
+    godSubMode?: GodSubMode,
+  ): void {
+    this.permissionMode.mode = mode;
+    if (delaySeconds !== undefined) this.permissionMode.delaySeconds = delaySeconds;
+    if (godSubMode) this.permissionMode.godSubMode = godSubMode;
+
+    this.socket.send({
+      type: 'settings.approval',
+      mode,
+      delaySeconds: delaySeconds ?? this.permissionMode.delaySeconds,
+      godSubMode: godSubMode ?? this.permissionMode.godSubMode,
+    });
+  }
+
   requestSessionList(): void {
     if (!this.isConnected) return;
     sessionsStore.markLoading();
@@ -841,6 +879,35 @@ class RelayStore {
             timestamp: new Date(),
           });
         }
+        break;
+
+      case 'approval.auto':
+        // Tool was auto-allowed by permission filter — track in activity feed
+        this.toolActivities.push({
+          id: uid(),
+          tool: message.tool,
+          startedAt: new Date(),
+          completedAt: null,
+          success: null,
+          duration: null,
+          autoAllowed: message.reason,
+        });
+        if (this.toolActivities.length > 50) {
+          const completedIdx = this.toolActivities.findIndex(a => a.completedAt !== null);
+          if (completedIdx >= 0) {
+            this.toolActivities.splice(completedIdx, 1);
+          } else {
+            this.toolActivities.shift();
+          }
+        }
+        break;
+
+      case 'permission.mode':
+        this.permissionMode = {
+          mode: message.mode,
+          delaySeconds: message.delaySeconds,
+          godSubMode: message.godSubMode,
+        };
         break;
     }
   }

@@ -65,6 +65,7 @@
   type ViewTab = 'chat' | 'office' | 'characters';
   let activeTab = $state<ViewTab>('chat');
   let activeView = $state<OfficeView>('office');
+  let headerCollapsed = $state(false);
 
   const office = createOfficeState();
 
@@ -169,51 +170,72 @@
 
 <div class="app">
   <header class="header">
-    <h1 class="title">MT</h1>
-    <nav class="tabs">
-      <button
-        class="tab"
-        class:active={activeTab === 'chat'}
-        onclick={() => (activeTab = 'chat')}
-      >
-        Chat
-      </button>
-      <button
-        class="tab"
-        class:active={activeTab === 'office'}
-        onclick={() => (activeTab = 'office')}
-      >
-        Office
-        {#if office.agents.length > 0}
-          <span class="agent-count">{office.agents.length}</span>
-        {/if}
-      </button>
-      <button
-        class="tab"
-        class:active={activeTab === 'characters'}
-        onclick={() => (activeTab = 'characters')}
-      >
-        Crew
-      </button>
-    </nav>
     <button
-      class="demo-btn"
-      class:active={office.demoMode}
-      disabled={(!office.canDemo && !office.demoMode) || office.sessionMode}
-      onclick={() => office.toggleDemo()}
-      title={office.sessionMode ? 'Demo disabled during active session' : office.demoMode ? 'Exit demo' : 'Launch demo office'}
+      class="collapse-btn"
+      onclick={() => (headerCollapsed = !headerCollapsed)}
+      title={headerCollapsed ? 'Expand header' : 'Collapse header'}
+      aria-label={headerCollapsed ? 'Expand header' : 'Collapse header'}
     >
-      {office.demoMode ? '■ Demo' : '▶ Demo'}
+      {headerCollapsed ? '\u25B6' : '\u25BC'}
     </button>
-    <div class="header-spacer"></div>
-    <div class="header-actions">
-      <AuthSettings />
-      <NotificationToggle />
-    </div>
+    {#if !headerCollapsed}
+      <h1 class="title">MT</h1>
+      <nav class="tabs">
+        <button
+          class="tab"
+          class:active={activeTab === 'chat'}
+          onclick={() => (activeTab = 'chat')}
+        >
+          Chat
+        </button>
+        <button
+          class="tab"
+          class:active={activeTab === 'office'}
+          onclick={() => (activeTab = 'office')}
+        >
+          Office
+          {#if office.agents.length > 0}
+            <span class="agent-count">{office.agents.length}</span>
+          {/if}
+        </button>
+        <button
+          class="tab"
+          class:active={activeTab === 'characters'}
+          onclick={() => (activeTab = 'characters')}
+        >
+          Crew
+        </button>
+      </nav>
+      <button
+        class="demo-btn"
+        class:active={office.demoMode}
+        disabled={(!office.canDemo && !office.demoMode) || office.sessionMode}
+        onclick={() => office.toggleDemo()}
+        title={office.sessionMode ? 'Demo disabled during active session' : office.demoMode ? 'Exit demo' : 'Launch demo office'}
+      >
+        {office.demoMode ? '■ Demo' : '▶ Demo'}
+      </button>
+      <div class="header-spacer"></div>
+      <div class="header-actions">
+        <AuthSettings />
+        <NotificationToggle />
+      </div>
+    {:else}
+      <span class="collapsed-status">
+        {relay.permissionMode.mode.toUpperCase()}
+        {#if relay.isConnected}
+          <span class="collapsed-dot connected"></span>
+        {:else}
+          <span class="collapsed-dot"></span>
+        {/if}
+      </span>
+    {/if}
   </header>
-  <ConnectionBar />
-  <ConnectionStatus />
-  <SessionInfo />
+  {#if !headerCollapsed}
+    <ConnectionBar />
+    <ConnectionStatus />
+    <SessionInfo />
+  {/if}
 
   {#if activeTab === 'office'}
     <nav class="view-tabs">
@@ -279,6 +301,49 @@
     align-items: center;
     gap: var(--sp-sm);
     overflow: hidden;
+  }
+
+  .collapse-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 0.55rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-sm);
+    transition: all 0.15s;
+  }
+
+  .collapse-btn:hover {
+    color: var(--text-secondary);
+    background: var(--surface-hover);
+  }
+
+  .collapsed-status {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-xs);
+  }
+
+  .collapsed-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--deny);
+  }
+
+  .collapsed-dot.connected {
+    background: var(--allow);
   }
 
   .title {
