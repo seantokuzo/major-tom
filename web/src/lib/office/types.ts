@@ -52,10 +52,9 @@ export type BreakDestination =
   | 'gymFloor'
   | 'yogaStudio'
   | 'lockerRoom'
-  // Theme Park
-  | 'mainPlaza'
-  | 'rollerCoasterZone'
-  | 'arcadeHall';
+  // Sprite Street bedrooms (7 columns × 2 rows = 14 rooms)
+  | 'bedroomRow1Col1' | 'bedroomRow1Col2' | 'bedroomRow1Col3' | 'bedroomRow1Col4' | 'bedroomRow1Col5' | 'bedroomRow1Col6' | 'bedroomRow1Col7'
+  | 'bedroomRow2Col1' | 'bedroomRow2Col2' | 'bedroomRow2Col3' | 'bedroomRow2Col4' | 'bedroomRow2Col5' | 'bedroomRow2Col6' | 'bedroomRow2Col7';
 
 export type OfficeAreaType =
   | 'mainOffice'
@@ -70,13 +69,12 @@ export type OfficeAreaType =
   | 'gymFloor'
   | 'yogaStudio'
   | 'lockerRoom'
-  // Theme Park
-  | 'mainPlaza'
-  | 'rollerCoasterZone'
-  | 'arcadeHall';
+  // Sprite Street bedrooms (7 columns × 2 rows = 14 rooms)
+  | 'bedroomRow1Col1' | 'bedroomRow1Col2' | 'bedroomRow1Col3' | 'bedroomRow1Col4' | 'bedroomRow1Col5' | 'bedroomRow1Col6' | 'bedroomRow1Col7'
+  | 'bedroomRow2Col1' | 'bedroomRow2Col2' | 'bedroomRow2Col3' | 'bedroomRow2Col4' | 'bedroomRow2Col5' | 'bedroomRow2Col6' | 'bedroomRow2Col7';
 
 /** Office view — multiple themed views */
-export type OfficeView = 'office' | 'dogPark' | 'gym' | 'themePark';
+export type OfficeView = 'office' | 'dogPark' | 'gym' | 'spriteStreet';
 
 export interface OfficeViewConfig {
   id: OfficeView;
@@ -135,14 +133,10 @@ export type FurnitureType =
   | 'locker'
   | 'mirror'
   | 'waterFountain'
-  // Theme Park
-  | 'rollerCoasterTrack'
-  | 'ferrisWheel'
-  | 'hotDogStand'
-  | 'cottonCandyCart'
-  | 'ticketBooth'
-  | 'balloonCart'
-  | 'carousel';
+  // Sprite Street bedrooms
+  | 'bed'
+  | 'closet'
+  | 'rug';
 
 export interface Furniture {
   type: FurnitureType;
@@ -310,47 +304,85 @@ export const GYM_DOG_ACTIVITIES: Record<string, IdleActivity[]> = {
   ],
 };
 
-// ── Theme Park Activities ────────────────────────────────────
+// ── Sprite Street Activities ─────────────────────────────────
 
-/** Theme Park idle activities — humans */
-export const THEME_PARK_HUMAN_ACTIVITIES: Record<string, IdleActivity[]> = {
-  mainPlaza: [
-    { label: 'Eating hot dog', area: 'mainPlaza', target: { x: 438, y: 200 } },
-    { label: 'Getting cotton candy', area: 'mainPlaza', target: { x: 625, y: 200 } },
-    { label: 'Buying tickets', area: 'mainPlaza', target: { x: 125, y: 100 } },
-    { label: 'Getting balloons', area: 'mainPlaza', target: { x: 835, y: 125 } },
-    { label: 'Taking a selfie', area: 'mainPlaza', target: { x: 500, y: 300 } },
-  ],
-  rollerCoasterZone: [
-    { label: 'Riding roller coaster', area: 'rollerCoasterZone', target: { x: 200, y: 588 } },
-    { label: 'Watching ferris wheel', area: 'rollerCoasterZone', target: { x: 412, y: 600 } },
-    { label: 'Waiting in line', area: 'rollerCoasterZone', target: { x: 150, y: 650 } },
-  ],
-  arcadeHall: [
-    { label: 'Playing carnival games', area: 'arcadeHall', target: { x: 850, y: 450 } },
-    { label: 'Riding carousel', area: 'arcadeHall', target: { x: 700, y: 537 } },
-    { label: 'Winning prizes', area: 'arcadeHall', target: { x: 560, y: 675 } },
-  ],
+/** All bedroom area types for iteration */
+export const ALL_BEDROOM_AREAS: OfficeAreaType[] = [
+  'bedroomRow1Col1', 'bedroomRow1Col2', 'bedroomRow1Col3', 'bedroomRow1Col4', 'bedroomRow1Col5', 'bedroomRow1Col6', 'bedroomRow1Col7',
+  'bedroomRow2Col1', 'bedroomRow2Col2', 'bedroomRow2Col3', 'bedroomRow2Col4', 'bedroomRow2Col5', 'bedroomRow2Col6', 'bedroomRow2Col7',
+];
+
+/** Map character type to their personal bedroom */
+export const CHARACTER_BEDROOM: Record<CharacterType, OfficeAreaType> = {
+  architect:        'bedroomRow1Col1',
+  leadEngineer:     'bedroomRow1Col2',
+  engManager:       'bedroomRow1Col3',
+  backendEngineer:  'bedroomRow1Col4',
+  frontendEngineer: 'bedroomRow1Col5',
+  uxDesigner:       'bedroomRow1Col6',
+  projectManager:   'bedroomRow1Col7',
+  productManager:   'bedroomRow2Col1',
+  devops:           'bedroomRow2Col2',
+  databaseGuru:     'bedroomRow2Col3',
+  dachshund:        'bedroomRow2Col4',
+  cattleDog:        'bedroomRow2Col5',
+  schnauzerBlack:   'bedroomRow2Col6',
+  schnauzerPepper:  'bedroomRow2Col7',
 };
 
-/** Theme Park idle activities — dogs */
-export const THEME_PARK_DOG_ACTIVITIES: Record<string, IdleActivity[]> = {
-  mainPlaza: [
-    { label: 'Begging for hot dog', area: 'mainPlaza', target: { x: 440, y: 210 } },
-    { label: 'Tangled in balloon strings', area: 'mainPlaza', target: { x: 840, y: 130 } },
-    { label: 'Sniffing cotton candy', area: 'mainPlaza', target: { x: 628, y: 210 } },
-    { label: 'Chasing pigeons', area: 'mainPlaza', target: { x: 500, y: 280 } },
-  ],
-  rollerCoasterZone: [
-    { label: 'Watching coaster (scared)', area: 'rollerCoasterZone', target: { x: 200, y: 650 } },
-    { label: 'Barking at ferris wheel', area: 'rollerCoasterZone', target: { x: 412, y: 625 } },
-  ],
-  arcadeHall: [
-    { label: 'Chasing carousel horses', area: 'arcadeHall', target: { x: 700, y: 550 } },
-    { label: 'Napping under game booth', area: 'arcadeHall', target: { x: 850, y: 475 } },
-    { label: 'Stealing prizes', area: 'arcadeHall', target: { x: 560, y: 680 } },
-  ],
-};
+/**
+ * Generate Sprite St. activities for a bedroom.
+ * Activities use positions relative to the bedroom grid cell.
+ * Column width ~135px, row height ~365px — positions are within each bedroom.
+ */
+function bedroomActivities(area: OfficeAreaType, baseX: number, baseY: number): IdleActivity[] {
+  return [
+    { label: 'Napping in bed',     area, target: { x: baseX + 68, y: baseY + 120 } },
+    { label: 'Reading in bed',     area, target: { x: baseX + 68, y: baseY + 100 } },
+    { label: 'Checking closet',    area, target: { x: baseX + 30, y: baseY + 220 } },
+    { label: 'Looking in mirror',  area, target: { x: baseX + 68, y: baseY + 30 } },
+    { label: 'Relaxing at home',   area, target: { x: baseX + 90, y: baseY + 300 } },
+  ];
+}
+
+function bedroomDogActivities(area: OfficeAreaType, baseX: number, baseY: number): IdleActivity[] {
+  return [
+    { label: 'Napping on bed',        area, target: { x: baseX + 68, y: baseY + 120 } },
+    { label: 'Hiding under bed',      area, target: { x: baseX + 68, y: baseY + 160 } },
+    { label: 'Scratching at closet',  area, target: { x: baseX + 30, y: baseY + 220 } },
+  ];
+}
+
+/** Sprite St. idle activities — humans (keyed by bedroom area type) */
+export const SPRITE_ST_HUMAN_ACTIVITIES: Record<string, IdleActivity[]> = (() => {
+  const result: Record<string, IdleActivity[]> = {};
+  const colW = 140;
+  const rowH = 375;
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 7; col++) {
+      const areaKey = `bedroomRow${row + 1}Col${col + 1}`;
+      const baseX = 5 + col * colW;
+      const baseY = row === 0 ? 5 : 380;
+      result[areaKey] = bedroomActivities(areaKey as OfficeAreaType, baseX, baseY);
+    }
+  }
+  return result;
+})();
+
+/** Sprite St. idle activities — dogs (keyed by bedroom area type) */
+export const SPRITE_ST_DOG_ACTIVITIES: Record<string, IdleActivity[]> = (() => {
+  const result: Record<string, IdleActivity[]> = {};
+  const colW = 140;
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 7; col++) {
+      const areaKey = `bedroomRow${row + 1}Col${col + 1}`;
+      const baseX = 5 + col * colW;
+      const baseY = row === 0 ? 5 : 380;
+      result[areaKey] = bedroomDogActivities(areaKey as OfficeAreaType, baseX, baseY);
+    }
+  }
+  return result;
+})();
 
 // ── Interfaces ───────────────────────────────────────────────
 
@@ -388,7 +420,7 @@ export interface OfficeArea {
   /** Which view this area belongs to */
   view: OfficeView;
   /** Optional floor pattern */
-  floorPattern?: 'carpet' | 'tile' | 'wood' | 'concrete' | 'grass' | 'cobblestone';
+  floorPattern?: 'carpet' | 'tile' | 'wood' | 'concrete' | 'grass';
   /** Furniture items in this area */
   furniture?: Furniture[];
 }

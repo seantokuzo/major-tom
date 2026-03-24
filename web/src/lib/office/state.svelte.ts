@@ -7,7 +7,7 @@ import {
   HUMAN_IDLE_ACTIVITIES, DOG_IDLE_ACTIVITIES,
   DOG_PARK_HUMAN_ACTIVITIES, DOG_PARK_DOG_ACTIVITIES,
   GYM_HUMAN_ACTIVITIES, GYM_DOG_ACTIVITIES,
-  THEME_PARK_HUMAN_ACTIVITIES, THEME_PARK_DOG_ACTIVITIES,
+  SPRITE_ST_HUMAN_ACTIVITIES, SPRITE_ST_DOG_ACTIVITIES,
 } from './types';
 import { DESKS, DOOR_POSITION, OFFICE_VIEWS, VIEW_DOOR_POSITIONS, randomPosition, getViewForArea } from './layout';
 import { DOG_TYPES, CHARACTER_VIEW_PREFERENCES } from './characters';
@@ -68,8 +68,8 @@ function pickIdleActivity(characterType: CharacterType, currentView?: OfficeView
 
   // Merge all activity maps
   const allActivities: Record<string, IdleActivity[]> = isDog
-    ? { ...DOG_IDLE_ACTIVITIES, ...DOG_PARK_DOG_ACTIVITIES, ...GYM_DOG_ACTIVITIES, ...THEME_PARK_DOG_ACTIVITIES }
-    : { ...HUMAN_IDLE_ACTIVITIES, ...DOG_PARK_HUMAN_ACTIVITIES, ...GYM_HUMAN_ACTIVITIES, ...THEME_PARK_HUMAN_ACTIVITIES };
+    ? { ...DOG_IDLE_ACTIVITIES, ...DOG_PARK_DOG_ACTIVITIES, ...GYM_DOG_ACTIVITIES, ...SPRITE_ST_DOG_ACTIVITIES }
+    : { ...HUMAN_IDLE_ACTIVITIES, ...DOG_PARK_HUMAN_ACTIVITIES, ...GYM_HUMAN_ACTIVITIES, ...SPRITE_ST_HUMAN_ACTIVITIES };
 
   // Filter to only activities in the target view's areas
   const viewAreas = getViewAreaTypes(targetView);

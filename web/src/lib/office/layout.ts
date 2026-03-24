@@ -14,6 +14,8 @@
 // +-----------+------------------+---------------+
 
 import type { Desk, Furniture, OfficeArea, OfficeAreaType, OfficeView, OfficeViewConfig, Point } from './types';
+import { ALL_CHARACTER_TYPES, ALL_BEDROOM_AREAS } from './types';
+import { CHARACTER_CATALOG } from './characters';
 
 export const SCENE_WIDTH = 1000;
 export const SCENE_HEIGHT = 750;
@@ -37,9 +39,9 @@ export const OFFICE_VIEWS: OfficeViewConfig[] = [
     areas: ['gymFloor', 'yogaStudio', 'lockerRoom'],
   },
   {
-    id: 'themePark',
-    label: 'Theme Park',
-    areas: ['mainPlaza', 'rollerCoasterZone', 'arcadeHall'],
+    id: 'spriteStreet',
+    label: 'Sprite St.',
+    areas: ALL_BEDROOM_AREAS,
   },
 ];
 
@@ -55,7 +57,7 @@ export const VIEW_DOOR_POSITIONS: Record<OfficeView, Point> = {
   office: { x: 655, y: 400 },
   dogPark: { x: 12, y: 375 },
   gym: { x: 12, y: 375 },
-  themePark: { x: 500, y: 12 },
+  spriteStreet: { x: 500, y: 12 },
 };
 
 /** Per-view room order for mobile layout */
@@ -76,10 +78,21 @@ export const VIEW_ROOM_ORDERS: Record<OfficeView, Array<{ type: string; label: s
     { type: 'yogaStudio', label: 'Yoga Studio' },
     { type: 'lockerRoom', label: 'Locker Room' },
   ],
-  themePark: [
-    { type: 'mainPlaza', label: 'Main Plaza' },
-    { type: 'rollerCoasterZone', label: 'Roller Coaster' },
-    { type: 'arcadeHall', label: 'Arcade Hall' },
+  spriteStreet: [
+    { type: 'bedroomRow1Col1', label: 'Architect' },
+    { type: 'bedroomRow1Col2', label: 'Lead Engineer' },
+    { type: 'bedroomRow1Col3', label: 'Eng Manager' },
+    { type: 'bedroomRow1Col4', label: 'Backend Engineer' },
+    { type: 'bedroomRow1Col5', label: 'Frontend Engineer' },
+    { type: 'bedroomRow1Col6', label: 'UX Designer' },
+    { type: 'bedroomRow1Col7', label: 'Project Manager' },
+    { type: 'bedroomRow2Col1', label: 'Product Manager' },
+    { type: 'bedroomRow2Col2', label: 'DevOps' },
+    { type: 'bedroomRow2Col3', label: 'Database Guru' },
+    { type: 'bedroomRow2Col4', label: 'Elvito (Senor)' },
+    { type: 'bedroomRow2Col5', label: 'Steve' },
+    { type: 'bedroomRow2Col6', label: 'Hoku' },
+    { type: 'bedroomRow2Col7', label: 'Kai' },
   ],
 };
 
@@ -102,9 +115,8 @@ const COLORS = {
   gymTile:          'rgb(180, 185, 190)',  // Clean studio/locker tile
   gymTileDark:      'rgb(160, 165, 172)',  // Slightly darker tile
 
-  // Floors — Theme Park
-  parkCobblestone:  'rgb(140, 135, 125)',  // Cobblestone pathways
-  parkConcrete:     'rgb(120, 115, 110)',  // Ride zones concrete
+  // Floors — Sprite Street
+  bedroomWood:      'rgb(72, 58, 48)',     // Warm bedroom wood
 
   // Walls
   wall:             'rgb(72, 72, 82)',     // Interior walls
@@ -116,6 +128,78 @@ const COLORS = {
   deskDark:         'rgb(95, 68, 42)',     // Desk shadow
   plant:            'rgb(52, 82, 48)',     // Office plants
 };
+
+// ── Sprite Street bedroom generator ──────────────────────────
+
+/** Rug color palette — muted, cozy tones per bedroom */
+const RUG_COLORS = [
+  'rgba(140, 80, 70, 0.5)',   // terracotta
+  'rgba(70, 100, 140, 0.5)',  // dusty blue
+  'rgba(100, 130, 80, 0.5)',  // sage green
+  'rgba(130, 100, 70, 0.5)',  // tan
+  'rgba(120, 80, 120, 0.5)',  // muted plum
+  'rgba(80, 120, 120, 0.5)',  // teal
+  'rgba(140, 120, 70, 0.5)',  // gold
+  'rgba(90, 90, 130, 0.5)',   // slate
+  'rgba(130, 90, 90, 0.5)',   // dusty rose
+  'rgba(80, 110, 100, 0.5)',  // sea green
+  'rgba(120, 100, 80, 0.5)',  // warm brown
+  'rgba(100, 80, 110, 0.5)',  // lavender
+  'rgba(110, 110, 90, 0.5)',  // olive
+  'rgba(90, 100, 120, 0.5)',  // steel blue
+];
+
+/** Build a character config lookup by type for bedroom colors */
+const charConfigByType = new Map(CHARACTER_CATALOG.map(c => [c.type, c]));
+
+function generateBedrooms(): OfficeArea[] {
+  const areas: OfficeArea[] = [];
+  const COL_W = 140;   // column width (135 room + 5 gap)
+  const ROW_H = 370;   // row height (365 room + 5 gap)
+  const ROOM_W = 135;
+  const ROOM_H = 365;
+
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 7; col++) {
+      const idx = row * 7 + col;
+      const charType = ALL_CHARACTER_TYPES[idx];
+      const charConfig = charConfigByType.get(charType);
+      const displayName = charConfig?.displayName ?? charType;
+      const spriteColor = charConfig?.spriteColor ?? 'rgb(100, 100, 120)';
+      const areaType = `bedroomRow${row + 1}Col${col + 1}` as OfficeAreaType;
+
+      const bx = 5 + col * COL_W;
+      const by = row === 0 ? 5 : 5 + ROW_H;
+
+      const furniture: Furniture[] = [
+        // Bed — centered horizontally near the top of the room
+        { type: 'bed', position: { x: bx + 35, y: bx > 0 ? by + 60 : by + 60 }, width: 65, height: 80, color: spriteColor },
+        // Mirror on top wall
+        { type: 'mirror', position: { x: bx + 50, y: by + 8 }, width: 35, height: 8, color: 'rgb(180, 200, 220)' },
+        // Closet — left side of room
+        { type: 'closet', position: { x: bx + 8, y: by + 190 }, width: 35, height: 55, color: 'rgb(140, 110, 75)' },
+        // Rug — center of room, flat/non-blocking
+        { type: 'rug', position: { x: bx + 30, y: by + 270 }, width: 75, height: 50, color: RUG_COLORS[idx] },
+      ];
+
+      // Fix bed y position consistently
+      furniture[0] = { type: 'bed', position: { x: bx + 35, y: by + 60 }, width: 65, height: 80, color: spriteColor };
+
+      areas.push({
+        type: areaType,
+        name: `${displayName}'s Room`,
+        bounds: { x: bx, y: by, width: ROOM_W, height: ROOM_H },
+        capacity: 2,
+        color: COLORS.bedroomWood,
+        view: 'spriteStreet',
+        floorPattern: 'wood',
+        furniture,
+      });
+    }
+  }
+
+  return areas;
+}
 
 // ── Areas ────────────────────────────────────────────────────
 
@@ -449,79 +533,9 @@ export const AREAS: OfficeArea[] = [
   },
 
   // ════════════════════════════════════════════════════════════
-  // THEME PARK
+  // SPRITE STREET — personal bedrooms (7 cols × 2 rows)
   // ════════════════════════════════════════════════════════════
-
-  // ── Main Plaza (top half of canvas) ────────────────────────
-  {
-    type: 'mainPlaza',
-    name: 'Main Plaza',
-    bounds: { x: 5, y: 5, width: 990, height: 365 },
-    capacity: 8,
-    color: COLORS.parkCobblestone,
-    view: 'themePark',
-    floorPattern: 'cobblestone',
-    furniture: [
-      // Ticket booth
-      { type: 'ticketBooth', position: { x: 75, y: 50 }, width: 62, height: 50, color: 'rgb(180, 50, 50)' },
-
-      // Hot dog stand
-      { type: 'hotDogStand', position: { x: 375, y: 150 }, width: 62, height: 45, color: 'rgb(200, 160, 40)' },
-
-      // Cotton candy cart
-      { type: 'cottonCandyCart', position: { x: 600, y: 150 }, width: 55, height: 45, color: 'rgb(240, 140, 200)' },
-
-      // Balloon cart
-      { type: 'balloonCart', position: { x: 812, y: 62 }, width: 45, height: 50, color: 'rgb(80, 160, 220)' },
-
-      // Benches
-      { type: 'bench', position: { x: 250, y: 288 }, width: 62, height: 20, color: 'rgb(110, 80, 50)' },
-      { type: 'bench', position: { x: 688, y: 288 }, width: 62, height: 20, color: 'rgb(110, 80, 50)' },
-
-      // Door / entrance gate (top center)
-      { type: 'door', position: { x: 494, y: 5 }, width: 45, height: 12, color: COLORS.doorFrame, label: 'GATE' },
-    ],
-  },
-
-  // ── Roller Coaster Zone (bottom-left) ──────────────────────
-  {
-    type: 'rollerCoasterZone',
-    name: 'Roller Coaster Zone',
-    bounds: { x: 5, y: 380, width: 490, height: 365 },
-    capacity: 6,
-    color: COLORS.parkConcrete,
-    view: 'themePark',
-    floorPattern: 'concrete',
-    furniture: [
-      // Roller coaster track (large)
-      { type: 'rollerCoasterTrack', position: { x: 38, y: 412 }, width: 312, height: 150, color: 'rgb(180, 50, 50)' },
-
-      // Ferris wheel
-      { type: 'ferrisWheel', position: { x: 350, y: 500 }, width: 125, height: 125, color: 'rgb(220, 180, 60)' },
-    ],
-  },
-
-  // ── Arcade Hall (bottom-right) ─────────────────────────────
-  {
-    type: 'arcadeHall',
-    name: 'Arcade Hall',
-    bounds: { x: 505, y: 380, width: 490, height: 365 },
-    capacity: 6,
-    color: COLORS.parkCobblestone,
-    view: 'themePark',
-    floorPattern: 'cobblestone',
-    furniture: [
-      // Carousel
-      { type: 'carousel', position: { x: 625, y: 462 }, width: 150, height: 150, color: 'rgb(200, 160, 80)' },
-
-      // Arcade machines
-      { type: 'arcadeMachine', position: { x: 825, y: 412 }, width: 38, height: 55, color: 'rgb(40, 35, 90)' },
-      { type: 'arcadeMachine', position: { x: 888, y: 412 }, width: 38, height: 55, color: 'rgb(90, 35, 40)' },
-
-      // Ticket booth
-      { type: 'ticketBooth', position: { x: 538, y: 650 }, width: 62, height: 50, color: 'rgb(180, 50, 50)' },
-    ],
-  },
+  ...generateBedrooms(),
 ];
 
 // ── Desks (agent assignment targets) ─────────────────────────

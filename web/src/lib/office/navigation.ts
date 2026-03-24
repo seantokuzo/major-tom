@@ -53,14 +53,32 @@ const VIEW_DOORWAYS: Record<OfficeView, DoorwayDef[]> = {
     // Yoga Studio <-> Locker Room (horizontal split around y=385)
     { x: 750, y: 378, width: 45, height: 25 },
   ],
-  themePark: [
-    // Main Plaza <-> Roller Coaster Zone (horizontal split around y=375)
-    { x: 190, y: 368, width: 45, height: 25 },
-    // Main Plaza <-> Arcade Hall (horizontal split around y=375)
-    { x: 690, y: 368, width: 45, height: 25 },
-    // Roller Coaster Zone <-> Arcade Hall (vertical split around x=500)
-    { x: 492, y: 565, width: 25, height: 45 },
-  ],
+  spriteStreet: (() => {
+    // Generate doorways for the 7×2 bedroom grid
+    const doorways: DoorwayDef[] = [];
+    const COL_W = 140;
+    const ROW_H = 370;
+
+    // Horizontal doorways between row 1 and row 2 (7 doorways, one per column)
+    for (let col = 0; col < 7; col++) {
+      const cx = 5 + col * COL_W + 55; // center of column
+      doorways.push({ x: cx, y: ROW_H - 2, width: 25, height: 20 });
+    }
+
+    // Vertical doorways between adjacent columns in row 1
+    for (let col = 0; col < 6; col++) {
+      const wallX = 5 + (col + 1) * COL_W - 3;
+      doorways.push({ x: wallX, y: 160, width: 20, height: 35 });
+    }
+
+    // Vertical doorways between adjacent columns in row 2
+    for (let col = 0; col < 6; col++) {
+      const wallX = 5 + (col + 1) * COL_W - 3;
+      doorways.push({ x: wallX, y: ROW_H + 160, width: 20, height: 35 });
+    }
+
+    return doorways;
+  })(),
 };
 
 // Furniture types that should NOT block movement (wall decorations, flat items)
@@ -72,6 +90,7 @@ const NON_BLOCKING_FURNITURE = new Set([
   'door',         // the door graphic itself is not an obstacle
   'mirror',       // wall-mounted
   'pondWater',    // flat ground feature
+  'rug',          // flat floor decoration
 ]);
 
 // ── Grid Construction ─────────────────────────────────────────
