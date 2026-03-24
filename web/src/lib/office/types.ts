@@ -197,11 +197,11 @@ export const HUMAN_IDLE_ACTIVITIES: Record<string, IdleActivity[]> = {
     { label: 'Microwaving lunch', area: 'kitchen', target: { x: 188, y: 290 } },
   ],
   breakRoom: [
-    { label: 'Playing ping pong', area: 'breakRoom', target: { x: 480, y: 579 } },
-    { label: 'Playing video games', area: 'breakRoom', target: { x: 112, y: 555 } },
-    { label: 'Watching TV', area: 'breakRoom', target: { x: 112, y: 555 } },
-    { label: 'Napping on couch', area: 'breakRoom', target: { x: 110, y: 582 } },
-    { label: 'Chilling in bean bag', area: 'breakRoom', target: { x: 215, y: 594 } },
+    { label: 'Playing ping pong', area: 'breakRoom', target: { x: 815, y: 280 } },
+    { label: 'Playing video games', area: 'breakRoom', target: { x: 790, y: 100 } },
+    { label: 'Watching TV', area: 'breakRoom', target: { x: 755, y: 100 } },
+    { label: 'Napping on couch', area: 'breakRoom', target: { x: 870, y: 418 } },
+    { label: 'Chilling in bean bag', area: 'breakRoom', target: { x: 875, y: 78 } },
   ],
 };
 
@@ -213,9 +213,9 @@ export const DOG_IDLE_ACTIVITIES: Record<string, IdleActivity[]> = {
     { label: 'Staring at the fridge', area: 'kitchen', target: { x: 252, y: 310 } },
   ],
   breakRoom: [
-    { label: 'Napping on couch', area: 'breakRoom', target: { x: 110, y: 582 } },
-    { label: 'Watching TV (confused)', area: 'breakRoom', target: { x: 112, y: 555 } },
-    { label: 'Chasing ping pong ball', area: 'breakRoom', target: { x: 480, y: 620 } },
+    { label: 'Napping on couch', area: 'breakRoom', target: { x: 910, y: 418 } },
+    { label: 'Watching TV (confused)', area: 'breakRoom', target: { x: 810, y: 100 } },
+    { label: 'Chasing ping pong ball', area: 'breakRoom', target: { x: 815, y: 280 } },
   ],
 };
 

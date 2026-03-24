@@ -2,18 +2,15 @@
 // Ported from iOS OfficeViewModel.swift
 
 import type { OfficeAgent, CharacterType, Desk, OfficeAreaType, IdleActivity, OfficeView } from './types';
-import {
-  ALL_CHARACTER_TYPES,
-  HUMAN_IDLE_ACTIVITIES, DOG_IDLE_ACTIVITIES,
-  DOG_PARK_HUMAN_ACTIVITIES, DOG_PARK_DOG_ACTIVITIES,
-  GYM_HUMAN_ACTIVITIES, GYM_DOG_ACTIVITIES,
-  SPRITE_ST_HUMAN_ACTIVITIES, SPRITE_ST_DOG_ACTIVITIES,
-} from './types';
+import { ALL_CHARACTER_TYPES } from './types';
 import { DESKS, DOOR_POSITION, OFFICE_VIEWS, VIEW_DOOR_POSITIONS, randomPosition, getViewForArea } from './layout';
 import { DOG_TYPES, CHARACTER_VIEW_PREFERENCES, CHARACTER_CATALOG } from './characters';
 import { OfficeEngine } from './engine';
+import type { FacingDirection } from './engine';
 import { findPath, findNearestWalkable, pathDuration } from './navigation';
 import { pickJobComplete, pickDogBark, pickDogBeg, pickGeneralIdle } from './speech';
+import { ActivityManager } from './activity-manager';
+import type { ActivityAssignment } from './activity-manager';
 
 // ── Status colors ────────────────────────────────────────────
 
@@ -31,57 +28,8 @@ export const STATUS_COLORS: Record<string, string> = {
 /** Initial stagger window — agents start cycling at random offsets so they don't all switch at once */
 const IDLE_STAGGER_MAX = 20_000;
 
-/** Get the area types belonging to a given view */
-function getViewAreaTypes(view: OfficeView): OfficeAreaType[] {
-  const viewConfig = OFFICE_VIEWS.find((v) => v.id === view);
-  return viewConfig?.areas ?? [];
-}
-
-/** Pick a random idle activity for a character, biased toward preferred views */
-function pickIdleActivity(characterType: CharacterType, currentView?: OfficeView): IdleActivity | null {
-  const isDog = DOG_TYPES.has(characterType);
-
-  // Get view preferences for this character
-  const viewPrefs = CHARACTER_VIEW_PREFERENCES[characterType] ?? ['office'];
-
-  // Weighted random: 60% chance stay in current view (or office), 40% chance other view
-  const baseView = currentView ?? 'office';
-  const useOtherView = Math.random() < 0.4 && viewPrefs.length > 1;
-
-  let targetView: OfficeView;
-  if (useOtherView) {
-    // Pick a random different view from preferences
-    const otherViews = viewPrefs.filter((v) => v !== baseView);
-    if (otherViews.length > 0) {
-      targetView = otherViews[Math.floor(Math.random() * otherViews.length)];
-    } else {
-      targetView = baseView;
-    }
-  } else {
-    targetView = baseView;
-  }
-
-  // Gate: dogs cannot visit the gym
-  if (isDog && targetView === 'gym') {
-    targetView = 'office';
-  }
-
-  // Merge all activity maps
-  const allActivities: Record<string, IdleActivity[]> = isDog
-    ? { ...DOG_IDLE_ACTIVITIES, ...DOG_PARK_DOG_ACTIVITIES, ...GYM_DOG_ACTIVITIES, ...SPRITE_ST_DOG_ACTIVITIES }
-    : { ...HUMAN_IDLE_ACTIVITIES, ...DOG_PARK_HUMAN_ACTIVITIES, ...GYM_HUMAN_ACTIVITIES, ...SPRITE_ST_HUMAN_ACTIVITIES };
-
-  // Filter to only activities in the target view's areas
-  const viewAreas = getViewAreaTypes(targetView);
-  const available: IdleActivity[] = [];
-  for (const areaType of viewAreas) {
-    const activities = allActivities[areaType];
-    if (activities) available.push(...activities);
-  }
-
-  if (available.length === 0) return null;
-  return available[Math.floor(Math.random() * available.length)];
-}
+/** Activity manager — handles station capacity, room ownership, slot reservations */
+const activityManager = new ActivityManager();
 
 // ── Office State ─────────────────────────────────────────────
 
@@ -214,11 +162,11 @@ export function createOfficeState(): OfficeState {
 
   /** Set up ping pong pairing for an agent arriving at the table */
   function setupPingPong(agentId: string): void {
-    // Ping pong table center is at approximately {x: 480, y: 579}
-    // (table position {x: 420, y: 545} + {w: 120, h: 68} / 2)
-    const tableCenter = { x: 480, y: 579 };
-    const leftPos = { x: 410, y: tableCenter.y };
-    const rightPos = { x: 550, y: tableCenter.y };
+    // Get positions from station definition
+    const station = activityManager.getStation('break-pingPong');
+    if (!station) return;
+    const leftPos = station.slots[0].position;
+    const rightPos = station.slots[1].position;
 
     // Find another agent already at ping pong without a partner
     const partner = agents.find((a) =>
@@ -237,7 +185,6 @@ export function createOfficeState(): OfficeState {
       // Position on opposite sides of ping pong table
       const partnerEngine = engine.agents.get(partner.id);
       if (partnerEngine) {
-        // Partner goes left, new agent goes right
         engine.moveAgent(partner.id, leftPos, 500);
         engine.moveAgent(agentId, rightPos, 500);
         setTimeout(() => {
@@ -253,7 +200,6 @@ export function createOfficeState(): OfficeState {
         if (!agent || agent.status !== 'idle') return;
         const ea = engine.agents.get(agentId);
         if (ea?.pairedWith) return; // already paired
-        // No partner arrived, switch to a different activity
         cycleIdleActivity(agentId);
       }, 15_000);
       pingPongWaitTimers.set(agentId, timer);
@@ -283,12 +229,15 @@ export function createOfficeState(): OfficeState {
 
     const engineAgent = engine.agents.get(id);
     const agentCurrentView: OfficeView = engineAgent?.currentView ?? 'office';
-    const activity = pickIdleActivity(agent.characterType, agentCurrentView);
-    if (!activity) {
-      // No activities available, just schedule next check
+
+    // Pick activity via manager (handles capacity + room ownership)
+    const assignment = activityManager.pickAndReserve(id, agent.characterType, agentCurrentView);
+    if (!assignment) {
       startIdleCycle(id);
       return;
     }
+
+    const { activity } = assignment;
 
     // Set activity label on both state agent and engine agent
     agent.idleActivity = activity.label;
@@ -296,13 +245,11 @@ export function createOfficeState(): OfficeState {
     agents = [...agents];
 
     const targetView = getViewForArea(activity.area);
-    const rawPos = activity.target ?? randomPosition(activity.area);
-    const pos = findNearestWalkable(rawPos, targetView);
-    const walkSpeed = 100; // casual walking pace
+    const pos = findNearestWalkable(assignment.walkTarget, targetView);
+    const walkSpeed = 100;
 
     if (targetView !== agentCurrentView) {
       // ── Cross-view transition ────────────────────────
-      // 1. Walk to exit of current view
       const exitPos = findNearestWalkable(VIEW_DOOR_POSITIONS[agentCurrentView], agentCurrentView);
       const currentPos = engineAgent?.position ?? DOOR_POSITION;
       const exitPath = findPath(currentPos, exitPos, agentCurrentView);
@@ -318,14 +265,12 @@ export function createOfficeState(): OfficeState {
 
       const exitWalkDuration = exitPath.length > 0 ? pathDuration(exitPath, walkSpeed) : 1500;
 
-      // 2. After reaching exit, fade out
       setTimeout(() => {
         const current = agents.find((a) => a.id === id);
         if (!current || current.status !== 'idle') return;
 
         engine.setAnimation(id, 'fade-out');
 
-        // 3. After fade-out, teleport to entrance of new view
         setTimeout(() => {
           const still = agents.find((a) => a.id === id);
           if (!still || still.status !== 'idle') return;
@@ -337,11 +282,8 @@ export function createOfficeState(): OfficeState {
             ea.position.y = entrancePos.y;
           }
           engine.setCurrentView(id, targetView);
-
-          // 4. Fade in
           engine.setAnimation(id, 'fade-in');
 
-          // 5. After fade-in, walk to activity destination
           setTimeout(() => {
             const alive = agents.find((a) => a.id === id);
             if (!alive || alive.status !== 'idle') return;
@@ -357,15 +299,14 @@ export function createOfficeState(): OfficeState {
 
             const entryWalkDuration = entryPath.length > 0 ? pathDuration(entryPath, walkSpeed) : 2000;
 
-            // 6. After arriving, settle into idle
             setTimeout(() => {
-              arriveAtActivity(id, activity);
+              arriveAtActivity(id, activity, assignment.facing);
             }, entryWalkDuration + 200);
-          }, 350); // fade-in duration + small buffer
-        }, 550); // fade-out duration + small buffer
+          }, 350);
+        }, 550);
       }, exitWalkDuration + 100);
     } else {
-      // ── Same-view transition (original logic) ────────
+      // ── Same-view transition ─────────────────────────
       const currentPos = engineAgent?.position ?? DOOR_POSITION;
       const path = findPath(currentPos, pos, targetView);
 
@@ -381,7 +322,7 @@ export function createOfficeState(): OfficeState {
 
       const walkDuration = path.length > 0 ? pathDuration(path, walkSpeed) : 2000;
       setTimeout(() => {
-        arriveAtActivity(id, activity);
+        arriveAtActivity(id, activity, assignment.facing);
       }, walkDuration + 200);
     }
 
@@ -390,15 +331,19 @@ export function createOfficeState(): OfficeState {
   }
 
   /** Common arrival logic after walking to an activity destination */
-  function arriveAtActivity(id: string, activity: IdleActivity): void {
+  function arriveAtActivity(id: string, activity: IdleActivity, stationFacing?: FacingDirection): void {
     const current = agents.find((a) => a.id === id);
     if (!current || current.status !== 'idle') return;
 
     engine.setStatusColor(id, STATUS_COLORS.idle);
     engine.setAnimation(id, 'idle');
 
-    // Set facing direction based on activity
-    setFacingForActivity(id, activity.label);
+    // Use station-provided facing if available, otherwise infer from activity
+    if (stationFacing) {
+      engine.setFacing(id, stationFacing);
+    } else {
+      setFacingForActivity(id, activity.label);
+    }
 
     // Set up ping pong pairing if applicable
     if (activity.label === 'Playing ping pong') {
@@ -453,6 +398,7 @@ export function createOfficeState(): OfficeState {
     clearIdleTimer(id);
     clearPingPongTimer(id);
     clearPairing(id);
+    activityManager.release(id);
     releaseDesk(id);
     engine.removeAgent(id);
     agents = agents.filter((a) => a.id !== id);
@@ -485,6 +431,7 @@ export function createOfficeState(): OfficeState {
         clearIdleTimer(id);
         clearPingPongTimer(id);
         clearPairing(id);
+        activityManager.release(id);
         releaseDesk(id);
         engine.removeAgent(id);
       }
@@ -574,6 +521,7 @@ export function createOfficeState(): OfficeState {
         clearIdleTimer(id);
         clearPingPongTimer(id);
         clearPairing(id);
+        activityManager.release(id);
         releaseDesk(id);
         engine.removeAgent(id);
       }
@@ -810,6 +758,7 @@ export function createOfficeState(): OfficeState {
     clearIdleTimer(id);
     clearPingPongTimer(id);
     clearPairing(id);
+    activityManager.release(id);
     agent.status = 'working';
     agent.currentTask = task;
     agent.idleActivity = null;
@@ -841,19 +790,20 @@ export function createOfficeState(): OfficeState {
     const agent = agents.find((a) => a.id === id);
     if (!agent) return;
     // Don't set status to 'idle' yet — agent needs to walk to break spot first.
-    // Keep previous status during the walk so the inspector badge stays accurate.
     agent.currentTask = null;
     agents = [...agents];
 
     const engineAgent = engine.agents.get(id);
     const agentCurrentView: OfficeView = engineAgent?.currentView ?? 'office';
 
-    // Pick an initial idle activity (view-aware)
-    const activity = pickIdleActivity(agent.characterType, agentCurrentView);
+    // Pick activity via manager (handles capacity + room ownership)
+    const assignment = activityManager.pickAndReserve(id, agent.characterType, agentCurrentView);
+    const activity = assignment?.activity ?? null;
     const areaType = activity?.area ?? 'breakRoom';
     const targetView = getViewForArea(areaType);
-    const rawPos = activity?.target ?? randomPosition(areaType);
+    const rawPos = assignment?.walkTarget ?? randomPosition(areaType);
     const pos = findNearestWalkable(rawPos, targetView);
+    const assignmentFacing = assignment?.facing;
     const walkSpeed = 100;
 
     engine.setStatusColor(id, STATUS_COLORS.walking);
@@ -872,13 +822,12 @@ export function createOfficeState(): OfficeState {
         agents = [...agents];
 
         if (activity) {
-          arriveAtActivity(id, activity);
+          arriveAtActivity(id, activity, assignmentFacing);
         } else {
           engine.setStatusColor(id, STATUS_COLORS.idle);
           engine.setAnimation(id, 'idle');
         }
 
-        // Start cycling with a staggered initial delay so agents don't all switch together
         const stagger = Math.random() * IDLE_STAGGER_MAX;
         startIdleCycle(id, randomIdleDuration() + stagger);
       }, totalDelay);
@@ -960,6 +909,7 @@ export function createOfficeState(): OfficeState {
     clearIdleTimer(id);
     clearPingPongTimer(id);
     clearPairing(id);
+    activityManager.release(id);
     agent.idleActivity = null;
     agent.status = 'celebrating';
     agent.currentTask = result;
@@ -1027,6 +977,7 @@ export function createOfficeState(): OfficeState {
     clearIdleTimer(realId);
     clearPingPongTimer(realId);
     clearPairing(realId);
+    activityManager.release(realId);
     engine.removeAgent(realId);
     agents = agents.filter(a => a.id !== realId);
     if (selectedAgentId === realId) selectedAgentId = null;
@@ -1067,6 +1018,7 @@ export function createOfficeState(): OfficeState {
     clearIdleTimer(id);
     clearPingPongTimer(id);
     clearPairing(id);
+    activityManager.release(id);
 
     // In session mode, return the character to idle as a session agent
     if (sessionMode && !isSessionAgent(id) && !isDemoAgent(id)) {
@@ -1142,6 +1094,7 @@ export function createOfficeState(): OfficeState {
       demoMode = false;
       sessionMode = false;
       sessionCharMap.clear();
+      activityManager.reset();
       engine.clear();
     },
 
