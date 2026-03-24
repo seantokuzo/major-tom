@@ -5,7 +5,7 @@ import type { CharacterType, Point } from './types';
 
 // ── Animation Types ──────────────────────────────────────────
 
-export type AnimationType = 'none' | 'idle' | 'work-shake' | 'frantic-work' | 'celebrate' | 'shiver' | 'fade-out';
+export type AnimationType = 'none' | 'idle' | 'work-shake' | 'frantic-work' | 'celebrate' | 'shiver' | 'fade-out' | 'fade-in';
 
 export interface SpeechBubble {
   text: string;
@@ -166,6 +166,9 @@ export class OfficeEngine {
     if (type === 'fade-out') {
       agent.alpha = 1; // will fade over 0.5s
     }
+    if (type === 'fade-in') {
+      agent.alpha = 0; // will fade in over 0.3s
+    }
   }
 
   setStatusColor(id: string, color: string): void {
@@ -246,6 +249,46 @@ export class OfficeEngine {
 
     const step = speed * dt;
 
+    // Calculate proposed next position
+    let nextX: number;
+    let nextY: number;
+
+    if (step >= dist) {
+      nextX = currentTarget.x;
+      nextY = currentTarget.y;
+    } else {
+      const ratio = step / dist;
+      nextX = agent.position.x + dx * ratio;
+      nextY = agent.position.y + dy * ratio;
+    }
+
+    // Collision avoidance: check if any other agent in the same view is too close
+    const COLLISION_DIST = 16;
+    let blocked = false;
+    for (const other of this.agents.values()) {
+      if (other.id === agent.id) continue;
+      if (other.currentView !== agent.currentView) continue;
+      const cdx = nextX - other.position.x;
+      const cdy = nextY - other.position.y;
+      const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
+      if (cdist < COLLISION_DIST) {
+        // Only block if the other agent is stationary or we're approaching them
+        // (two moving agents can pass — avoids deadlocks)
+        if (!other.isMoving) {
+          blocked = true;
+          // Nudge perpendicular to our movement direction
+          const perpX = -dy / (dist || 1);
+          const perpY = dx / (dist || 1);
+          const nudge = 4;
+          agent.position.x += perpX * nudge * dt * 10;
+          agent.position.y += perpY * nudge * dt * 10;
+          break;
+        }
+      }
+    }
+
+    if (blocked) return; // skip this frame's forward movement
+
     if (step >= dist) {
       // Reached current waypoint
       agent.position.x = currentTarget.x;
@@ -261,9 +304,8 @@ export class OfficeEngine {
       }
     } else {
       // Move toward current waypoint
-      const ratio = step / dist;
-      agent.position.x += dx * ratio;
-      agent.position.y += dy * ratio;
+      agent.position.x = nextX;
+      agent.position.y = nextY;
     }
   }
 
@@ -352,6 +394,16 @@ export class OfficeEngine {
         // 0.5s alpha fade
         const t = Math.min(ms / 500, 1);
         agent.alpha = 1 - t;
+        if (t >= 1) {
+          agent.animation.type = 'none';
+        }
+        break;
+      }
+
+      case 'fade-in': {
+        // 0.3s alpha fade in
+        const t = Math.min(ms / 300, 1);
+        agent.alpha = t;
         if (t >= 1) {
           agent.animation.type = 'none';
         }
