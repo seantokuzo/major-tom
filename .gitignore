@@ -161,3 +161,4 @@ relay/.pin
 *.bak
 *.orig
 Thumbs.db
+.claude/worktrees/
