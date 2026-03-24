@@ -7,7 +7,8 @@ import {
   HUMAN_IDLE_ACTIVITIES, DOG_IDLE_ACTIVITIES,
   DOG_PARK_HUMAN_ACTIVITIES, DOG_PARK_DOG_ACTIVITIES,
   GYM_HUMAN_ACTIVITIES, GYM_DOG_ACTIVITIES,
-  THEME_PARK_HUMAN_ACTIVITIES, THEME_PARK_DOG_ACTIVITIES,
+  SPRITE_ST_HUMAN_ACTIVITIES, SPRITE_ST_DOG_ACTIVITIES,
+  ALL_BEDROOM_AREAS,
 } from './types';
 import { DESKS, DOOR_POSITION, randomPosition, getViewForArea } from './layout';
 import { getCharacterConfig, DOG_TYPES } from './characters';
@@ -40,11 +41,9 @@ const BREAK_TO_AREA: Record<BreakDestination, OfficeAreaType> = {
   gymFloor: 'gymFloor',
   yogaStudio: 'yogaStudio',
   lockerRoom: 'lockerRoom',
-  // Theme Park
-  mainPlaza: 'mainPlaza',
-  rollerCoasterZone: 'rollerCoasterZone',
-  arcadeHall: 'arcadeHall',
-};
+  // Sprite Street bedrooms
+  ...Object.fromEntries(ALL_BEDROOM_AREAS.map(a => [a, a])),
+} as Record<BreakDestination, OfficeAreaType>;
 
 // ── Idle Activity Cycling ────────────────────────────────────
 
@@ -58,8 +57,8 @@ function pickIdleActivity(characterType: CharacterType): IdleActivity | null {
 
   // Merge all activity maps (office + new views)
   const allActivities: Record<string, IdleActivity[]> = isDog
-    ? { ...DOG_IDLE_ACTIVITIES, ...DOG_PARK_DOG_ACTIVITIES, ...GYM_DOG_ACTIVITIES, ...THEME_PARK_DOG_ACTIVITIES }
-    : { ...HUMAN_IDLE_ACTIVITIES, ...DOG_PARK_HUMAN_ACTIVITIES, ...GYM_HUMAN_ACTIVITIES, ...THEME_PARK_HUMAN_ACTIVITIES };
+    ? { ...DOG_IDLE_ACTIVITIES, ...DOG_PARK_DOG_ACTIVITIES, ...GYM_DOG_ACTIVITIES, ...SPRITE_ST_DOG_ACTIVITIES }
+    : { ...HUMAN_IDLE_ACTIVITIES, ...DOG_PARK_HUMAN_ACTIVITIES, ...GYM_HUMAN_ACTIVITIES, ...SPRITE_ST_HUMAN_ACTIVITIES };
 
   // Collect all available activities from this character's allowed break areas
   const available: IdleActivity[] = [];

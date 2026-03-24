@@ -1,6 +1,7 @@
 // Character catalog — 10 tech specialists + 4 dogs
 
 import type { BreakDestination, CharacterConfig, CharacterType, OfficeView } from './types';
+import { CHARACTER_BEDROOM, ALL_BEDROOM_AREAS } from './types';
 
 export const CHARACTER_CATALOG: CharacterConfig[] = [
   // ── Humans ──────────────────────────────────────────────────
@@ -8,70 +9,70 @@ export const CHARACTER_CATALOG: CharacterConfig[] = [
     type: 'architect',
     displayName: 'Architect',
     spriteColor: 'rgb(51, 51, 64)',
-    breakBehaviors: ['strategyRoom', 'kitchen', 'breakRoom'],
+    breakBehaviors: ['strategyRoom', 'kitchen', 'breakRoom', CHARACTER_BEDROOM.architect],
     needsBlanket: false,
   },
   {
     type: 'leadEngineer',
     displayName: 'Lead Engineer',
     spriteColor: 'rgb(64, 140, 217)',
-    breakBehaviors: ['strategyRoom', 'kitchen', 'breakRoom'],
+    breakBehaviors: ['strategyRoom', 'kitchen', 'breakRoom', CHARACTER_BEDROOM.leadEngineer],
     needsBlanket: false,
   },
   {
     type: 'engManager',
     displayName: 'Eng Manager',
     spriteColor: 'rgb(77, 128, 179)',
-    breakBehaviors: ['strategyRoom', 'kitchen', 'breakRoom'],
+    breakBehaviors: ['strategyRoom', 'kitchen', 'breakRoom', CHARACTER_BEDROOM.engManager],
     needsBlanket: false,
   },
   {
     type: 'backendEngineer',
     displayName: 'Backend Engineer',
     spriteColor: 'rgb(46, 102, 64)',
-    breakBehaviors: ['kitchen', 'breakRoom'],
+    breakBehaviors: ['kitchen', 'breakRoom', CHARACTER_BEDROOM.backendEngineer],
     needsBlanket: false,
   },
   {
     type: 'frontendEngineer',
     displayName: 'Frontend Engineer',
     spriteColor: 'rgb(217, 115, 166)',
-    breakBehaviors: ['kitchen', 'breakRoom'],
+    breakBehaviors: ['kitchen', 'breakRoom', CHARACTER_BEDROOM.frontendEngineer],
     needsBlanket: false,
   },
   {
     type: 'uxDesigner',
     displayName: 'UX Designer',
     spriteColor: 'rgb(64, 64, 77)',
-    breakBehaviors: ['strategyRoom', 'kitchen', 'breakRoom'],
+    breakBehaviors: ['strategyRoom', 'kitchen', 'breakRoom', CHARACTER_BEDROOM.uxDesigner],
     needsBlanket: false,
   },
   {
     type: 'projectManager',
     displayName: 'Project Manager',
     spriteColor: 'rgb(51, 64, 89)',
-    breakBehaviors: ['strategyRoom', 'kitchen', 'breakRoom'],
+    breakBehaviors: ['strategyRoom', 'kitchen', 'breakRoom', CHARACTER_BEDROOM.projectManager],
     needsBlanket: false,
   },
   {
     type: 'productManager',
     displayName: 'Product Manager',
     spriteColor: 'rgb(64, 128, 153)',
-    breakBehaviors: ['strategyRoom', 'kitchen', 'breakRoom'],
+    breakBehaviors: ['strategyRoom', 'kitchen', 'breakRoom', CHARACTER_BEDROOM.productManager],
     needsBlanket: false,
   },
   {
     type: 'devops',
     displayName: 'DevOps',
     spriteColor: 'rgb(153, 64, 51)',
-    breakBehaviors: ['kitchen', 'breakRoom'],
+    breakBehaviors: ['kitchen', 'breakRoom', CHARACTER_BEDROOM.devops],
     needsBlanket: false,
   },
   {
     type: 'databaseGuru',
     displayName: 'Database Guru',
     spriteColor: 'rgb(102, 51, 153)',
-    breakBehaviors: ['kitchen', 'breakRoom'],
+    breakBehaviors: ['kitchen', 'breakRoom', CHARACTER_BEDROOM.databaseGuru],
     needsBlanket: false,
   },
 
@@ -80,28 +81,28 @@ export const CHARACTER_CATALOG: CharacterConfig[] = [
     type: 'dachshund',
     displayName: 'Elvito (Senor)',
     spriteColor: 'rgb(184, 107, 46)',
-    breakBehaviors: ['kitchen', 'breakRoom'],
+    breakBehaviors: ['kitchen', 'breakRoom', CHARACTER_BEDROOM.dachshund],
     needsBlanket: true,
   },
   {
     type: 'cattleDog',
     displayName: 'Steve',
     spriteColor: 'rgb(179, 89, 51)',
-    breakBehaviors: ['kitchen', 'breakRoom'],
+    breakBehaviors: ['kitchen', 'breakRoom', CHARACTER_BEDROOM.cattleDog],
     needsBlanket: false,
   },
   {
     type: 'schnauzerBlack',
     displayName: 'Hoku',
     spriteColor: 'rgb(38, 38, 51)',
-    breakBehaviors: ['kitchen', 'breakRoom'],
+    breakBehaviors: ['kitchen', 'breakRoom', CHARACTER_BEDROOM.schnauzerBlack],
     needsBlanket: false,
   },
   {
     type: 'schnauzerPepper',
     displayName: 'Kai',
     spriteColor: 'rgb(89, 89, 102)',
-    breakBehaviors: ['kitchen', 'breakRoom'],
+    breakBehaviors: ['kitchen', 'breakRoom', CHARACTER_BEDROOM.schnauzerPepper],
     needsBlanket: false,
   },
 ];
@@ -113,7 +114,7 @@ export const VIEW_BREAK_DESTINATIONS_HUMAN: Record<OfficeView, BreakDestination[
   office: ['strategyRoom', 'kitchen', 'breakRoom'],
   dogPark: ['dogParkField', 'dogPondArea'],
   gym: ['gymFloor', 'yogaStudio', 'lockerRoom'],
-  themePark: ['mainPlaza', 'rollerCoasterZone', 'arcadeHall'],
+  spriteStreet: ALL_BEDROOM_AREAS as unknown as BreakDestination[],
 };
 
 /** Extra break destinations available per view — dogs */
@@ -121,27 +122,27 @@ export const VIEW_BREAK_DESTINATIONS_DOG: Record<OfficeView, BreakDestination[]>
   office: ['kitchen', 'breakRoom'],
   dogPark: ['dogParkField', 'agilityCourse', 'dogPondArea'],
   gym: ['gymFloor', 'yogaStudio'],
-  themePark: ['mainPlaza', 'arcadeHall'],
+  spriteStreet: ALL_BEDROOM_AREAS as unknown as BreakDestination[],
 };
 
 /** Preferred views per character type — dogs gravitate to the park */
 export const CHARACTER_VIEW_PREFERENCES: Record<CharacterType, OfficeView[]> = {
-  // Humans can visit gym and theme park on breaks
-  architect:        ['office', 'gym', 'themePark'],
-  leadEngineer:     ['office', 'gym', 'themePark'],
-  engManager:       ['office', 'gym', 'themePark'],
-  backendEngineer:  ['office', 'gym'],
-  frontendEngineer: ['office', 'themePark'],
-  uxDesigner:       ['office', 'themePark'],
-  projectManager:   ['office', 'gym'],
-  productManager:   ['office', 'themePark'],
-  devops:           ['office', 'gym'],
-  databaseGuru:     ['office', 'gym'],
-  // Dogs strongly prefer the dog park
-  dachshund:        ['office', 'dogPark'],
-  cattleDog:        ['office', 'dogPark'],
-  schnauzerBlack:   ['office', 'dogPark'],
-  schnauzerPepper:  ['office', 'dogPark'],
+  // Humans can visit gym and Sprite St. on breaks
+  architect:        ['office', 'gym', 'spriteStreet'],
+  leadEngineer:     ['office', 'gym', 'spriteStreet'],
+  engManager:       ['office', 'gym', 'spriteStreet'],
+  backendEngineer:  ['office', 'gym', 'spriteStreet'],
+  frontendEngineer: ['office', 'spriteStreet'],
+  uxDesigner:       ['office', 'spriteStreet'],
+  projectManager:   ['office', 'gym', 'spriteStreet'],
+  productManager:   ['office', 'spriteStreet'],
+  devops:           ['office', 'gym', 'spriteStreet'],
+  databaseGuru:     ['office', 'gym', 'spriteStreet'],
+  // Dogs — park and home
+  dachshund:        ['office', 'dogPark', 'spriteStreet'],
+  cattleDog:        ['office', 'dogPark', 'spriteStreet'],
+  schnauzerBlack:   ['office', 'dogPark', 'spriteStreet'],
+  schnauzerPepper:  ['office', 'dogPark', 'spriteStreet'],
 };
 
 const configByType = new Map<CharacterType, CharacterConfig>(

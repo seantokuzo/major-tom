@@ -147,29 +147,6 @@ export function drawFloorPattern(ctx: CanvasRenderingContext2D, area: OfficeArea
       }
       break;
     }
-    case 'cobblestone': {
-      // Rounded cobblestone pattern
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.06)';
-      ctx.lineWidth = 1;
-      for (let cy2 = y; cy2 < y + height; cy2 += 16) {
-        const rowOffset = ((cy2 - y) / 16) % 2 === 0 ? 0 : 10;
-        for (let cx2 = x + rowOffset; cx2 < x + width; cx2 += 20) {
-          ctx.beginPath();
-          ctx.ellipse(cx2 + 10, cy2 + 8, 9, 7, 0, 0, Math.PI * 2);
-          ctx.stroke();
-          // Subtle shading on each stone
-          const seed = (cx2 * 3 + cy2 * 7) % 5;
-          if (seed < 2) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.015)';
-            ctx.fillRect(cx2 + 3, cy2 + 2, 6, 4);
-          } else if (seed < 4) {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.02)';
-            ctx.fillRect(cx2 + 4, cy2 + 5, 5, 3);
-          }
-        }
-      }
-      break;
-    }
   }
 
   ctx.restore();
@@ -418,27 +395,15 @@ export function drawFurniture(ctx: CanvasRenderingContext2D, item: Furniture) {
     case 'waterFountain':
       drawWaterFountain(ctx, x, y);
       break;
-    // ── Theme Park ──
-    case 'rollerCoasterTrack':
-      drawRollerCoasterTrack(ctx, x, y, item.width, item.height);
+    // ── Sprite Street bedrooms ──
+    case 'bed':
+      drawBed(ctx, x, y, item.width, item.height, item.color);
       break;
-    case 'ferrisWheel':
-      drawFerrisWheel(ctx, x, y);
+    case 'closet':
+      drawCloset(ctx, x, y, item.width, item.height);
       break;
-    case 'hotDogStand':
-      drawHotDogStand(ctx, x, y);
-      break;
-    case 'cottonCandyCart':
-      drawCottonCandyCart(ctx, x, y);
-      break;
-    case 'ticketBooth':
-      drawTicketBooth(ctx, x, y);
-      break;
-    case 'balloonCart':
-      drawBalloonCart(ctx, x, y);
-      break;
-    case 'carousel':
-      drawCarousel(ctx, x, y);
+    case 'rug':
+      drawRug(ctx, x, y, item.width, item.height, item.color);
       break;
   }
 }
@@ -2173,396 +2138,61 @@ export function drawWaterFountain(ctx: CanvasRenderingContext2D, x: number, y: n
 }
 
 // ══════════════════════════════════════════════════════════════════
-// ── Theme Park furniture renderers ───────────────────────────────
+// ── Sprite Street bedroom furniture renderers ────────────────────
 // ══════════════════════════════════════════════════════════════════
 
-export function drawRollerCoasterTrack(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
-  // Support structure (criss-cross beams)
-  ctx.fillStyle = 'rgb(120, 120, 130)';
-  const supportSpacing = 30;
-  for (let sx = x; sx < x + w; sx += supportSpacing) {
-    // Vertical supports
-    ctx.fillRect(sx, y + 10, 3, h - 10);
-    // Cross braces
-    ctx.strokeStyle = 'rgb(100, 100, 110)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(sx, y + 20);
-    ctx.lineTo(sx + supportSpacing / 2, y + h - 5);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(sx + supportSpacing / 2, y + 20);
-    ctx.lineTo(sx, y + h - 5);
-    ctx.stroke();
-  }
-  // Track rails (wavy/hilly path)
-  ctx.strokeStyle = 'rgb(180, 50, 50)';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(x, y + h * 0.4);
-  ctx.bezierCurveTo(
-    x + w * 0.2, y,
-    x + w * 0.35, y + h * 0.7,
-    x + w * 0.5, y + h * 0.2
-  );
-  ctx.bezierCurveTo(
-    x + w * 0.65, y - h * 0.1,
-    x + w * 0.8, y + h * 0.5,
-    x + w, y + h * 0.3
-  );
-  ctx.stroke();
-  // Second rail (parallel)
-  ctx.strokeStyle = 'rgb(160, 40, 40)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(x, y + h * 0.4 + 4);
-  ctx.bezierCurveTo(
-    x + w * 0.2, y + 4,
-    x + w * 0.35, y + h * 0.7 + 4,
-    x + w * 0.5, y + h * 0.2 + 4
-  );
-  ctx.bezierCurveTo(
-    x + w * 0.65, y - h * 0.1 + 4,
-    x + w * 0.8, y + h * 0.5 + 4,
-    x + w, y + h * 0.3 + 4
-  );
-  ctx.stroke();
-  // Track ties (cross-ties between rails)
-  ctx.fillStyle = 'rgb(140, 140, 150)';
-  for (let tx = x + 10; tx < x + w - 5; tx += 12) {
-    ctx.fillRect(tx, y + h * 0.3, 2, 6);
-  }
+/** Bed — rectangular with pillow, colored blanket */
+function drawBed(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string) {
+  // Bed frame (dark wood)
+  ctx.fillStyle = 'rgb(90, 65, 40)';
+  ctx.fillRect(x, y, w, h);
+  // Mattress (slightly inset)
+  ctx.fillStyle = 'rgb(230, 225, 215)';
+  ctx.fillRect(x + 3, y + 3, w - 6, h - 6);
+  // Blanket (bottom 60%, colored to sprite)
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 3, y + h * 0.4, w - 6, h * 0.6 - 3);
+  // Blanket fold line
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.fillRect(x + 3, y + h * 0.4, w - 6, 2);
+  // Pillow (top)
+  ctx.fillStyle = 'rgb(240, 238, 230)';
+  ctx.fillRect(x + 6, y + 6, w - 12, h * 0.3);
+  // Pillow shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.08)';
+  ctx.fillRect(x + 6, y + 6 + h * 0.25, w - 12, 2);
 }
 
-export function drawFerrisWheel(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  const r = 40;
-  const cx2 = x + r;
-  const cy = y + r;
-  // Support legs (A-frame)
-  ctx.fillStyle = 'rgb(100, 100, 110)';
-  ctx.beginPath();
-  ctx.moveTo(cx2 - 20, cy + r + 10);
-  ctx.lineTo(cx2, cy);
-  ctx.lineTo(cx2 + 20, cy + r + 10);
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = 'rgb(100, 100, 110)';
-  ctx.stroke();
-  // Cross brace on support
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(cx2 - 12, cy + r);
-  ctx.lineTo(cx2 + 12, cy + r);
-  ctx.stroke();
-  // Outer wheel rim
-  ctx.strokeStyle = 'rgb(180, 140, 60)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(cx2, cy, r, 0, Math.PI * 2);
-  ctx.stroke();
-  // Spokes (8)
-  ctx.strokeStyle = 'rgb(160, 120, 50)';
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 8; i++) {
-    const angle = (i * Math.PI) / 4;
-    ctx.beginPath();
-    ctx.moveTo(cx2, cy);
-    ctx.lineTo(cx2 + Math.cos(angle) * r, cy + Math.sin(angle) * r);
-    ctx.stroke();
-  }
-  // Center hub
-  ctx.fillStyle = 'rgb(200, 160, 70)';
-  ctx.beginPath();
-  ctx.arc(cx2, cy, 4, 0, Math.PI * 2);
-  ctx.fill();
-  // Gondolas (8 little boxes at spoke ends)
-  const gondolaColors = [
-    'rgb(220, 60, 60)', 'rgb(60, 140, 220)', 'rgb(60, 180, 80)', 'rgb(220, 180, 40)',
-    'rgb(200, 80, 180)', 'rgb(80, 200, 200)', 'rgb(220, 120, 40)', 'rgb(140, 80, 200)',
-  ];
-  for (let i = 0; i < 8; i++) {
-    const angle = (i * Math.PI) / 4;
-    const gx = cx2 + Math.cos(angle) * (r - 2);
-    const gy = cy + Math.sin(angle) * (r - 2);
-    ctx.fillStyle = gondolaColors[i];
-    ctx.fillRect(Math.floor(gx) - 3, Math.floor(gy) - 2, 6, 5);
-    // Gondola roof
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-    ctx.fillRect(Math.floor(gx) - 3, Math.floor(gy) - 2, 6, 1);
-  }
-}
-
-export function drawHotDogStand(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  const w = 30, h = 28;
-  // Cart body
-  ctx.fillStyle = 'rgb(200, 60, 50)';
-  safeRoundRect(ctx, x + 2, y + 10, w - 4, h - 14, 2);
-  ctx.fill();
-  // Cart body stripe
-  ctx.fillStyle = 'rgb(220, 200, 50)';
-  ctx.fillRect(x + 3, y + 16, w - 6, 2);
-  // Umbrella/awning
-  ctx.fillStyle = 'rgb(220, 70, 60)';
-  ctx.beginPath();
-  ctx.moveTo(x - 2, y + 8);
-  ctx.lineTo(x + w / 2, y - 2);
-  ctx.lineTo(x + w + 2, y + 8);
-  ctx.closePath();
-  ctx.fill();
-  // Umbrella stripes
-  ctx.fillStyle = 'rgb(240, 220, 60)';
-  ctx.beginPath();
-  ctx.moveTo(x + 5, y + 7);
-  ctx.lineTo(x + w / 2 - 3, y);
-  ctx.lineTo(x + w / 2 + 3, y);
-  ctx.lineTo(x + w - 5, y + 7);
-  ctx.closePath();
-  ctx.fill();
-  // Umbrella pole
-  ctx.fillStyle = 'rgb(150, 150, 160)';
-  ctx.fillRect(x + w / 2 - 1, y - 2, 2, 12);
-  // Counter surface
-  ctx.fillStyle = 'rgb(180, 180, 185)';
-  ctx.fillRect(x + 2, y + 10, w - 4, 3);
-  // Hot dogs on grill (tiny sausages)
-  ctx.fillStyle = 'rgb(180, 100, 50)';
-  ctx.fillRect(x + 5, y + 11, 6, 2);
-  ctx.fillRect(x + 13, y + 11, 6, 2);
-  ctx.fillRect(x + 21, y + 11, 5, 2);
-  // Wheels
-  ctx.fillStyle = 'rgb(50, 50, 58)';
-  ctx.beginPath();
-  ctx.arc(x + 6, y + h, 3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(x + w - 6, y + h, 3, 0, Math.PI * 2);
-  ctx.fill();
-  // Wheel hubs
-  ctx.fillStyle = 'rgb(140, 140, 150)';
-  ctx.fillRect(x + 5, y + h - 1, 2, 2);
-  ctx.fillRect(x + w - 7, y + h - 1, 2, 2);
-}
-
-export function drawCottonCandyCart(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  const w = 26, h = 26;
-  // Cart body
-  ctx.fillStyle = 'rgb(220, 180, 200)';
-  safeRoundRect(ctx, x + 2, y + 10, w - 4, h - 14, 2);
-  ctx.fill();
-  // Awning
-  ctx.fillStyle = 'rgb(180, 130, 200)';
-  ctx.beginPath();
-  ctx.moveTo(x, y + 8);
-  ctx.lineTo(x + w / 2, y);
-  ctx.lineTo(x + w, y + 8);
-  ctx.closePath();
-  ctx.fill();
-  // Awning scallop edge
-  ctx.fillStyle = 'rgb(200, 150, 220)';
-  for (let i = 0; i < 5; i++) {
-    const sx = x + 2 + i * (w - 4) / 5;
-    ctx.beginPath();
-    ctx.arc(sx + (w - 4) / 10, y + 8, 3, 0, Math.PI);
-    ctx.fill();
-  }
-  // Cotton candy on sticks (fluffy pink/blue puffs)
-  // Pink puff
-  ctx.fillStyle = 'rgb(255, 150, 180)';
-  ctx.beginPath();
-  ctx.arc(x + 7, y + 5, 5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = 'rgb(255, 170, 200)';
-  ctx.beginPath();
-  ctx.arc(x + 6, y + 3, 3, 0, Math.PI * 2);
-  ctx.fill();
-  // Blue puff
-  ctx.fillStyle = 'rgb(130, 180, 255)';
-  ctx.beginPath();
-  ctx.arc(x + w - 7, y + 5, 5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = 'rgb(150, 200, 255)';
-  ctx.beginPath();
-  ctx.arc(x + w - 8, y + 3, 3, 0, Math.PI * 2);
-  ctx.fill();
-  // Sticks
-  ctx.fillStyle = 'rgb(200, 180, 150)';
-  ctx.fillRect(x + 6, y + 8, 2, 6);
-  ctx.fillRect(x + w - 8, y + 8, 2, 6);
-  // Wheels
-  ctx.fillStyle = 'rgb(50, 50, 58)';
-  ctx.beginPath();
-  ctx.arc(x + 6, y + h, 3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(x + w - 6, y + h, 3, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-export function drawTicketBooth(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  const w = 28, h = 34;
-  // Booth body
-  ctx.fillStyle = 'rgb(200, 180, 60)';
-  ctx.fillRect(x, y + 6, w, h - 6);
-  // Roof
-  ctx.fillStyle = 'rgb(180, 50, 50)';
-  ctx.fillRect(x - 2, y, w + 4, 8);
-  // Roof trim
-  ctx.fillStyle = 'rgb(200, 70, 60)';
-  ctx.fillRect(x - 2, y, w + 4, 2);
-  // Window opening
-  ctx.fillStyle = 'rgb(40, 50, 60)';
-  ctx.fillRect(x + 3, y + 10, w - 6, 10);
-  // Window counter/ledge
-  ctx.fillStyle = 'rgb(180, 160, 50)';
-  ctx.fillRect(x + 2, y + 19, w - 4, 3);
-  // "TICKETS" sign approximation (colored bar)
-  ctx.fillStyle = 'rgb(240, 240, 240)';
-  ctx.fillRect(x + 4, y + 2, w - 8, 4);
-  ctx.fillStyle = 'rgb(180, 40, 40)';
-  ctx.fillRect(x + 6, y + 3, w - 12, 2);
-  // Booth attendant (simple figure in window)
-  ctx.fillStyle = 'rgb(200, 160, 120)';
-  ctx.beginPath();
-  ctx.arc(x + w / 2, y + 13, 3, 0, Math.PI * 2);
-  ctx.fill();
+/** Closet — tall rectangle with doors and knob */
+function drawCloset(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
   // Body
-  ctx.fillStyle = 'rgb(80, 80, 200)';
-  ctx.fillRect(x + w / 2 - 3, y + 16, 6, 3);
-  // Side panels
-  ctx.fillStyle = 'rgb(185, 165, 50)';
-  ctx.fillRect(x, y + 6, 2, h - 6);
-  ctx.fillRect(x + w - 2, y + 6, 2, h - 6);
-  // Bottom edge
-  ctx.fillStyle = 'rgb(160, 140, 40)';
+  ctx.fillStyle = 'rgb(140, 110, 75)';
+  ctx.fillRect(x, y, w, h);
+  // Top edge
+  ctx.fillStyle = 'rgb(160, 130, 90)';
+  ctx.fillRect(x, y, w, 2);
+  // Door divider line (center vertical)
+  ctx.fillStyle = 'rgb(110, 85, 55)';
+  ctx.fillRect(x + w / 2 - 1, y + 4, 2, h - 8);
+  // Door knobs
+  ctx.fillStyle = 'rgb(200, 180, 120)';
+  ctx.fillRect(x + w / 2 - 4, y + h / 2, 2, 3);
+  ctx.fillRect(x + w / 2 + 2, y + h / 2, 2, 3);
+  // Shadow at bottom
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
   ctx.fillRect(x, y + h - 2, w, 2);
 }
 
-export function drawBalloonCart(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  const w = 24, h = 20;
-  // Cart body
-  ctx.fillStyle = 'rgb(160, 100, 60)';
-  safeRoundRect(ctx, x + 2, y + 30, w - 4, h - 10, 2);
-  ctx.fill();
-  // Cart handle pole
-  ctx.fillStyle = 'rgb(140, 140, 150)';
-  ctx.fillRect(x + w / 2 - 1, y + 10, 2, 24);
-  // Balloon strings (converge at pole top)
-  ctx.strokeStyle = 'rgba(200, 200, 200, 0.4)';
+/** Rug — flat colored rectangle (non-blocking) */
+function drawRug(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string) {
+  // Rug body
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+  // Border (slightly darker)
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
   ctx.lineWidth = 1;
-  const balloonPositions = [
-    { bx: -8, by: -15, color: 'rgb(220, 50, 50)' },
-    { bx: 0, by: -20, color: 'rgb(50, 150, 220)' },
-    { bx: 8, by: -14, color: 'rgb(50, 200, 80)' },
-    { bx: -4, by: -22, color: 'rgb(220, 200, 50)' },
-    { bx: 5, by: -18, color: 'rgb(200, 80, 200)' },
-  ];
-  const poleTopX = x + w / 2;
-  const poleTopY = y + 10;
-  for (const bp of balloonPositions) {
-    const bx2 = poleTopX + bp.bx;
-    const by2 = poleTopY + bp.by;
-    // String
-    ctx.beginPath();
-    ctx.moveTo(poleTopX, poleTopY);
-    ctx.lineTo(bx2, by2 + 6);
-    ctx.stroke();
-    // Balloon body (oval)
-    ctx.fillStyle = bp.color;
-    ctx.beginPath();
-    ctx.ellipse(bx2, by2, 5, 7, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // Balloon highlight
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.beginPath();
-    ctx.ellipse(bx2 - 1, by2 - 2, 2, 3, -0.3, 0, Math.PI * 2);
-    ctx.fill();
-    // Balloon knot
-    ctx.fillStyle = bp.color;
-    ctx.fillRect(bx2 - 1, by2 + 6, 2, 2);
-  }
-  // Wheels
-  ctx.fillStyle = 'rgb(50, 50, 58)';
-  ctx.beginPath();
-  ctx.arc(x + 6, y + h + 30, 3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(x + w - 6, y + h + 30, 3, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-export function drawCarousel(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  const r = 32;
-  const cx2 = x + r;
-  const cy = y + r + 8;
-  // Base platform (octagonal, top-down view)
-  ctx.fillStyle = 'rgb(180, 140, 60)';
-  ctx.beginPath();
-  for (let i = 0; i < 8; i++) {
-    const angle = (i * Math.PI) / 4;
-    const px2 = cx2 + Math.cos(angle) * (r + 2);
-    const py2 = cy + Math.sin(angle) * (r / 2 + 2);
-    if (i === 0) ctx.moveTo(px2, py2);
-    else ctx.lineTo(px2, py2);
-  }
-  ctx.closePath();
-  ctx.fill();
-  // Platform edge
-  ctx.strokeStyle = 'rgb(160, 120, 50)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  // Center pole
-  ctx.fillStyle = 'rgb(200, 170, 60)';
-  ctx.fillRect(cx2 - 3, cy - 16, 6, 20);
-  // Top canopy
-  ctx.fillStyle = 'rgb(220, 60, 60)';
-  ctx.beginPath();
-  ctx.ellipse(cx2, cy - 12, r, r / 3, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Canopy stripes
-  ctx.fillStyle = 'rgb(240, 220, 60)';
-  for (let i = 0; i < 8; i++) {
-    const angle = (i * Math.PI) / 4;
-    ctx.beginPath();
-    ctx.moveTo(cx2, cy - 12);
-    ctx.lineTo(
-      cx2 + Math.cos(angle) * r,
-      cy - 12 + Math.sin(angle) * (r / 3)
-    );
-    ctx.lineTo(
-      cx2 + Math.cos(angle + Math.PI / 8) * r,
-      cy - 12 + Math.sin(angle + Math.PI / 8) * (r / 3)
-    );
-    ctx.closePath();
-    if (i % 2 === 0) ctx.fill();
-  }
-  // Canopy top finial
-  ctx.fillStyle = 'rgb(220, 180, 50)';
-  ctx.beginPath();
-  ctx.arc(cx2, cy - 18, 3, 0, Math.PI * 2);
-  ctx.fill();
-  // Horses (small colored shapes around the edge)
-  const horseColors = [
-    'rgb(240, 240, 240)', 'rgb(180, 140, 100)', 'rgb(60, 60, 70)',
-    'rgb(200, 180, 140)', 'rgb(220, 200, 180)', 'rgb(100, 80, 60)',
-  ];
-  for (let i = 0; i < 6; i++) {
-    const angle = (i * Math.PI) / 3;
-    const hx = cx2 + Math.cos(angle) * (r - 6);
-    const hy = cy + Math.sin(angle) * (r / 2 - 4);
-    // Horse body (tiny rectangle)
-    ctx.fillStyle = horseColors[i];
-    ctx.fillRect(Math.floor(hx) - 3, Math.floor(hy) - 2, 6, 4);
-    // Pole
-    ctx.fillStyle = 'rgb(200, 170, 60)';
-    ctx.fillRect(Math.floor(hx), Math.floor(hy) - 8, 1, 8);
-  }
-  // Scalloped edge trim
-  ctx.fillStyle = 'rgba(220, 60, 60, 0.4)';
-  for (let i = 0; i < 16; i++) {
-    const angle = (i * Math.PI) / 8;
-    const sx = cx2 + Math.cos(angle) * (r + 1);
-    const sy = cy - 12 + Math.sin(angle) * (r / 3 + 1);
-    ctx.beginPath();
-    ctx.arc(sx, sy, 2, 0, Math.PI);
-    ctx.fill();
-  }
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  // Inner pattern line
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.strokeRect(x + 3.5, y + 3.5, w - 7, h - 7);
 }
