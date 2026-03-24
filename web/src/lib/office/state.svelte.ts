@@ -1,7 +1,7 @@
 // Office state — Svelte 5 runes-based state management
 // Ported from iOS OfficeViewModel.swift
 
-import type { OfficeAgent, CharacterType, Desk, OfficeAreaType, BreakDestination, IdleActivity } from './types';
+import type { OfficeAgent, CharacterType, Desk, OfficeAreaType, IdleActivity, OfficeView } from './types';
 import {
   ALL_CHARACTER_TYPES,
   HUMAN_IDLE_ACTIVITIES, DOG_IDLE_ACTIVITIES,
@@ -9,8 +9,8 @@ import {
   GYM_HUMAN_ACTIVITIES, GYM_DOG_ACTIVITIES,
   THEME_PARK_HUMAN_ACTIVITIES, THEME_PARK_DOG_ACTIVITIES,
 } from './types';
-import { DESKS, DOOR_POSITION, randomPosition, getViewForArea } from './layout';
-import { getCharacterConfig, DOG_TYPES } from './characters';
+import { DESKS, DOOR_POSITION, OFFICE_VIEWS, VIEW_DOOR_POSITIONS, randomPosition, getViewForArea } from './layout';
+import { DOG_TYPES, CHARACTER_VIEW_PREFERENCES } from './characters';
 import { OfficeEngine } from './engine';
 import { findPath, findNearestWalkable, pathDuration } from './navigation';
 import { pickJobComplete, pickDogBark, pickDogBeg, pickGeneralIdle } from './speech';
@@ -26,48 +26,59 @@ export const STATUS_COLORS: Record<string, string> = {
   leaving: 'rgb(179, 77, 77)',
 };
 
-// ── Break destination → area type mapping ────────────────────
-
-const BREAK_TO_AREA: Record<BreakDestination, OfficeAreaType> = {
-  strategyRoom: 'strategyRoom',
-  breakRoom: 'breakRoom',
-  kitchen: 'kitchen',
-  // Dog Park
-  dogParkField: 'dogParkField',
-  agilityCourse: 'agilityCourse',
-  dogPondArea: 'dogPondArea',
-  // Gym
-  gymFloor: 'gymFloor',
-  yogaStudio: 'yogaStudio',
-  lockerRoom: 'lockerRoom',
-  // Theme Park
-  mainPlaza: 'mainPlaza',
-  rollerCoasterZone: 'rollerCoasterZone',
-  arcadeHall: 'arcadeHall',
-};
-
 // ── Idle Activity Cycling ────────────────────────────────────
 
 /** Initial stagger window — agents start cycling at random offsets so they don't all switch at once */
 const IDLE_STAGGER_MAX = 20_000;
 
-/** Pick a random idle activity for a character based on their break destinations */
-function pickIdleActivity(characterType: CharacterType): IdleActivity | null {
-  const config = getCharacterConfig(characterType);
+/** Get the area types belonging to a given view */
+function getViewAreaTypes(view: OfficeView): OfficeAreaType[] {
+  const viewConfig = OFFICE_VIEWS.find((v) => v.id === view);
+  return viewConfig?.areas ?? [];
+}
+
+/** Pick a random idle activity for a character, biased toward preferred views */
+function pickIdleActivity(characterType: CharacterType, currentView?: OfficeView): IdleActivity | null {
   const isDog = DOG_TYPES.has(characterType);
 
-  // Merge all activity maps (office + new views)
+  // Get view preferences for this character
+  const viewPrefs = CHARACTER_VIEW_PREFERENCES[characterType] ?? ['office'];
+
+  // Weighted random: 60% chance stay in current view (or office), 40% chance other view
+  const baseView = currentView ?? 'office';
+  const useOtherView = Math.random() < 0.4 && viewPrefs.length > 1;
+
+  let targetView: OfficeView;
+  if (useOtherView) {
+    // Pick a random different view from preferences
+    const otherViews = viewPrefs.filter((v) => v !== baseView);
+    if (otherViews.length > 0) {
+      targetView = otherViews[Math.floor(Math.random() * otherViews.length)];
+    } else {
+      targetView = baseView;
+    }
+  } else {
+    targetView = baseView;
+  }
+
+  // Gate: dogs cannot visit the gym
+  if (isDog && targetView === 'gym') {
+    targetView = 'office';
+  }
+
+  // Merge all activity maps
   const allActivities: Record<string, IdleActivity[]> = isDog
     ? { ...DOG_IDLE_ACTIVITIES, ...DOG_PARK_DOG_ACTIVITIES, ...GYM_DOG_ACTIVITIES, ...THEME_PARK_DOG_ACTIVITIES }
     : { ...HUMAN_IDLE_ACTIVITIES, ...DOG_PARK_HUMAN_ACTIVITIES, ...GYM_HUMAN_ACTIVITIES, ...THEME_PARK_HUMAN_ACTIVITIES };
 
-  // Collect all available activities from this character's allowed break areas
+  // Filter to only activities in the target view's areas
+  const viewAreas = getViewAreaTypes(targetView);
   const available: IdleActivity[] = [];
-  for (const dest of config.breakBehaviors) {
-    const areaKey = BREAK_TO_AREA[dest];
-    const activities = allActivities[areaKey] ?? allActivities[dest];
+  for (const areaType of viewAreas) {
+    const activities = allActivities[areaType];
     if (activities) available.push(...activities);
   }
+
   if (available.length === 0) return null;
   return available[Math.floor(Math.random() * available.length)];
 }
@@ -245,7 +256,7 @@ export function createOfficeState(): OfficeState {
     idleTimers.set(id, timer);
   }
 
-  /** Switch an idle agent to a new activity + position */
+  /** Switch an idle agent to a new activity + position, with cross-view transitions */
   function cycleIdleActivity(id: string): void {
     const agent = agents.find((a) => a.id === id);
     if (!agent) return;
@@ -255,7 +266,9 @@ export function createOfficeState(): OfficeState {
       return;
     }
 
-    const activity = pickIdleActivity(agent.characterType);
+    const engineAgent = engine.agents.get(id);
+    const agentCurrentView: OfficeView = engineAgent?.currentView ?? 'office';
+    const activity = pickIdleActivity(agent.characterType, agentCurrentView);
     if (!activity) {
       // No activities available, just schedule next check
       startIdleCycle(id);
@@ -267,58 +280,129 @@ export function createOfficeState(): OfficeState {
     engine.setIdleActivity(id, activity.label);
     agents = [...agents];
 
-    // Walk to furniture target (or fallback to random room position)
+    const targetView = getViewForArea(activity.area);
     const rawPos = activity.target ?? randomPosition(activity.area);
-    const view = getViewForArea(activity.area);
-    const pos = findNearestWalkable(rawPos, view);
-    const currentPos = engine.agents.get(id)?.position ?? DOOR_POSITION;
-    const path = findPath(currentPos, pos, view);
+    const pos = findNearestWalkable(rawPos, targetView);
     const walkSpeed = 100; // casual walking pace
 
-    engine.setStatusColor(id, STATUS_COLORS.walking);
-    engine.setAnimation(id, 'none');
-    engine.setCurrentView(id, view);
+    if (targetView !== agentCurrentView) {
+      // ── Cross-view transition ────────────────────────
+      // 1. Walk to exit of current view
+      const exitPos = findNearestWalkable(VIEW_DOOR_POSITIONS[agentCurrentView], agentCurrentView);
+      const currentPos = engineAgent?.position ?? DOOR_POSITION;
+      const exitPath = findPath(currentPos, exitPos, agentCurrentView);
 
-    if (path.length > 0) {
-      engine.moveAgentAlongPath(id, path, walkSpeed);
-    } else {
-      engine.moveAgent(id, pos, 2000);
-    }
+      engine.setStatusColor(id, STATUS_COLORS.walking);
+      engine.setAnimation(id, 'none');
 
-    // After arriving, resume idle animation and set facing
-    const walkDuration = path.length > 0 ? pathDuration(path, walkSpeed) : 2000;
-    setTimeout(() => {
-      const current = agents.find((a) => a.id === id);
-      if (!current || current.status !== 'idle') return;
-
-      engine.setStatusColor(id, STATUS_COLORS.idle);
-      engine.setAnimation(id, 'idle');
-
-      // Set facing direction based on activity
-      setFacingForActivity(id, activity.label);
-
-      // Set up ping pong pairing if applicable
-      if (activity.label === 'Playing ping pong') {
-        setupPingPong(id);
-      }
-
-      // Speech bubble triggers
-      const isDog = DOG_TYPES.has(current.characterType);
-      if (isDog) {
-        if (activity.label === 'Begging for scraps') {
-          engine.setSpeechBubble(id, pickDogBeg());
-        } else if (Math.random() < 0.15) {
-          engine.setSpeechBubble(id, pickDogBark());
-        }
+      if (exitPath.length > 0) {
+        engine.moveAgentAlongPath(id, exitPath, walkSpeed);
       } else {
-        if (Math.random() < 0.05) {
-          engine.setSpeechBubble(id, pickGeneralIdle());
-        }
+        engine.moveAgent(id, exitPos, 1500);
       }
-    }, walkDuration + 200);
+
+      const exitWalkDuration = exitPath.length > 0 ? pathDuration(exitPath, walkSpeed) : 1500;
+
+      // 2. After reaching exit, fade out
+      setTimeout(() => {
+        const current = agents.find((a) => a.id === id);
+        if (!current || current.status !== 'idle') return;
+
+        engine.setAnimation(id, 'fade-out');
+
+        // 3. After fade-out, teleport to entrance of new view
+        setTimeout(() => {
+          const still = agents.find((a) => a.id === id);
+          if (!still || still.status !== 'idle') return;
+
+          const entrancePos = findNearestWalkable(VIEW_DOOR_POSITIONS[targetView], targetView);
+          const ea = engine.agents.get(id);
+          if (ea) {
+            ea.position.x = entrancePos.x;
+            ea.position.y = entrancePos.y;
+          }
+          engine.setCurrentView(id, targetView);
+
+          // 4. Fade in
+          engine.setAnimation(id, 'fade-in');
+
+          // 5. After fade-in, walk to activity destination
+          setTimeout(() => {
+            const alive = agents.find((a) => a.id === id);
+            if (!alive || alive.status !== 'idle') return;
+
+            const entryPath = findPath(entrancePos, pos, targetView);
+            engine.setAnimation(id, 'none');
+
+            if (entryPath.length > 0) {
+              engine.moveAgentAlongPath(id, entryPath, walkSpeed);
+            } else {
+              engine.moveAgent(id, pos, 2000);
+            }
+
+            const entryWalkDuration = entryPath.length > 0 ? pathDuration(entryPath, walkSpeed) : 2000;
+
+            // 6. After arriving, settle into idle
+            setTimeout(() => {
+              arriveAtActivity(id, activity);
+            }, entryWalkDuration + 200);
+          }, 350); // fade-in duration + small buffer
+        }, 550); // fade-out duration + small buffer
+      }, exitWalkDuration + 100);
+    } else {
+      // ── Same-view transition (original logic) ────────
+      const currentPos = engineAgent?.position ?? DOOR_POSITION;
+      const path = findPath(currentPos, pos, targetView);
+
+      engine.setStatusColor(id, STATUS_COLORS.walking);
+      engine.setAnimation(id, 'none');
+      engine.setCurrentView(id, targetView);
+
+      if (path.length > 0) {
+        engine.moveAgentAlongPath(id, path, walkSpeed);
+      } else {
+        engine.moveAgent(id, pos, 2000);
+      }
+
+      const walkDuration = path.length > 0 ? pathDuration(path, walkSpeed) : 2000;
+      setTimeout(() => {
+        arriveAtActivity(id, activity);
+      }, walkDuration + 200);
+    }
 
     // Schedule next activity switch
     startIdleCycle(id);
+  }
+
+  /** Common arrival logic after walking to an activity destination */
+  function arriveAtActivity(id: string, activity: IdleActivity): void {
+    const current = agents.find((a) => a.id === id);
+    if (!current || current.status !== 'idle') return;
+
+    engine.setStatusColor(id, STATUS_COLORS.idle);
+    engine.setAnimation(id, 'idle');
+
+    // Set facing direction based on activity
+    setFacingForActivity(id, activity.label);
+
+    // Set up ping pong pairing if applicable
+    if (activity.label === 'Playing ping pong') {
+      setupPingPong(id);
+    }
+
+    // Speech bubble triggers
+    const isDog = DOG_TYPES.has(current.characterType);
+    if (isDog) {
+      if (activity.label === 'Begging for scraps') {
+        engine.setSpeechBubble(id, pickDogBeg());
+      } else if (Math.random() < 0.15) {
+        engine.setSpeechBubble(id, pickDogBark());
+      }
+    } else {
+      if (Math.random() < 0.05) {
+        engine.setSpeechBubble(id, pickGeneralIdle());
+      }
+    }
   }
 
   /** Set facing direction based on the idle activity */
@@ -543,9 +627,24 @@ export function createOfficeState(): OfficeState {
     agent.currentTask = task;
     agent.idleActivity = null;
     engine.setIdleActivity(id, null);
-    engine.setCurrentView(id, 'office');
     agents = [...agents];
 
+    const engineAgent = engine.agents.get(id);
+    const agentView = engineAgent?.currentView ?? 'office';
+
+    if (agentView !== 'office') {
+      // Agent is in another view — teleport back to office at desk or door
+      const deskPos = agent.deskIndex !== null
+        ? { x: desks[agent.deskIndex].position.x, y: desks[agent.deskIndex].position.y + 20 }
+        : DOOR_POSITION;
+      if (engineAgent) {
+        engineAgent.position.x = deskPos.x;
+        engineAgent.position.y = deskPos.y;
+      }
+      engine.setCurrentView(id, 'office');
+    }
+
+    engine.setCurrentView(id, 'office');
     engine.setStatusColor(id, STATUS_COLORS.working);
     engine.setAnimation(id, 'work-shake');
     engine.setFacing(id, 'up'); // face their monitor
@@ -559,68 +658,113 @@ export function createOfficeState(): OfficeState {
     agent.currentTask = null;
     agents = [...agents];
 
-    // Pick an initial idle activity
-    const activity = pickIdleActivity(agent.characterType);
+    const engineAgent = engine.agents.get(id);
+    const agentCurrentView: OfficeView = engineAgent?.currentView ?? 'office';
+
+    // Pick an initial idle activity (view-aware)
+    const activity = pickIdleActivity(agent.characterType, agentCurrentView);
     const areaType = activity?.area ?? 'breakRoom';
+    const targetView = getViewForArea(areaType);
     const rawPos = activity?.target ?? randomPosition(areaType);
-    const view = getViewForArea(areaType);
-    const pos = findNearestWalkable(rawPos, view);
-    const currentPos = engine.agents.get(id)?.position ?? DOOR_POSITION;
-    const path = findPath(currentPos, pos, view);
+    const pos = findNearestWalkable(rawPos, targetView);
     const walkSpeed = 100;
 
     engine.setStatusColor(id, STATUS_COLORS.walking);
     engine.setAnimation(id, 'none');
-    engine.setCurrentView(id, view);
 
-    if (path.length > 0) {
-      engine.moveAgentAlongPath(id, path, walkSpeed);
-    } else {
-      engine.moveAgent(id, pos, 2000);
-    }
+    // Schedule arrival handler that sets idle status
+    const scheduleArrival = (totalDelay: number) => {
+      setTimeout(() => {
+        const current = agents.find((a) => a.id === id);
+        if (!current) return;
+        if (current.status === 'working' || current.status === 'celebrating' || current.status === 'leaving') return;
 
-    const walkDuration = path.length > 0 ? pathDuration(path, walkSpeed) : 2000;
+        current.status = 'idle';
+        current.idleActivity = activity?.label ?? null;
+        engine.setIdleActivity(id, current.idleActivity);
+        agents = [...agents];
 
-    // After arrival, set idle status and start idle animation + cycling.
-    // Guard: if the agent transitioned to another state before timeout fires, bail out.
-    setTimeout(() => {
-      const current = agents.find((a) => a.id === id);
-      if (!current) return;
-      if (current.status === 'working' || current.status === 'celebrating' || current.status === 'leaving') return;
-
-      current.status = 'idle';
-      current.idleActivity = activity?.label ?? null;
-      engine.setIdleActivity(id, current.idleActivity);
-      agents = [...agents];
-      engine.setStatusColor(id, STATUS_COLORS.idle);
-      engine.setAnimation(id, 'idle');
-
-      // Set facing direction based on activity
-      if (activity) {
-        setFacingForActivity(id, activity.label);
-        if (activity.label === 'Playing ping pong') {
-          setupPingPong(id);
+        if (activity) {
+          arriveAtActivity(id, activity);
+        } else {
+          engine.setStatusColor(id, STATUS_COLORS.idle);
+          engine.setAnimation(id, 'idle');
         }
-      }
 
-      // Speech bubble triggers
-      const isDog = DOG_TYPES.has(current.characterType);
-      if (isDog) {
-        if (activity?.label === 'Begging for scraps') {
-          engine.setSpeechBubble(id, pickDogBeg());
-        } else if (Math.random() < 0.15) {
-          engine.setSpeechBubble(id, pickDogBark());
-        }
+        // Start cycling with a staggered initial delay so agents don't all switch together
+        const stagger = Math.random() * IDLE_STAGGER_MAX;
+        startIdleCycle(id, randomIdleDuration() + stagger);
+      }, totalDelay);
+    };
+
+    if (targetView !== agentCurrentView) {
+      // Cross-view: walk to exit, fade, teleport, fade in, walk to destination
+      const exitPos = findNearestWalkable(VIEW_DOOR_POSITIONS[agentCurrentView], agentCurrentView);
+      const currentPos = engineAgent?.position ?? DOOR_POSITION;
+      const exitPath = findPath(currentPos, exitPos, agentCurrentView);
+
+      if (exitPath.length > 0) {
+        engine.moveAgentAlongPath(id, exitPath, walkSpeed);
       } else {
-        if (Math.random() < 0.05) {
-          engine.setSpeechBubble(id, pickGeneralIdle());
-        }
+        engine.moveAgent(id, exitPos, 1500);
+      }
+      const exitDuration = exitPath.length > 0 ? pathDuration(exitPath, walkSpeed) : 1500;
+
+      setTimeout(() => {
+        const current = agents.find((a) => a.id === id);
+        if (!current) return;
+        if (current.status === 'working' || current.status === 'celebrating' || current.status === 'leaving') return;
+
+        engine.setAnimation(id, 'fade-out');
+
+        setTimeout(() => {
+          const still = agents.find((a) => a.id === id);
+          if (!still) return;
+          if (still.status === 'working' || still.status === 'celebrating' || still.status === 'leaving') return;
+
+          const entrancePos = findNearestWalkable(VIEW_DOOR_POSITIONS[targetView], targetView);
+          const ea = engine.agents.get(id);
+          if (ea) {
+            ea.position.x = entrancePos.x;
+            ea.position.y = entrancePos.y;
+          }
+          engine.setCurrentView(id, targetView);
+          engine.setAnimation(id, 'fade-in');
+
+          setTimeout(() => {
+            const alive = agents.find((a) => a.id === id);
+            if (!alive) return;
+            if (alive.status === 'working' || alive.status === 'celebrating' || alive.status === 'leaving') return;
+
+            const entryPath = findPath(entrancePos, pos, targetView);
+            engine.setAnimation(id, 'none');
+
+            if (entryPath.length > 0) {
+              engine.moveAgentAlongPath(id, entryPath, walkSpeed);
+            } else {
+              engine.moveAgent(id, pos, 2000);
+            }
+
+            const entryDuration = entryPath.length > 0 ? pathDuration(entryPath, walkSpeed) : 2000;
+            scheduleArrival(entryDuration + 200);
+          }, 350);
+        }, 550);
+      }, exitDuration + 100);
+    } else {
+      // Same view — walk directly
+      const currentPos = engineAgent?.position ?? DOOR_POSITION;
+      const path = findPath(currentPos, pos, targetView);
+      engine.setCurrentView(id, targetView);
+
+      if (path.length > 0) {
+        engine.moveAgentAlongPath(id, path, walkSpeed);
+      } else {
+        engine.moveAgent(id, pos, 2000);
       }
 
-      // Start cycling with a staggered initial delay so agents don't all switch together
-      const stagger = Math.random() * IDLE_STAGGER_MAX;
-      startIdleCycle(id, randomIdleDuration() + stagger);
-    }, walkDuration + 200);
+      const walkDuration = path.length > 0 ? pathDuration(path, walkSpeed) : 2000;
+      scheduleArrival(walkDuration + 200);
+    }
   }
 
   function handleComplete(id: string, result: string): void {
@@ -633,6 +777,14 @@ export function createOfficeState(): OfficeState {
     agent.status = 'celebrating';
     agent.currentTask = result;
     agents = [...agents];
+
+    // Bring back to office if in another view
+    const engineAgent = engine.agents.get(id);
+    if (engineAgent && engineAgent.currentView !== 'office') {
+      engineAgent.position.x = DOOR_POSITION.x;
+      engineAgent.position.y = DOOR_POSITION.y;
+      engine.setCurrentView(id, 'office');
+    }
 
     engine.setStatusColor(id, STATUS_COLORS.celebrating);
     engine.setAnimation(id, 'celebrate');
@@ -682,6 +834,14 @@ export function createOfficeState(): OfficeState {
     agents = [...agents];
     releaseDesk(id);
     engine.setFacing(id, 'down'); // face camera when leaving
+
+    // Bring back to office if in another view
+    const engineAgent = engine.agents.get(id);
+    if (engineAgent && engineAgent.currentView !== 'office') {
+      engineAgent.position.x = DOOR_POSITION.x;
+      engineAgent.position.y = DOOR_POSITION.y;
+      engine.setCurrentView(id, 'office');
+    }
 
     const currentPos = engine.agents.get(id)?.position ?? DOOR_POSITION;
     const path = findPath(currentPos, DOOR_POSITION);

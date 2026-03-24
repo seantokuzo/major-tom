@@ -124,24 +124,24 @@ export const VIEW_BREAK_DESTINATIONS_DOG: Record<OfficeView, BreakDestination[]>
   themePark: ['mainPlaza', 'arcadeHall'],
 };
 
-/** Preferred views per character type — dogs gravitate to the park */
+/** Preferred views per character type — everyone can visit the dog park */
 export const CHARACTER_VIEW_PREFERENCES: Record<CharacterType, OfficeView[]> = {
-  // Humans can visit gym and theme park on breaks
-  architect:        ['office', 'gym', 'themePark'],
-  leadEngineer:     ['office', 'gym', 'themePark'],
-  engManager:       ['office', 'gym', 'themePark'],
-  backendEngineer:  ['office', 'gym'],
-  frontendEngineer: ['office', 'themePark'],
-  uxDesigner:       ['office', 'themePark'],
-  projectManager:   ['office', 'gym'],
-  productManager:   ['office', 'themePark'],
-  devops:           ['office', 'gym'],
-  databaseGuru:     ['office', 'gym'],
-  // Dogs strongly prefer the dog park
-  dachshund:        ['office', 'dogPark'],
-  cattleDog:        ['office', 'dogPark'],
-  schnauzerBlack:   ['office', 'dogPark'],
-  schnauzerPepper:  ['office', 'dogPark'],
+  // Humans can visit gym, theme park, and dog park on breaks
+  architect:        ['office', 'dogPark', 'gym', 'themePark'],
+  leadEngineer:     ['office', 'dogPark', 'gym', 'themePark'],
+  engManager:       ['office', 'dogPark', 'gym', 'themePark'],
+  backendEngineer:  ['office', 'dogPark', 'gym'],
+  frontendEngineer: ['office', 'dogPark', 'themePark'],
+  uxDesigner:       ['office', 'dogPark', 'themePark'],
+  projectManager:   ['office', 'dogPark', 'gym'],
+  productManager:   ['office', 'dogPark', 'themePark'],
+  devops:           ['office', 'dogPark', 'gym'],
+  databaseGuru:     ['office', 'dogPark', 'gym'],
+  // Dogs strongly prefer the dog park (no gym access)
+  dachshund:        ['office', 'dogPark', 'themePark'],
+  cattleDog:        ['office', 'dogPark', 'themePark'],
+  schnauzerBlack:   ['office', 'dogPark', 'themePark'],
+  schnauzerPepper:  ['office', 'dogPark', 'themePark'],
 };
 
 const configByType = new Map<CharacterType, CharacterConfig>(
