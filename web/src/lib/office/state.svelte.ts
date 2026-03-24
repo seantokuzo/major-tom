@@ -1,7 +1,7 @@
 // Office state — Svelte 5 runes-based state management
 // Ported from iOS OfficeViewModel.swift
 
-import type { OfficeAgent, CharacterType, Desk, OfficeAreaType, IdleActivity, OfficeView } from './types';
+import type { OfficeAgent, CharacterType, Desk, OfficeAreaType, IdleActivity, OfficeView, Point } from './types';
 import { ALL_CHARACTER_TYPES } from './types';
 import { DESKS, DOOR_POSITION, OFFICE_VIEWS, VIEW_DOOR_POSITIONS, randomPosition, getViewForArea } from './layout';
 import { DOG_TYPES, CHARACTER_VIEW_PREFERENCES, CHARACTER_CATALOG } from './characters';
@@ -75,6 +75,40 @@ export function createOfficeState(): OfficeState {
   let nextCharacterIndex = 0;
 
   const engine = new OfficeEngine();
+
+  // ── Stuck Detection Handler ──────────────────────────────────
+  // Wired up after engine creation — reroutes or bails stuck agents.
+  engine.onStuck = (agentId: string, position: Point, target: Point, stuckCount: number): boolean => {
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent || agent.status !== 'idle') {
+      // Not idle — just cancel the move entirely
+      const ea = engine.agents.get(agentId);
+      if (ea) ea.move = null;
+      return true;
+    }
+
+    const ea = engine.agents.get(agentId);
+    const currentView: OfficeView = ea?.currentView ?? 'office';
+
+    if (stuckCount <= 2) {
+      // Reroute — recompute A* path from current position to same target
+      const newPath = findPath(position, target, currentView);
+      if (newPath.length > 0) {
+        engine.moveAgentAlongPath(agentId, newPath, 100);
+      } else {
+        // Can't pathfind — bail immediately
+        activityManager.release(agentId);
+        cycleIdleActivity(agentId);
+      }
+      return true;
+    }
+
+    // stuckCount > 2 — bail: cancel movement, pick a new activity entirely
+    if (ea) ea.move = null;
+    activityManager.release(agentId);
+    cycleIdleActivity(agentId);
+    return true;
+  };
 
   /** Demo agent ID prefix — used to distinguish fake agents from real ones */
   const DEMO_PREFIX = 'demo-';

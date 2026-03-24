@@ -27,6 +27,18 @@ interface MoveState {
   waypoints: Point[];     // remaining waypoints to visit
   currentTarget: Point;   // current waypoint being moved toward
   speed: number;          // pixels per second
+  /** Final destination (last waypoint) for stuck rerouting */
+  finalTarget: Point;
+}
+
+/** Stuck detection state — tracks position history */
+interface StuckState {
+  /** Ring buffer of recent positions (sampled every ~0.5s) */
+  history: Point[];
+  /** Time of last sample */
+  lastSampleTime: number;
+  /** Number of consecutive stuck detections */
+  stuckCount: number;
 }
 
 export interface EngineAgent {
@@ -55,6 +67,8 @@ export interface EngineAgent {
   pairedWith: string | null;
   /** Active speech bubble (auto-expires) */
   speechBubble: SpeechBubble | null;
+  /** Stuck detection tracking */
+  stuck: StuckState;
 }
 
 // ── Engine ───────────────────────────────────────────────────
@@ -66,6 +80,11 @@ export class OfficeEngine {
 
   /** External render callback — called each frame with the engine ref */
   onRender: ((engine: OfficeEngine) => void) | null = null;
+
+  /** Called when an agent is detected as stuck (unable to make progress toward target).
+   *  Handler receives: agentId, current position, intended final destination, stuck count.
+   *  Return true to indicate the situation was handled (agent rerouted or bailed). */
+  onStuck: ((agentId: string, position: Point, target: Point, stuckCount: number) => boolean) | null = null;
 
   start(): void {
     if (this.animFrameId !== null) return;
@@ -120,6 +139,7 @@ export class OfficeEngine {
       walkPhase: 0,
       pairedWith: null,
       speechBubble: null,
+      stuck: { history: [], lastSampleTime: 0, stuckCount: 0 },
     });
   }
 
@@ -137,11 +157,16 @@ export class OfficeEngine {
     if (!agent || waypoints.length === 0) return;
     const remaining = [...waypoints];
     const first = remaining.shift()!;
+    const finalTarget = remaining.length > 0 ? remaining[remaining.length - 1] : first;
     agent.move = {
       waypoints: remaining,
       currentTarget: { ...first },
       speed,
+      finalTarget: { ...finalTarget },
     };
+    // Reset stuck detection on new path
+    agent.stuck.history = [];
+    agent.stuck.stuckCount = 0;
   }
 
   /** Backwards-compatible convenience: move to a single point over a duration. */
@@ -152,7 +177,7 @@ export class OfficeEngine {
     const dy = to.y - agent.position.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     const speed = dist / (durationMs / 1000) || 120;
-    this.moveAgentAlongPath(id, [to], speed);
+    this.moveAgentAlongPath(id, [{ ...to }], speed);
   }
 
   setAnimation(id: string, type: AnimationType): void {
@@ -262,7 +287,7 @@ export class OfficeEngine {
       nextY = agent.position.y + dy * ratio;
     }
 
-    // Collision avoidance: check if any other agent in the same view is too close
+    // ── Collision avoidance with yield protocol ──
     const COLLISION_DIST = 16;
     let blocked = false;
     for (const other of this.agents.values()) {
@@ -272,22 +297,70 @@ export class OfficeEngine {
       const cdy = nextY - other.position.y;
       const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
       if (cdist < COLLISION_DIST) {
-        // Only block if the other agent is stationary or we're approaching them
-        // (two moving agents can pass — avoids deadlocks)
         if (!other.isMoving) {
+          // Stationary blocker — nudge perpendicular
           blocked = true;
-          // Nudge perpendicular to our movement direction
           const perpX = -dy / (dist || 1);
           const perpY = dx / (dist || 1);
           const nudge = 4;
           agent.position.x += perpX * nudge * dt * 10;
           agent.position.y += perpY * nudge * dt * 10;
           break;
+        } else {
+          // Two moving agents converging — lower ID yields (deterministic)
+          if (agent.id < other.id) {
+            blocked = true;
+            break;
+          }
+          // Higher ID passes through — prevents mutual deadlock
         }
       }
     }
 
-    if (blocked) return; // skip this frame's forward movement
+    // ── Stuck detection ──
+    // Sample position every ~0.5s and check for progress
+    const now = performance.now();
+    const SAMPLE_INTERVAL = 500; // ms between position samples
+    const STUCK_THRESHOLD = 6;   // px — if moved less than this in the window, agent is stuck
+    const HISTORY_SIZE = 5;      // samples (~2.5s of history)
+
+    if (now - agent.stuck.lastSampleTime >= SAMPLE_INTERVAL) {
+      agent.stuck.lastSampleTime = now;
+      agent.stuck.history.push({ x: agent.position.x, y: agent.position.y });
+      if (agent.stuck.history.length > HISTORY_SIZE) {
+        agent.stuck.history.shift();
+      }
+
+      // Check if stuck: compare oldest and newest position
+      if (agent.stuck.history.length >= HISTORY_SIZE) {
+        const oldest = agent.stuck.history[0];
+        const newest = agent.stuck.history[agent.stuck.history.length - 1];
+        const displacement = Math.sqrt(
+          (newest.x - oldest.x) ** 2 + (newest.y - oldest.y) ** 2
+        );
+        if (displacement < STUCK_THRESHOLD) {
+          agent.stuck.stuckCount++;
+          // Fire stuck callback — state layer handles reroute/bail
+          if (this.onStuck && agent.move) {
+            const handled = this.onStuck(
+              agent.id,
+              { ...agent.position },
+              { ...agent.move.finalTarget },
+              agent.stuck.stuckCount,
+            );
+            if (handled) {
+              agent.stuck.history = [];
+              return;
+            }
+          }
+        } else {
+          // Making progress — reset stuck counter
+          agent.stuck.stuckCount = 0;
+        }
+      }
+    }
+
+    if (blocked) return;
 
     if (step >= dist) {
       // Reached current waypoint
@@ -301,6 +374,8 @@ export class OfficeEngine {
         agent.move = null;
         agent.isMoving = false;
         agent.walkPhase = 0;
+        agent.stuck.history = [];
+        agent.stuck.stuckCount = 0;
       }
     } else {
       // Move toward current waypoint
