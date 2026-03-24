@@ -14,7 +14,6 @@ import {
   pickPingPongRally, pickCasualChat,
 } from './speech';
 import { ActivityManager } from './activity-manager';
-import type { ActivityAssignment } from './activity-manager';
 
 // ── Status colors ────────────────────────────────────────────
 
@@ -85,10 +84,9 @@ export function createOfficeState(): OfficeState {
   engine.onStuck = (agentId: string, position: Point, target: Point, stuckCount: number): boolean => {
     const agent = agents.find((a) => a.id === agentId);
     if (!agent || agent.status !== 'idle') {
-      // Not idle — just cancel the move entirely
-      const ea = engine.agents.get(agentId);
-      if (ea) ea.move = null;
-      return true;
+      // Non-idle agents (walking, leaving, etc.) need their movement to complete.
+      // Return false so the engine keeps trying — they'll reach their target eventually.
+      return false;
     }
 
     const ea = engine.agents.get(agentId);
@@ -295,7 +293,12 @@ export function createOfficeState(): OfficeState {
         activityManager.release(targetId);
         const reserved0 = activityManager.reserveSpecific(initiatorId, 'break-pingPong', 0);
         const reserved1 = activityManager.reserveSpecific(targetId, 'break-pingPong', 1);
-        if (!reserved0 || !reserved1) return;
+        if (!reserved0 || !reserved1) {
+          // Roll back partial reservations to avoid blocking the station
+          activityManager.release(initiatorId);
+          activityManager.release(targetId);
+          return;
+        }
 
         // Update activity labels
         init.idleActivity = 'Playing ping pong';
