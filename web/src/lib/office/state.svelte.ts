@@ -10,7 +10,7 @@ import {
   SPRITE_ST_HUMAN_ACTIVITIES, SPRITE_ST_DOG_ACTIVITIES,
 } from './types';
 import { DESKS, DOOR_POSITION, OFFICE_VIEWS, VIEW_DOOR_POSITIONS, randomPosition, getViewForArea } from './layout';
-import { DOG_TYPES, CHARACTER_VIEW_PREFERENCES } from './characters';
+import { DOG_TYPES, CHARACTER_VIEW_PREFERENCES, CHARACTER_CATALOG } from './characters';
 import { OfficeEngine } from './engine';
 import { findPath, findNearestWalkable, pathDuration } from './navigation';
 import { pickJobComplete, pickDogBark, pickDogBeg, pickGeneralIdle } from './speech';
@@ -94,12 +94,18 @@ export interface OfficeState {
   readonly selectedAgent: OfficeAgent | null;
   /** Demo mode active — fake agents populating the office */
   demoMode: boolean;
-  /** Whether demo toggle is available (no real agents present) */
+  /** Session mode active — crew idle during active Claude session */
+  sessionMode: boolean;
+  /** Whether demo toggle is available (no real agents and no active session) */
   readonly canDemo: boolean;
 
   toggleDemo(): void;
   /** Auto-start idle demo if no real agents present. Idempotent — safe to call repeatedly. */
   ensureAutoIdle(): void;
+  /** Enter session mode — populate all 14 crew members as idle. Idempotent. */
+  enterSessionMode(): void;
+  /** Exit session mode — dismiss all session-idle agents. */
+  exitSessionMode(): void;
   handleSpawn(id: string, role: string, task: string): void;
   handleWorking(id: string, task: string): void;
   handleIdle(id: string): void;
@@ -117,20 +123,29 @@ export function createOfficeState(): OfficeState {
   let desks = $state<Desk[]>(DESKS.map((d) => ({ ...d, occupantId: null })));
   let selectedAgentId = $state<string | null>(null);
   let demoMode = $state(false);
+  let sessionMode = $state(false);
   let nextCharacterIndex = 0;
 
   const engine = new OfficeEngine();
 
   /** Demo agent ID prefix — used to distinguish fake agents from real ones */
   const DEMO_PREFIX = 'demo-';
+  /** Session-idle agent ID prefix — crew members during active sessions */
+  const SESSION_PREFIX = 'session-';
 
   /** Check if an agent is a demo agent */
   function isDemoAgent(id: string): boolean {
     return id.startsWith(DEMO_PREFIX);
   }
 
-  /** Whether demo toggle is available (no real agents present) */
+  /** Check if an agent is a session-idle agent */
+  function isSessionAgent(id: string): boolean {
+    return id.startsWith(SESSION_PREFIX);
+  }
+
+  /** Whether demo toggle is available (no real agents and no active session) */
   const canDemo = $derived.by(() => {
+    if (sessionMode) return false;
     return agents.every((a) => isDemoAgent(a.id));
   });
 
@@ -479,6 +494,169 @@ export function createOfficeState(): OfficeState {
     }, 600);
   }
 
+  // ── Session Mode ─────────────────────────────────────────────
+  // When a Claude session is active, all 14 crew members are spawned as idle.
+  // Real agent.spawn events reuse existing session-idle characters.
+  // Agent dismiss returns characters to idle rather than removing them.
+
+  /** Map session agent ID → character type for reuse lookups */
+  const sessionCharMap = new Map<string, CharacterType>();
+
+  function enterSessionMode(): void {
+    if (sessionMode) return; // idempotent
+
+    // Kill demo if active
+    if (demoMode) {
+      demoMode = false;
+      dismissAllDemoAgents();
+    }
+
+    sessionMode = true;
+
+    // Spawn all 14 characters with stagger
+    ALL_CHARACTER_TYPES.forEach((charType, i) => {
+      const id = `${SESSION_PREFIX}${charType}`;
+      const config = CHARACTER_CATALOG.find(c => c.type === charType);
+      const name = config?.displayName ?? charType;
+
+      sessionCharMap.set(id, charType);
+
+      setTimeout(() => {
+        if (!sessionMode) return;
+        if (agents.some(a => a.id === id)) return; // already exists
+
+        const agent: OfficeAgent = {
+          id,
+          name,
+          role: charType,
+          characterType: charType,
+          status: 'idle',
+          currentTask: null,
+          deskIndex: null,
+          spawnedAt: new Date(),
+          idleActivity: null,
+        };
+
+        agents.push(agent);
+        agents = [...agents];
+
+        // Add to engine at a random position in the office
+        const startPos = randomPosition('mainOffice');
+        engine.addAgent(id, charType, name, startPos);
+        engine.setStatusColor(id, STATUS_COLORS.idle);
+        engine.setAnimation(id, 'fade-in');
+
+        // After fade-in, start idle cycling
+        setTimeout(() => {
+          if (!sessionMode) return;
+          const current = agents.find(a => a.id === id);
+          if (!current) return;
+          engine.setAnimation(id, 'idle');
+          handleIdle(id);
+        }, 400);
+      }, i * 150); // stagger 150ms each
+    });
+  }
+
+  function exitSessionMode(): void {
+    if (!sessionMode) return;
+    sessionMode = false;
+
+    // Fade out and remove all session agents
+    const sessionAgents = agents.filter(a => isSessionAgent(a.id));
+    for (const agent of sessionAgents) {
+      engine.setAnimation(agent.id, 'fade-out');
+    }
+
+    setTimeout(() => {
+      const sessionIds = new Set(sessionAgents.map(a => a.id));
+      for (const id of sessionIds) {
+        clearIdleTimer(id);
+        clearPingPongTimer(id);
+        clearPairing(id);
+        releaseDesk(id);
+        engine.removeAgent(id);
+      }
+      agents = agents.filter(a => !sessionIds.has(a.id));
+      if (selectedAgentId && sessionIds.has(selectedAgentId)) selectedAgentId = null;
+      sessionCharMap.clear();
+    }, 600);
+  }
+
+  /** Find a session-idle agent by character type and promote it to a real agent */
+  function promoteSessionAgent(characterType: CharacterType, realId: string, role: string, task: string): boolean {
+    const sessionId = `${SESSION_PREFIX}${characterType}`;
+    const sessionAgent = agents.find(a => a.id === sessionId);
+    if (!sessionAgent || !isSessionAgent(sessionId)) return false;
+
+    // Get engine state before removing
+    const engineAgent = engine.agents.get(sessionId);
+    const currentPos = engineAgent ? { ...engineAgent.position } : DOOR_POSITION;
+    const currentView = engineAgent?.currentView ?? 'office';
+
+    // Remove the session agent
+    clearIdleTimer(sessionId);
+    clearPingPongTimer(sessionId);
+    clearPairing(sessionId);
+    engine.removeAgent(sessionId);
+    agents = agents.filter(a => a.id !== sessionId);
+    sessionCharMap.delete(sessionId);
+
+    // Create the real agent at the same position
+    const deskIndex = assignNextAvailableDesk(realId);
+    const agent: OfficeAgent = {
+      id: realId,
+      name: role.charAt(0).toUpperCase() + role.slice(1),
+      role,
+      characterType,
+      status: 'spawning',
+      currentTask: task,
+      deskIndex,
+      spawnedAt: new Date(),
+      idleActivity: null,
+    };
+
+    agents.push(agent);
+    engine.addAgent(realId, characterType, agent.name, currentPos);
+    engine.setCurrentView(realId, currentView);
+    engine.setStatusColor(realId, STATUS_COLORS.spawning);
+
+    if (deskIndex !== null) {
+      // Walk to desk
+      const deskPos = desks[deskIndex].position;
+      const seatPos = { x: deskPos.x, y: deskPos.y + 20 };
+
+      // Bring to office view if in another view
+      if (currentView !== 'office') {
+        const ea = engine.agents.get(realId);
+        if (ea) {
+          ea.position.x = DOOR_POSITION.x;
+          ea.position.y = DOOR_POSITION.y;
+        }
+        engine.setCurrentView(realId, 'office');
+      }
+
+      const startPos = currentView === 'office' ? currentPos : DOOR_POSITION;
+      const path = findPath(startPos, seatPos);
+      agent.status = 'walking';
+      engine.setStatusColor(realId, STATUS_COLORS.walking);
+      agents = [...agents];
+
+      if (path.length > 0) {
+        engine.moveAgentAlongPath(realId, path, 120);
+      } else {
+        engine.moveAgent(realId, seatPos, 1500);
+      }
+    } else {
+      agent.status = 'idle';
+      engine.setStatusColor(realId, STATUS_COLORS.idle);
+      engine.setAnimation(realId, 'idle');
+      agents = [...agents];
+    }
+
+    return true;
+  }
+
   function toggleDemo(): void {
     if (demoMode) {
       // Deactivate demo — dismiss all demo agents
@@ -566,6 +744,15 @@ export function createOfficeState(): OfficeState {
     if (demoMode) {
       demoMode = false;
       dismissAllDemoAgents();
+    }
+
+    // In session mode, try to promote an existing idle crew member
+    if (sessionMode) {
+      const charType = ALL_CHARACTER_TYPES[nextCharacterIndex % ALL_CHARACTER_TYPES.length];
+      if (promoteSessionAgent(charType, id, role, task)) {
+        nextCharacterIndex++; // consume the index only on success
+        return;
+      }
     }
 
     const characterType = assignNextCharacterType();
@@ -814,12 +1001,64 @@ export function createOfficeState(): OfficeState {
 
       const walkDuration = path.length > 0 ? pathDuration(path, walkSpeed) : 1500;
 
-      // Fade out and remove
+      // Fade out and either return to session idle or remove
       setTimeout(() => {
         engine.setAnimation(id, 'fade-out');
-        setTimeout(() => removeAgent(id), 600);
+        setTimeout(() => {
+          if (sessionMode && !isSessionAgent(id) && !isDemoAgent(id)) {
+            // Return to session idle
+            const charType = a!.characterType;
+            returnToSessionIdle(id, charType);
+          } else {
+            removeAgent(id);
+          }
+        }, 600);
       }, walkDuration + 200);
     }, 2000);
+  }
+
+  /** Helper: remove a real agent and re-create as session-idle */
+  function returnToSessionIdle(realId: string, charType: CharacterType): void {
+    const config = CHARACTER_CATALOG.find(c => c.type === charType);
+    const sessionId = `${SESSION_PREFIX}${charType}`;
+
+    // Remove real agent
+    releaseDesk(realId);
+    clearIdleTimer(realId);
+    clearPingPongTimer(realId);
+    clearPairing(realId);
+    engine.removeAgent(realId);
+    agents = agents.filter(a => a.id !== realId);
+    if (selectedAgentId === realId) selectedAgentId = null;
+
+    // Re-create as session idle
+    const sessionAgent: OfficeAgent = {
+      id: sessionId,
+      name: config?.displayName ?? charType,
+      role: charType,
+      characterType: charType,
+      status: 'idle',
+      currentTask: null,
+      deskIndex: null,
+      spawnedAt: new Date(),
+      idleActivity: null,
+    };
+
+    agents.push(sessionAgent);
+    agents = [...agents];
+    sessionCharMap.set(sessionId, charType);
+
+    const startPos = randomPosition('mainOffice');
+    engine.addAgent(sessionId, charType, sessionAgent.name, startPos);
+    engine.setCurrentView(sessionId, 'office');
+    engine.setStatusColor(sessionId, STATUS_COLORS.idle);
+    engine.setAnimation(sessionId, 'fade-in');
+
+    setTimeout(() => {
+      if (!sessionMode) return;
+      engine.setAnimation(sessionId, 'idle');
+      handleIdle(sessionId);
+    }, 400);
   }
 
   function handleDismissed(id: string): void {
@@ -828,6 +1067,13 @@ export function createOfficeState(): OfficeState {
     clearIdleTimer(id);
     clearPingPongTimer(id);
     clearPairing(id);
+
+    // In session mode, return the character to idle as a session agent
+    if (sessionMode && !isSessionAgent(id) && !isDemoAgent(id)) {
+      returnToSessionIdle(id, agent.characterType);
+      return;
+    }
+
     agent.status = 'leaving';
     agent.currentTask = null;
     agent.idleActivity = null;
@@ -871,12 +1117,15 @@ export function createOfficeState(): OfficeState {
     set selectedAgentId(v) { selectedAgentId = v; },
     get selectedAgent() { return selectedAgent; },
     get demoMode() { return demoMode; },
+    get sessionMode() { return sessionMode; },
     get canDemo() { return canDemo; },
     engine,
 
     toggleDemo,
+    enterSessionMode,
+    exitSessionMode,
     ensureAutoIdle() {
-      if (!demoMode && canDemo) toggleDemo();
+      if (!demoMode && !sessionMode && canDemo) toggleDemo();
     },
     handleSpawn,
     handleWorking,
@@ -890,6 +1139,9 @@ export function createOfficeState(): OfficeState {
       desks = DESKS.map((d) => ({ ...d, occupantId: null }));
       selectedAgentId = null;
       nextCharacterIndex = 0;
+      demoMode = false;
+      sessionMode = false;
+      sessionCharMap.clear();
       engine.clear();
     },
 

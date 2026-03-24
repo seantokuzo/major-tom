@@ -113,13 +113,33 @@
     }
   });
 
-  // Auto-populate office with idle characters when tab is active and nothing is going on
+  // Session mode: when relay is connected with an active session, populate crew as idle
+  // When disconnected or no session, exit session mode
   $effect(() => {
-    if (activeTab === 'office') {
-      // Small delay so canvas mounts and engine starts first
-      const timer = setTimeout(() => office.ensureAutoIdle(), 150);
-      return () => clearTimeout(timer);
-    }
+    if (activeTab !== 'office') return;
+
+    const hasSession = relay.isConnected && relay.hasSession;
+
+    const timer = setTimeout(() => {
+      if (hasSession) {
+        office.enterSessionMode();
+      } else if (office.sessionMode) {
+        office.exitSessionMode();
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  });
+
+  // Auto-idle fallback: when no session and no agents, start demo
+  // This is separate so it reacts to canDemo becoming true after cleanup
+  $effect(() => {
+    if (activeTab !== 'office') return;
+    if (office.sessionMode) return;
+    if (!office.canDemo) return;
+    if (office.demoMode) return;
+
+    const timer = setTimeout(() => office.ensureAutoIdle(), 200);
+    return () => clearTimeout(timer);
   });
 
   function handleAgentClick(agentId: string) {
@@ -172,9 +192,9 @@
     <button
       class="demo-btn"
       class:active={office.demoMode}
-      disabled={!office.canDemo && !office.demoMode}
+      disabled={(!office.canDemo && !office.demoMode) || office.sessionMode}
       onclick={() => office.toggleDemo()}
-      title={office.demoMode ? 'Exit demo' : 'Launch demo office'}
+      title={office.sessionMode ? 'Demo disabled during active session' : office.demoMode ? 'Exit demo' : 'Launch demo office'}
     >
       {office.demoMode ? '■ Demo' : '▶ Demo'}
     </button>
