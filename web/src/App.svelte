@@ -16,6 +16,7 @@
   import AuthSettings from './lib/components/AuthSettings.svelte';
   import LoginScreen from './lib/components/LoginScreen.svelte';
   import CharacterGallery from './lib/components/CharacterGallery.svelte';
+  import PermissionModeSwitcher from './lib/components/PermissionModeSwitcher.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
   // ── Toast notifications for connection state ────────────────
@@ -234,6 +235,11 @@
   {#if !headerCollapsed}
     <ConnectionBar />
     <ConnectionStatus />
+    {#if relay.isConnected && relay.hasSession}
+      <div class="mode-row">
+        <PermissionModeSwitcher />
+      </div>
+    {/if}
     <SessionInfo />
   {/if}
 
@@ -301,6 +307,16 @@
     align-items: center;
     gap: var(--sp-sm);
     overflow: hidden;
+  }
+
+  .mode-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--sp-xs) var(--sp-sm);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
   }
 
   .collapse-btn {
