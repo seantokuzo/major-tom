@@ -167,18 +167,20 @@
     // Floor pattern
     drawFloorPattern(ctx, area);
 
-    // Room label (subtle, in corner — shadow for contrast on light floors)
-    ctx.save();
-    ctx.font = '8px Menlo, monospace';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    ctx.shadowBlur = 2;
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 1;
-    ctx.fillStyle = 'rgba(180, 180, 190, 0.55)';
-    ctx.fillText(area.name.toUpperCase(), b.x + 8, b.y + 8);
-    ctx.restore();
+    // Room label (subtle, in corner — skip for spriteStreet since external label exists)
+    if (activeView !== 'spriteStreet') {
+      ctx.save();
+      ctx.font = '8px Menlo, monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+      ctx.shadowBlur = 2;
+      ctx.shadowOffsetX = 1;
+      ctx.shadowOffsetY = 1;
+      ctx.fillStyle = 'rgba(180, 180, 190, 0.55)';
+      ctx.fillText(area.name.toUpperCase(), b.x + 8, b.y + 8);
+      ctx.restore();
+    }
 
     // Furniture with animated overlays
     if (area.furniture) {
