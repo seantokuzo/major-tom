@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { verifyGoogleIdToken } from '../auth/google.js';
+import { pinManager } from '../auth/pin-manager.js';
 import {
   createSessionToken,
   verifySessionToken,
@@ -9,7 +10,7 @@ import {
 import { logger } from '../utils/logger.js';
 
 /**
- * Auth routes — Google OAuth login, session check, logout.
+ * Auth routes — Google OAuth login, PIN login, session check, logout.
  */
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
   const GOOGLE_CLIENT_ID = process.env['GOOGLE_CLIENT_ID'];
@@ -88,6 +89,63 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       }
     },
   );
+
+  // ── PIN auth ───────────────────────────────────────────
+
+  /**
+   * POST /auth/pin/generate — generate a new 6-digit PIN.
+   * Localhost-only for security.
+   */
+  fastify.post('/auth/pin/generate', async (request, reply) => {
+    const ip = request.ip;
+    if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
+      return reply.code(403).send({ error: 'PIN generation is localhost-only' });
+    }
+
+    const { pin, expiresAt } = pinManager.generatePin();
+    logger.info('New pairing PIN generated');
+    return { pin, expiresAt };
+  });
+
+  /**
+   * POST /auth/pin/login — exchange a valid PIN for a session cookie.
+   * Rate-limited per IP.
+   */
+  fastify.post<{ Body: { pin: string } }>('/auth/pin/login', async (request, reply) => {
+    const { pin } = request.body ?? {};
+    if (!pin || typeof pin !== 'string') {
+      return reply.code(400).send({ error: 'Missing PIN' });
+    }
+
+    const ip = request.ip;
+
+    // Rate limit check
+    const limit = pinManager.checkRateLimit(ip);
+    if (!limit.allowed) {
+      return reply.code(429).send({
+        error: 'Too many attempts',
+        retryAfter: limit.retryAfter,
+      });
+    }
+
+    // Validate and consume
+    if (!pinManager.consumePin(pin)) {
+      pinManager.recordFailedAttempt(ip);
+      logger.warn({ ip }, 'Failed PIN login attempt');
+      return reply.code(401).send({ error: 'Invalid or expired PIN' });
+    }
+
+    // Mint session — use a stable identifier for PIN-authed sessions
+    const email = ALLOWED_EMAIL ?? 'pin-user@local';
+    const sessionToken = await createSessionToken('pin-user', email);
+    reply.setCookie(SESSION_COOKIE, sessionToken, getSessionCookieOptions(isSecure));
+
+    logger.info({ ip }, 'User authenticated via PIN');
+
+    return { email, name: 'PIN User' };
+  });
+
+  // ── Session management ────────────────────────────────
 
   /**
    * GET /auth/me — check current session. Returns user info or 401.

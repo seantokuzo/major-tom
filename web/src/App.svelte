@@ -13,7 +13,7 @@
   import { OFFICE_VIEWS } from './lib/office/layout';
   import NotificationToggle from './lib/components/NotificationToggle.svelte';
   import AuthSettings from './lib/components/AuthSettings.svelte';
-  import PairingScreen from './lib/components/PairingScreen.svelte';
+  import LoginScreen from './lib/components/LoginScreen.svelte';
   import CharacterGallery from './lib/components/CharacterGallery.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
@@ -30,7 +30,7 @@
 
     if (state === 'connected') {
       // Re-send push subscription on every connect (relay may have restarted)
-      resendPushSubscription(relay.authToken ?? undefined);
+      resendPushSubscription();
 
       if (wasReconnecting) {
         toasts.success('Reconnected to relay');
@@ -131,6 +131,13 @@
       office.renameAgent(office.selectedAgent.id, newName);
     }
   }
+
+  // Auto-connect when user is authenticated and relay is disconnected (but not manually)
+  $effect(() => {
+    if (relay.user && relay.isDisconnected && !relay.connectionError && !relay.manuallyDisconnected) {
+      relay.connect();
+    }
+  });
 </script>
 
 <div class="app">
@@ -221,8 +228,8 @@
   </div>
   <Toast />
 
-  {#if !relay.authToken}
-    <PairingScreen />
+  {#if relay.authChecked && !relay.user}
+    <LoginScreen />
   {/if}
 </div>
 

@@ -35,20 +35,20 @@ CAFFEINE_PID=$!
 PIDS=()
 
 cleanup() {
+  trap - EXIT INT TERM  # prevent re-entry
   echo ""
   echo "Shutting down..."
-  kill "$CAFFEINE_PID" 2>/dev/null || true
-  for pid in "${PIDS[@]}"; do
-    kill "$pid" 2>/dev/null || true
-  done
-  wait 2>/dev/null
-  echo "Done."
+  # SIGKILL the entire process group — tsx watch fights SIGTERM with restarts
+  kill -9 0 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup INT TERM
 
 # ── 1. Relay server ──────────────────────────────────────────
 
 echo "Starting relay server..."
+# Clean stale PIN file
+rm -f "${RELAY_DIR}/.pin"
+
 if [ "$PROD_MODE" = true ]; then
   (cd "$RELAY_DIR" && npm run start) &
 else
@@ -56,8 +56,15 @@ else
 fi
 PIDS+=($!)
 
-# Give relay a moment to start
-sleep 1
+# Wait for relay to be ready (writes .pin file on successful listen)
+PIN=""
+for i in $(seq 1 30); do
+  if [ -f "${RELAY_DIR}/.pin" ]; then
+    PIN="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['pin'])" "${RELAY_DIR}/.pin" 2>/dev/null)" || true
+    break
+  fi
+  sleep 0.5
+done
 
 # ── 2. PWA dev server ───────────────────────────────────────
 
@@ -93,6 +100,12 @@ if [ "$LOCAL_ONLY" = false ] && [ -f "${TUNNEL_DIR}/config.yml" ]; then
   if [ -n "$HOSTNAME" ]; then
     echo " Tunnel: https://${HOSTNAME}"
   fi
+fi
+if [ -n "$PIN" ]; then
+  echo ""
+  echo " ┌───────────────────────────────┐"
+  echo " │     Quick Login PIN: ${PIN}    │"
+  echo " └───────────────────────────────┘"
 fi
 echo ""
 echo " Ctrl+C to stop everything"

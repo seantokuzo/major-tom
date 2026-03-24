@@ -58,7 +58,7 @@ export async function subscribeToPush(
     if (existing) return existing;
 
     // Fetch VAPID public key from relay
-    const response = await fetch('/push/vapid-key');
+    const response = await fetch('/push/vapid-key', { credentials: 'include' });
     if (!response.ok) {
       console.warn('[push] Failed to fetch VAPID key:', response.status);
       return null;
@@ -85,19 +85,16 @@ export async function subscribeToPush(
 
 /**
  * Send the push subscription to the relay server so it can send us notifications.
+ * Authenticates via session cookie (credentials: 'include').
  */
 export async function sendSubscriptionToServer(
   subscription: PushSubscription,
-  token?: string,
 ): Promise<boolean> {
   try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
     const response = await fetch('/push/subscribe', {
       method: 'POST',
-      headers,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify(subscription.toJSON()),
     });
     return response.ok;
@@ -112,17 +109,13 @@ export async function sendSubscriptionToServer(
  */
 export async function unsubscribeFromPush(
   subscription: PushSubscription,
-  token?: string,
 ): Promise<boolean> {
   try {
     // Notify server
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
     await fetch('/push/unsubscribe', {
       method: 'POST',
-      headers,
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify(subscription.toJSON()),
     }).catch(() => {
       // Server might be down — still unsubscribe locally
@@ -140,7 +133,7 @@ export async function unsubscribeFromPush(
  * Full initialization flow: register SW → check permission → subscribe → send to server.
  * Call this when the user explicitly enables notifications.
  */
-export async function initPushNotifications(token?: string): Promise<PushStatus> {
+export async function initPushNotifications(): Promise<PushStatus> {
   // Check support
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
     return { supported: false, permission: 'unsupported', subscribed: false };
@@ -165,7 +158,7 @@ export async function initPushNotifications(token?: string): Promise<PushStatus>
   }
 
   // Send to server
-  const sent = await sendSubscriptionToServer(subscription, token);
+  const sent = await sendSubscriptionToServer(subscription);
   if (!sent) {
     return { supported: true, permission, subscribed: false, error: 'Failed to register with server' };
   }
@@ -177,7 +170,7 @@ export async function initPushNotifications(token?: string): Promise<PushStatus>
  * Re-send the existing push subscription to the relay server.
  * Useful after WebSocket reconnect when the relay may have restarted.
  */
-export async function resendPushSubscription(token?: string): Promise<void> {
+export async function resendPushSubscription(): Promise<void> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
   try {
@@ -185,7 +178,7 @@ export async function resendPushSubscription(token?: string): Promise<void> {
     if (!registration) return;
     const subscription = await registration.pushManager.getSubscription();
     if (subscription) {
-      await sendSubscriptionToServer(subscription, token);
+      await sendSubscriptionToServer(subscription);
     }
   } catch (err) {
     console.warn('[push] Failed to re-send push subscription:', err);

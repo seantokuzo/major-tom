@@ -74,6 +74,14 @@ export interface ToolActivity {
   input?: Record<string, unknown>;
 }
 
+// ── Auth user model ─────────────────────────────────────────
+
+export interface AuthUser {
+  email: string;
+  name?: string;
+  picture?: string;
+}
+
 // ── localStorage keys ───────────────────────────────────────
 
 const STORAGE_KEYS = {
@@ -144,19 +152,19 @@ function uid(): string {
 
 /**
  * Detect the relay server address from the current page origin.
- * If served from a remote host (e.g. Cloudflare Tunnel), use that host.
- * Otherwise fall back to localhost:9090.
+ * Vite proxy handles routing in dev; same-origin in prod.
  */
 function detectServerAddress(): string {
   if (typeof window === 'undefined') return 'localhost:9090';
   const { hostname, port } = window.location;
-  if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'localhost:9090';
-  }
   return port ? `${hostname}:${port}` : hostname;
 }
 
 class RelayStore {
+  // Auth (Google OAuth)
+  user = $state<AuthUser | null>(null);
+  authChecked = $state(false);
+
   // Connection
   connectionState = $state<ConnectionState>('disconnected');
   serverAddress = $state(detectServerAddress());
@@ -195,11 +203,17 @@ class RelayStore {
   // Command palette
   inputPrefix = $state('');
 
+  // Manual disconnect flag — prevents auto-reconnect after user clicks Disconnect
+  manuallyDisconnected = $state(false);
+
   // Derived
   isConnected = $derived(this.connectionState === 'connected');
   hasSession = $derived(this.sessionId !== null);
   isDisconnected = $derived(this.connectionState === 'disconnected');
   isReconnecting = $derived(this.connectionState === 'reconnecting');
+  get isAuthenticated(): boolean {
+    return this.user !== null;
+  }
 
   // Internal
   private socket = new RelaySocket();
@@ -250,6 +264,80 @@ class RelayStore {
 
     // Restore from localStorage
     this.restoreFromStorage();
+
+    // Check auth session (cookie-based)
+    this.checkAuth();
+  }
+
+  // ── Auth (Google OAuth) ──────────────────────────────────
+
+  async checkAuth(): Promise<void> {
+    if (typeof window === 'undefined') {
+      this.authChecked = true;
+      return;
+    }
+    try {
+      const res = await fetch('/auth/me', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        this.user = { email: data.email, name: data.name, picture: data.picture };
+      } else {
+        this.user = null;
+      }
+    } catch {
+      this.user = null;
+    }
+    this.authChecked = true;
+  }
+
+  async login(credential: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const res = await fetch('/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ credential }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        this.user = { email: data.email, name: data.name, picture: data.picture };
+        return { success: true };
+      }
+      const body = await res.json().catch(() => ({ error: 'Login failed' }));
+      return { success: false, error: body.error ?? 'Login failed' };
+    } catch {
+      return { success: false, error: 'Could not reach server' };
+    }
+  }
+
+  async loginWithPin(pin: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const res = await fetch('/auth/pin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ pin }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        this.user = { email: data.email, name: data.name, picture: data.picture };
+        return { success: true };
+      }
+      const body = await res.json().catch(() => ({ error: 'Invalid PIN' }));
+      return { success: false, error: body.error ?? 'Invalid PIN' };
+    } catch {
+      return { success: false, error: 'Could not reach server' };
+    }
+  }
+
+  async logout(): Promise<void> {
+    try {
+      await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {
+      // Best-effort
+    }
+    this.user = null;
+    this.disconnect();
   }
 
   // ── Persistence ───────────────────────────────────────────
@@ -320,11 +408,13 @@ class RelayStore {
   // ── Actions ─────────────────────────────────────────────
 
   connect(): void {
+    this.manuallyDisconnected = false;
     this.connectionError = null;
     this.socket.connect(this.serverAddress, this.authToken ?? undefined);
   }
 
   disconnect(): void {
+    this.manuallyDisconnected = true;
     this.socket.disconnect();
     this.sessionId = null;
     this.wasConnected = false;

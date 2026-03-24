@@ -518,8 +518,9 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       verifySessionToken(sessionCookie)
         .then((payload) => {
+          // PIN-authed sessions (sub === 'pin-user') bypass email check
           const allowedEmail = process.env['ALLOWED_EMAIL'];
-          if (allowedEmail && payload.email.toLowerCase() !== allowedEmail.toLowerCase()) {
+          if (allowedEmail && payload.sub !== 'pin-user' && payload.email.toLowerCase() !== allowedEmail.toLowerCase()) {
             logger.warn({ email: payload.email }, 'WS connection from non-allowed email');
             socket.close(1008, 'Access denied');
             return;
