@@ -32,6 +32,8 @@ interface SdkSessionEntry {
   streamAbort: AbortController;
   /** True if we received streaming text deltas — prevents double-emit from assistant message */
   hasStreamedText: boolean;
+  /** True while the stream consumer loop is running */
+  streamAlive: boolean;
 }
 
 export class ClaudeCliAdapter implements IAdapter {
@@ -71,7 +73,7 @@ export class ClaudeCliAdapter implements IAdapter {
     });
 
     const streamAbort = new AbortController();
-    const entry: SdkSessionEntry = { session, sdkSession, streamAbort, hasStreamedText: false };
+    const entry: SdkSessionEntry = { session, sdkSession, streamAbort, hasStreamedText: false, streamAlive: false };
     this.sessions.set(session.id, entry);
 
     // Start consuming the stream in the background
@@ -83,8 +85,13 @@ export class ClaudeCliAdapter implements IAdapter {
 
   async attach(sessionId: string): Promise<Session> {
     const session = this.sessionManager.get(sessionId);
-    if (!this.sessions.has(sessionId)) {
+    const entry = this.sessions.get(sessionId);
+    if (!entry) {
       throw new Error(`No SDK session for ${sessionId}`);
+    }
+    if (!entry.streamAlive) {
+      logger.warn({ sessionId }, 'Attach: stream consumer is dead, session unusable');
+      throw new Error(`SDK session stream is dead for ${sessionId}`);
     }
     return session;
   }
@@ -94,12 +101,15 @@ export class ClaudeCliAdapter implements IAdapter {
     if (!entry) {
       throw new Error(`No SDK session for ${sessionId}`);
     }
+    if (!entry.streamAlive) {
+      throw new Error(`SDK session stream is dead for ${sessionId} — cannot send prompt`);
+    }
 
     // Prepend attached file context if any
     const contextText = entry.session.getContextText();
     const finalText = contextText ? `${contextText}${text}` : text;
 
-    await entry.sdkSession.send(finalText);
+    entry.sdkSession.send(finalText);
     logger.info({ sessionId, textLength: finalText.length, hasContext: !!contextText }, 'Prompt sent via SDK');
   }
 
@@ -185,10 +195,20 @@ export class ClaudeCliAdapter implements IAdapter {
     sdkSession: SDKSession,
     signal: AbortSignal,
   ): Promise<void> {
+    const entry = this.sessions.get(sessionId);
+    if (entry) entry.streamAlive = true;
+
     try {
-      for await (const message of sdkSession.stream()) {
-        if (signal.aborted) break;
-        this.handleSdkMessage(sessionId, message);
+      // The SDK's stream() generator exits after each turn's `result` message.
+      // We must loop and call stream() again to consume subsequent turns.
+      while (!signal.aborted) {
+        for await (const message of sdkSession.stream()) {
+          if (signal.aborted) break;
+          this.handleSdkMessage(sessionId, message);
+        }
+        // Turn complete (stream yielded `result` and returned).
+        // Loop back to call stream() again for the next turn.
+        logger.debug({ sessionId }, 'Turn stream ended, waiting for next turn');
       }
     } catch (err) {
       if (!signal.aborted) {
@@ -196,7 +216,8 @@ export class ClaudeCliAdapter implements IAdapter {
         this.emitter.emit('output', sessionId, `\n[Stream error: ${err instanceof Error ? err.message : 'unknown'}]\n`);
       }
     } finally {
-      logger.info({ sessionId }, 'Stream ended');
+      if (entry) entry.streamAlive = false;
+      logger.info({ sessionId }, 'Stream consumer exited');
     }
   }
 
@@ -409,6 +430,28 @@ export class ClaudeCliAdapter implements IAdapter {
       inputTokens,
       outputTokens,
     } satisfies SessionResult);
+  }
+
+  /** Check if an SDK session exists and its stream is alive */
+  isSessionAlive(sessionId: string): boolean {
+    const entry = this.sessions.get(sessionId);
+    return !!entry?.streamAlive;
+  }
+
+  /** Check if an SDK session entry exists (even if stream is dead) */
+  hasSession(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
+
+  /** Clean up a dead session — abort stream, close SDK session, remove from map */
+  destroySession(sessionId: string): void {
+    const entry = this.sessions.get(sessionId);
+    if (!entry) return;
+    entry.streamAbort.abort();
+    entry.sdkSession.close();
+    entry.session.close();
+    this.sessions.delete(sessionId);
+    logger.info({ sessionId }, 'Session destroyed (cleanup)');
   }
 
   // ── Event emitter interface ─────────────────────────────────
