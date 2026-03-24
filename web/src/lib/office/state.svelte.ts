@@ -370,8 +370,8 @@ export function createOfficeState(): OfficeState {
     { role: 'DevOps', behavior: 'desk', char: 'devops' },
     { role: 'Designer', behavior: 'idle', char: 'uxDesigner' },
     { role: 'PM', behavior: 'idle', char: 'productManager' },
-    { role: 'Rex', behavior: 'idle', char: 'dachshund' },
-    { role: 'Pepper', behavior: 'idle', char: 'schnauzerPepper' },
+    { role: 'Elvito', behavior: 'idle', char: 'dachshund' },
+    { role: 'Kai', behavior: 'idle', char: 'schnauzerPepper' },
   ];
 
   function dismissAllDemoAgents(): void {

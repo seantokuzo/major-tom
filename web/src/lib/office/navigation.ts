@@ -26,18 +26,16 @@ interface DoorwayDef {
 
 const VIEW_DOORWAYS: Record<OfficeView, DoorwayDef[]> = {
   office: [
-    // Strategy Room <-> Main Office (vertical wall at x=275, around y=110)
-    { x: 272, y: 110, width: 20, height: 40 },
-    // Kitchen <-> Main Office (vertical wall at x=275, around y=360)
-    { x: 272, y: 360, width: 20, height: 40 },
-    // Strategy Room <-> Kitchen (horizontal wall at y=245, around x=120)
-    { x: 120, y: 242, width: 40, height: 20 },
-    // Main Office <-> Break Room (horizontal wall at y=490, around x=610)
-    { x: 610, y: 487, width: 40, height: 20 },
-    // Kitchen <-> Break Room (horizontal wall at y=490, around x=120)
-    { x: 120, y: 487, width: 40, height: 20 },
+    // Strategy Room <-> Main Office (vertical wall at x=275, around y=180)
+    { x: 272, y: 160, width: 20, height: 40 },
+    // Kitchen <-> Main Office (vertical wall at x=275, around y=560)
+    { x: 272, y: 540, width: 20, height: 40 },
+    // Strategy Room <-> Kitchen (horizontal wall at y=375, around x=120)
+    { x: 120, y: 372, width: 40, height: 20 },
+    // Main Office <-> Break Room (vertical wall at x=670, around y=350)
+    { x: 667, y: 340, width: 20, height: 40 },
     // Main entrance (right wall of main office, the DOOR furniture area)
-    { x: 955, y: 225, width: 20, height: 50 },
+    { x: 650, y: 380, width: 20, height: 50 },
   ],
   dogPark: [
     // Dog Park Field <-> Agility Course (vertical split around x=610)

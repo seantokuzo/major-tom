@@ -1,18 +1,17 @@
 // Office layout — Pixel art tech startup office
-// Top-down pixel art floor plan
+// Top-down pixel art floor plan (mobile-first 3-column layout)
 //
 // Canvas coordinate system: origin at top-left, Y increases downward.
 // Scene is 1000x750 pixels.
 //
-// +------------------+----------------------------------------+
-// |  STRATEGY ROOM   |          MAIN OFFICE                   |
-// |                  |   (6 desks, plants, printer, etc.)     |
-// +------------------+                                        |
-// |  KITCHEN         |                                        |
-// |                  |                                        |
-// +------------------+----------------------------------------+
-// |                    BREAK ROOM                             |
-// +-----------------------------------------------------------+
+// +-----------+------------------+---------------+
+// | STRATEGY  | MAIN OFFICE      | BREAK ROOM    |
+// | ROOM      | (385×740)        | (320×740)     |
+// | (265×365) | 2col × 3row      | vertical      |
+// +-----------+ desks            | arrangement   |
+// | KITCHEN   | amenities top    |               |
+// | (265×365) |                  |               |
+// +-----------+------------------+---------------+
 
 import type { Desk, Furniture, OfficeArea, OfficeAreaType, OfficeView, OfficeViewConfig, Point } from './types';
 
@@ -48,12 +47,12 @@ export const DEFAULT_VIEW: OfficeView = 'office';
 
 // ── Door ─────────────────────────────────────────────────────
 
-// Main entrance — right side of the main office
-export const DOOR_POSITION: Point = { x: 965, y: 250 };
+// Main entrance — right wall of the main office
+export const DOOR_POSITION: Point = { x: 655, y: 400 };
 
 /** Per-view door/entrance positions */
 export const VIEW_DOOR_POSITIONS: Record<OfficeView, Point> = {
-  office: { x: 965, y: 250 },
+  office: { x: 655, y: 400 },
   dogPark: { x: 12, y: 375 },
   gym: { x: 12, y: 375 },
   themePark: { x: 500, y: 12 },
@@ -125,7 +124,7 @@ export const AREAS: OfficeArea[] = [
   {
     type: 'strategyRoom',
     name: 'Strategy Room',
-    bounds: { x: 5, y: 5, width: 265, height: 235 },
+    bounds: { x: 5, y: 5, width: 265, height: 365 },
     capacity: 6,
     color: COLORS.strategyCarpet,
     view: 'office',
@@ -134,22 +133,22 @@ export const AREAS: OfficeArea[] = [
       // Whiteboard on top wall
       { type: 'whiteboard', position: { x: 38, y: 12 }, width: 150, height: 16, color: 'rgb(235, 235, 240)' },
 
-      // Meeting table (large, center of room)
-      { type: 'meetingTable', position: { x: 68, y: 88 }, width: 150, height: 75, color: 'rgb(100, 78, 52)' },
+      // Meeting table (large, centered vertically)
+      { type: 'meetingTable', position: { x: 68, y: 120 }, width: 150, height: 75, color: 'rgb(100, 78, 52)' },
 
       // Chairs around table
-      { type: 'meetingChair', position: { x: 88, y: 69 }, width: 18, height: 16, color: 'rgb(60, 60, 70)' },
-      { type: 'meetingChair', position: { x: 138, y: 69 }, width: 18, height: 16, color: 'rgb(60, 60, 70)' },
-      { type: 'meetingChair', position: { x: 188, y: 69 }, width: 18, height: 16, color: 'rgb(60, 60, 70)' },
-      { type: 'meetingChair', position: { x: 88, y: 169 }, width: 18, height: 16, color: 'rgb(60, 60, 70)' },
-      { type: 'meetingChair', position: { x: 138, y: 169 }, width: 18, height: 16, color: 'rgb(60, 60, 70)' },
-      { type: 'meetingChair', position: { x: 188, y: 169 }, width: 18, height: 16, color: 'rgb(60, 60, 70)' },
+      { type: 'meetingChair', position: { x: 88, y: 101 }, width: 18, height: 16, color: 'rgb(60, 60, 70)' },
+      { type: 'meetingChair', position: { x: 138, y: 101 }, width: 18, height: 16, color: 'rgb(60, 60, 70)' },
+      { type: 'meetingChair', position: { x: 188, y: 101 }, width: 18, height: 16, color: 'rgb(60, 60, 70)' },
+      { type: 'meetingChair', position: { x: 88, y: 201 }, width: 18, height: 16, color: 'rgb(60, 60, 70)' },
+      { type: 'meetingChair', position: { x: 138, y: 201 }, width: 18, height: 16, color: 'rgb(60, 60, 70)' },
+      { type: 'meetingChair', position: { x: 188, y: 201 }, width: 18, height: 16, color: 'rgb(60, 60, 70)' },
 
       // Clock on wall
       { type: 'clock', position: { x: 231, y: 18 }, width: 20, height: 20, color: 'rgb(220, 220, 230)' },
 
       // Plant in corner
-      { type: 'plant', position: { x: 15, y: 206 }, width: 16, height: 16, color: COLORS.plant },
+      { type: 'plant', position: { x: 15, y: 336 }, width: 16, height: 16, color: COLORS.plant },
     ],
   },
 
@@ -157,137 +156,123 @@ export const AREAS: OfficeArea[] = [
   {
     type: 'kitchen',
     name: 'Kitchen',
-    bounds: { x: 5, y: 250, width: 265, height: 235 },
+    bounds: { x: 5, y: 380, width: 265, height: 365 },
     capacity: 4,
     color: COLORS.kitchenTile,
     view: 'office',
     floorPattern: 'tile',
     furniture: [
       // Kitchen counter along top wall (L-shape)
-      { type: 'kitchenCounter', position: { x: 12, y: 256 }, width: 220, height: 26, color: 'rgb(88, 88, 92)' },
-      { type: 'kitchenCounter', position: { x: 12, y: 256 }, width: 26, height: 100, color: 'rgb(88, 88, 92)' },
+      { type: 'kitchenCounter', position: { x: 12, y: 386 }, width: 220, height: 26, color: 'rgb(88, 88, 92)' },
+      { type: 'kitchenCounter', position: { x: 12, y: 386 }, width: 26, height: 100, color: 'rgb(88, 88, 92)' },
 
       // Sink on counter
-      { type: 'sink', position: { x: 62, y: 258 }, width: 28, height: 18, color: 'rgb(160, 165, 175)' },
+      { type: 'sink', position: { x: 62, y: 388 }, width: 28, height: 18, color: 'rgb(160, 165, 175)' },
 
       // Coffee machine on counter
-      { type: 'coffeeMachine', position: { x: 125, y: 258 }, width: 24, height: 18, color: 'rgb(45, 38, 35)' },
+      { type: 'coffeeMachine', position: { x: 125, y: 388 }, width: 24, height: 18, color: 'rgb(45, 38, 35)' },
 
       // Microwave on counter
-      { type: 'microwave', position: { x: 175, y: 258 }, width: 26, height: 18, color: 'rgb(58, 58, 64)' },
+      { type: 'microwave', position: { x: 175, y: 388 }, width: 26, height: 18, color: 'rgb(58, 58, 64)' },
 
       // Fridge (tall, right side)
-      { type: 'fridge', position: { x: 238, y: 256 }, width: 28, height: 52, color: 'rgb(200, 205, 210)' },
+      { type: 'fridge', position: { x: 238, y: 386 }, width: 28, height: 52, color: 'rgb(200, 205, 210)' },
 
       // Toaster on counter
-      { type: 'toaster', position: { x: 18, y: 294 }, width: 16, height: 14, color: 'rgb(180, 170, 155)' },
+      { type: 'toaster', position: { x: 18, y: 424 }, width: 16, height: 14, color: 'rgb(180, 170, 155)' },
 
-      // Small dining table
-      { type: 'desk', position: { x: 100, y: 388 }, width: 85, height: 44, color: 'rgb(110, 82, 56)' },
+      // Small dining table (centered with more room)
+      { type: 'desk', position: { x: 100, y: 560 }, width: 85, height: 44, color: 'rgb(110, 82, 56)' },
 
       // Plants
-      { type: 'plant', position: { x: 245, y: 460 }, width: 16, height: 16, color: COLORS.plant },
-      { type: 'fern', position: { x: 15, y: 460 }, width: 18, height: 16, color: 'rgb(42, 92, 52)' },
+      { type: 'plant', position: { x: 245, y: 715 }, width: 16, height: 16, color: COLORS.plant },
+      { type: 'fern', position: { x: 15, y: 715 }, width: 18, height: 16, color: 'rgb(42, 92, 52)' },
     ],
   },
 
-  // ── Main Office (right side, large) ──────────────────────
+  // ── Main Office (center column, tall) ────────────────────
   {
     type: 'mainOffice',
     name: 'Main Office',
-    bounds: { x: 280, y: 5, width: 715, height: 480 },
+    bounds: { x: 280, y: 5, width: 385, height: 740 },
     capacity: 10,
     color: COLORS.mainOfficeCarpet,
     view: 'office',
     floorPattern: 'carpet',
     furniture: [
-      // ── Decorative items on top wall (above desks) ──
-      // Picture frames
-      { type: 'pictureFrame', position: { x: 490, y: 15 }, width: 22, height: 18, color: 'rgb(140, 110, 70)' },
-      { type: 'pictureFrame', position: { x: 630, y: 15 }, width: 22, height: 18, color: 'rgb(140, 110, 70)' },
-      { type: 'pictureFrame', position: { x: 800, y: 15 }, width: 22, height: 18, color: 'rgb(140, 110, 70)' },
+      // ── Top amenities area ──
+      { type: 'plant', position: { x: 290, y: 12 }, width: 16, height: 16, color: COLORS.plant },
+      { type: 'pictureFrame', position: { x: 380, y: 12 }, width: 22, height: 18, color: 'rgb(140, 110, 70)' },
+      { type: 'clock', position: { x: 430, y: 12 }, width: 20, height: 20, color: 'rgb(220, 220, 230)' },
+      { type: 'pictureFrame', position: { x: 490, y: 12 }, width: 22, height: 18, color: 'rgb(140, 110, 70)' },
+      { type: 'pictureFrame', position: { x: 570, y: 12 }, width: 22, height: 18, color: 'rgb(140, 110, 70)' },
+      { type: 'fern', position: { x: 640, y: 12 }, width: 18, height: 16, color: 'rgb(42, 92, 52)' },
 
-      // Clock on wall
-      { type: 'clock', position: { x: 560, y: 15 }, width: 20, height: 20, color: 'rgb(220, 220, 230)' },
+      // Water cooler and printer in amenities row
+      { type: 'waterCooler', position: { x: 300, y: 45 }, width: 18, height: 32, color: 'rgb(100, 160, 220)' },
+      { type: 'printer', position: { x: 590, y: 45 }, width: 40, height: 28, color: 'rgb(78, 78, 82)' },
 
-      // ── Desk row 1 (top row, 3 desks) ──
-      { type: 'deskWithMonitor', position: { x: 400, y: 100 }, width: 56, height: 30, color: COLORS.deskWood },
-      { type: 'officeChair', position: { x: 418, y: 140 }, width: 18, height: 16, color: 'rgb(55, 55, 65)' },
+      // ── Desk row 1 (2 desks) ──
+      { type: 'deskWithMonitor', position: { x: 368, y: 120 }, width: 56, height: 30, color: COLORS.deskWood },
+      { type: 'officeChair', position: { x: 386, y: 160 }, width: 18, height: 16, color: 'rgb(55, 55, 65)' },
 
-      { type: 'deskWithMonitor', position: { x: 560, y: 100 }, width: 56, height: 30, color: COLORS.deskWood },
-      { type: 'officeChair', position: { x: 578, y: 140 }, width: 18, height: 16, color: 'rgb(55, 55, 65)' },
+      { type: 'deskWithMonitor', position: { x: 522, y: 120 }, width: 56, height: 30, color: COLORS.deskWood },
+      { type: 'officeChair', position: { x: 540, y: 160 }, width: 18, height: 16, color: 'rgb(55, 55, 65)' },
 
-      { type: 'deskWithMonitor', position: { x: 720, y: 100 }, width: 56, height: 30, color: COLORS.deskWood },
-      { type: 'officeChair', position: { x: 738, y: 140 }, width: 18, height: 16, color: 'rgb(55, 55, 65)' },
+      // ── Desk row 2 (2 desks) ──
+      { type: 'deskWithMonitor', position: { x: 368, y: 300 }, width: 56, height: 30, color: COLORS.deskWood },
+      { type: 'officeChair', position: { x: 386, y: 340 }, width: 18, height: 16, color: 'rgb(55, 55, 65)' },
 
-      // ── Desk row 2 (bottom row, 3 desks) ──
-      { type: 'deskWithMonitor', position: { x: 400, y: 260 }, width: 56, height: 30, color: COLORS.deskWood },
-      { type: 'officeChair', position: { x: 418, y: 300 }, width: 18, height: 16, color: 'rgb(55, 55, 65)' },
+      { type: 'deskWithMonitor', position: { x: 522, y: 300 }, width: 56, height: 30, color: COLORS.deskWood },
+      { type: 'officeChair', position: { x: 540, y: 340 }, width: 18, height: 16, color: 'rgb(55, 55, 65)' },
 
-      { type: 'deskWithMonitor', position: { x: 560, y: 260 }, width: 56, height: 30, color: COLORS.deskWood },
-      { type: 'officeChair', position: { x: 578, y: 300 }, width: 18, height: 16, color: 'rgb(55, 55, 65)' },
+      // ── Desk row 3 (2 desks) ──
+      { type: 'deskWithMonitor', position: { x: 368, y: 480 }, width: 56, height: 30, color: COLORS.deskWood },
+      { type: 'officeChair', position: { x: 386, y: 520 }, width: 18, height: 16, color: 'rgb(55, 55, 65)' },
 
-      { type: 'deskWithMonitor', position: { x: 720, y: 260 }, width: 56, height: 30, color: COLORS.deskWood },
-      { type: 'officeChair', position: { x: 738, y: 300 }, width: 18, height: 16, color: 'rgb(55, 55, 65)' },
+      { type: 'deskWithMonitor', position: { x: 522, y: 480 }, width: 56, height: 30, color: COLORS.deskWood },
+      { type: 'officeChair', position: { x: 540, y: 520 }, width: 18, height: 16, color: 'rgb(55, 55, 65)' },
 
-      // ── Office amenities ──
-      // Water cooler (top right)
-      { type: 'waterCooler', position: { x: 950, y: 40 }, width: 18, height: 32, color: 'rgb(100, 160, 220)' },
-
-      // Printer
-      { type: 'printer', position: { x: 900, y: 180 }, width: 40, height: 28, color: 'rgb(78, 78, 82)' },
-
-      // Plants and ferns in corners
-      { type: 'plant', position: { x: 290, y: 15 }, width: 16, height: 16, color: COLORS.plant },
-      { type: 'fern', position: { x: 870, y: 15 }, width: 18, height: 16, color: 'rgb(42, 92, 52)' },
-      { type: 'plant', position: { x: 290, y: 440 }, width: 16, height: 16, color: COLORS.plant },
-      { type: 'fern', position: { x: 950, y: 400 }, width: 18, height: 16, color: 'rgb(42, 92, 52)' },
+      // ── Bottom decoration ──
+      { type: 'plant', position: { x: 290, y: 700 }, width: 16, height: 16, color: COLORS.plant },
+      { type: 'fern', position: { x: 645, y: 700 }, width: 18, height: 16, color: 'rgb(42, 92, 52)' },
 
       // Door on right wall
-      { type: 'door', position: { x: 960, y: 230 }, width: 10, height: 40, color: COLORS.doorFrame, label: 'DOOR' },
+      { type: 'door', position: { x: 655, y: 380 }, width: 10, height: 40, color: COLORS.doorFrame, label: 'DOOR' },
     ],
   },
 
-  // ── Break Room (bottom, full width) ──────────────────────
+  // ── Break Room (right column, tall + vertical layout) ───
   {
     type: 'breakRoom',
     name: 'Break Room',
-    bounds: { x: 5, y: 495, width: 990, height: 250 },
+    bounds: { x: 675, y: 5, width: 320, height: 740 },
     capacity: 8,
     color: COLORS.breakWood,
     view: 'office',
     floorPattern: 'wood',
     furniture: [
-      // TV on top wall
-      { type: 'tvScreen', position: { x: 75, y: 505 }, width: 75, height: 12, color: 'rgb(25, 25, 35)' },
+      // ── TV / Lounge zone (top) ──
+      { type: 'tvScreen', position: { x: 755, y: 12 }, width: 75, height: 12, color: 'rgb(25, 25, 35)' },
+      { type: 'gameConsole', position: { x: 773, y: 28 }, width: 34, height: 14, color: 'rgb(30, 30, 40)' },
+      { type: 'couch', position: { x: 730, y: 80 }, width: 110, height: 34, color: 'rgb(82, 62, 48)' },
+      { type: 'beanBag', position: { x: 860, y: 55 }, width: 30, height: 28, color: 'rgb(140, 70, 55)' },
+      { type: 'beanBag', position: { x: 900, y: 90 }, width: 30, height: 28, color: 'rgb(55, 90, 140)' },
+      { type: 'plant', position: { x: 970, y: 12 }, width: 16, height: 16, color: COLORS.plant },
 
-      // Game console under TV
-      { type: 'gameConsole', position: { x: 94, y: 522 }, width: 34, height: 14, color: 'rgb(30, 30, 40)' },
+      // ── Game zone (middle) ──
+      { type: 'pingPongTable', position: { x: 755, y: 270 }, width: 120, height: 68, color: 'rgb(30, 100, 60)' },
+      { type: 'plant', position: { x: 685, y: 240 }, width: 16, height: 16, color: COLORS.plant },
 
-      // Couch facing TV (with more space)
-      { type: 'couch', position: { x: 55, y: 565 }, width: 110, height: 34, color: 'rgb(82, 62, 48)' },
+      // ── Arcade / Chill zone (bottom) ──
+      { type: 'arcadeMachine', position: { x: 720, y: 480 }, width: 34, height: 50, color: 'rgb(40, 35, 90)' },
+      { type: 'arcadeMachine', position: { x: 770, y: 480 }, width: 34, height: 50, color: 'rgb(90, 35, 40)' },
+      { type: 'couch', position: { x: 845, y: 510 }, width: 85, height: 34, color: 'rgb(72, 55, 50)' },
+      { type: 'desk', position: { x: 860, y: 560 }, width: 60, height: 28, color: 'rgb(100, 75, 50)' },
 
-      // Bean bags (spaced out more)
-      { type: 'beanBag', position: { x: 195, y: 580 }, width: 30, height: 28, color: 'rgb(140, 70, 55)' },
-      { type: 'beanBag', position: { x: 240, y: 560 }, width: 30, height: 28, color: 'rgb(55, 90, 140)' },
-
-      // Ping pong table (centered in room)
-      { type: 'pingPongTable', position: { x: 420, y: 545 }, width: 120, height: 68, color: 'rgb(30, 100, 60)' },
-
-      // Arcade machines (right-center)
-      { type: 'arcadeMachine', position: { x: 660, y: 510 }, width: 34, height: 50, color: 'rgb(40, 35, 90)' },
-      { type: 'arcadeMachine', position: { x: 710, y: 510 }, width: 34, height: 50, color: 'rgb(90, 35, 40)' },
-
-      // Plants in corners
-      { type: 'plant', position: { x: 15, y: 715 }, width: 16, height: 16, color: COLORS.plant },
-      { type: 'fern', position: { x: 965, y: 715 }, width: 18, height: 16, color: 'rgb(42, 92, 52)' },
-      { type: 'plant', position: { x: 965, y: 505 }, width: 16, height: 16, color: COLORS.plant },
-
-      // Extra couch in the right area
-      { type: 'couch', position: { x: 810, y: 570 }, width: 85, height: 34, color: 'rgb(72, 55, 50)' },
-
-      // Small coffee table
-      { type: 'desk', position: { x: 825, y: 620 }, width: 60, height: 28, color: 'rgb(100, 75, 50)' },
+      // Bottom plants
+      { type: 'plant', position: { x: 685, y: 715 }, width: 16, height: 16, color: COLORS.plant },
+      { type: 'fern', position: { x: 970, y: 715 }, width: 18, height: 16, color: 'rgb(42, 92, 52)' },
     ],
   },
 
@@ -544,14 +529,16 @@ export const AREAS: OfficeArea[] = [
 // Agents sit just below their desk.
 
 export const DESKS: Desk[] = [
+  // 2 columns × 3 rows (mobile-friendly vertical layout)
   // Row 1
-  { id: 0, position: { x: 428, y: 145 }, occupantId: null, label: 'Desk 1' },
-  { id: 1, position: { x: 588, y: 145 }, occupantId: null, label: 'Desk 2' },
-  { id: 2, position: { x: 748, y: 145 }, occupantId: null, label: 'Desk 3' },
+  { id: 0, position: { x: 396, y: 165 }, occupantId: null, label: 'Desk 1' },
+  { id: 1, position: { x: 550, y: 165 }, occupantId: null, label: 'Desk 2' },
   // Row 2
-  { id: 3, position: { x: 428, y: 305 }, occupantId: null, label: 'Desk 4' },
-  { id: 4, position: { x: 588, y: 305 }, occupantId: null, label: 'Desk 5' },
-  { id: 5, position: { x: 748, y: 305 }, occupantId: null, label: 'Desk 6' },
+  { id: 2, position: { x: 396, y: 345 }, occupantId: null, label: 'Desk 3' },
+  { id: 3, position: { x: 550, y: 345 }, occupantId: null, label: 'Desk 4' },
+  // Row 3
+  { id: 4, position: { x: 396, y: 525 }, occupantId: null, label: 'Desk 5' },
+  { id: 5, position: { x: 550, y: 525 }, occupantId: null, label: 'Desk 6' },
 ];
 
 // ── View-filtered accessors ──────────────────────────────────

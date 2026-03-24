@@ -143,7 +143,7 @@
   <!-- Character info -->
   <div class="character-info">
     <h2 class="character-name">{currentCharacter.displayName}</h2>
-    <p class="character-role">{currentCharacter.type}</p>
+    <p class="character-role">{currentCharacter.type.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim()}</p>
   </div>
 
   <!-- Dot indicators -->

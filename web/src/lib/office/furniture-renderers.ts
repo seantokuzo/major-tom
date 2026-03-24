@@ -196,13 +196,9 @@ export function drawOfficeWalls(ctx: CanvasRenderingContext2D) {
   ctx.fillStyle = wallHighlight;
   ctx.fillRect(0, 0, 1, 750);
 
-  // Right wall (with door gap)
+  // Right wall (no door gap — door is on interior wall now)
   ctx.fillStyle = wallColor;
-  ctx.fillRect(995, 0, wallThickness, 225);   // above door
-  ctx.fillStyle = wallColor;
-  ctx.fillRect(995, 275, wallThickness, 215);  // between door and break room
-  ctx.fillStyle = wallColor;
-  ctx.fillRect(995, 490, wallThickness, 260); // break room right wall
+  ctx.fillRect(995, 0, wallThickness, 750);
 
   // Bottom wall
   ctx.fillStyle = wallColor;
@@ -212,70 +208,60 @@ export function drawOfficeWalls(ctx: CanvasRenderingContext2D) {
 
   // ── Interior walls ──
 
-  // Vertical divider: strategy room / kitchen | main office (at x=275)
-  // With doorway gaps
+  // Vertical divider: left column (strategy/kitchen) | main office (at x=275)
   ctx.fillStyle = wallColor;
-  ctx.fillRect(275, 0, wallThickness, 110);      // top portion
+  ctx.fillRect(275, 0, wallThickness, 160);       // above strategy→office doorway
   ctx.fillStyle = wallHighlight;
-  ctx.fillRect(275, 0, 1, 110);
-  // Doorway gap (110-150) — strategy room to main office
+  ctx.fillRect(275, 0, 1, 160);
+  // Doorway gap (160-200) — strategy room to main office
   ctx.fillStyle = wallColor;
-  ctx.fillRect(275, 150, wallThickness, 95);     // between doors
+  ctx.fillRect(275, 200, wallThickness, 172);     // between doorways
   ctx.fillStyle = wallHighlight;
-  ctx.fillRect(275, 150, 1, 95);
-  // Doorway gap (245-250) — where vertical wall meets horizontal
+  ctx.fillRect(275, 200, 1, 172);
+  // Meets horizontal wall at y=375
   ctx.fillStyle = wallColor;
-  ctx.fillRect(275, 290, wallThickness, 70);     // kitchen portion
+  ctx.fillRect(275, 380, wallThickness, 160);     // above kitchen→office doorway
   ctx.fillStyle = wallHighlight;
-  ctx.fillRect(275, 290, 1, 70);
-  // Doorway gap (360-400) — kitchen to main office
+  ctx.fillRect(275, 380, 1, 160);
+  // Doorway gap (540-580) — kitchen to main office
   ctx.fillStyle = wallColor;
-  ctx.fillRect(275, 400, wallThickness, 90);     // bottom of kitchen wall
+  ctx.fillRect(275, 580, wallThickness, 170);     // bottom of wall
   ctx.fillStyle = wallHighlight;
-  ctx.fillRect(275, 400, 1, 90);
+  ctx.fillRect(275, 580, 1, 170);
 
-  // Horizontal divider: strategy room | kitchen (at y=245)
+  // Vertical divider: main office | break room (at x=670)
   ctx.fillStyle = wallColor;
-  ctx.fillRect(0, 245, 120, wallThickness);      // left of doorway
+  ctx.fillRect(670, 0, wallThickness, 340);       // above doorway
+  ctx.fillStyle = wallHighlight;
+  ctx.fillRect(670, 0, 1, 340);
+  // Doorway gap (340-380) — main office to break room
+  ctx.fillStyle = wallColor;
+  ctx.fillRect(670, 380, wallThickness, 370);     // below doorway
+  ctx.fillStyle = wallHighlight;
+  ctx.fillRect(670, 380, 1, 370);
+
+  // Horizontal divider: strategy room | kitchen (at y=375)
+  ctx.fillStyle = wallColor;
+  ctx.fillRect(0, 375, 120, wallThickness);       // left of doorway
   ctx.fillStyle = wallShadow;
-  ctx.fillRect(0, 245, 120, 1);
+  ctx.fillRect(0, 375, 120, 1);
   // Doorway gap (120-160)
   ctx.fillStyle = wallColor;
-  ctx.fillRect(160, 245, 120, wallThickness);     // right of doorway
+  ctx.fillRect(160, 375, 120, wallThickness);     // right of doorway to vertical wall
   ctx.fillStyle = wallShadow;
-  ctx.fillRect(160, 245, 120, 1);
-
-  // Horizontal divider: main office + kitchen | break room (at y=490)
-  ctx.fillStyle = wallColor;
-  ctx.fillRect(0, 490, 120, wallThickness);      // left portion (under kitchen)
-  ctx.fillStyle = wallShadow;
-  ctx.fillRect(0, 490, 120, 1);
-  // Doorway gap from kitchen to break room (120-160)
-  ctx.fillStyle = wallColor;
-  ctx.fillRect(160, 490, 450, wallThickness);    // middle portion
-  ctx.fillStyle = wallShadow;
-  ctx.fillRect(160, 490, 450, 1);
-  // Doorway gap from main office to break room (610-650)
-  ctx.fillStyle = wallColor;
-  ctx.fillRect(650, 490, 350, wallThickness);    // right portion
-  ctx.fillStyle = wallShadow;
-  ctx.fillRect(650, 490, 350, 1);
+  ctx.fillRect(160, 375, 120, 1);
 
   // ── Doorway floor markers (subtle) ──
   const doorwayColor = 'rgba(120, 95, 65, 0.15)';
   ctx.fillStyle = doorwayColor;
   // Strategy room to main office
-  ctx.fillRect(275, 110, wallThickness, 40);
+  ctx.fillRect(275, 160, wallThickness, 40);
   // Kitchen to main office
-  ctx.fillRect(275, 360, wallThickness, 40);
+  ctx.fillRect(275, 540, wallThickness, 40);
   // Strategy to kitchen
-  ctx.fillRect(120, 245, 40, wallThickness);
-  // Kitchen to break room
-  ctx.fillRect(120, 490, 40, wallThickness);
+  ctx.fillRect(120, 375, 40, wallThickness);
   // Main office to break room
-  ctx.fillRect(610, 490, 40, wallThickness);
-  // Main entrance door
-  ctx.fillRect(995, 225, wallThickness, 50);
+  ctx.fillRect(670, 340, wallThickness, 40);
 }
 
 // ── Furniture dispatch ─────────────────────────────────────────
