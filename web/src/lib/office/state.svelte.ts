@@ -151,10 +151,63 @@ export function createOfficeState(): OfficeState {
 
   // ── Character / Desk Assignment ────────────────────────────
 
+  /** Direct role → character type mapping */
+  const ROLE_TO_CHARACTER: Record<string, CharacterType> = {
+    researcher: 'databaseGuru',
+    architect: 'architect',
+    qa: 'engManager',
+    devops: 'devops',
+    frontend: 'frontendEngineer',
+    backend: 'backendEngineer',
+    lead: 'leadEngineer',
+  };
+
+  /** Pool for 'engineer' role — human types not directly mapped */
+  const ENGINEER_POOL: CharacterType[] = [
+    'uxDesigner', 'projectManager', 'productManager',
+  ];
+  let engineerPoolIndex = 0;
+
+  /** Non-reactive counter — tracks active (non-demo, non-session) agents per CharacterType.
+   *  Using a plain Map avoids reading the reactive `agents` array inside $effect call chains,
+   *  which would cause effect_update_depth_exceeded (read+write on same $state). */
+  const charTypeCounter = new Map<CharacterType, number>();
+
+  function incrementCharTypeCount(type: CharacterType): void {
+    charTypeCounter.set(type, (charTypeCounter.get(type) ?? 0) + 1);
+  }
+
+  function decrementCharTypeCount(type: CharacterType): void {
+    const current = charTypeCounter.get(type) ?? 0;
+    if (current > 1) charTypeCounter.set(type, current - 1);
+    else charTypeCounter.delete(type);
+  }
+
+  function getCharTypeCount(type: CharacterType): number {
+    return charTypeCounter.get(type) ?? 0;
+  }
+
   function assignNextCharacterType(): CharacterType {
     const type = ALL_CHARACTER_TYPES[nextCharacterIndex % ALL_CHARACTER_TYPES.length];
     nextCharacterIndex++;
     return type;
+  }
+
+  /** Role-aware character assignment */
+  function assignCharacterForRole(role: string): CharacterType {
+    // Direct mapping for known roles
+    const mapped = ROLE_TO_CHARACTER[role];
+    if (mapped) return mapped;
+
+    // Engineer pool rotation
+    if (role === 'engineer') {
+      const type = ENGINEER_POOL[engineerPoolIndex % ENGINEER_POOL.length];
+      engineerPoolIndex++;
+      return type;
+    }
+
+    // Fallback: round-robin (legacy 'subagent' or unknown)
+    return assignNextCharacterType();
   }
 
   function assignNextAvailableDesk(agentId: string): number | null {
@@ -626,6 +679,11 @@ export function createOfficeState(): OfficeState {
   }
 
   function removeAgent(id: string): void {
+    // Decrement char type counter for real agents only
+    if (!isDemoAgent(id) && !isSessionAgent(id)) {
+      const agent = agents.find(a => a.id === id);
+      if (agent) decrementCharTypeCount(agent.characterType);
+    }
     clearIdleTimer(id);
     clearPingPongTimer(id);
     clearPairing(id);
@@ -787,9 +845,12 @@ export function createOfficeState(): OfficeState {
 
     // Create the real agent at the same position
     const deskIndex = assignNextAvailableDesk(realId);
+    const dupCount = getCharTypeCount(characterType);
+    const baseName = role.charAt(0).toUpperCase() + role.slice(1);
+    const displayName = dupCount > 0 ? `${baseName} ${dupCount + 1}` : baseName;
     const agent: OfficeAgent = {
       id: realId,
-      name: role.charAt(0).toUpperCase() + role.slice(1),
+      name: displayName,
       role,
       characterType,
       status: 'spawning',
@@ -800,6 +861,7 @@ export function createOfficeState(): OfficeState {
     };
 
     agents.push(agent);
+    incrementCharTypeCount(characterType);
     engine.addAgent(realId, characterType, agent.name, currentPos);
     engine.setCurrentView(realId, currentView);
     engine.setStatusColor(realId, STATUS_COLORS.spawning);
@@ -932,19 +994,23 @@ export function createOfficeState(): OfficeState {
 
     // In session mode, try to promote an existing idle crew member
     if (sessionMode) {
-      const charType = ALL_CHARACTER_TYPES[nextCharacterIndex % ALL_CHARACTER_TYPES.length];
+      const charType = assignCharacterForRole(role);
       if (promoteSessionAgent(charType, id, role, task)) {
-        nextCharacterIndex++; // consume the index only on success
         return;
       }
     }
 
-    const characterType = assignNextCharacterType();
+    const characterType = assignCharacterForRole(role);
     const deskIndex = assignNextAvailableDesk(id);
+
+    // Deduplicate name when same CharacterType already active
+    const dupCount = getCharTypeCount(characterType);
+    const baseName = role.charAt(0).toUpperCase() + role.slice(1);
+    const displayName = dupCount > 0 ? `${baseName} ${dupCount + 1}` : baseName;
 
     const agent: OfficeAgent = {
       id,
-      name: role.charAt(0).toUpperCase() + role.slice(1),
+      name: displayName,
       role,
       characterType,
       status: 'spawning',
@@ -955,6 +1021,7 @@ export function createOfficeState(): OfficeState {
     };
 
     agents.push(agent);
+    incrementCharTypeCount(characterType);
 
     // Add to engine at door position
     engine.addAgent(id, characterType, agent.name, DOOR_POSITION);
@@ -1209,6 +1276,7 @@ export function createOfficeState(): OfficeState {
     const sessionId = `${SESSION_PREFIX}${charType}`;
 
     // Remove real agent
+    decrementCharTypeCount(charType);
     releaseDesk(realId);
     clearIdleTimer(realId);
     clearPingPongTimer(realId);

@@ -36,6 +36,26 @@ interface SdkSessionEntry {
   streamAlive: boolean;
 }
 
+// ── Agent role classification from task description ──────────
+
+const ROLE_KEYWORDS: [RegExp, string][] = [
+  [/\b(explore|search|find|grep|look|read|glob|discover)\b/i, 'researcher'],
+  [/\b(plan|design|architect|strategy|blueprint)\b/i, 'architect'],
+  [/\b(test|validate|verify|assert|spec)\b/i, 'qa'],
+  [/\b(build|compile|deploy|docker|ci|infrastructure)\b/i, 'devops'],
+  [/\b(style|css|ui|ux|layout|component|svelte|react|frontend)\b/i, 'frontend'],
+  [/\b(api|server|database|backend|relay|endpoint|route)\b/i, 'backend'],
+  [/\b(review|refactor|fix|lint|cleanup)\b/i, 'lead'],
+  [/\b(write|implement|create|add|update|edit)\b/i, 'engineer'],
+];
+
+function classifyAgentRole(description: string): string {
+  for (const [pattern, role] of ROLE_KEYWORDS) {
+    if (pattern.test(description)) return role;
+  }
+  return 'engineer';
+}
+
 export class ClaudeCliAdapter implements IAdapter {
   readonly type = 'cli' as const;
   private emitter = new EventEmitter();
@@ -109,7 +129,7 @@ export class ClaudeCliAdapter implements IAdapter {
     const contextText = entry.session.getContextText();
     const finalText = contextText ? `${contextText}${text}` : text;
 
-    entry.sdkSession.send(finalText);
+    await entry.sdkSession.send(finalText);
     logger.info({ sessionId, textLength: finalText.length, hasContext: !!contextText }, 'Prompt sent via SDK');
   }
 
@@ -202,13 +222,25 @@ export class ClaudeCliAdapter implements IAdapter {
       // The SDK's stream() generator exits after each turn's `result` message.
       // We must loop and call stream() again to consume subsequent turns.
       while (!signal.aborted) {
+        let messagesInTurn = 0;
         for await (const message of sdkSession.stream()) {
           if (signal.aborted) break;
           this.handleSdkMessage(sessionId, message);
+          messagesInTurn++;
         }
+
+        if (messagesInTurn === 0) {
+          // The SDK's queryIterator is exhausted (Claude process exited).
+          // stream() returned immediately with no messages — exit to avoid
+          // a tight loop that would starve the Node.js event loop and block
+          // all WebSocket message processing (including approval responses).
+          logger.warn({ sessionId }, 'Stream returned 0 messages — underlying process likely exited, stopping consumer');
+          break;
+        }
+
         // Turn complete (stream yielded `result` and returned).
         // Loop back to call stream() again for the next turn.
-        logger.debug({ sessionId }, 'Turn stream ended, waiting for next turn');
+        logger.debug({ sessionId, messagesInTurn }, 'Turn stream ended, waiting for next turn');
       }
     } catch (err) {
       if (!signal.aborted) {
@@ -263,11 +295,12 @@ export class ClaudeCliAdapter implements IAdapter {
 
       case 'task_started': {
         const taskId = msg['task_id'] as string;
+        const description = (msg['description'] as string) ?? '';
         this.emitter.emit('agent-lifecycle', {
           agentId: taskId,
           event: 'spawn',
-          task: (msg['description'] as string) ?? '',
-          role: 'subagent',
+          task: description,
+          role: classifyAgentRole(description),
         } satisfies AgentEvent);
         break;
       }
