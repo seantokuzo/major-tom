@@ -9,6 +9,8 @@
   import { relay } from './lib/stores/relay.svelte';
   import { toasts } from './lib/stores/toast.svelte';
   import { createOfficeState } from './lib/office/state.svelte';
+  import type { OfficeView } from './lib/office/types';
+  import { OFFICE_VIEWS } from './lib/office/layout';
   import NotificationToggle from './lib/components/NotificationToggle.svelte';
   import AuthSettings from './lib/components/AuthSettings.svelte';
   import PairingScreen from './lib/components/PairingScreen.svelte';
@@ -61,8 +63,14 @@
 
   type ViewTab = 'chat' | 'office' | 'characters';
   let activeTab = $state<ViewTab>('chat');
+  let activeView = $state<OfficeView>('office');
 
   const office = createOfficeState();
+
+  // Expose for debug/demo (dev-only)
+  if (import.meta.env.DEV) {
+    (window as any).__office = office;
+  }
 
   // Wire relay agent events to office state.
   // We track which agents have been processed to avoid duplicate handling.
@@ -102,6 +110,15 @@
           office.handleDismissed(agent.id);
           break;
       }
+    }
+  });
+
+  // Auto-populate office with idle characters when tab is active and nothing is going on
+  $effect(() => {
+    if (activeTab === 'office') {
+      // Small delay so canvas mounts and engine starts first
+      const timer = setTimeout(() => office.ensureAutoIdle(), 150);
+      return () => clearTimeout(timer);
     }
   });
 
@@ -145,6 +162,15 @@
         Crew
       </button>
     </nav>
+    <button
+      class="demo-btn"
+      class:active={office.demoMode}
+      disabled={!office.canDemo && !office.demoMode}
+      onclick={() => office.toggleDemo()}
+      title={office.demoMode ? 'Exit demo' : 'Launch demo office'}
+    >
+      {office.demoMode ? '■ Demo' : '▶ Demo'}
+    </button>
     <div class="header-spacer"></div>
     <div class="header-actions">
       <AuthSettings />
@@ -155,17 +181,33 @@
   <ConnectionStatus />
   <SessionInfo />
 
+  {#if activeTab === 'office'}
+    <nav class="view-tabs">
+      {#each OFFICE_VIEWS as view}
+        <button
+          class="view-tab"
+          class:active={activeView === view.id}
+          onclick={() => (activeView = view.id)}
+        >
+          {view.label}
+        </button>
+      {/each}
+    </nav>
+  {/if}
+
   <div class="main-content">
     {#if activeTab === 'chat'}
       <ChatView />
     {:else if activeTab === 'characters'}
       <CharacterGallery />
     {:else}
-      <div class="office-wrapper">
+      <div class="office-wrapper" class:demo-active={office.demoMode}>
         <OfficeCanvas
           engine={office.engine}
           desks={office.desks}
           onAgentClick={handleAgentClick}
+          onEmptyClick={() => office.dismissInspector()}
+          activeView={activeView}
         />
         {#if office.selectedAgent}
           <AgentInspector
@@ -275,6 +317,37 @@
     line-height: 1.2;
   }
 
+  .view-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 0 var(--sp-sm);
+    padding-bottom: 4px;
+    background: var(--bg);
+    flex-shrink: 0;
+  }
+
+  .view-tab {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .view-tab:hover {
+    color: var(--text-secondary);
+  }
+
+  .view-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
   .main-content {
     flex: 1;
     display: flex;
@@ -288,5 +361,44 @@
     position: relative;
     display: flex;
     min-height: 0;
+  }
+
+  .office-wrapper.demo-active {
+    box-shadow: inset 0 0 20px rgba(77, 217, 115, 0.15);
+  }
+
+  .demo-btn {
+    padding: 2px 10px;
+    font-family: Menlo, monospace;
+    font-size: 11px;
+    font-weight: bold;
+    color: rgb(77, 217, 115);
+    background: transparent;
+    border: 1px solid rgb(77, 217, 115);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-left: 8px;
+    flex-shrink: 0;
+  }
+
+  .demo-btn:hover:not(:disabled) {
+    background: rgba(77, 217, 115, 0.15);
+  }
+
+  .demo-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .demo-btn.active {
+    background: rgb(77, 217, 115);
+    color: rgb(30, 30, 30);
+    animation: demo-pulse 1.5s infinite alternate;
+  }
+
+  @keyframes demo-pulse {
+    from { box-shadow: 0 0 4px rgba(77, 217, 115, 0.4); }
+    to { box-shadow: 0 0 10px rgba(77, 217, 115, 0.6); }
   }
 </style>

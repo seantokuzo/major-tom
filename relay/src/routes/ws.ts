@@ -453,17 +453,70 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     // Wire adapter events once
     wireAdapterEvents();
 
-    // WebSocket route with session cookie auth
+    // Shared socket setup — wires up event handlers after auth succeeds
+    function setupSocket(socket: WebSocket, ip: string): void {
+      (socket as WebSocket & { isAlive: boolean }).isAlive = true;
+      socket.on('pong', () => {
+        (socket as WebSocket & { isAlive: boolean }).isAlive = true;
+      });
+      clients.add(socket);
+
+      socket.on('error', (err) => {
+        logger.error({ err }, 'WebSocket error');
+      });
+
+      socket.on('close', () => {
+        clients.delete(socket);
+        logger.info({ ip }, 'Client disconnected');
+      });
+
+      socket.on('message', (data) => {
+        const raw = data.toString();
+        const message = safeDecode(raw);
+        if (!message) return;
+
+        handleClientMessage(message, socket).catch((err: unknown) => {
+          logger.error({ err, type: message.type }, 'Error handling client message');
+          sendToClient(socket, {
+            type: 'error',
+            code: 'HANDLER_ERROR',
+            message: err instanceof Error ? err.message : 'Unknown error',
+          });
+        });
+      });
+
+      // Send connection status
+      sendToClient(socket, {
+        type: 'connection.status',
+        status: 'connected',
+        adapter: 'cli',
+      });
+    }
+
+    // WebSocket route with session cookie auth (+ legacy token fallback for dev)
     fastify.get('/ws', { websocket: true }, (socket, request) => {
-      // Auth check: verify session cookie inline (sent automatically on WS upgrade)
-      const token = request.cookies?.[SESSION_COOKIE];
-      if (!token) {
+      // Auth check: session cookie (primary) or ?token=AUTH_TOKEN (dev-only fallback)
+      const sessionCookie = request.cookies?.[SESSION_COOKIE];
+      const { token: rawQueryToken } = request.query as { token?: string | string[] };
+      const queryToken = Array.isArray(rawQueryToken) ? undefined : rawQueryToken;
+      const legacyAuthToken = process.env['AUTH_TOKEN'];
+      const isDevMode = process.env['NODE_ENV'] !== 'production';
+
+      // Legacy token auth: dev-only, if ?token= matches AUTH_TOKEN env var, skip OAuth
+      if (isDevMode && queryToken && legacyAuthToken && queryToken === legacyAuthToken) {
+        const ip = request.ip;
+        logger.info({ ip }, 'Client connected via WebSocket (legacy token auth, dev mode)');
+        setupSocket(socket, ip);
+        return;
+      }
+
+      if (!sessionCookie) {
         logger.warn({ ip: request.ip }, 'WS connection attempt without session cookie');
         socket.close(1008, 'Authentication required');
         return;
       }
 
-      verifySessionToken(token)
+      verifySessionToken(sessionCookie)
         .then((payload) => {
           const allowedEmail = process.env['ALLOWED_EMAIL'];
           if (allowedEmail && payload.email.toLowerCase() !== allowedEmail.toLowerCase()) {
@@ -475,43 +528,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           // Authenticated — set up connection
           const ip = request.ip;
           logger.info({ ip, email: payload.email }, 'Client connected via WebSocket');
-
-          (socket as WebSocket & { isAlive: boolean }).isAlive = true;
-          socket.on('pong', () => {
-            (socket as WebSocket & { isAlive: boolean }).isAlive = true;
-          });
-          clients.add(socket);
-
-          socket.on('error', (err) => {
-            logger.error({ err }, 'WebSocket error');
-          });
-
-          socket.on('close', () => {
-            clients.delete(socket);
-            logger.info({ ip }, 'Client disconnected');
-          });
-
-          socket.on('message', (data) => {
-            const raw = data.toString();
-            const message = safeDecode(raw);
-            if (!message) return;
-
-            handleClientMessage(message, socket).catch((err: unknown) => {
-              logger.error({ err, type: message.type }, 'Error handling client message');
-              sendToClient(socket, {
-                type: 'error',
-                code: 'HANDLER_ERROR',
-                message: err instanceof Error ? err.message : 'Unknown error',
-              });
-            });
-          });
-
-          // Send connection status
-          sendToClient(socket, {
-            type: 'connection.status',
-            status: 'connected',
-            adapter: 'cli',
-          });
+          setupSocket(socket, ip);
         })
         .catch(() => {
           socket.close(1008, 'Invalid session');

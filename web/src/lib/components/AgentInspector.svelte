@@ -130,6 +130,11 @@
       <span class="task-label">Current Task</span>
       <div class="task-content">{agent.currentTask}</div>
     </div>
+  {:else if agent.idleActivity}
+    <div class="task-section">
+      <span class="task-label">Activity</span>
+      <div class="task-content">{agent.idleActivity}</div>
+    </div>
   {/if}
 
   <!-- Message agent -->
