@@ -8,7 +8,11 @@ import { DOG_TYPES, CHARACTER_VIEW_PREFERENCES, CHARACTER_CATALOG } from './char
 import { OfficeEngine } from './engine';
 import type { FacingDirection } from './engine';
 import { findPath, findNearestWalkable, pathDuration } from './navigation';
-import { pickJobComplete, pickDogBark, pickDogBeg, pickGeneralIdle } from './speech';
+import {
+  pickJobComplete, pickDogBark, pickDogBeg, pickGeneralIdle,
+  pickSocialInvite, pickSocialAccept, pickSocialDecline,
+  pickPingPongRally, pickCasualChat,
+} from './speech';
 import { ActivityManager } from './activity-manager';
 import type { ActivityAssignment } from './activity-manager';
 
@@ -192,6 +196,196 @@ export function createOfficeState(): OfficeState {
     engine.setPairedWith(id, null);
     // Partner picks a new activity after a short delay
     setTimeout(() => cycleIdleActivity(partnerId), 1000);
+  }
+
+  // ── Social Interactions ─────────────────────────────────────
+  // Proximity-triggered spontaneous interactions between idle sprites.
+
+  /** Agents currently mid-negotiation (invite pending response) */
+  const socialNegotiating = new Set<string>();
+  /** Interval handles for the social scanner and rally chatter */
+  let proximityScanInterval: ReturnType<typeof setInterval> | null = null;
+  let rallyInterval: ReturnType<typeof setInterval> | null = null;
+
+  function startSocialScanner(): void {
+    if (proximityScanInterval) return;
+    proximityScanInterval = setInterval(scanForSocialInteractions, 8_000);
+    rallyInterval = setInterval(pingPongRallyChatter, 5_000);
+  }
+
+  function stopSocialScanner(): void {
+    if (proximityScanInterval) { clearInterval(proximityScanInterval); proximityScanInterval = null; }
+    if (rallyInterval) { clearInterval(rallyInterval); rallyInterval = null; }
+    socialNegotiating.clear();
+  }
+
+  /** Scan all idle agents for nearby pairs and maybe trigger a social interaction */
+  function scanForSocialInteractions(): void {
+    const idleAgents: { id: string; position: Point; view: OfficeView }[] = [];
+    for (const agent of agents) {
+      if (agent.status !== 'idle') continue;
+      if (socialNegotiating.has(agent.id)) continue;
+      const ea = engine.agents.get(agent.id);
+      if (!ea || ea.pairedWith || ea.isMoving) continue;
+      idleAgents.push({ id: agent.id, position: { ...ea.position }, view: ea.currentView ?? 'office' });
+    }
+
+    if (idleAgents.length < 2) return;
+
+    const SOCIAL_DIST = 80;
+    const TRIGGER_CHANCE = 0.08;
+
+    for (let i = 0; i < idleAgents.length; i++) {
+      for (let j = i + 1; j < idleAgents.length; j++) {
+        const a = idleAgents[i];
+        const b = idleAgents[j];
+        if (a.view !== b.view) continue;
+
+        const dx = a.position.x - b.position.x;
+        const dy = a.position.y - b.position.y;
+        if (Math.sqrt(dx * dx + dy * dy) > SOCIAL_DIST) continue;
+        if (Math.random() > TRIGGER_CHANCE) continue;
+
+        // 40% ping pong invite (only in office view), 60% casual chat
+        if (Math.random() < 0.4 && a.view === 'office') {
+          initiatePingPongInvite(a.id, b.id);
+        } else {
+          initiateCasualChat(a.id, b.id);
+        }
+        return; // one interaction per scan
+      }
+    }
+  }
+
+  /** Initiate a ping pong invite: speech bubbles → accept/decline → coordinated walk */
+  function initiatePingPongInvite(initiatorId: string, targetId: string): void {
+    socialNegotiating.add(initiatorId);
+    socialNegotiating.add(targetId);
+
+    engine.setSpeechBubble(initiatorId, pickSocialInvite(), 3000);
+
+    // Face each other during negotiation
+    const iPos = engine.agents.get(initiatorId)?.position;
+    const tPos = engine.agents.get(targetId)?.position;
+    if (iPos && tPos) {
+      const ddx = tPos.x - iPos.x;
+      if (Math.abs(ddx) > 1) {
+        engine.setFacing(initiatorId, ddx > 0 ? 'right' : 'left');
+        engine.setFacing(targetId, ddx > 0 ? 'left' : 'right');
+      }
+    }
+
+    setTimeout(() => {
+      socialNegotiating.delete(initiatorId);
+      socialNegotiating.delete(targetId);
+
+      const init = agents.find(a => a.id === initiatorId);
+      const tgt = agents.find(a => a.id === targetId);
+      if (!init || !tgt || init.status !== 'idle' || tgt.status !== 'idle') return;
+
+      if (Math.random() < 0.7) {
+        // Accepted
+        engine.setSpeechBubble(targetId, pickSocialAccept(), 2000);
+
+        // Try to reserve both ping pong slots
+        const station = activityManager.getStation('break-pingPong');
+        if (!station || station.slots[0].occupantId !== null || station.slots[1].occupantId !== null) return;
+
+        activityManager.release(initiatorId);
+        activityManager.release(targetId);
+        const reserved0 = activityManager.reserveSpecific(initiatorId, 'break-pingPong', 0);
+        const reserved1 = activityManager.reserveSpecific(targetId, 'break-pingPong', 1);
+        if (!reserved0 || !reserved1) return;
+
+        // Update activity labels
+        init.idleActivity = 'Playing ping pong';
+        tgt.idleActivity = 'Playing ping pong';
+        engine.setIdleActivity(initiatorId, 'Playing ping pong');
+        engine.setIdleActivity(targetId, 'Playing ping pong');
+        agents = [...agents];
+
+        // Walk both to ping pong table
+        const walkSpeed = 100;
+        for (const [id, slotIdx] of [[initiatorId, 0], [targetId, 1]] as [string, number][]) {
+          const ea = engine.agents.get(id);
+          const pos = station.slots[slotIdx].position;
+          const from = ea?.position ?? DOOR_POSITION;
+          const path = findPath(from, pos, 'office');
+
+          clearIdleTimer(id);
+          engine.setStatusColor(id, STATUS_COLORS.walking);
+          engine.setAnimation(id, 'none');
+          engine.setCurrentView(id, 'office');
+
+          if (path.length > 0) {
+            engine.moveAgentAlongPath(id, path, walkSpeed);
+          } else {
+            engine.moveAgent(id, pos, 2000);
+          }
+
+          const walkDuration = path.length > 0 ? pathDuration(path, walkSpeed) : 2000;
+          setTimeout(() => {
+            const current = agents.find(a => a.id === id);
+            if (!current || current.status !== 'idle') return;
+            engine.setStatusColor(id, STATUS_COLORS.idle);
+            engine.setAnimation(id, 'idle');
+            engine.setFacing(id, station.slots[slotIdx].facing);
+            engine.setPairedWith(initiatorId, targetId);
+            engine.setPairedWith(targetId, initiatorId);
+          }, walkDuration + 200);
+        }
+
+        // Restart idle cycle timers (they'll eventually break up and move on)
+        startIdleCycle(initiatorId);
+        startIdleCycle(targetId);
+      } else {
+        // Declined
+        engine.setSpeechBubble(targetId, pickSocialDecline(), 2000);
+      }
+    }, 2000);
+  }
+
+  /** Casual chat: two nearby idle sprites exchange speech bubbles */
+  function initiateCasualChat(agentAId: string, agentBId: string): void {
+    socialNegotiating.add(agentAId);
+    socialNegotiating.add(agentBId);
+
+    // Face each other
+    const aPos = engine.agents.get(agentAId)?.position;
+    const bPos = engine.agents.get(agentBId)?.position;
+    if (aPos && bPos) {
+      const ddx = bPos.x - aPos.x;
+      if (Math.abs(ddx) > 1) {
+        engine.setFacing(agentAId, ddx > 0 ? 'right' : 'left');
+        engine.setFacing(agentBId, ddx > 0 ? 'left' : 'right');
+      }
+    }
+
+    engine.setSpeechBubble(agentAId, pickCasualChat(), 2500);
+
+    setTimeout(() => {
+      const b = agents.find(a => a.id === agentBId);
+      if (b && b.status === 'idle') {
+        engine.setSpeechBubble(agentBId, pickCasualChat(), 2500);
+      }
+      socialNegotiating.delete(agentAId);
+      socialNegotiating.delete(agentBId);
+    }, 2000);
+  }
+
+  /** Periodic rally chatter for paired ping pong agents */
+  function pingPongRallyChatter(): void {
+    for (const agent of agents) {
+      if (agent.status !== 'idle' || agent.idleActivity !== 'Playing ping pong') continue;
+      const ea = engine.agents.get(agent.id);
+      if (!ea?.pairedWith) continue;
+      // 30% chance per pair per tick (only fire for one of the pair to avoid double)
+      if (ea.id > ea.pairedWith) continue; // deterministic: lower ID drives the rally
+      if (Math.random() > 0.3) continue;
+      // Pick which player speaks
+      const speaker = Math.random() < 0.5 ? ea.id : ea.pairedWith;
+      engine.setSpeechBubble(speaker, pickPingPongRally(), 2000);
+    }
   }
 
   /** Set up ping pong pairing for an agent arriving at the table */
@@ -432,6 +626,7 @@ export function createOfficeState(): OfficeState {
     clearIdleTimer(id);
     clearPingPongTimer(id);
     clearPairing(id);
+    socialNegotiating.delete(id);
     activityManager.release(id);
     releaseDesk(id);
     engine.removeAgent(id);
@@ -454,6 +649,7 @@ export function createOfficeState(): OfficeState {
   ];
 
   function dismissAllDemoAgents(): void {
+    stopSocialScanner();
     const demoAgents = agents.filter((a) => isDemoAgent(a.id));
     for (const agent of demoAgents) {
       engine.setAnimation(agent.id, 'fade-out');
@@ -493,6 +689,7 @@ export function createOfficeState(): OfficeState {
     }
 
     sessionMode = true;
+    startSocialScanner();
 
     // Spawn all 14 characters with stagger
     ALL_CHARACTER_TYPES.forEach((charType, i) => {
@@ -542,6 +739,7 @@ export function createOfficeState(): OfficeState {
   function exitSessionMode(): void {
     if (!sessionMode) return;
     sessionMode = false;
+    stopSocialScanner();
 
     // Fade out and remove all session agents
     const sessionAgents = agents.filter(a => isSessionAgent(a.id));
@@ -651,6 +849,7 @@ export function createOfficeState(): OfficeState {
     if (!canDemo) return;
 
     demoMode = true;
+    startSocialScanner();
 
     // Spawn demo agents with staggered entrance
     DEMO_ROSTER.forEach((entry, i) => {
@@ -1121,6 +1320,7 @@ export function createOfficeState(): OfficeState {
     reset() {
       for (const id of idleTimers.keys()) clearIdleTimer(id);
       for (const id of pingPongWaitTimers.keys()) clearPingPongTimer(id);
+      stopSocialScanner();
       agents = [];
       desks = DESKS.map((d) => ({ ...d, occupantId: null }));
       selectedAgentId = null;

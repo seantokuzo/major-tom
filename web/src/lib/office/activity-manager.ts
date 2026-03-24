@@ -419,6 +419,18 @@ export class ActivityManager {
     return CHARACTER_BEDROOM[characterType] === bedroomArea;
   }
 
+  /** Reserve a specific station slot for an agent. Returns true if successful.
+   *  Used for social interactions that need to reserve exact slots (e.g., ping pong invite). */
+  reserveSpecific(agentId: string, stationId: string, slotIndex: number): boolean {
+    this.release(agentId);
+    const station = this.stations.find(s => s.id === stationId);
+    if (!station || !station.slots[slotIndex] || station.slots[slotIndex].occupantId !== null) {
+      return false;
+    }
+    this.reserveSlot(stationId, slotIndex, agentId);
+    return true;
+  }
+
   /** Reset all reservations */
   reset(): void {
     for (const station of this.stations) {
