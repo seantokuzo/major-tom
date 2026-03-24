@@ -191,12 +191,16 @@
   {#if activeTab === 'office'}
     <nav class="view-tabs">
       {#each OFFICE_VIEWS as view}
+        {@const count = office.agents.filter(a => { const ea = office.engine.agents.get(a.id); return (ea?.currentView ?? 'office') === view.id; }).length}
         <button
           class="view-tab"
           class:active={activeView === view.id}
           onclick={() => (activeView = view.id)}
         >
           {view.label}
+          {#if count > 0}
+            <span class="view-count">{count}</span>
+          {/if}
         </button>
       {/each}
     </nav>
@@ -353,6 +357,21 @@
   .view-tab.active {
     color: var(--accent);
     border-bottom-color: var(--accent);
+  }
+
+  .view-count {
+    font-size: 0.55rem;
+    font-weight: 700;
+    background: rgba(200, 200, 210, 0.2);
+    color: var(--text-tertiary);
+    padding: 0 4px;
+    border-radius: var(--r-full);
+    margin-left: 3px;
+  }
+
+  .view-tab.active .view-count {
+    background: rgba(var(--accent-rgb, 77, 217, 115), 0.2);
+    color: var(--accent);
   }
 
   .main-content {

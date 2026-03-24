@@ -54,27 +54,27 @@ const VIEW_DOORWAYS: Record<OfficeView, DoorwayDef[]> = {
     { x: 750, y: 378, width: 45, height: 25 },
   ],
   spriteStreet: (() => {
-    // Generate doorways for the 7×2 bedroom grid
+    // Generate doorways for the 7×2 bedroom grid (compact rooms: 135×110)
     const doorways: DoorwayDef[] = [];
     const COL_W = 140;
-    const ROW_H = 370;
+    const ROW_H = 115;
 
     // Horizontal doorways between row 1 and row 2 (7 doorways, one per column)
     for (let col = 0; col < 7; col++) {
-      const cx = 5 + col * COL_W + 55; // center of column
-      doorways.push({ x: cx, y: ROW_H - 2, width: 25, height: 20 });
+      const cx = 5 + col * COL_W + 55;
+      doorways.push({ x: cx, y: ROW_H - 2, width: 25, height: 16 });
     }
 
     // Vertical doorways between adjacent columns in row 1
     for (let col = 0; col < 6; col++) {
       const wallX = 5 + (col + 1) * COL_W - 3;
-      doorways.push({ x: wallX, y: 160, width: 20, height: 35 });
+      doorways.push({ x: wallX, y: 40, width: 16, height: 30 });
     }
 
     // Vertical doorways between adjacent columns in row 2
     for (let col = 0; col < 6; col++) {
       const wallX = 5 + (col + 1) * COL_W - 3;
-      doorways.push({ x: wallX, y: ROW_H + 160, width: 20, height: 35 });
+      doorways.push({ x: wallX, y: ROW_H + 40, width: 16, height: 30 });
     }
 
     return doorways;

@@ -337,19 +337,19 @@ export const CHARACTER_BEDROOM: Record<CharacterType, OfficeAreaType> = {
  */
 function bedroomActivities(area: OfficeAreaType, baseX: number, baseY: number): IdleActivity[] {
   return [
-    { label: 'Napping in bed',     area, target: { x: baseX + 68, y: baseY + 120 } },
-    { label: 'Reading in bed',     area, target: { x: baseX + 68, y: baseY + 100 } },
-    { label: 'Checking closet',    area, target: { x: baseX + 30, y: baseY + 220 } },
-    { label: 'Looking in mirror',  area, target: { x: baseX + 68, y: baseY + 30 } },
-    { label: 'Relaxing at home',   area, target: { x: baseX + 90, y: baseY + 300 } },
+    { label: 'Napping in bed',     area, target: { x: baseX + 95, y: baseY + 45 } },
+    { label: 'Reading in bed',     area, target: { x: baseX + 95, y: baseY + 35 } },
+    { label: 'Checking closet',    area, target: { x: baseX + 25, y: baseY + 80 } },
+    { label: 'Looking in mirror',  area, target: { x: baseX + 45, y: baseY + 20 } },
+    { label: 'Relaxing at home',   area, target: { x: baseX + 68, y: baseY + 80 } },
   ];
 }
 
 function bedroomDogActivities(area: OfficeAreaType, baseX: number, baseY: number): IdleActivity[] {
   return [
-    { label: 'Napping on bed',        area, target: { x: baseX + 68, y: baseY + 120 } },
-    { label: 'Hiding under bed',      area, target: { x: baseX + 68, y: baseY + 160 } },
-    { label: 'Scratching at closet',  area, target: { x: baseX + 30, y: baseY + 220 } },
+    { label: 'Napping on bed',        area, target: { x: baseX + 95, y: baseY + 45 } },
+    { label: 'Hiding under bed',      area, target: { x: baseX + 95, y: baseY + 60 } },
+    { label: 'Scratching at closet',  area, target: { x: baseX + 25, y: baseY + 80 } },
   ];
 }
 
@@ -357,12 +357,12 @@ function bedroomDogActivities(area: OfficeAreaType, baseX: number, baseY: number
 export const SPRITE_ST_HUMAN_ACTIVITIES: Record<string, IdleActivity[]> = (() => {
   const result: Record<string, IdleActivity[]> = {};
   const colW = 140;
-  const rowH = 375;
+  const rowH = 115;
   for (let row = 0; row < 2; row++) {
     for (let col = 0; col < 7; col++) {
       const areaKey = `bedroomRow${row + 1}Col${col + 1}`;
       const baseX = 5 + col * colW;
-      const baseY = row === 0 ? 5 : 380;
+      const baseY = row === 0 ? 5 : 5 + rowH;
       result[areaKey] = bedroomActivities(areaKey as OfficeAreaType, baseX, baseY);
     }
   }
@@ -373,11 +373,12 @@ export const SPRITE_ST_HUMAN_ACTIVITIES: Record<string, IdleActivity[]> = (() =>
 export const SPRITE_ST_DOG_ACTIVITIES: Record<string, IdleActivity[]> = (() => {
   const result: Record<string, IdleActivity[]> = {};
   const colW = 140;
+  const rowH = 115;
   for (let row = 0; row < 2; row++) {
     for (let col = 0; col < 7; col++) {
       const areaKey = `bedroomRow${row + 1}Col${col + 1}`;
       const baseX = 5 + col * colW;
-      const baseY = row === 0 ? 5 : 380;
+      const baseY = row === 0 ? 5 : 5 + rowH;
       result[areaKey] = bedroomDogActivities(areaKey as OfficeAreaType, baseX, baseY);
     }
   }

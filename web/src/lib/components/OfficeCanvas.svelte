@@ -477,7 +477,7 @@
     const bubbleW = textWidth + padH * 2;
     const bubbleH = 12 + padV * 2;
     const bubbleX = x - bubbleW / 2;
-    const bubbleY = y - size.height / 2 - 14 - bubbleH; // above name + status dot
+    const bubbleY = y - size.height / 2 - 20 - bubbleH; // above name + status dot
     const tailSize = 4;
 
     // Bubble background
@@ -540,15 +540,16 @@
 
     // Name label above sprite
     const size = getCharacterSize(agent.characterType);
+    const nameY = y - size.height / 2 - 6;
     ctx.fillStyle = 'white';
     ctx.font = '9px Menlo, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(agent.name, x, y - size.height / 2 - 4);
+    ctx.fillText(agent.name, x, nameY);
 
-    // Status dot
+    // Status dot (above the name text)
     ctx.beginPath();
-    ctx.arc(x, y - size.height / 2 - 10, 3, 0, Math.PI * 2);
+    ctx.arc(x, nameY - 11, 3, 0, Math.PI * 2);
     ctx.fillStyle = agent.statusColor;
     ctx.fill();
 
@@ -562,12 +563,12 @@
 <div class="office-wrapper">
   <div class="office-container" bind:this={containerEl}>
     {#if isMobile}
-      <!-- Mobile: stacked room canvases -->
-      <div class="mobile-room-stack">
+      <!-- Mobile: stacked room canvases (grid for Sprite St.) -->
+      <div class="mobile-room-stack" class:bedroom-grid={activeView === 'spriteStreet'}>
         {#each roomOrder as room}
           {@const area = getAreasForView(activeView).find(a => a.type === room.type)}
           {#if area}
-            <div class="mobile-room-section">
+            <div class="mobile-room-section" class:bedroom-cell={activeView === 'spriteStreet'}>
               <div class="mobile-room-label">{room.label}</div>
               <canvas
                 bind:this={roomCanvasEls[room.type]}
@@ -655,5 +656,23 @@
     width: 100%;
     height: auto;
     border-radius: 2px;
+  }
+
+  /* ── Sprite St. bedroom grid (2 per row, compact) ── */
+
+  .mobile-room-stack.bedroom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    align-content: start;
+  }
+
+  .bedroom-cell {
+    flex-shrink: 0;
+  }
+
+  .bedroom-cell .mobile-room-label {
+    font-size: 8px;
+    padding: 2px 2px 1px;
   }
 </style>

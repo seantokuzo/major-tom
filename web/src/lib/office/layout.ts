@@ -155,9 +155,9 @@ const charConfigByType = new Map(CHARACTER_CATALOG.map(c => [c.type, c]));
 function generateBedrooms(): OfficeArea[] {
   const areas: OfficeArea[] = [];
   const COL_W = 140;   // column width (135 room + 5 gap)
-  const ROW_H = 370;   // row height (365 room + 5 gap)
+  const ROW_H = 115;   // row height (110 room + 5 gap)
   const ROOM_W = 135;
-  const ROOM_H = 365;
+  const ROOM_H = 110;
 
   for (let row = 0; row < 2; row++) {
     for (let col = 0; col < 7; col++) {
@@ -172,18 +172,15 @@ function generateBedrooms(): OfficeArea[] {
       const by = row === 0 ? 5 : 5 + ROW_H;
 
       const furniture: Furniture[] = [
-        // Bed — centered horizontally near the top of the room
-        { type: 'bed', position: { x: bx + 35, y: bx > 0 ? by + 60 : by + 60 }, width: 65, height: 80, color: spriteColor },
-        // Mirror on top wall
-        { type: 'mirror', position: { x: bx + 50, y: by + 8 }, width: 35, height: 8, color: 'rgb(180, 200, 220)' },
-        // Closet — left side of room
-        { type: 'closet', position: { x: bx + 8, y: by + 190 }, width: 35, height: 55, color: 'rgb(140, 110, 75)' },
-        // Rug — center of room, flat/non-blocking
-        { type: 'rug', position: { x: bx + 30, y: by + 270 }, width: 75, height: 50, color: RUG_COLORS[idx] },
+        // Bed — right side, compact
+        { type: 'bed', position: { x: bx + 70, y: by + 10 }, width: 55, height: 45, color: spriteColor },
+        // Mirror on top wall (small)
+        { type: 'mirror', position: { x: bx + 30, y: by + 6 }, width: 28, height: 6, color: 'rgb(180, 200, 220)' },
+        // Closet — bottom-left corner
+        { type: 'closet', position: { x: bx + 8, y: by + 60 }, width: 28, height: 40, color: 'rgb(140, 110, 75)' },
+        // Rug — center floor, flat/non-blocking
+        { type: 'rug', position: { x: bx + 42, y: by + 65 }, width: 50, height: 30, color: RUG_COLORS[idx] },
       ];
-
-      // Fix bed y position consistently
-      furniture[0] = { type: 'bed', position: { x: bx + 35, y: by + 60 }, width: 65, height: 80, color: spriteColor };
 
       areas.push({
         type: areaType,
