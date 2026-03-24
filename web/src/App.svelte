@@ -236,7 +236,10 @@
     <ConnectionBar />
     <ConnectionStatus />
     {#if relay.isConnected && relay.hasSession}
-      <div class="mode-row">
+      <div
+        class="mode-row"
+        class:mode-row-yolo={relay.permissionMode.mode === 'god' && relay.permissionMode.godSubMode === 'yolo'}
+      >
         <PermissionModeSwitcher />
       </div>
     {/if}
@@ -313,10 +316,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--sp-xs) var(--sp-sm);
+    padding: 3px var(--sp-sm);
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+    transition: background 0.3s, border-color 0.3s;
+  }
+
+  .mode-row-yolo {
+    background: rgba(248, 113, 113, 0.04);
+    border-bottom-color: rgba(248, 113, 113, 0.3);
   }
 
   .collapse-btn {

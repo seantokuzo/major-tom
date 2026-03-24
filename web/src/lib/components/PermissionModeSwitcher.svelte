@@ -81,30 +81,34 @@
   });
 </script>
 
-<div class="switcher" bind:this={switcherEl}>
+<div
+  class="switcher"
+  class:yolo-active={mode === 'god' && godSubMode === 'yolo'}
+  bind:this={switcherEl}
+>
   <button
-    class="pill"
+    class="pill pill-manual"
     class:active={mode === 'manual'}
     onclick={() => switchTo('manual')}
   >
-    Manual
+    <span class="label-full">Manual</span><span class="label-short">Man</span>
   </button>
 
   <button
-    class="pill"
+    class="pill pill-smart"
     class:active={mode === 'smart'}
     onclick={() => switchTo('smart')}
   >
-    Smart
+    <span class="label-full">Smart</span><span class="label-short">Smt</span>
   </button>
 
   <div class="pill-wrap">
     <button
-      class="pill"
+      class="pill pill-delay"
       class:active={mode === 'delay'}
       onclick={handleDelayClick}
     >
-      Delay{#if mode === 'delay'}<span class="pill-detail">{delaySeconds}s</span>{/if}
+      <span class="label-full">Delay</span><span class="label-short">Dly</span>{#if mode === 'delay'}<span class="pill-detail">{delaySeconds}s</span>{/if}
       <span class="caret">&#x25BE;</span>
     </button>
     {#if openDropdown === 'delay'}
@@ -129,7 +133,7 @@
       class:yolo={mode === 'god' && godSubMode === 'yolo'}
       onclick={handleGodClick}
     >
-      God{#if mode === 'god'}<span class="pill-detail">{godSubMode === 'yolo' ? 'YOLO' : 'Nrml'}</span>{/if}
+      <span class="label-full">God</span><span class="label-short">God</span>{#if mode === 'god'}<span class="pill-detail">{godSubMode === 'yolo' ? 'YOLO' : 'Nrml'}</span>{/if}
       <span class="caret">&#x25BE;</span>
     </button>
     {#if openDropdown === 'god'}
@@ -173,13 +177,27 @@
 {/if}
 
 <style>
+  /* ── Segmented control container ─────────────────────────── */
   .switcher {
     display: flex;
-    gap: 2px;
-    background: rgba(20, 20, 31, 0.6);
+    gap: 0;
+    background: rgba(10, 10, 15, 0.7);
+    border: 1px solid var(--border);
     border-radius: var(--r-sm);
     padding: 2px;
     width: 100%;
+    position: relative;
+  }
+
+  .switcher.yolo-active {
+    border-color: rgba(248, 113, 113, 0.5);
+    animation: switcher-yolo-pulse 2s ease-in-out infinite alternate;
+    background: rgba(248, 113, 113, 0.06);
+  }
+
+  @keyframes switcher-yolo-pulse {
+    from { box-shadow: 0 0 6px rgba(248, 113, 113, 0.15), inset 0 0 8px rgba(248, 113, 113, 0.05); }
+    to { box-shadow: 0 0 12px rgba(248, 113, 113, 0.3), inset 0 0 12px rgba(248, 113, 113, 0.1); }
   }
 
   .pill-wrap {
@@ -188,6 +206,7 @@
     display: flex;
   }
 
+  /* ── Pill buttons (segmented control segments) ───────────── */
   .pill {
     flex: 1;
     font-family: var(--font-mono);
@@ -196,72 +215,163 @@
     color: var(--text-tertiary);
     background: transparent;
     border: none;
-    padding: 6px 4px;
+    padding: 5px 4px;
     border-radius: 4px;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.2s ease;
     white-space: nowrap;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 3px;
-    min-height: 30px;
+    min-height: 28px;
+    position: relative;
+    z-index: 1;
   }
 
-  .pill:hover {
+  .pill:hover:not(.active) {
     color: var(--text-secondary);
     background: rgba(255, 255, 255, 0.04);
   }
 
+  /* ── Active pill states (per-mode colors) ────────────────── */
   .pill.active {
     color: var(--text-primary);
-    background: var(--surface-hover);
     font-weight: 600;
+    border-radius: 4px;
+  }
+
+  /* Manual — default accent */
+  .pill-manual.active {
+    color: var(--text-primary);
+    background: var(--surface-hover);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Smart — gold accent (default mode) */
+  .pill-smart.active {
+    color: var(--accent);
+    background: rgba(212, 168, 83, 0.15);
+    box-shadow: 0 1px 4px rgba(212, 168, 83, 0.2);
+  }
+
+  /* Delay — blue accent */
+  .pill-delay.active {
+    color: var(--skip);
+    background: rgba(96, 165, 250, 0.12);
+    box-shadow: 0 1px 4px rgba(96, 165, 250, 0.2);
+  }
+
+  /* God normal — amber */
+  .pill-god.active {
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.14);
+    box-shadow: 0 1px 4px rgba(251, 191, 36, 0.2);
+  }
+
+  /* God YOLO — pulsing red danger */
+  .pill-god.yolo {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.18);
+    box-shadow: 0 0 6px rgba(248, 113, 113, 0.3);
+    animation: yolo-pill-pulse 1.5s ease-in-out infinite alternate;
+  }
+
+  @keyframes yolo-pill-pulse {
+    from {
+      background: rgba(248, 113, 113, 0.14);
+      box-shadow: 0 0 4px rgba(248, 113, 113, 0.2);
+    }
+    to {
+      background: rgba(248, 113, 113, 0.22);
+      box-shadow: 0 0 10px rgba(248, 113, 113, 0.4);
+    }
   }
 
   .pill-detail {
-    font-size: 0.6rem;
+    font-size: 0.58rem;
     opacity: 0.7;
-  }
-
-  .pill-god.active {
-    color: #fbbf24;
-    background: rgba(251, 191, 36, 0.12);
-  }
-
-  .pill-god.yolo {
-    color: #f87171;
-    background: rgba(248, 113, 113, 0.12);
-    animation: yolo-pulse 1.5s ease-in-out infinite alternate;
-  }
-
-  @keyframes yolo-pulse {
-    from { box-shadow: inset 0 0 4px rgba(248, 113, 113, 0.15); }
-    to { box-shadow: inset 0 0 8px rgba(248, 113, 113, 0.3); }
+    font-weight: 400;
   }
 
   .caret {
     font-size: 0.5rem;
-    opacity: 0.5;
+    opacity: 0.4;
+    transition: opacity 0.15s;
   }
 
-  /* Dropdowns */
+  .pill:hover .caret,
+  .pill.active .caret {
+    opacity: 0.7;
+  }
+
+  /* ── Dropdowns ───────────────────────────────────────────── */
   .dropdown {
     position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--r-sm);
     padding: 4px;
     z-index: 50;
     min-width: 90px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    /* Entry animation */
+    animation: dropdown-enter 0.15s ease-out;
   }
 
   .dropdown-right {
     left: auto;
     right: 0;
+    transform: none;
+  }
+
+  @keyframes dropdown-enter {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  }
+
+  .dropdown-right {
+    animation-name: dropdown-enter-right;
+  }
+
+  @keyframes dropdown-enter-right {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Arrow nub pointing to parent pill */
+  .dropdown::before {
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 8px;
+    height: 8px;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+  }
+
+  .dropdown-right::before {
+    left: auto;
+    right: 12px;
+    transform: rotate(45deg);
   }
 
   .dropdown-item {
@@ -304,7 +414,27 @@
     font-weight: 400;
   }
 
-  /* Confirmation dialog */
+  /* ── Mobile: abbreviate pill labels ──────────────────────── */
+  .pill .label-full { display: inline; }
+  .pill .label-short { display: none; }
+
+  @media (max-width: 400px) {
+    .pill {
+      font-size: 0.62rem;
+      padding: 5px 2px;
+      gap: 2px;
+    }
+    .pill .label-full { display: none; }
+    .pill .label-short { display: inline; }
+    .pill-detail {
+      font-size: 0.52rem;
+    }
+    .caret {
+      font-size: 0.45rem;
+    }
+  }
+
+  /* ── Confirmation dialog ─────────────────────────────────── */
   .confirm-overlay {
     position: fixed;
     inset: 0;
@@ -313,6 +443,12 @@
     align-items: center;
     justify-content: center;
     z-index: 200;
+    animation: overlay-enter 0.15s ease-out;
+  }
+
+  @keyframes overlay-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
   .confirm-card {
@@ -322,6 +458,18 @@
     padding: var(--sp-lg);
     max-width: 300px;
     width: 90%;
+    animation: card-enter 0.2s ease-out;
+  }
+
+  @keyframes card-enter {
+    from {
+      opacity: 0;
+      transform: scale(0.95) translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
   }
 
   .confirm-title {
@@ -353,6 +501,11 @@
     font-size: 0.75rem;
     font-weight: 600;
     cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .confirm-btn:hover {
+    transform: translateY(-1px);
   }
 
   .confirm-cancel {
@@ -361,8 +514,16 @@
     border: 1px solid var(--border);
   }
 
+  .confirm-cancel:hover {
+    background: var(--surface-hover);
+  }
+
   .confirm-ok {
     background: #fbbf24;
     color: #000;
+  }
+
+  .confirm-ok:hover {
+    background: #f5c842;
   }
 </style>
