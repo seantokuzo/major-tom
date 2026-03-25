@@ -84,11 +84,12 @@
     // Subscribe to relay.agents (the trigger) but untrack office mutations
     // to avoid read-write cycles on office.agents within this effect.
     const agents = relay.agents;
+    const agentCount = agents.length; // Track array length to fire on push/splice
     const stateSize = processedAgentStates.size;
 
     untrack(() => {
       // Clear tracking and office state when relay agents are reset (e.g. newSession)
-      if (agents.length === 0 && stateSize > 0) {
+      if (agentCount === 0 && stateSize > 0) {
         processedAgentStates.clear();
         office.reset();
         return;
@@ -100,6 +101,16 @@
         if (prevKey === key) continue;
 
         processedAgentStates.set(agent.id, key);
+
+        // Always ensure handleSpawn is called first for new agents.
+        // Svelte 5 batches reactive updates — if agent.spawn and agent.working
+        // arrive in the same microtask, the effect may only fire once with
+        // the agent already in 'working' state. Without this guard,
+        // handleSpawn would never be called and the sprite never promotes.
+        const isNew = !prevKey;
+        if (isNew && agent.status !== 'spawned') {
+          office.handleSpawn(agent.id, agent.role, agent.task);
+        }
 
         switch (agent.status) {
           case 'spawned':

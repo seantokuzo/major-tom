@@ -326,11 +326,12 @@ export class ClaudeCliAdapter implements IAdapter {
       case 'task_started': {
         const taskId = msg['task_id'] as string;
         const description = (msg['description'] as string) ?? '';
+        const role = classifyAgentRole(description);
         this.emitter.emit('agent-lifecycle', {
           agentId: taskId,
           event: 'spawn',
           task: description,
-          role: classifyAgentRole(description),
+          role,
         } satisfies AgentEvent);
         break;
       }

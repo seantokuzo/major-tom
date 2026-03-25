@@ -190,9 +190,11 @@ export class OfficeEngine {
     }
     if (type === 'fade-out') {
       agent.alpha = 1; // will fade over 0.5s
-    }
-    if (type === 'fade-in') {
+    } else if (type === 'fade-in') {
       agent.alpha = 0; // will fade in over 0.3s
+    } else if (agent.alpha < 1) {
+      // Safety net: recover from stuck fade-out. Any non-fade animation should be visible.
+      agent.alpha = 1;
     }
   }
 

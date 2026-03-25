@@ -750,13 +750,16 @@ class RelayStore {
         break;
 
       case 'agent.spawn':
-        this.agents.push({
-          id: message.agentId,
-          parentId: message.parentId,
-          task: message.task,
-          role: message.role,
-          status: 'spawned',
-        });
+        // Guard against duplicate spawn messages (e.g. reconnect replay)
+        if (!this.agents.some(a => a.id === message.agentId)) {
+          this.agents.push({
+            id: message.agentId,
+            parentId: message.parentId,
+            task: message.task,
+            role: message.role,
+            status: 'spawned',
+          });
+        }
         this.messages.push({
           id: uid(),
           role: 'system',

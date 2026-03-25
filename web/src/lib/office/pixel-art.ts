@@ -1168,6 +1168,9 @@ interface CachedSprite {
   canvas: OffscreenCanvas | HTMLCanvasElement;
   width: number;
   height: number;
+  /** Center of bounding box in grid coords — needed for accurate overlay positioning */
+  centerX: number;
+  centerY: number;
 }
 
 /** Create an offscreen canvas, falling back to HTMLCanvasElement for Safari/iOS */
@@ -1229,7 +1232,11 @@ function buildCachedSprite(type: CharacterType): CachedSprite {
     );
   }
 
-  return { canvas, width: w, height: h };
+  return {
+    canvas, width: w, height: h,
+    centerX: (maxX + minX + 1) / 2,
+    centerY: (maxY + minY + 1) / 2,
+  };
 }
 
 function getCachedSprite(type: CharacterType): CachedSprite {
@@ -1291,7 +1298,11 @@ function buildBlinkSprite(type: CharacterType): CachedSprite | null {
       (x - minX) * PIXEL_SIZE, (y - minY) * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE
     );
   }
-  return { canvas, width: w, height: h };
+  return {
+    canvas, width: w, height: h,
+    centerX: (maxX + minX + 1) / 2,
+    centerY: (maxY + minY + 1) / 2,
+  };
 }
 
 function getCachedBlinkSprite(type: CharacterType): CachedSprite | null {
@@ -1586,28 +1597,22 @@ const DOG_FEATURES: Partial<Record<CharacterType, DogFeatures>> = {
  * Convert a grid (row, col) position to canvas pixel coordinates
  * relative to the sprite's center point (x, y).
  * The sprite uses Y-up internally but is flipped when rendered.
+ * Uses actual sprite bounding box center for accurate positioning.
  */
 function gridToCanvas(
   row: number, col: number,
   gridRows: number, gridCols: number,
-  spriteW: number, spriteH: number,
+  sprite: CachedSprite,
 ): { cx: number; cy: number } {
   const gcx = Math.floor(gridCols / 2);
   const gcy = Math.floor(gridRows / 2);
   // Grid coordinates (Y-up)
   const gx = col - gcx;
   const gy = (gridRows - 1 - row) - gcy;
-  // In sprite bitmap
-  // We need minX/minY but can approximate: sprite is tightly bounded,
-  // so minX ≈ -(spriteW/2) in grid coords, minY ≈ -(spriteH/2)
-  // Actually px = gx - minX, py = gy - minY
-  // After flip: canvasX = -spriteW/2 + px, canvasY = spriteH/2 - py - 1
-  // Since minX ≈ first non-empty col - gcx and similar, we approximate:
-  // The sprite canvas is exactly spriteW x spriteH, pixel (0,0) is the top-left
-  // of the bounding box. We know the grid center maps to roughly sprite center.
-  // More precisely: canvasRelX ≈ gx (since sprite center ≈ grid center)
-  //                 canvasRelY ≈ -gy (flipped)
-  return { cx: gx, cy: -gy };
+  // After Y-flip, pixel at (gx, gy) maps to canvas-relative:
+  //   cx = gx - centerX, cy = centerY - gy
+  // where centerX/Y is the bounding box center in grid coords
+  return { cx: gx - sprite.centerX, cy: sprite.centerY - gy };
 }
 
 /**
@@ -1648,7 +1653,7 @@ function applyHumanIdleOverlay(
     // Alternate which hand fidgets
     const useLeft = Math.floor(time / fidgetPeriod) % 2 === 0;
     const hand = useLeft ? features.leftHand : features.rightHand;
-    const pos = gridToCanvas(hand[0], hand[1], fRows, fCols, sprite.width, sprite.height);
+    const pos = gridToCanvas(hand[0], hand[1], fRows, fCols, sprite);
 
     // Draw a small colored patch 1px above the hand position (hand moves up slightly)
     ctx.fillStyle = features.handColor;
@@ -1685,22 +1690,19 @@ function applyDogIdleOverlay(
   const wagPhase = (time % 1500) / 1500;
   const wagOffset = Math.round(Math.sin(wagPhase * Math.PI * 2) * 2); // ±2px
 
-  const tailTip = gridToCanvas(features.tailTip[0], features.tailTip[1], fRows, fCols, sprite.width, sprite.height);
-  const tailBase = gridToCanvas(features.tailBase[0], features.tailBase[1], fRows, fCols, sprite.width, sprite.height);
+  const tailTip = gridToCanvas(features.tailTip[0], features.tailTip[1], fRows, fCols, sprite);
+  const tailBase = gridToCanvas(features.tailBase[0], features.tailBase[1], fRows, fCols, sprite);
 
-  // Clear the tail tip area and redraw offset
-  // Erase old tail tip (draw transparent/background)
-  ctx.clearRect(x + tailTip.cx - 2, y + tailTip.cy - 1, 5, 3);
-  // Draw wagging tail tip at new position
-  ctx.fillStyle = features.tailColor;
-  ctx.fillRect(x + tailTip.cx + wagOffset, y + tailTip.cy, 2, 1);
-  ctx.fillRect(x + tailTip.cx + wagOffset, y + tailTip.cy - 1, 2, 1);
-
-  // Also shift the tail mid-section slightly
-  const midWag = Math.round(wagOffset * 0.5);
-  ctx.clearRect(x + tailBase.cx - 2, y + tailBase.cy - 1, 5, 3);
-  ctx.fillStyle = features.tailColor;
-  ctx.fillRect(x + tailBase.cx + midWag, y + tailBase.cy, 2, 1);
+  // Tail wag: overdraw at offset position (no clearRect — that punches
+  // transparent holes through the floor). The cached sprite's rest-position
+  // tail shows underneath, creating a natural "fast wag" blur effect.
+  if (wagOffset !== 0) {
+    ctx.fillStyle = features.tailColor;
+    ctx.fillRect(x + tailTip.cx + wagOffset, y + tailTip.cy, 2, 1);
+    ctx.fillRect(x + tailTip.cx + wagOffset, y + tailTip.cy - 1, 2, 1);
+    const midWag = Math.round(wagOffset * 0.5);
+    ctx.fillRect(x + tailBase.cx + midWag, y + tailBase.cy, 2, 1);
+  }
 
   // Ear twitch: quick shift every 5-8s, 200ms duration
   const typeHash = type.charCodeAt(0) + type.charCodeAt(2) * 11;
@@ -1709,8 +1711,8 @@ function applyDogIdleOverlay(
   const isEarTwitch = earPhase < 200;
 
   if (isEarTwitch) {
-    const earL = gridToCanvas(features.earLeft[0], features.earLeft[1], fRows, fCols, sprite.width, sprite.height);
-    const earR = gridToCanvas(features.earRight[0], features.earRight[1], fRows, fCols, sprite.width, sprite.height);
+    const earL = gridToCanvas(features.earLeft[0], features.earLeft[1], fRows, fCols, sprite);
+    const earR = gridToCanvas(features.earRight[0], features.earRight[1], fRows, fCols, sprite);
 
     // Twitch ears up by 1px
     ctx.fillStyle = features.earColor;
@@ -1754,8 +1756,8 @@ function applyHumanWalkOverlay(
   const rightLegMidRow = Math.floor((parts.rightLeg[0] + parts.rightLeg[1]) / 2);
   const rightLegMidCol = Math.floor((parts.rightLeg[2] + parts.rightLeg[3]) / 2);
 
-  const leftPos = gridToCanvas(leftLegMidRow, leftLegMidCol, fRows, fCols, sprite.width, sprite.height);
-  const rightPos = gridToCanvas(rightLegMidRow, rightLegMidCol, fRows, fCols, sprite.width, sprite.height);
+  const leftPos = gridToCanvas(leftLegMidRow, leftLegMidCol, fRows, fCols, sprite);
+  const rightPos = gridToCanvas(rightLegMidRow, rightLegMidCol, fRows, fCols, sprite);
 
   // Leg width and height in pixels (approximate from grid area)
   const legW = parts.leftLeg[3] - parts.leftLeg[2] + 1;
@@ -1787,8 +1789,8 @@ function applyHumanWalkOverlay(
     const rightArmRow = Math.floor((parts.rightArm[0] + parts.rightArm[1]) / 2);
     const rightArmCol = Math.floor((parts.rightArm[2] + parts.rightArm[3]) / 2);
 
-    const leftArmPos = gridToCanvas(leftArmRow, leftArmCol, fRows, fCols, sprite.width, sprite.height);
-    const rightArmPos = gridToCanvas(rightArmRow, rightArmCol, fRows, fCols, sprite.width, sprite.height);
+    const leftArmPos = gridToCanvas(leftArmRow, leftArmCol, fRows, fCols, sprite);
+    const rightArmPos = gridToCanvas(rightArmRow, rightArmCol, fRows, fCols, sprite);
 
     // Arms swing opposite to legs
     ctx.fillStyle = parts.skinColor;
@@ -1833,7 +1835,7 @@ function applyDogWalkOverlay(
   const legPos = (leg: [number, number, number, number]) => {
     const midRow = Math.floor((leg[0] + leg[1]) / 2);
     const midCol = Math.floor((leg[2] + leg[3]) / 2);
-    return gridToCanvas(midRow, midCol, fRows, fCols, sprite.width, sprite.height);
+    return gridToCanvas(midRow, midCol, fRows, fCols, sprite);
   };
 
   const fl = legPos(parts.frontLeftLeg);
@@ -1868,8 +1870,8 @@ function applyDogWalkOverlay(
   // Ears bounce slightly on each step (1px up at peak)
   const earBounce = Math.abs(trotStep) > 0.7 ? 1 : 0;
   if (earBounce > 0) {
-    const earL = gridToCanvas(features.earLeft[0], features.earLeft[1], fRows, fCols, sprite.width, sprite.height);
-    const earR = gridToCanvas(features.earRight[0], features.earRight[1], fRows, fCols, sprite.width, sprite.height);
+    const earL = gridToCanvas(features.earLeft[0], features.earLeft[1], fRows, fCols, sprite);
+    const earR = gridToCanvas(features.earRight[0], features.earRight[1], fRows, fCols, sprite);
     ctx.fillStyle = features.earColor;
     ctx.fillRect(x + earL.cx, y + earL.cy - 1, 3, 1);
     ctx.fillRect(x + earR.cx, y + earR.cy - 1, 3, 1);
@@ -1892,8 +1894,8 @@ function applyBackFacingOverlay(
   const [fRows, fCols] = features.gridSize;
 
   // Cover the face area with hair color
-  const faceTopLeft = gridToCanvas(parts.faceRows[0], parts.faceCols[0], fRows, fCols, sprite.width, sprite.height);
-  const faceBottomRight = gridToCanvas(parts.faceRows[1], parts.faceCols[1], fRows, fCols, sprite.width, sprite.height);
+  const faceTopLeft = gridToCanvas(parts.faceRows[0], parts.faceCols[0], fRows, fCols, sprite);
+  const faceBottomRight = gridToCanvas(parts.faceRows[1], parts.faceCols[1], fRows, fCols, sprite);
 
   // gridToCanvas returns cx, cy relative to sprite center
   // faceRows[0] is top row (smaller number = higher in grid = higher on screen after flip)
@@ -1943,19 +1945,21 @@ function applySittingOverlay(
   const legBottomRow = parts.leftLeg[1];
 
   // Convert knee and bottom positions
-  const kneeLeft = gridToCanvas(kneeRow, parts.leftLeg[2], fRows, fCols, sprite.width, sprite.height);
-  const kneeRight = gridToCanvas(kneeRow, parts.rightLeg[2], fRows, fCols, sprite.width, sprite.height);
-  const bottomLeft = gridToCanvas(legBottomRow, parts.leftLeg[2], fRows, fCols, sprite.width, sprite.height);
-  const bottomRight = gridToCanvas(legBottomRow, parts.rightLeg[2], fRows, fCols, sprite.width, sprite.height);
+  const kneeLeft = gridToCanvas(kneeRow, parts.leftLeg[2], fRows, fCols, sprite);
+  const kneeRight = gridToCanvas(kneeRow, parts.rightLeg[2], fRows, fCols, sprite);
+  const bottomLeft = gridToCanvas(legBottomRow, parts.leftLeg[2], fRows, fCols, sprite);
+  const bottomRight = gridToCanvas(legBottomRow, parts.rightLeg[2], fRows, fCols, sprite);
 
   const legW = parts.leftLeg[3] - parts.leftLeg[2] + 1;
   // Clear lower legs (from knee to bottom)
   const clearY = Math.min(kneeLeft.cy, bottomLeft.cy);
   const clearH = Math.abs(bottomLeft.cy - kneeLeft.cy) + 2;
 
-  // Clear both legs below knee
-  ctx.clearRect(x + kneeLeft.cx - 1, y + clearY, legW + 2, clearH);
-  ctx.clearRect(x + kneeRight.cx - 1, y + clearY, legW + 2, clearH);
+  // Cover standing legs below knee with pants color (clearRect would punch
+  // transparent holes through the floor — same bug as dog tail wag)
+  ctx.fillStyle = parts.pantColor;
+  ctx.fillRect(x + kneeLeft.cx - 1, y + clearY, legW + 2, clearH);
+  ctx.fillRect(x + kneeRight.cx - 1, y + clearY, legW + 2, clearH);
 
   // Draw bent legs extending horizontally (forward) from knee
   ctx.fillStyle = parts.pantColor;
@@ -1990,8 +1994,8 @@ function applyTypingOverlay(
   const typingPhase = Math.floor(time / 200) % 2;
 
   // Get hand positions from the existing features
-  const leftHandPos = gridToCanvas(features.leftHand[0], features.leftHand[1], fRows, fCols, sprite.width, sprite.height);
-  const rightHandPos = gridToCanvas(features.rightHand[0], features.rightHand[1], fRows, fCols, sprite.width, sprite.height);
+  const leftHandPos = gridToCanvas(features.leftHand[0], features.leftHand[1], fRows, fCols, sprite);
+  const rightHandPos = gridToCanvas(features.rightHand[0], features.rightHand[1], fRows, fCols, sprite);
 
   // Typing: hands alternate up/down 1px rapidly
   ctx.fillStyle = features.handColor;

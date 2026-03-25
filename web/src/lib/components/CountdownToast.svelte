@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { relay } from '../stores/relay.svelte';
   import { toolIcon } from '../utils/danger';
   import type { ApprovalRequest } from '../stores/relay.svelte';
@@ -19,34 +20,45 @@
   let cancelledIds = $state(new Set<string>());
   let intervalId: ReturnType<typeof setInterval> | undefined;
 
-  // Sync countdowns with pending approvals in delay mode
+  // Sync countdowns with pending approvals in delay mode.
+  // Uses untrack() for countdowns/cancelledIds to avoid read-write loop
+  // (effect_update_depth_exceeded). Only reacts to mode/approvals changes.
   $effect(() => {
-    if (!isDelayMode) {
+    const mode = isDelayMode;
+    const approvals = pendingApprovals;
+    const delay = delaySec;
+
+    // Read current state without creating dependencies
+    const cds = untrack(() => countdowns);
+    const cancelled = untrack(() => cancelledIds);
+
+    if (!mode) {
       countdowns = [];
       cancelledIds = new Set();
       return;
     }
 
     // Add new entries for approvals we haven't tracked yet (skip cancelled ones)
-    for (const approval of pendingApprovals) {
-      if (cancelledIds.has(approval.id)) continue;
-      if (!countdowns.find((c) => c.requestId === approval.id)) {
-        countdowns.push({
+    for (const approval of approvals) {
+      if (cancelled.has(approval.id)) continue;
+      if (!cds.find((c) => c.requestId === approval.id)) {
+        cds.push({
           requestId: approval.id,
           startedAt: Date.now(),
-          remaining: delaySec,
+          remaining: delay,
         });
       }
     }
 
     // Remove entries for approvals that are no longer pending
     // Also clean up cancelled IDs for resolved approvals
-    const pendingIds = new Set(pendingApprovals.map((a) => a.id));
-    countdowns = countdowns.filter((c) => pendingIds.has(c.requestId));
-    cancelledIds = new Set([...cancelledIds].filter((id) => pendingIds.has(id)));
+    const pendingIds = new Set(approvals.map((a) => a.id));
+    countdowns = cds.filter((c) => pendingIds.has(c.requestId));
+    cancelledIds = new Set([...cancelled].filter((id) => pendingIds.has(id)));
   });
 
-  // Tick countdown timers
+  // Tick countdown timers — mutate entries in-place (Svelte 5 deep reactivity
+  // on $state proxies picks up property mutations without array reassignment).
   $effect(() => {
     if (countdowns.length === 0) {
       if (intervalId) {
@@ -61,8 +73,6 @@
         const elapsed = (Date.now() - entry.startedAt) / 1000;
         entry.remaining = Math.max(0, delaySec - elapsed);
       }
-      // Force reactivity
-      countdowns = [...countdowns];
     }, 100);
 
     return () => {
