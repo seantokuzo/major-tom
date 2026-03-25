@@ -18,6 +18,7 @@
   import type { ApprovalDecision } from '../protocol/messages';
 
   let messagesEnd: HTMLDivElement | undefined;
+  let messagesContainer: HTMLDivElement | undefined;
   let inputEl: HTMLTextAreaElement | undefined;
   let paletteOpen = $state(false);
   let templateDrawerOpen = $state(false);
@@ -29,8 +30,20 @@
   let fileTreeOpen = $state(false);
   let countdownToastRef: CountdownToast | undefined;
 
+  // ── Smart auto-scroll ──────────────────────────────────────
+  let isNearBottom = $state(true);
+  let showScrollBtn = $derived(!isNearBottom);
+
+  function checkScrollPosition() {
+    if (!messagesContainer) return;
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainer;
+    // "Near bottom" = within 150px of the bottom
+    isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
+  }
+
   function scrollToBottom() {
     messagesEnd?.scrollIntoView({ behavior: 'smooth' });
+    isNearBottom = true;
   }
 
   function handleSubmit(e: Event) {
@@ -126,10 +139,10 @@
     relay.sendApproval(id, decision);
   }
 
-  // Auto-scroll on new messages
+  // Auto-scroll on new messages — only if user is near the bottom
   $effect(() => {
     relay.messages.length;
-    queueMicrotask(scrollToBottom);
+    if (isNearBottom) queueMicrotask(scrollToBottom);
   });
 
   // Persist messages to localStorage (debounced to avoid jank during streaming)
@@ -187,13 +200,21 @@
   {/if}
 
   <!-- Messages -->
-  <div class="messages">
-    {#each relay.messages as message (message.id)}
+  <div class="messages" bind:this={messagesContainer} onscroll={checkScrollPosition}>
+    {#each relay.messages as message, i (message.id)}
+      {#if message.role === 'user' && i > 0}
+        <div class="turn-separator" role="separator"></div>
+      {/if}
       <MessageBubble {message} />
     {/each}
     <StreamingIndicator />
     <div bind:this={messagesEnd}></div>
   </div>
+
+  <!-- Scroll-to-bottom FAB -->
+  {#if showScrollBtn}
+    <button class="scroll-bottom-btn" onclick={scrollToBottom} aria-label="Scroll to bottom" title="Scroll to bottom">&darr;</button>
+  {/if}
 
   <!-- Tool activity feed -->
   <ToolFeed />
@@ -286,6 +307,7 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    position: relative;
   }
 
   .approvals-bar {
@@ -305,6 +327,39 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+  }
+
+  .turn-separator {
+    height: 1px;
+    background: var(--border);
+    margin: var(--sp-sm) 0;
+    opacity: 0.5;
+  }
+
+  .scroll-bottom-btn {
+    position: absolute;
+    bottom: 80px;
+    right: var(--sp-md);
+    width: 36px;
+    height: 36px;
+    border-radius: var(--r-full);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--accent);
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .scroll-bottom-btn:hover {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
   }
 
   .input-bar {
