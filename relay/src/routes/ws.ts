@@ -190,7 +190,18 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           });
           break;
         }
-        const session = await cliAdapter.attach(message.sessionId);
+        // Try to attach — send proper SESSION_NOT_FOUND code on failure
+        let session;
+        try {
+          session = await cliAdapter.attach(message.sessionId);
+        } catch {
+          sendToClient(ws, {
+            type: 'error',
+            code: 'SESSION_NOT_FOUND',
+            message: `Session not found: ${message.sessionId}`,
+          });
+          break;
+        }
         trackClientSession(ws, session.id);
         sendToClient(ws, {
           type: 'session.info',
