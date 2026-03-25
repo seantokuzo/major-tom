@@ -387,8 +387,20 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         const permFilter = cliAdapter.permissionFilter;
         permFilter.setMode(message.mode, message.delaySeconds, message.godSubMode);
 
-        // Map to queue mode: god/smart use manual queue (filter handles auto-allow),
-        // delay uses delay queue, manual uses manual queue
+        // When switching modes mid-response, re-evaluate pending approvals:
+        // - God mode: flush ALL pending (auto-allow everything)
+        // - Smart mode: flush pending that the filter would now auto-allow
+        // - Delay mode: ApprovalQueue.setMode('delay') attaches delay timers
+        // - Manual mode: pending stay queued (already in manual queue)
+        if (message.mode === 'god') {
+          approvalQueue.flushPending();
+        } else if (message.mode === 'smart') {
+          approvalQueue.flushMatching((tool, details) => {
+            const input = (details?.['tool_input'] as Record<string, unknown>) ?? {};
+            return permFilter.check(tool, input).allowed;
+          });
+        }
+
         const queueMode = message.mode === 'delay' ? 'delay' : 'manual';
         approvalQueue.setMode(queueMode, message.delaySeconds);
 

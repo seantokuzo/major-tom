@@ -91,6 +91,24 @@ export class ApprovalQueue {
     return this.mode;
   }
 
+  /** Flush all pending approvals by auto-allowing them (used when switching to god mode) */
+  flushPending(): void {
+    for (const requestId of [...this.pending.keys()]) {
+      logger.info({ requestId, reason: 'god-mode-flush' }, 'Flushing pending approval');
+      this.resolve(requestId, 'allow');
+    }
+  }
+
+  /** Flush pending approvals that match a predicate (used when switching to smart mode) */
+  flushMatching(predicate: (tool: string, details: Record<string, unknown>) => boolean): void {
+    for (const [requestId, entry] of [...this.pending.entries()]) {
+      if (predicate(entry.tool, entry.details)) {
+        logger.info({ requestId, tool: entry.tool, reason: 'smart-mode-flush' }, 'Flushing matching pending approval');
+        this.resolve(requestId, 'allow');
+      }
+    }
+  }
+
   /**
    * Queue an approval request and wait for a decision.
    * Returns a Promise that resolves when the iOS app responds.

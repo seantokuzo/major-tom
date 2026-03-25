@@ -124,9 +124,8 @@
 
   // Session mode: when relay is connected with an active session, populate crew as idle
   // When disconnected or no session, exit session mode
+  // Not gated on activeTab — agents can spawn while on Chat tab
   $effect(() => {
-    if (activeTab !== 'office') return;
-
     const hasSession = relay.isConnected && relay.hasSession;
 
     const timer = setTimeout(() => {
