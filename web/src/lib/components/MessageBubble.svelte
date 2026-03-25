@@ -3,11 +3,10 @@
   import { renderMarkdown, attachCopyHandlers } from '../utils/markdown';
   import DiffViewer from './DiffViewer.svelte';
 
-  let { message }: { message: ChatMessage } = $props();
+  let { message, now = Date.now() }: { message: ChatMessage; now?: number } = $props();
   let mdEl: HTMLDivElement | undefined;
 
   // ── Relative timestamp for user messages ──────────────────
-  let now = $state(Date.now());
 
   function formatRelativeTime(date: Date): string {
     const secs = Math.floor((now - date.getTime()) / 1000);
@@ -19,13 +18,6 @@
     if (hrs < 24) return `${hrs}h ago`;
     return `${Math.floor(hrs / 24)}d ago`;
   }
-
-  $effect(() => {
-    if (message.role !== 'user') return;
-    now = Date.now();
-    const id = setInterval(() => { now = Date.now(); }, 15_000);
-    return () => clearInterval(id);
-  });
 
   let relativeTime = $derived(
     message.role === 'user' ? formatRelativeTime(message.timestamp) : ''
@@ -111,8 +103,7 @@
         newContent={diffData.newContent}
       />
     {:else}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="tool-row" onclick={() => { toolExpanded = !toolExpanded; }}>
+      <button class="tool-row" type="button" onclick={() => { toolExpanded = !toolExpanded; }} aria-expanded={isLongContent ? toolExpanded : undefined}>
         <span class="tool-icon-badge">{toolIcon}</span>
         <span class="tool-name">{toolName}</span>
         {#if toolSuccess === true}
@@ -123,7 +114,7 @@
         {#if isLongContent}
           <span class="tool-chevron" class:tool-chevron-open={toolExpanded}>&rsaquo;</span>
         {/if}
-      </div>
+      </button>
       {#if !isLongContent || toolExpanded}
         <div class="tool-content">
           <span class="tool-text">{message.content}</span>
@@ -197,6 +188,9 @@
     cursor: pointer;
     padding: 1px 0;
     user-select: none;
+    background: none;
+    border: none;
+    font-family: inherit;
   }
 
   .tool-icon-badge {

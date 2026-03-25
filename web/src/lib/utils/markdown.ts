@@ -93,7 +93,8 @@ const marked = new Marked({
       const langClass = safeLang ? ` class="language-${safeLang}"` : '';
       const langLabel = safeLang ? LANG_DISPLAY[safeLang] ?? safeLang : '';
       // Encode raw text as base64 for the copy button (avoids escaping issues)
-      const encoded = btoa(unescape(encodeURIComponent(text)));
+      const bytes = new TextEncoder().encode(text);
+      const encoded = btoa(String.fromCharCode(...bytes));
       const header = `<div class="code-header"><span class="code-lang">${escapeHtml(langLabel)}</span><button class="code-copy-btn" data-code="${encoded}" type="button">Copy</button></div>`;
       return `<div class="code-block-wrap">${header}<pre><code${langClass}>${highlighted}</code></pre></div>`;
     },
@@ -116,13 +117,18 @@ export function attachCopyHandlers(container: HTMLElement) {
     if (btn.dataset.bound) continue;
     btn.dataset.bound = '1';
     btn.addEventListener('click', () => {
-      const encoded = btn.dataset.code;
-      if (!encoded) return;
-      const text = decodeURIComponent(escape(atob(encoded)));
-      navigator.clipboard.writeText(text).then(() => {
-        btn.textContent = 'Copied!';
-        setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
-      });
+      try {
+        const encoded = btn.dataset.code;
+        if (!encoded) return;
+        const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+        const text = new TextDecoder().decode(bytes);
+        navigator.clipboard.writeText(text).then(() => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        });
+      } catch {
+        // Decoding or clipboard failed — silently ignore
+      }
     });
   }
 }

@@ -79,6 +79,16 @@
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
   });
+
+  // Window-level Escape to dismiss God Mode confirm dialog
+  $effect(() => {
+    if (!godConfirmPending) return;
+    function onKeydown(e: KeyboardEvent) {
+      if (e.key === 'Escape') cancelGodConfirm();
+    }
+    window.addEventListener('keydown', onKeydown);
+    return () => window.removeEventListener('keydown', onKeydown);
+  });
 </script>
 
 <div
@@ -167,7 +177,6 @@
     aria-modal="true"
     aria-label="Enable God Mode confirmation"
     onclick={cancelGodConfirm}
-    onkeydown={(e) => { if (e.key === 'Escape') cancelGodConfirm(); }}
   >
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="confirm-card" onclick={(e) => e.stopPropagation()}>

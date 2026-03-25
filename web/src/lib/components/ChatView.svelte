@@ -139,6 +139,13 @@
     relay.sendApproval(id, decision);
   }
 
+  // Shared clock for relative timestamps — single timer instead of per-message
+  let sharedNow = $state(Date.now());
+  $effect(() => {
+    const id = setInterval(() => { sharedNow = Date.now(); }, 15_000);
+    return () => clearInterval(id);
+  });
+
   // Auto-scroll on new messages — only if user is near the bottom
   $effect(() => {
     relay.messages.length;
@@ -205,7 +212,7 @@
       {#if message.role === 'user' && i > 0}
         <div class="turn-separator" role="separator"></div>
       {/if}
-      <MessageBubble {message} />
+      <MessageBubble {message} now={sharedNow} />
     {/each}
     <StreamingIndicator />
     <div bind:this={messagesEnd}></div>

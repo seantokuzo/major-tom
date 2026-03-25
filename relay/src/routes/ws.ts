@@ -190,16 +190,27 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           });
           break;
         }
-        // Try to attach — send proper SESSION_NOT_FOUND code on failure
+        // Try to attach — distinguish not-found from other failures
         let session;
         try {
           session = await cliAdapter.attach(message.sessionId);
-        } catch {
-          sendToClient(ws, {
-            type: 'error',
-            code: 'SESSION_NOT_FOUND',
-            message: `Session not found: ${message.sessionId}`,
-          });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const isNotFound = msg.includes('not found') || msg.includes('SESSION_NOT_FOUND');
+          if (isNotFound) {
+            sendToClient(ws, {
+              type: 'error',
+              code: 'SESSION_NOT_FOUND',
+              message: `Session not found: ${message.sessionId}`,
+            });
+          } else {
+            logger.error({ err, sessionId: message.sessionId }, 'Failed to attach to CLI session');
+            sendToClient(ws, {
+              type: 'error',
+              code: 'SESSION_ATTACH_FAILED',
+              message: `Failed to attach to session: ${message.sessionId}`,
+            });
+          }
           break;
         }
         trackClientSession(ws, session.id);
