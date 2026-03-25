@@ -9,7 +9,6 @@ import type {
   DeviceInfo,
   SessionResultMessage,
   ServerMessage,
-  PermissionModeMessage,
 } from '../protocol/messages';
 import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
@@ -881,15 +880,17 @@ class RelayStore {
         }
         break;
 
-      case 'approval.auto':
-        // Tool was auto-allowed by permission filter — track in activity feed
+      case 'approval.auto': {
+        // Tool was auto-allowed by permission filter — record as immediately
+        // completed so it doesn't conflict with tool.start/tool.complete lifecycle.
+        const now = new Date();
         this.toolActivities.push({
           id: uid(),
           tool: message.tool,
-          startedAt: new Date(),
-          completedAt: null,
-          success: null,
-          duration: null,
+          startedAt: now,
+          completedAt: now,
+          success: true,
+          duration: 0,
           autoAllowed: message.reason,
         });
         if (this.toolActivities.length > 50) {
@@ -901,6 +902,7 @@ class RelayStore {
           }
         }
         break;
+      }
 
       case 'permission.mode':
         this.permissionMode = {

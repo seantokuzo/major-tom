@@ -161,7 +161,14 @@
 
 {#if godConfirmPending}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="confirm-overlay" onclick={cancelGodConfirm}>
+  <div
+    class="confirm-overlay"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Enable God Mode confirmation"
+    onclick={cancelGodConfirm}
+    onkeydown={(e) => { if (e.key === 'Escape') cancelGodConfirm(); }}
+  >
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="confirm-card" onclick={(e) => e.stopPropagation()}>
       <div class="confirm-title">Enable God Mode?</div>

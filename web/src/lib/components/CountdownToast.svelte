@@ -16,17 +16,20 @@
   }
 
   let countdowns = $state<CountdownEntry[]>([]);
+  let cancelledIds = $state(new Set<string>());
   let intervalId: ReturnType<typeof setInterval> | undefined;
 
   // Sync countdowns with pending approvals in delay mode
   $effect(() => {
     if (!isDelayMode) {
       countdowns = [];
+      cancelledIds = new Set();
       return;
     }
 
-    // Add new entries for approvals we haven't tracked yet
+    // Add new entries for approvals we haven't tracked yet (skip cancelled ones)
     for (const approval of pendingApprovals) {
+      if (cancelledIds.has(approval.id)) continue;
       if (!countdowns.find((c) => c.requestId === approval.id)) {
         countdowns.push({
           requestId: approval.id,
@@ -37,9 +40,10 @@
     }
 
     // Remove entries for approvals that are no longer pending
-    countdowns = countdowns.filter((c) =>
-      pendingApprovals.some((a) => a.id === c.requestId),
-    );
+    // Also clean up cancelled IDs for resolved approvals
+    const pendingIds = new Set(pendingApprovals.map((a) => a.id));
+    countdowns = countdowns.filter((c) => pendingIds.has(c.requestId));
+    cancelledIds = new Set([...cancelledIds].filter((id) => pendingIds.has(id)));
   });
 
   // Tick countdown timers
@@ -67,6 +71,8 @@
   });
 
   function cancelApproval(requestId: string) {
+    // Track as cancelled so the $effect doesn't re-add it
+    cancelledIds = new Set([...cancelledIds, requestId]);
     // Remove from countdown list — this triggers the full approval card to show
     countdowns = countdowns.filter((c) => c.requestId !== requestId);
     // The approval remains pending — the full ApprovalCard will handle it

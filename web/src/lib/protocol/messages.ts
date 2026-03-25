@@ -240,6 +240,7 @@ export interface ApprovalAutoMessage {
   tool: string;
   description: string;
   reason: 'smart:settings' | 'smart:session' | 'god:yolo' | 'god:normal';
+  toolUseId?: string;
 }
 
 export interface PermissionModeMessage {

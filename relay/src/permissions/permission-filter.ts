@@ -61,7 +61,7 @@ const DESTRUCTIVE_PATTERNS: RegExp[] = [
   /\bdocker\s+system\s+prune\b/,
   /\bdocker\s+rm\s+-f\b/,
   // Dangerous writes
-  /\b>\s*\/dev\//,
+  /\b>\s*\/dev\/(?!null\b)/,
   /\bdd\s+if=/,
   /\bmkfs\b/,
   /\bchmod\s+-R\s+777\b/,
@@ -114,6 +114,8 @@ function toolMatchesPattern(
   if (!primaryInput) return false;
 
   // Input patterns use colon prefix matching: "npm run:*" matches commands starting with "npm run"
+  // The colon acts as a separator between a command prefix and an argument pattern.
+  // e.g., "npm run:lint" matches "npm run lint --fix"
   const colonIdx = parsed.inputPattern.indexOf(':');
   if (colonIdx !== -1) {
     const prefix = parsed.inputPattern.slice(0, colonIdx);
@@ -121,7 +123,16 @@ function toolMatchesPattern(
     if (suffix === '*') {
       return primaryInput.startsWith(prefix);
     }
-    return globMatch(parsed.inputPattern.replace(':', ''), primaryInput);
+    // Treat colon as a separator — match prefix then glob-match suffix against
+    // the first argument token after the prefix.
+    const trimmedPrefix = prefix.trimEnd();
+    const trimmedInput = primaryInput.trimStart();
+    if (!trimmedInput.startsWith(trimmedPrefix)) return false;
+    const afterPrefix = trimmedInput.slice(trimmedPrefix.length).trimStart();
+    if (afterPrefix.length === 0) return false;
+    const firstSpaceIdx = afterPrefix.search(/\s/);
+    const firstToken = firstSpaceIdx === -1 ? afterPrefix : afterPrefix.slice(0, firstSpaceIdx);
+    return globMatch(suffix, firstToken);
   }
 
   return globMatch(parsed.inputPattern, primaryInput);

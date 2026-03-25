@@ -63,6 +63,7 @@ export interface AutoAllowEvent {
   tool: string;
   description: string;
   reason: AutoAllowReason;
+  toolUseId: string;
 }
 
 export class ClaudeCliAdapter implements IAdapter {
@@ -192,6 +193,7 @@ export class ClaudeCliAdapter implements IAdapter {
         tool: toolName,
         description: JSON.stringify(input),
         reason: filterResult.reason,
+        toolUseId,
       } satisfies AutoAllowEvent);
       return { behavior: 'allow', toolUseID: toolUseId };
     }

@@ -461,6 +461,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         tool: event.tool,
         description: event.description,
         reason: event.reason,
+        toolUseId: event.toolUseId,
       });
     });
 
