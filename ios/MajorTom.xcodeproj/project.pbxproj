@@ -40,10 +40,12 @@
 		E4C11D19C5CBC7B5653532FD /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 345B4AA475B96036D85853BA /* Theme.swift */; };
 		ECD4CC99C031E1B803D88C76 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 591E0D4455AD31B2BBD8761C /* Session.swift */; };
 		ED4F918BF0F4278063303B34 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2873A7A68C25BFA4E7C9756 /* AuthService.swift */; };
+		FD27662CD00A7F829ABC6FA4 /* DangerScoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F013B10B2AA2CD96B19588 /* DangerScoring.swift */; };
 		FFB20C4BF1BD6D83D3404F2B /* StreamingText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D57C1446E7A203616CCE20 /* StreamingText.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		10F013B10B2AA2CD96B19588 /* DangerScoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DangerScoring.swift; sourceTree = "<group>"; };
 		2155A4D6123944C4CDE2BEE8 /* MajorTom.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MajorTom.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		21F681FC6A3D7B14792DDC15 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		345B4AA475B96036D85853BA /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -195,6 +197,7 @@
 			isa = PBXGroup;
 			children = (
 				A2873A7A68C25BFA4E7C9756 /* AuthService.swift */,
+				10F013B10B2AA2CD96B19588 /* DangerScoring.swift */,
 				7794C5813F5964F288D432AD /* HapticService.swift */,
 				A9BD8A95DFAD6160FF41E83F /* KeychainService.swift */,
 				6EF58FBAC8341407F9E3E7A0 /* RelayService.swift */,
@@ -279,7 +282,6 @@
 		B785C26F2874B8A4F530FD1D /* Settings */ = {
 			isa = PBXGroup;
 			children = (
-				F4CC29694F42E4B5FD57C761 /* Components */,
 				D28A628DB467A01A77C6F494 /* ViewModels */,
 				DE1EBD87DDB29A1DB6A9A638 /* Views */,
 			);
@@ -346,13 +348,6 @@
 				591E0D4455AD31B2BBD8761C /* Session.swift */,
 			);
 			path = Models;
-			sourceTree = "<group>";
-		};
-		F4CC29694F42E4B5FD57C761 /* Components */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Components;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -438,6 +433,7 @@
 				CFCBB89895F30259222DD268 /* ChatViewModel.swift in Sources */,
 				50BB1C73D342CB99FCFD747C /* ConnectionView.swift in Sources */,
 				C9D6EF3F81D2EB74C1C3C741 /* ConnectionViewModel.swift in Sources */,
+				FD27662CD00A7F829ABC6FA4 /* DangerScoring.swift in Sources */,
 				DEC7A03BAD629CB026FDD77F /* DeviceManagementView.swift in Sources */,
 				8294293F9EF30CBEED38BFC6 /* HapticService.swift in Sources */,
 				36B33910C927C9BBAC0813A7 /* KeychainService.swift in Sources */,

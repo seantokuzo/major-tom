@@ -28,6 +28,24 @@ final class ChatViewModel {
         relay.connectionState
     }
 
+    /// Whether the relay is in delay mode (auto-approve after countdown).
+    var isDelayMode: Bool {
+        relay.permissionMode == .delay
+    }
+
+    /// Recent auto-approved tools (last 5, for dimmed display).
+    var recentAutoApproved: [AutoApprovedTool] {
+        Array(relay.autoApprovedTools.suffix(5))
+    }
+
+    /// Calculate countdown remaining for a request in delay mode.
+    func countdownFor(request: ApprovalRequest) -> Int {
+        guard isDelayMode else { return 0 }
+        let elapsed = Int(Date().timeIntervalSince(request.receivedAt))
+        let remaining = max(0, relay.delaySeconds - elapsed)
+        return remaining
+    }
+
     func sendPrompt() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
