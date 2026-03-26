@@ -39,7 +39,7 @@ struct MajorTomApp: App {
                     Label("Control", systemImage: "terminal")
                 }
 
-            OfficeView(viewModel: officeViewModel)
+            OfficeView(viewModel: officeViewModel, relay: relay)
                 .tabItem {
                     Label("Office", systemImage: "building.2")
                 }
