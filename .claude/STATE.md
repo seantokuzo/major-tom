@@ -7,7 +7,7 @@
 
 ## Current Phase
 
-**Phase 6: "ClaudeGod"** — Permission control, sprite polish, chat polish — IN PROGRESS
+**Phase 7** — NOT YET PLANNED
 
 ## Strategy
 
@@ -121,31 +121,38 @@
 - [x] Device management with revoke capability
 - [x] @file context attachment for workspace files
 
-## In Progress — Phase 6: "ClaudeGod"
+## Completed — Phase 6: "ClaudeGod"
 
-### Track A: ClaudeGod Permission Control — SHIPPED (PR #44)
-- [x] Permission modes: Manual / Smart / Delay / God (Normal + YOLO) (PR #44)
+### Track A: ClaudeGod Permission Control (PR #44)
+- [x] Permission modes: Manual / Smart / Delay / God (Normal + YOLO)
 - [x] Settings.json allowlist matching via PermissionFilter
 - [x] Collapsible header, mode switcher pills, countdown toasts
 - [x] Mid-response mode switching with pending approval flush
 - [x] "Always" button session-scoped allowlist
-- [x] PR review fixes: toolUseId correlation, cancel bug, a11y, filter improvements
-- [x] Stale localStorage chat cleared on new session / dead session detection
 
-### Track B: Sprite Bugs — OPEN (next session)
-- [ ] Bug: subagent sprites don't go to desks when real agents spawn (handleSpawn/promoteSessionAgent flow)
-- [ ] Bug: sprites escape room bounds — wander outside visible area, map "populated" but empty
-- Key files: `web/src/lib/office/state.svelte.ts`, `web/src/App.svelte` (agent spawn $effect)
+### Track B: Sprite Bugs (PR #44)
+- [x] Subagent desk assignment, alpha recovery, canvas artifacts fixed
+- [x] Delay mode freeze fix, Google OAuth button fix
 
-### Track C: Slash Commands — NOT STARTED
-- `/new`, `/clear`, `/compact`, `/model`, `/btw`
-- Command palette with `/` trigger
+### Track C: Slash Commands — Already existed
+- [x] CommandPalette with 13 commands (`/new`, `/clear`, `/compact`, `/model`, `/btw`, etc.)
 
-### Track D: Chat Window Polish — NOT STARTED
+### Track D: Chat Window Polish (PR #44)
+- [x] Code block copy buttons with language header bars
+- [x] Smart auto-scroll (only near bottom) + scroll-to-bottom FAB
+- [x] Collapsible tool messages with icon/name/status
+- [x] Turn separators between conversation cycles
+- [x] Relative timestamps on user messages
+
+### Phase 6 Success Criteria — ALL MET
+- [x] Permission modes switchable mid-response with pending approval flush
+- [x] Settings.json allowlist matching for Smart mode
+- [x] Sprite bugs fixed — agents go to desks, stay in bounds
+- [x] Chat polish — copy buttons, smart scroll, collapsible tools, timestamps
 
 ### Future: Local DB for Chat Persistence
 - Replace localStorage with IndexedDB + TTL purging (see memory: project_local_db_plan.md)
 
 ---
 
-_Last updated: 2026-03-25_
+_Last updated: 2026-03-26_
