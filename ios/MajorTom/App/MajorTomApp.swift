@@ -5,6 +5,7 @@ struct MajorTomApp: App {
     @State private var relay = RelayService()
     @State private var officeViewModel = OfficeViewModel()
     @State private var auth = AuthService()
+    @State private var sessionStorage = SessionStorageService()
 
     var body: some Scene {
         WindowGroup {
@@ -33,7 +34,7 @@ struct MajorTomApp: App {
 
     private var mainTabView: some View {
         TabView {
-            ChatView(relay: relay)
+            ChatView(relay: relay, storage: sessionStorage)
                 .tabItem {
                     Label("Control", systemImage: "terminal")
                 }

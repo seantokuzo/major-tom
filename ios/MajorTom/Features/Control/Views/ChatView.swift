@@ -3,10 +3,14 @@ import SwiftUI
 struct ChatView: View {
     @State private var viewModel: ChatViewModel
     @State private var isPermissionExpanded = false
+    @State private var showSessionList = false
+    @Environment(\.scenePhase) private var scenePhase
     private let relay: RelayService
+    private let storage: SessionStorageService
 
-    init(relay: RelayService) {
+    init(relay: RelayService, storage: SessionStorageService) {
         self.relay = relay
+        self.storage = storage
         _viewModel = State(initialValue: ChatViewModel(relay: relay))
     }
 
@@ -36,7 +40,6 @@ struct ChatView: View {
                 ZStack(alignment: .bottomTrailing) {
                     messagesList
 
-                    // Scroll-to-bottom FAB
                     if viewModel.showScrollFab {
                         scrollToBottomFab
                     }
@@ -102,11 +105,25 @@ struct ChatView: View {
                 isPresented: $viewModel.showFileContext
             )
         }
+        .sheet(isPresented: $showSessionList) {
+            SessionListView(relay: relay, storage: storage)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background {
+                saveCurrentSession()
+            }
+        }
         .task {
             if !viewModel.hasSession {
                 await viewModel.startSession()
             }
         }
+    }
+
+    private func saveCurrentSession() {
+        guard let session = relay.currentSession else { return }
+        storage.saveMessages(relay.chatMessages, for: session.id)
+        storage.saveFromSessionInfo(session, messageCount: relay.chatMessages.count)
     }
 
     // MARK: - Connection Bar
@@ -119,6 +136,15 @@ struct ChatView: View {
             Text(viewModel.connectionState.rawValue.capitalized)
                 .font(MajorTomTheme.Typography.caption)
                 .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+
+            if let session = relay.currentSession {
+                Text("·")
+                    .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+                Text(session.workingDir ?? session.id.prefix(8).description)
+                    .font(MajorTomTheme.Typography.caption)
+                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                    .lineLimit(1)
+            }
 
             Spacer()
 
@@ -137,6 +163,15 @@ struct ChatView: View {
             ) {
                 HapticService.buttonTap()
                 isPermissionExpanded.toggle()
+            }
+
+            Button {
+                showSessionList = true
+                HapticService.buttonTap()
+            } label: {
+                Image(systemName: "list.bullet.rectangle")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(MajorTomTheme.Colors.accent)
             }
         }
         .padding(.horizontal, MajorTomTheme.Spacing.lg)
@@ -173,7 +208,6 @@ struct ChatView: View {
                     )
                 }
 
-                // Recent auto-approved tools (dimmed)
                 ForEach(viewModel.recentAutoApproved) { autoTool in
                     ApprovalCard(
                         request: ApprovalRequest(
@@ -223,9 +257,7 @@ struct ChatView: View {
                         }
                     }
 
-                    Color.clear
-                        .frame(height: 1)
-                        .id("bottom")
+                    Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding(MajorTomTheme.Spacing.md)
 
@@ -296,13 +328,10 @@ struct ChatView: View {
         .transition(.scale.combined(with: .opacity))
     }
 
-    // MARK: - Turn Separator Logic
-
     private func shouldShowTurnSeparator(at index: Int) -> Bool {
         guard index > 0 else { return false }
-        let messages = viewModel.messages
-        let current = messages[index]
-        let previous = messages[index - 1]
+        let current = viewModel.messages[index]
+        let previous = viewModel.messages[index - 1]
         return current.role == .user && previous.role != .user
     }
 
@@ -311,7 +340,6 @@ struct ChatView: View {
     private func inputBar(text: Binding<String>) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: MajorTomTheme.Spacing.sm) {
-                // Voice input button
                 VoiceInputButton(
                     speechService: viewModel.speechService,
                     onTranscription: { transcribed in
@@ -319,7 +347,6 @@ struct ChatView: View {
                     }
                 )
 
-                // Text field
                 TextField("Send a prompt...", text: text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(MajorTomTheme.Typography.body)
@@ -332,7 +359,6 @@ struct ChatView: View {
                         Task { await viewModel.sendPrompt() }
                     }
 
-                // Templates button
                 Button {
                     HapticService.buttonTap()
                     viewModel.showTemplates = true
@@ -342,7 +368,6 @@ struct ChatView: View {
                         .foregroundStyle(MajorTomTheme.Colors.textSecondary)
                 }
 
-                // Send button
                 Button {
                     Task { await viewModel.sendPrompt() }
                 } label: {
@@ -371,8 +396,6 @@ struct ChatView: View {
     }
 }
 
-// MARK: - Scroll Offset Preference Key
-
 private struct ScrollOffsetPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -381,5 +404,5 @@ private struct ScrollOffsetPreferenceKey: PreferenceKey {
 }
 
 #Preview {
-    ChatView(relay: RelayService())
+    ChatView(relay: RelayService(), storage: SessionStorageService())
 }
