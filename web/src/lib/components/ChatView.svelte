@@ -6,6 +6,7 @@
   import CommandPalette from './CommandPalette.svelte';
   import PromptHistoryOverlay from './PromptHistoryOverlay.svelte';
   import SessionDrawer from './SessionDrawer.svelte';
+  import { sessionStateManager } from '../stores/session-state.svelte';
   import DeviceList from './DeviceList.svelte';
   import StreamingIndicator from './StreamingIndicator.svelte';
   import ToolFeed from './ToolFeed.svelte';
@@ -287,7 +288,7 @@
     onClose={handlePaletteClose}
     onOpenTemplates={handleOpenTemplates}
     onOpenSaveTemplate={handleOpenSaveTemplate}
-    onOpenSessions={() => { sessionDrawerOpen = true; }}
+    onOpenSessions={() => { sessionStateManager.togglePanel(); }}
     onOpenDevices={() => { devicesOpen = true; }}
     onOpenFiles={openFileTree}
   />

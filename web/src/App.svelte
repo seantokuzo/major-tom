@@ -18,6 +18,8 @@
   import LoginScreen from './lib/components/LoginScreen.svelte';
   import CharacterGallery from './lib/components/CharacterGallery.svelte';
   import PermissionModeSwitcher from './lib/components/PermissionModeSwitcher.svelte';
+  import SessionPanel from './lib/components/SessionPanel.svelte';
+  import { sessionStateManager } from './lib/stores/session-state.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
   // ── Toast notifications for connection state ────────────────
@@ -228,9 +230,23 @@
         {office.demoMode ? '■ Demo' : '▶ Demo'}
       </button>
       <div class="header-spacer"></div>
+      {#if relay.hasSession && relay.sessionName}
+        <span class="session-label" title={relay.sessionName}>{relay.sessionName}</span>
+      {/if}
       <div class="header-actions">
-        <AuthSettings />
-        <NotificationToggle />
+        <span class="header-settings">
+          <AuthSettings />
+          <NotificationToggle />
+        </span>
+        <button
+          class="hamburger-btn"
+          onclick={() => sessionStateManager.togglePanel()}
+          title="Sessions"
+          aria-label="Toggle session panel"
+          disabled={!relay.isConnected}
+        >
+          &#9776;
+        </button>
       </div>
     {:else}
       <span class="collapsed-status">
@@ -304,6 +320,7 @@
     {/if}
   </div>
   <Toast />
+  <SessionPanel />
 
   {#if relay.authChecked && !relay.user}
     <LoginScreen />
@@ -443,9 +460,61 @@
     flex-shrink: 0;
   }
 
-  /* Hide auth & notification settings on mobile — accessible via ConnectionBar */
+  /* Hide auth & notification settings on mobile — accessible via ConnectionBar.
+     But keep hamburger visible. Use a wrapper span to target hiding. */
   @media (max-width: 600px) {
-    .header-actions {
+    .header-settings {
+      display: none;
+    }
+  }
+
+  .header-settings {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-sm);
+  }
+
+  .hamburger-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--r-sm);
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .hamburger-btn:hover:not(:disabled) {
+    color: var(--text-primary);
+    background: var(--surface-hover);
+    border-color: var(--accent);
+  }
+
+  .hamburger-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .session-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  @media (max-width: 400px) {
+    .session-label {
       display: none;
     }
   }

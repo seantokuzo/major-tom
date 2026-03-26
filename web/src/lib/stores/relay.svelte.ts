@@ -15,6 +15,7 @@ import { sessionsStore } from './sessions.svelte';
 import { contextStore } from './context.svelte';
 import { db, type DbMessage } from '../db';
 import { terminalStore } from './terminal.svelte';
+import { sessionStateManager, extractDirName } from './session-state.svelte';
 
 // ── Chat message model ──────────────────────────────────────
 
@@ -183,12 +184,20 @@ class RelayStore {
     return this.user !== null;
   }
 
+  /** Display name for the active session (from sessionStateManager) */
+  get sessionName(): string {
+    if (!this.sessionId) return '';
+    return sessionStateManager.getSessionName(this.sessionId);
+  }
+
   // Internal
   private socket = new RelaySocket();
   private wasConnected = false;
   private storedSessionId: string | null = null;
   private persistenceInitialized = false;
   private isReattaching = false;
+  /** Pending working dir from startSessionAt — used to tag session on session.info */
+  private pendingWorkingDir: string | null = null;
 
   constructor() {
     this.socket.onStateChange = (state) => {
@@ -363,43 +372,10 @@ class RelayStore {
   /** Call from an $effect in a component to persist messages reactively */
   persistMessages(): void {
     if (!this.persistenceInitialized || typeof window === 'undefined') return;
-    const sessionId = this.sessionId ?? this.storedSessionId;
-    if (!sessionId) return;
-
-    const messages = this.messages;
-    this.persistMessagesToDb(sessionId, messages).catch(() => {
+    // Delegate to session state manager which handles IndexedDB
+    sessionStateManager.persistActive(this).catch(() => {
       // IndexedDB unavailable — degrade gracefully
     });
-  }
-
-  /** Write current messages to IndexedDB for the active session */
-  private async persistMessagesToDb(sessionId: string, messages: ChatMessage[]): Promise<void> {
-    try {
-      // Clear existing messages for this session, then bulk-insert current state
-      await db.transaction('rw', db.messages, db.sessionMeta, async () => {
-        await db.messages.where('sessionId').equals(sessionId).delete();
-
-        if (messages.length > 0) {
-          const rows: DbMessage[] = messages.map((m) => ({
-            sessionId,
-            messageId: m.id,
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp.toISOString(),
-            ...(m.toolMeta ? { toolMeta: m.toolMeta } : {}),
-          }));
-          await db.messages.bulkAdd(rows);
-        }
-
-        // Upsert session metadata
-        await db.sessionMeta.put({
-          sessionId,
-          lastActive: new Date().toISOString(),
-        });
-      });
-    } catch (e) {
-      console.warn('[MajorTom] Failed to persist messages to IndexedDB:', e);
-    }
   }
 
   private persistSessionId(): void {
@@ -482,21 +458,46 @@ class RelayStore {
   }
 
   newSession(): void {
+    // Snapshot current session before tearing down
+    if (this.sessionId) {
+      sessionStateManager.snapshotFrom(this);
+      sessionStateManager.saveToDb(this.sessionId).catch(() => {});
+    }
     // Tear down current session and clear input state
     this.sessionId = null;
     this.inputText = '';
     this.inputPrefix = '';
+    sessionStateManager.activeSessionId = null;
+    this.persistSessionId();
+    // Don't auto-start — go to terminal so user picks a directory
+  }
+
+  /** Start a new session (legacy path — starts without directory picker) */
+  newSessionImmediate(): void {
+    if (this.sessionId) {
+      sessionStateManager.snapshotFrom(this);
+      sessionStateManager.saveToDb(this.sessionId).catch(() => {});
+    }
+    this.sessionId = null;
+    this.inputText = '';
+    this.inputPrefix = '';
+    sessionStateManager.activeSessionId = null;
     this.persistSessionId();
     if (this.isConnected) {
-      // startSession() handles clearing messages, approvals, agents, stats, etc.
       this.startSession();
     }
   }
 
   /** End current session and return to terminal (no auto-restart) */
   endSession(): void {
-    if (this.sessionId && this.isConnected) {
-      this.socket.send({ type: 'session.end', sessionId: this.sessionId });
+    const endingId = this.sessionId;
+    if (endingId && this.isConnected) {
+      this.socket.send({ type: 'session.end', sessionId: endingId });
+    }
+    // Snapshot before clearing so it's saved
+    if (endingId) {
+      sessionStateManager.snapshotFrom(this);
+      sessionStateManager.saveToDb(endingId).catch(() => {});
     }
     this.sessionId = null;
     this.inputText = '';
@@ -509,6 +510,7 @@ class RelayStore {
     this.activeToolName = null;
     this.toolActivities = [];
     this.isViewingHistory = false;
+    sessionStateManager.activeSessionId = null;
     this.persistSessionId();
     contextStore.clear();
   }
@@ -604,9 +606,35 @@ class RelayStore {
     if (!this.isConnected) return;
     sessionsStore.markLoading();
     this.socket.send({ type: 'session.list' });
+    // Snapshot current state so session list is accurate
+    if (this.sessionId) {
+      sessionStateManager.snapshotFrom(this);
+    }
   }
 
   switchSession(sessionId: string): void {
+    // Snapshot current session state before switching
+    if (this.sessionId && this.sessionId !== sessionId) {
+      sessionStateManager.snapshotFrom(this);
+      // Fire-and-forget save to IndexedDB
+      sessionStateManager.saveToDb(this.sessionId).catch(() => {});
+    }
+
+    // Try to restore target session from cache for instant switch
+    const restored = sessionStateManager.restoreTo(this, sessionId);
+    if (!restored) {
+      // No cached state — clear for a fresh start
+      this.messages = [];
+      this.pendingApprovals = [];
+      this.agents = [];
+      this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
+      this.toolActivities = [];
+      this.isWaitingForResponse = false;
+      this.activeToolName = null;
+      this.isViewingHistory = false;
+    }
+
+    // Send attach to relay server
     this.socket.send({ type: 'session.attach', sessionId });
   }
 
@@ -666,6 +694,11 @@ class RelayStore {
 
   /** Start a session at a specific working directory */
   startSessionAt(workingDir: string): void {
+    // Snapshot current session before starting new one
+    if (this.sessionId) {
+      sessionStateManager.snapshotFrom(this);
+      sessionStateManager.saveToDb(this.sessionId).catch(() => {});
+    }
     this.messages = [];
     this.pendingApprovals = [];
     this.agents = [];
@@ -675,6 +708,7 @@ class RelayStore {
     this.toolActivities = [];
     this.isViewingHistory = false;
     contextStore.clear();
+    this.pendingWorkingDir = workingDir;
     this.socket.send({ type: 'session.start', adapter: 'cli', workingDir });
   }
 
@@ -732,10 +766,20 @@ class RelayStore {
         this.addApproval(message);
         break;
 
-      case 'session.info':
+      case 'session.info': {
         this.sessionId = message.sessionId;
         this.isViewingHistory = false;
         this.persistSessionId();
+
+        // Register with session state manager, using pending working dir if available
+        const wd = this.pendingWorkingDir;
+        this.pendingWorkingDir = null;
+        sessionStateManager.registerSession(
+          message.sessionId,
+          wd ? extractDirName(wd) : undefined,
+          wd ?? undefined,
+        );
+
         // Only show "Session restored" when we were explicitly reattaching
         if (this.isReattaching && this.messages.length > 0) {
           this.messages.push({
@@ -747,6 +791,7 @@ class RelayStore {
         }
         this.isReattaching = false;
         break;
+      }
 
       case 'session.result':
         this.isWaitingForResponse = false;
@@ -877,6 +922,7 @@ class RelayStore {
           (typeof message.message === 'string' && message.message.includes('Session not found'));
         if (isSessionGone) {
           // Dead session — clear stale state, user gets a clean "Start Session" screen
+          const deadId = this.sessionId;
           this.sessionId = null;
           this.storedSessionId = null;
           this.persistSessionId();
@@ -884,6 +930,7 @@ class RelayStore {
           this.pendingApprovals = [];
           this.agents = [];
           this.toolActivities = [];
+          if (deadId) sessionStateManager.removeSession(deadId);
         } else {
           this.messages.push({
             id: uid(),
@@ -908,6 +955,7 @@ class RelayStore {
         // Session was ended (by us or another client) — clean up
         if (this.sessionId === message.sessionId) {
           this.sessionId = null;
+          sessionStateManager.activeSessionId = null;
           this.persistSessionId();
         }
         break;
@@ -930,6 +978,8 @@ class RelayStore {
 
       case 'session.list.response':
         sessionsStore.handleListResponse(message.sessions);
+        // Update session state manager with relay's session list
+        sessionStateManager.updateFromRelayList(message.sessions);
         break;
 
       case 'session.history':
