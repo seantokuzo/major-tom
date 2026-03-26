@@ -2,9 +2,15 @@ import SwiftUI
 
 struct ChatView: View {
     @State private var viewModel: ChatViewModel
+    @State private var activityViewModel: ToolActivityViewModel
+    @State private var showActivitySheet = false
+
+    private let relay: RelayService
 
     init(relay: RelayService) {
+        self.relay = relay
         _viewModel = State(initialValue: ChatViewModel(relay: relay))
+        _activityViewModel = State(initialValue: ToolActivityViewModel(relay: relay))
     }
 
     var body: some View {
@@ -22,10 +28,29 @@ struct ChatView: View {
             // Messages
             messagesList
 
+            // Tool activity floating bar
+            if activityViewModel.totalToolCount > 0 {
+                ToolActivityFloatingBar(
+                    runningCount: activityViewModel.runningCount,
+                    totalCount: activityViewModel.totalToolCount
+                ) {
+                    HapticService.impact(.medium)
+                    showActivitySheet = true
+                }
+                .padding(.horizontal, MajorTomTheme.Spacing.md)
+                .padding(.vertical, MajorTomTheme.Spacing.xs)
+            }
+
             // Input bar
             inputBar(text: $viewModel.inputText)
         }
         .background(MajorTomTheme.Colors.background)
+        .sheet(isPresented: $showActivitySheet) {
+            ToolActivityView(relay: relay)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.hidden)
+                .presentationBackground(MajorTomTheme.Colors.surface)
+        }
         .task {
             if !viewModel.hasSession {
                 await viewModel.startSession()
