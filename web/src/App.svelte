@@ -4,6 +4,7 @@
   import ConnectionStatus from './lib/components/ConnectionStatus.svelte';
   import SessionInfo from './lib/components/SessionInfo.svelte';
   import ChatView from './lib/components/ChatView.svelte';
+  import Terminal from './lib/components/Terminal.svelte';
   import Toast from './lib/components/Toast.svelte';
   import OfficeCanvas from './lib/components/OfficeCanvas.svelte';
   import AgentInspector from './lib/components/AgentInspector.svelte';
@@ -276,7 +277,11 @@
 
   <div class="main-content">
     {#if activeTab === 'chat'}
-      <ChatView />
+      {#if relay.isConnected && !relay.hasSession}
+        <Terminal />
+      {:else}
+        <ChatView />
+      {/if}
     {:else if activeTab === 'characters'}
       <CharacterGallery />
     {:else}

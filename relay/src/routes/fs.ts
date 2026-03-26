@@ -1,0 +1,278 @@
+/**
+ * Filesystem message handlers — sandboxed directory browsing.
+ *
+ * Handles fs.ls, fs.readFile, and fs.cwd messages from clients.
+ * All paths are resolved and validated against the configured sandbox root
+ * (FS_SANDBOX_ROOT env var, defaulting to ~/Documents).
+ */
+import { readdir, readFile, lstat, realpath } from 'node:fs/promises';
+import { resolve, join, relative, basename } from 'node:path';
+import { homedir } from 'node:os';
+import { WebSocket } from 'ws';
+import { logger } from '../utils/logger.js';
+
+// ── Types ────────────────────────────────────────────────────
+
+export interface FsEntry {
+  name: string;
+  type: 'file' | 'directory' | 'symlink';
+  size: number;
+  modified: string; // ISO 8601
+  permissions?: string;
+}
+
+export interface FsLsMessage {
+  type: 'fs.ls';
+  path: string;
+}
+
+export interface FsReadFileMessage {
+  type: 'fs.readFile';
+  path: string;
+}
+
+export interface FsCwdMessage {
+  type: 'fs.cwd';
+}
+
+export type FsClientMessage = FsLsMessage | FsReadFileMessage | FsCwdMessage;
+
+export interface FsLsResponse {
+  type: 'fs.ls.response';
+  path: string;
+  entries: FsEntry[];
+}
+
+export interface FsReadFileResponse {
+  type: 'fs.readFile.response';
+  path: string;
+  content: string;
+  size: number;
+}
+
+export interface FsCwdResponse {
+  type: 'fs.cwd.response';
+  path: string;
+}
+
+export interface FsErrorResponse {
+  type: 'fs.error';
+  message: string;
+  path?: string;
+}
+
+export type FsServerMessage = FsLsResponse | FsReadFileResponse | FsCwdResponse | FsErrorResponse;
+
+// ── Constants ────────────────────────────────────────────────
+
+const MAX_READ_SIZE = 1 * 1024 * 1024; // 1 MB
+
+// ── Sandbox resolution ───────────────────────────────────────
+
+function getSandboxRoot(): string {
+  const envRoot = process.env['FS_SANDBOX_ROOT'];
+  if (envRoot) {
+    // Expand ~ to homedir
+    const expanded = envRoot.startsWith('~')
+      ? join(homedir(), envRoot.slice(1))
+      : envRoot;
+    return resolve(expanded);
+  }
+  return resolve(homedir(), 'Documents');
+}
+
+function formatPermissions(mode: number): string {
+  const perms = ['---', '--x', '-w-', '-wx', 'r--', 'r-x', 'rw-', 'rwx'];
+  const owner = perms[(mode >> 6) & 7]!;
+  const group = perms[(mode >> 3) & 7]!;
+  const other = perms[mode & 7]!;
+  return `${owner}${group}${other}`;
+}
+
+/**
+ * Validate that a resolved path is within the sandbox root.
+ * Returns the resolved absolute path or null if outside sandbox.
+ */
+async function validatePath(requestedPath: string, sandboxRoot: string): Promise<string | null> {
+  // Resolve the path relative to sandbox root
+  const resolved = resolve(sandboxRoot, requestedPath);
+
+  // Must start with sandbox root (prevents traversal via ../)
+  if (!resolved.startsWith(sandboxRoot)) {
+    return null;
+  }
+
+  // For symlinks, also verify the real path is within sandbox
+  try {
+    const real = await realpath(resolved);
+    if (!real.startsWith(sandboxRoot)) {
+      return null;
+    }
+  } catch {
+    // File may not exist yet (that's fine for ls on non-existent dirs)
+    // The actual operation will fail with a proper error
+  }
+
+  return resolved;
+}
+
+// ── Handlers ─────────────────────────────────────────────────
+
+export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMessage) => void) {
+  const sandboxRoot = getSandboxRoot();
+  logger.info({ sandboxRoot }, 'Filesystem sandbox initialized');
+
+  async function handleFsLs(ws: WebSocket, message: FsLsMessage): Promise<void> {
+    const requestedPath = message.path || '.';
+    const resolved = await validatePath(requestedPath, sandboxRoot);
+
+    if (!resolved) {
+      sendToClient(ws, {
+        type: 'fs.error',
+        message: 'Access denied: path is outside sandbox',
+        path: requestedPath,
+      });
+      return;
+    }
+
+    try {
+      const dirents = await readdir(resolved, { withFileTypes: true });
+      const entries: FsEntry[] = [];
+
+      for (const dirent of dirents) {
+        // Skip hidden files (dotfiles)
+        if (dirent.name.startsWith('.')) continue;
+
+        try {
+          const fullPath = join(resolved, dirent.name);
+          const stat = await lstat(fullPath);
+
+          let entryType: FsEntry['type'] = 'file';
+          if (dirent.isDirectory()) {
+            entryType = 'directory';
+          } else if (dirent.isSymbolicLink()) {
+            entryType = 'symlink';
+
+            // Verify symlink target is within sandbox
+            try {
+              const realTarget = await realpath(fullPath);
+              if (!realTarget.startsWith(sandboxRoot)) {
+                continue; // Skip symlinks pointing outside sandbox
+              }
+            } catch {
+              continue; // Skip broken symlinks
+            }
+          }
+
+          entries.push({
+            name: dirent.name,
+            type: entryType,
+            size: stat.size,
+            modified: stat.mtime.toISOString(),
+            permissions: formatPermissions(stat.mode),
+          });
+        } catch {
+          // Skip entries we can't stat (permission denied, etc.)
+        }
+      }
+
+      // Sort: directories first, then alphabetically
+      entries.sort((a, b) => {
+        if (a.type === 'directory' && b.type !== 'directory') return -1;
+        if (a.type !== 'directory' && b.type === 'directory') return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      // Return a display-friendly path relative to sandbox
+      const displayPath = relative(sandboxRoot, resolved) || '.';
+      sendToClient(ws, {
+        type: 'fs.ls.response',
+        path: displayPath,
+        entries,
+      });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Failed to list directory';
+      logger.warn({ path: resolved, err: errMsg }, 'fs.ls failed');
+      sendToClient(ws, {
+        type: 'fs.error',
+        message: errMsg,
+        path: requestedPath,
+      });
+    }
+  }
+
+  async function handleFsReadFile(ws: WebSocket, message: FsReadFileMessage): Promise<void> {
+    const requestedPath = message.path;
+    const resolved = await validatePath(requestedPath, sandboxRoot);
+
+    if (!resolved) {
+      sendToClient(ws, {
+        type: 'fs.error',
+        message: 'Access denied: path is outside sandbox',
+        path: requestedPath,
+      });
+      return;
+    }
+
+    try {
+      const stat = await lstat(resolved);
+
+      if (stat.isDirectory()) {
+        sendToClient(ws, {
+          type: 'fs.error',
+          message: 'Cannot read a directory as a file',
+          path: requestedPath,
+        });
+        return;
+      }
+
+      if (stat.size > MAX_READ_SIZE) {
+        sendToClient(ws, {
+          type: 'fs.error',
+          message: `File too large: ${(stat.size / 1024 / 1024).toFixed(1)} MB (limit: 1 MB)`,
+          path: requestedPath,
+        });
+        return;
+      }
+
+      const content = await readFile(resolved, 'utf-8');
+      const displayPath = relative(sandboxRoot, resolved) || basename(resolved);
+
+      sendToClient(ws, {
+        type: 'fs.readFile.response',
+        path: displayPath,
+        content,
+        size: stat.size,
+      });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Failed to read file';
+      logger.warn({ path: resolved, err: errMsg }, 'fs.readFile failed');
+      sendToClient(ws, {
+        type: 'fs.error',
+        message: errMsg,
+        path: requestedPath,
+      });
+    }
+  }
+
+  function handleFsCwd(ws: WebSocket): void {
+    // Return the sandbox root as the "current working directory"
+    // Use ~ shorthand for display
+    const home = homedir();
+    const displayPath = sandboxRoot.startsWith(home)
+      ? '~' + sandboxRoot.slice(home.length)
+      : sandboxRoot;
+
+    sendToClient(ws, {
+      type: 'fs.cwd.response',
+      path: displayPath,
+    });
+  }
+
+  return {
+    sandboxRoot,
+    handleFsLs,
+    handleFsReadFile,
+    handleFsCwd,
+  };
+}

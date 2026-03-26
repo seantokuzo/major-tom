@@ -34,6 +34,11 @@ export interface SessionAttachMessage {
   sessionId: string;
 }
 
+export interface SessionEndMessage {
+  type: 'session.end';
+  sessionId: string;
+}
+
 export interface AgentChatMessage {
   type: 'agent.message';
   sessionId: string;
@@ -80,6 +85,20 @@ export interface DeviceRevokeMessage {
   deviceId: string;
 }
 
+export interface FsLsMessage {
+  type: 'fs.ls';
+  path: string;
+}
+
+export interface FsReadFileMessage {
+  type: 'fs.readFile';
+  path: string;
+}
+
+export interface FsCwdMessage {
+  type: 'fs.cwd';
+}
+
 
 export type ClientMessage =
   | PromptMessage
@@ -87,6 +106,7 @@ export type ClientMessage =
   | CancelMessage
   | SessionStartMessage
   | SessionAttachMessage
+  | SessionEndMessage
   | AgentChatMessage
   | WorkspaceTreeMessage
   | ContextAddMessage
@@ -94,7 +114,10 @@ export type ClientMessage =
   | SettingsApprovalMessage
   | SessionListMessage
   | DeviceListMessage
-  | DeviceRevokeMessage;
+  | DeviceRevokeMessage
+  | FsLsMessage
+  | FsReadFileMessage
+  | FsCwdMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -287,6 +310,43 @@ export interface SessionHistoryMessage {
   entries: TranscriptEntry[];
 }
 
+export interface SessionEndedMessage {
+  type: 'session.ended';
+  sessionId: string;
+}
+
+export interface FsEntry {
+  name: string;
+  type: 'file' | 'directory' | 'symlink';
+  size: number;
+  modified: string;
+  permissions?: string;
+}
+
+export interface FsLsResponseMessage {
+  type: 'fs.ls.response';
+  path: string;
+  entries: FsEntry[];
+}
+
+export interface FsReadFileResponseMessage {
+  type: 'fs.readFile.response';
+  path: string;
+  content: string;
+  size: number;
+}
+
+export interface FsCwdResponseMessage {
+  type: 'fs.cwd.response';
+  path: string;
+}
+
+export interface FsErrorMessage {
+  type: 'fs.error';
+  message: string;
+  path?: string;
+}
+
 
 export type ServerMessage =
   | OutputMessage
@@ -311,4 +371,9 @@ export type ServerMessage =
   | SessionListResponseMessage
   | SessionHistoryMessage
   | ApprovalAutoMessage
-  | PermissionModeMessage;
+  | PermissionModeMessage
+  | SessionEndedMessage
+  | FsLsResponseMessage
+  | FsReadFileResponseMessage
+  | FsCwdResponseMessage
+  | FsErrorMessage;

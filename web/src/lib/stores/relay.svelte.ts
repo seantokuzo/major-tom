@@ -14,6 +14,7 @@ import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
 import { contextStore } from './context.svelte';
 import { db, type DbMessage } from '../db';
+import { terminalStore } from './terminal.svelte';
 
 // ── Chat message model ──────────────────────────────────────
 
@@ -492,6 +493,26 @@ class RelayStore {
     }
   }
 
+  /** End current session and return to terminal (no auto-restart) */
+  endSession(): void {
+    if (this.sessionId && this.isConnected) {
+      this.socket.send({ type: 'session.end', sessionId: this.sessionId });
+    }
+    this.sessionId = null;
+    this.inputText = '';
+    this.inputPrefix = '';
+    this.messages = [];
+    this.pendingApprovals = [];
+    this.agents = [];
+    this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
+    this.isWaitingForResponse = false;
+    this.activeToolName = null;
+    this.toolActivities = [];
+    this.isViewingHistory = false;
+    this.persistSessionId();
+    contextStore.clear();
+  }
+
   clearMessages(): void {
     this.messages = [];
   }
@@ -627,6 +648,34 @@ class RelayStore {
       sessionId: this.sessionId,
       path,
     });
+  }
+
+  // ── Filesystem browsing ─────────────────────────────────
+
+  requestFsLs(path: string): void {
+    this.socket.send({ type: 'fs.ls', path });
+  }
+
+  requestFsReadFile(path: string): void {
+    this.socket.send({ type: 'fs.readFile', path });
+  }
+
+  requestFsCwd(): void {
+    this.socket.send({ type: 'fs.cwd' });
+  }
+
+  /** Start a session at a specific working directory */
+  startSessionAt(workingDir: string): void {
+    this.messages = [];
+    this.pendingApprovals = [];
+    this.agents = [];
+    this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
+    this.isWaitingForResponse = false;
+    this.activeToolName = null;
+    this.toolActivities = [];
+    this.isViewingHistory = false;
+    contextStore.clear();
+    this.socket.send({ type: 'session.start', adapter: 'cli', workingDir });
   }
 
   // ── Command usage tracking (IndexedDB) ─────────────────────
@@ -855,6 +904,14 @@ class RelayStore {
         });
         break;
 
+      case 'session.ended':
+        // Session was ended (by us or another client) — clean up
+        if (this.sessionId === message.sessionId) {
+          this.sessionId = null;
+          this.persistSessionId();
+        }
+        break;
+
       case 'connection.status':
         // Handled implicitly by socket state
         break;
@@ -932,6 +989,35 @@ class RelayStore {
           delaySeconds: message.delaySeconds,
           godSubMode: message.godSubMode,
         };
+        break;
+
+      // ── Filesystem responses ──────────────────────────────
+      case 'fs.ls.response':
+        terminalStore.isLoading = false;
+        // If this was a cd validation, update cwd
+        if (terminalStore.pendingCdTarget) {
+          terminalStore.cwd = terminalStore.pendingCdTarget;
+          terminalStore.pendingCdTarget = null;
+        } else {
+          terminalStore.addOutput(terminalStore.formatLsOutput(message.entries, terminalStore.lastLsDetailed ?? false));
+        }
+        break;
+
+      case 'fs.readFile.response':
+        terminalStore.isLoading = false;
+        terminalStore.addOutput(message.content);
+        break;
+
+      case 'fs.cwd.response':
+        terminalStore.isLoading = false;
+        terminalStore.cwd = message.path;
+        terminalStore.sandboxRoot = message.path;
+        break;
+
+      case 'fs.error':
+        terminalStore.isLoading = false;
+        terminalStore.pendingCdTarget = null; // Clear pending cd on error
+        terminalStore.addError(message.message);
         break;
     }
   }
