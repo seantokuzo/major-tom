@@ -42,6 +42,7 @@ struct OfficeView: View {
         .onAppear {
             scene.onAgentTapped = { agentId in
                 if let agent = viewModel.agents.first(where: { $0.id == agentId }) {
+                    HapticService.selection()
                     viewModel.selectAgent(agent)
                 }
             }
@@ -84,6 +85,7 @@ struct OfficeView: View {
                         }
                     } : nil,
                     onDismiss: {
+                        HapticService.impact(.medium)
                         viewModel.dismissInspector()
                     }
                 )
@@ -94,6 +96,7 @@ struct OfficeView: View {
                 viewModel.showCharacterGallery = false
             })
         }
+        .hapticOnSheet(isPresented: viewModel.selectedAgentId != nil)
     }
 
     // MARK: - Top Bar

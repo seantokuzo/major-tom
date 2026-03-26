@@ -60,6 +60,7 @@ struct PairingView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, MajorTomTheme.Spacing.xl)
                     .transition(.opacity)
+                    .hapticOnAppear(.heavy)
             }
 
             // PIN keypad
@@ -67,6 +68,7 @@ struct PairingView: View {
 
             // Submit button
             Button {
+                HapticService.impact(.medium)
                 Task { await viewModel.submitPIN() }
             } label: {
                 Group {
@@ -155,6 +157,7 @@ struct PairingView: View {
                     .frame(width: 72, height: 52)
             } else {
                 Button {
+                    HapticService.impact(.light)
                     if key == "⌫" {
                         viewModel.deleteDigit()
                     } else {

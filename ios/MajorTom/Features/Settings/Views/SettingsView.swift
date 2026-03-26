@@ -94,6 +94,7 @@ struct SettingsView: View {
                 .listRowBackground(MajorTomTheme.Colors.surface)
 
                 Button(role: .destructive) {
+                    HapticService.impact(.heavy)
                     viewModel.showUnpairConfirmation = true
                 } label: {
                     Label("Unpair Device", systemImage: "xmark.shield")

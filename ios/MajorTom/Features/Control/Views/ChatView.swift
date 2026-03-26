@@ -267,10 +267,14 @@ struct ChatView: View {
                 Button { HapticService.buttonTap(); viewModel.showTemplates = true } label: {
                     Image(systemName: "doc.on.clipboard").font(.body).foregroundStyle(MajorTomTheme.Colors.textSecondary)
                 }
-                Button { Task { await viewModel.sendPrompt() } } label: {
+                Button {
+                    HapticService.impact(.medium)
+                    Task { await viewModel.sendPrompt() }
+                } label: {
                     Image(systemName: "arrow.up.circle.fill").font(.title2)
                         .foregroundStyle(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? MajorTomTheme.Colors.textTertiary : MajorTomTheme.Colors.accent)
                 }
+                .buttonStyle(.haptic)
                 .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(MajorTomTheme.Spacing.md)

@@ -56,6 +56,12 @@ final class RelayService {
     /// Auth service for token management
     var authService: AuthService?
 
+    /// Notification service — posts local notifications for approvals and events.
+    var notificationService: NotificationService?
+
+    /// Live Activity service — updates Lock Screen and Dynamic Island.
+    var liveActivityService: LiveActivityService?
+
     /// Callbacks for device list updates
     var onDeviceListUpdate: (([DeviceInfo]) -> Void)?
 
@@ -92,7 +98,15 @@ final class RelayService {
     func disconnect() {
         webSocket.disconnect()
         currentSession = nil
+        liveActivityService?.endActivity()
         clearSessionState()
+        WidgetDataProvider.updateSessionStatus(.init(
+            isActive: false,
+            activeAgentCount: 0,
+            totalAgentCount: 0,
+            costUsd: 0,
+            isConnected: false
+        ))
     }
 
     // MARK: - Session
@@ -247,6 +261,13 @@ final class RelayService {
                     }
                 } else {
                     pendingApprovals.append(request)
+                    // Post local notification for approval request
+                    notificationService?.postApprovalNotification(
+                        requestId: event.requestId,
+                        toolName: event.tool,
+                        description: event.description
+                    )
+                    HapticService.notification(.warning)
                 }
             }
 
@@ -268,6 +289,13 @@ final class RelayService {
                     startedAt: event.startedAt,
                     tokenUsage: event.tokenUsage
                 )
+                // Start Live Activity for new session
+                liveActivityService?.startActivity(
+                    sessionId: event.sessionId,
+                    workingDirectory: currentSession?.workingDir ?? "~"
+                )
+                // Update widget data
+                updateWidgetData()
             }
 
         case .sessionResult:
@@ -277,12 +305,23 @@ final class RelayService {
                 sessionDurationMs = event.durationMs
                 if let input = event.inputTokens { sessionInputTokens = input }
                 if let output = event.outputTokens { sessionOutputTokens = output }
+                // Update Live Activity cost
+                liveActivityService?.handleCostUpdate(costUsd: event.costUsd)
+                updateWidgetData()
             }
 
         case .sessionEnded:
             if let event = try? MessageCodec.decode(SessionEndedEvent.self, from: data) {
                 if currentSession?.id == event.sessionId {
+                    // Post session end notification
+                    notificationService?.postSessionEndNotification(
+                        sessionId: event.sessionId,
+                        costUsd: sessionCostUsd
+                    )
+                    // End Live Activity
+                    liveActivityService?.handleSessionEnd()
                     currentSession = nil
+                    updateWidgetData()
                 }
             }
 
@@ -312,6 +351,9 @@ final class RelayService {
                     toolStatus: .running
                 )
                 chatMessages.append(msg)
+                // Update Live Activity with current tool
+                liveActivityService?.handleToolStart(toolName: event.tool)
+                updateWidgetData()
             }
 
         case .toolComplete:
@@ -333,11 +375,21 @@ final class RelayService {
                     toolOutput: event.output
                 )
                 chatMessages.append(msg)
+                // Update Live Activity — tool finished
+                liveActivityService?.handleToolComplete()
+                updateWidgetData()
             }
 
         case .agentSpawn:
             if let event = try? MessageCodec.decode(AgentSpawnEvent.self, from: data) {
                 officeViewModel?.handleAgentSpawn(id: event.agentId, role: event.role, task: event.task)
+                notificationService?.postAgentSpawnNotification(
+                    agentId: event.agentId,
+                    role: event.role,
+                    task: event.task
+                )
+                liveActivityService?.handleAgentSpawn(role: event.role)
+                updateWidgetData()
             }
 
         case .agentWorking:
@@ -353,11 +405,19 @@ final class RelayService {
         case .agentComplete:
             if let event = try? MessageCodec.decode(AgentCompleteEvent.self, from: data) {
                 officeViewModel?.handleAgentComplete(id: event.agentId, result: event.result)
+                notificationService?.postAgentCompleteNotification(
+                    agentId: event.agentId,
+                    result: event.result
+                )
+                liveActivityService?.handleAgentComplete()
+                updateWidgetData()
             }
 
         case .agentDismissed:
             if let event = try? MessageCodec.decode(AgentDismissedEvent.self, from: data) {
                 officeViewModel?.handleAgentDismissed(id: event.agentId)
+                liveActivityService?.handleAgentComplete()
+                updateWidgetData()
             }
 
         case .connectionStatus:
@@ -446,6 +506,23 @@ final class RelayService {
         sessionInputTokens = 0
         sessionOutputTokens = 0
         sessionDurationMs = 0
+    }
+
+    /// Push latest session state to the widget data store.
+    private func updateWidgetData() {
+        let agentCount = officeViewModel?.agents.count ?? 0
+        let activeAgents = officeViewModel?.agents.filter { $0.status == .working || $0.status == .spawning }.count ?? 0
+
+        WidgetDataProvider.updateSessionStatus(.init(
+            isActive: currentSession != nil,
+            activeAgentCount: activeAgents,
+            totalAgentCount: agentCount,
+            costUsd: sessionCostUsd,
+            currentTool: activeTools.last?.tool,
+            sessionStartDate: currentSession?.startDate,
+            isConnected: connectionState == .connected,
+            workingDirectory: currentSession?.workingDir
+        ))
     }
 }
 
