@@ -1,5 +1,44 @@
 import Foundation
 
+// MARK: - Demo Agent Names & Tasks
+
+/// Pre-defined demo agents for demo mode.
+private enum DemoData {
+    struct DemoAgent {
+        let name: String
+        let role: String
+        let task: String
+        let characterType: CharacterType
+    }
+
+    static let agents: [DemoAgent] = [
+        DemoAgent(name: "Alice", role: "frontend", task: "Building the login page", characterType: .dev),
+        DemoAgent(name: "Bob", role: "backend", task: "Setting up API endpoints", characterType: .officeWorker),
+        DemoAgent(name: "Carol", role: "pm", task: "Sprint planning for Q2", characterType: .pm),
+        DemoAgent(name: "Dave", role: "fullstack", task: "Implementing dark mode", characterType: .dev),
+        DemoAgent(name: "Eve", role: "devops", task: "Configuring CI/CD pipeline", characterType: .officeWorker),
+        DemoAgent(name: "Bonkers", role: "morale", task: "Organizing team event", characterType: .clown),
+        DemoAgent(name: "Frank", role: "security", task: "Auditing auth system", characterType: .frankenstein),
+        DemoAgent(name: "Pretzel", role: "qa", task: "Running regression tests", characterType: .dachshund),
+        DemoAgent(name: "Heeler", role: "infra", task: "Scaling worker nodes", characterType: .cattleDog),
+        DemoAgent(name: "Shadow", role: "data", task: "Training ML model", characterType: .schnauzerBlack),
+        DemoAgent(name: "Pepper", role: "design", task: "Updating component library", characterType: .schnauzerPepper),
+        DemoAgent(name: "Grace", role: "architect", task: "Designing microservices", characterType: .pm),
+        DemoAgent(name: "Hank", role: "sre", task: "Monitoring production alerts", characterType: .dev),
+        DemoAgent(name: "Ziggy", role: "intern", task: "Learning the codebase", characterType: .clown),
+    ]
+}
+
+// MARK: - Demo State
+
+/// The lifecycle states for demo mode cycling.
+private enum DemoPhase: CaseIterable {
+    case idle
+    case work
+    case breakTime
+    case celebrate
+}
+
 // MARK: - Office View Model
 
 /// Manages the state of all agents in the office scene.
@@ -14,6 +53,13 @@ final class OfficeViewModel {
     var selectedAgentId: String?
     var desks: [Desk] = OfficeLayout.desks
 
+    /// Demo mode state
+    var isDemoMode: Bool = false
+    var showCharacterGallery: Bool = false
+
+    /// Activity manager for station-based idle activities
+    let activityManager = ActivityManager()
+
     /// Live lookup — always returns current state, never a stale copy.
     var selectedAgent: AgentState? {
         guard let id = selectedAgentId else { return nil }
@@ -26,6 +72,137 @@ final class OfficeViewModel {
     private var nextCharacterIndex = 0
     private let characterTypes = CharacterType.allCases
 
+    /// Demo mode cycling task
+    private var demoCycleTask: Task<Void, Never>?
+
+    // MARK: - Demo Mode
+
+    /// Start demo mode with 14 fake agents.
+    func startDemoMode() {
+        guard !isDemoMode else { return }
+        isDemoMode = true
+
+        // Clear existing state
+        agents.removeAll()
+        desks = OfficeLayout.desks
+        nextCharacterIndex = 0
+
+        // Spawn 14 demo agents
+        for (index, demo) in DemoData.agents.enumerated() {
+            let deskIndex = index < desks.count ? index : nil
+            if let deskIndex {
+                desks[deskIndex].occupantId = "demo-\(index)"
+            }
+
+            let agent = AgentState(
+                id: "demo-\(index)",
+                name: demo.name,
+                role: demo.role,
+                characterType: demo.characterType,
+                status: .working,
+                currentTask: demo.task,
+                deskIndex: deskIndex
+            )
+            agents.append(agent)
+        }
+
+        // Start cycling demo agents through states
+        startDemoCycling()
+    }
+
+    /// Stop demo mode and clear all demo agents.
+    func stopDemoMode() {
+        isDemoMode = false
+        demoCycleTask?.cancel()
+        demoCycleTask = nil
+        activityManager.reset()
+
+        // Clear demo agents
+        agents.removeAll { $0.id.hasPrefix("demo-") }
+        desks = OfficeLayout.desks
+    }
+
+    /// Toggle demo mode on/off.
+    func toggleDemoMode() {
+        if isDemoMode {
+            stopDemoMode()
+        } else {
+            startDemoMode()
+        }
+    }
+
+    /// Cycle demo agents through states: idle -> work -> break -> celebrate
+    private func startDemoCycling() {
+        demoCycleTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+
+                // Pick 2-4 random agents to cycle
+                let count = Int.random(in: 2...4)
+                let shuffled = self.agents.filter { $0.id.hasPrefix("demo-") }.shuffled()
+                let selected = Array(shuffled.prefix(count))
+
+                for agent in selected {
+                    guard let index = self.agents.firstIndex(where: { $0.id == agent.id }) else { continue }
+
+                    // Pick next phase based on current status
+                    let nextPhase = self.nextDemoPhase(for: agent.status)
+
+                    switch nextPhase {
+                    case .idle:
+                        self.agents[index].status = .idle
+                        self.agents[index].currentTask = nil
+
+                    case .work:
+                        self.agents[index].status = .working
+                        self.agents[index].currentTask = DemoData.agents
+                            .randomElement()?.task ?? "Working hard"
+
+                    case .breakTime:
+                        self.agents[index].status = .idle
+                        self.agents[index].currentTask = nil
+
+                    case .celebrate:
+                        self.agents[index].status = .celebrating
+                        self.agents[index].currentTask = "Task completed!"
+                        // Reset after 2 seconds
+                        let agentId = agent.id
+                        Task { @MainActor [weak self] in
+                            try? await Task.sleep(for: .seconds(2))
+                            guard let self else { return }
+                            if let idx = self.agents.firstIndex(where: { $0.id == agentId }) {
+                                self.agents[idx].status = .working
+                                self.agents[idx].currentTask = DemoData.agents
+                                    .randomElement()?.task ?? "Back to work"
+                            }
+                        }
+                    }
+                }
+
+                // Wait 4-8 seconds before next cycle
+                let delay = TimeInterval.random(in: 4...8)
+                try? await Task.sleep(for: .seconds(delay))
+            }
+        }
+    }
+
+    /// Determine the next demo phase based on current status.
+    private func nextDemoPhase(for status: AgentStatus) -> DemoPhase {
+        switch status {
+        case .working:
+            // From working: go idle or celebrate
+            return Bool.random() ? .idle : .celebrate
+        case .idle:
+            // From idle: go back to work
+            return .work
+        case .celebrating:
+            // From celebrating: go back to work
+            return .work
+        default:
+            return .work
+        }
+    }
+
     // MARK: - Agent Lifecycle Handlers
 
     /// Called when the relay broadcasts `agent.spawn`.
@@ -33,6 +210,11 @@ final class OfficeViewModel {
     func handleAgentSpawn(id: String, role: String, task: String) {
         // Don't double-spawn
         guard !agents.contains(where: { $0.id == id }) else { return }
+
+        // If in demo mode, stop it when real agents arrive
+        if isDemoMode {
+            stopDemoMode()
+        }
 
         let characterType = assignNextCharacterType()
         let deskIndex = assignNextAvailableDesk(to: id)
@@ -55,6 +237,9 @@ final class OfficeViewModel {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
         agents[index].status = .working
         agents[index].currentTask = task
+
+        // Release any activity station
+        activityManager.releaseStation(for: id)
     }
 
     /// Called when the relay broadcasts `agent.idle`.
@@ -147,6 +332,7 @@ final class OfficeViewModel {
     /// Remove an agent entirely (after they've left the office).
     private func removeAgent(id: String) {
         releaseDesk(for: id)
+        activityManager.releaseStation(for: id)
         agents.removeAll { $0.id == id }
         if selectedAgentId == id {
             selectedAgentId = nil
