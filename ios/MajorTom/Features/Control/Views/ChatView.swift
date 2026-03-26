@@ -2,8 +2,15 @@ import SwiftUI
 
 struct ChatView: View {
     @State private var viewModel: ChatViewModel
+    @State private var showSessionList = false
+    @Environment(\.scenePhase) private var scenePhase
 
-    init(relay: RelayService) {
+    private let relay: RelayService
+    private let storage: SessionStorageService
+
+    init(relay: RelayService, storage: SessionStorageService) {
+        self.relay = relay
+        self.storage = storage
         _viewModel = State(initialValue: ChatViewModel(relay: relay))
     }
 
@@ -26,11 +33,25 @@ struct ChatView: View {
             inputBar(text: $viewModel.inputText)
         }
         .background(MajorTomTheme.Colors.background)
+        .sheet(isPresented: $showSessionList) {
+            SessionListView(relay: relay, storage: storage)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background {
+                saveCurrentSession()
+            }
+        }
         .task {
             if !viewModel.hasSession {
                 await viewModel.startSession()
             }
         }
+    }
+
+    private func saveCurrentSession() {
+        guard let session = relay.currentSession else { return }
+        storage.saveMessages(relay.chatMessages, for: session.id)
+        storage.saveFromSessionInfo(session, messageCount: relay.chatMessages.count)
     }
 
     // MARK: - Connection Bar
@@ -43,7 +64,26 @@ struct ChatView: View {
             Text(viewModel.connectionState.rawValue.capitalized)
                 .font(MajorTomTheme.Typography.caption)
                 .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+
+            if let session = relay.currentSession {
+                Text("·")
+                    .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+                Text(session.workingDir ?? session.id.prefix(8).description)
+                    .font(MajorTomTheme.Typography.caption)
+                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                    .lineLimit(1)
+            }
+
             Spacer()
+
+            Button {
+                showSessionList = true
+                HapticService.buttonTap()
+            } label: {
+                Image(systemName: "list.bullet.rectangle")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(MajorTomTheme.Colors.accent)
+            }
         }
         .padding(.horizontal, MajorTomTheme.Spacing.lg)
         .padding(.vertical, MajorTomTheme.Spacing.sm)
@@ -132,5 +172,5 @@ struct ChatView: View {
 }
 
 #Preview {
-    ChatView(relay: RelayService())
+    ChatView(relay: RelayService(), storage: SessionStorageService())
 }

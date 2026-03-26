@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		01CF88DD53BD425A8BB52F59 /* OfficeLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2A5F6ECD6AEA9681C140DA3 /* OfficeLayout.swift */; };
+		1140D09C6E9CA80DD5394F6B /* SessionRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03B0FF2B39E3FA0F97CA66E /* SessionRowView.swift */; };
 		1ECF57AD1993033DCCF73DB5 /* OfficeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 794D98FF20DC91F49542FE7D /* OfficeViewModel.swift */; };
 		2CD2BE4AF89623E36046AEF2 /* ApprovalRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CAFA24AC1299FAEA55E2C0B /* ApprovalRequest.swift */; };
 		3320719E65C7D12EC787C929 /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CB6C01422BAAA8E4C996172 /* PairingView.swift */; };
@@ -25,6 +26,7 @@
 		818FA51F81C18CFE08B3C097 /* PairingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526DF9EAD13F47F747C7ACC3 /* PairingViewModel.swift */; };
 		8294293F9EF30CBEED38BFC6 /* HapticService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7794C5813F5964F288D432AD /* HapticService.swift */; };
 		8AD9CF79749CD5BE5EF22487 /* AgentInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A6B155FB1E10E586EFA12AC /* AgentInspectorView.swift */; };
+		8FBFC47F6355543CB70F368F /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A571183D8F82C0A0373A42D /* SessionListView.swift */; };
 		924AA688A4D5BF0B708C40A4 /* ApprovalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B99FD8B1AB490C5124F962DC /* ApprovalView.swift */; };
 		926D953D313C1AF78A9041EE /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = E659E1885E32B1187E8C3703 /* MessageBubble.swift */; };
 		9F2F95450060416CA67BA3FB /* OfficeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD500881DC6249D63A9E0ACA /* OfficeView.swift */; };
@@ -36,6 +38,8 @@
 		C9BB54E28A623F2765BB3A95 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A981C64512EE7700D1A27BAB /* SettingsViewModel.swift */; };
 		C9D6EF3F81D2EB74C1C3C741 /* ConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4862EDC8F8386FEB727657BF /* ConnectionViewModel.swift */; };
 		CFCBB89895F30259222DD268 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FA484DB960E122B25A8773F /* ChatViewModel.swift */; };
+		DA36546275A88A7B490C69F1 /* SessionStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4C73E14C8A94C37A496B3FF /* SessionStorageService.swift */; };
+		DAC0C66B42E11C19896C7FC9 /* SessionListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ED47D05EBAEFF05755F1CF6 /* SessionListViewModel.swift */; };
 		DEC7A03BAD629CB026FDD77F /* DeviceManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B2D2956D7BBBE520D548CED /* DeviceManagementView.swift */; };
 		E4C11D19C5CBC7B5653532FD /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 345B4AA475B96036D85853BA /* Theme.swift */; };
 		ECD4CC99C031E1B803D88C76 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 591E0D4455AD31B2BBD8761C /* Session.swift */; };
@@ -44,6 +48,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0A571183D8F82C0A0373A42D /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
 		2155A4D6123944C4CDE2BEE8 /* MajorTom.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MajorTom.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		21F681FC6A3D7B14792DDC15 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		345B4AA475B96036D85853BA /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -58,6 +63,7 @@
 		5FA484DB960E122B25A8773F /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		6657773292DC21D71241871E /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		6A6B155FB1E10E586EFA12AC /* AgentInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentInspectorView.swift; sourceTree = "<group>"; };
+		6ED47D05EBAEFF05755F1CF6 /* SessionListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListViewModel.swift; sourceTree = "<group>"; };
 		6EF58FBAC8341407F9E3E7A0 /* RelayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayService.swift; sourceTree = "<group>"; };
 		7152E60188E13153CF4B5C85 /* PixelArtBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelArtBuilder.swift; sourceTree = "<group>"; };
 		73D57C1446E7A203616CCE20 /* StreamingText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingText.swift; sourceTree = "<group>"; };
@@ -78,7 +84,9 @@
 		C3C4E64AF88E24ABC75AB59E /* AgentState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentState.swift; sourceTree = "<group>"; };
 		CC19E99FB3AAD181F192CD3B /* MessageCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageCodec.swift; sourceTree = "<group>"; };
 		E659E1885E32B1187E8C3703 /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
+		F03B0FF2B39E3FA0F97CA66E /* SessionRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRowView.swift; sourceTree = "<group>"; };
 		F2E379544E5140C04B00F724 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
+		F4C73E14C8A94C37A496B3FF /* SessionStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStorageService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -176,6 +184,7 @@
 				3A2253D14191C88F64B0A16E /* Control */,
 				1BF75AA0800A3C72B67D050E /* Office */,
 				021CB1EE92B194C990B58AAE /* Pairing */,
+				829D205AA8A32D0DEBEF329E /* Sessions */,
 				B785C26F2874B8A4F530FD1D /* Settings */,
 			);
 			path = Features;
@@ -235,6 +244,33 @@
 			path = Scenes;
 			sourceTree = "<group>";
 		};
+		7635D5EE73CB47582AE3A8E9 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				0A571183D8F82C0A0373A42D /* SessionListView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		78C52C28EFCB196F9FA98F29 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				F03B0FF2B39E3FA0F97CA66E /* SessionRowView.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		829D205AA8A32D0DEBEF329E /* Sessions */ = {
+			isa = PBXGroup;
+			children = (
+				78C52C28EFCB196F9FA98F29 /* Components */,
+				E1395283E6753462041CA77D /* Services */,
+				BFF38BAD48E9A812A5572F80 /* ViewModels */,
+				7635D5EE73CB47582AE3A8E9 /* Views */,
+			);
+			path = Sessions;
+			sourceTree = "<group>";
+		};
 		8C658BE5B9A9D17534D08697 = {
 			isa = PBXGroup;
 			children = (
@@ -279,11 +315,18 @@
 		B785C26F2874B8A4F530FD1D /* Settings */ = {
 			isa = PBXGroup;
 			children = (
-				F4CC29694F42E4B5FD57C761 /* Components */,
 				D28A628DB467A01A77C6F494 /* ViewModels */,
 				DE1EBD87DDB29A1DB6A9A638 /* Views */,
 			);
 			path = Settings;
+			sourceTree = "<group>";
+		};
+		BFF38BAD48E9A812A5572F80 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				6ED47D05EBAEFF05755F1CF6 /* SessionListViewModel.swift */,
+			);
+			path = ViewModels;
 			sourceTree = "<group>";
 		};
 		C0D9B55A94E1B4F6C888C36E /* ViewModels */ = {
@@ -338,6 +381,14 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		E1395283E6753462041CA77D /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				F4C73E14C8A94C37A496B3FF /* SessionStorageService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
 		E5B5E7A789A6033C62B122B8 /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -346,13 +397,6 @@
 				591E0D4455AD31B2BBD8761C /* Session.swift */,
 			);
 			path = Models;
-			sourceTree = "<group>";
-		};
-		F4CC29694F42E4B5FD57C761 /* Components */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Components;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -454,6 +498,10 @@
 				BB6D1475199DE9F8814F33DE /* PixelArtBuilder.swift in Sources */,
 				3C07EFEF4D80196CACF66B4F /* RelayService.swift in Sources */,
 				ECD4CC99C031E1B803D88C76 /* Session.swift in Sources */,
+				8FBFC47F6355543CB70F368F /* SessionListView.swift in Sources */,
+				DAC0C66B42E11C19896C7FC9 /* SessionListViewModel.swift in Sources */,
+				1140D09C6E9CA80DD5394F6B /* SessionRowView.swift in Sources */,
+				DA36546275A88A7B490C69F1 /* SessionStorageService.swift in Sources */,
 				4F564AFF2C107C396235D252 /* SettingsView.swift in Sources */,
 				C9BB54E28A623F2765BB3A95 /* SettingsViewModel.swift in Sources */,
 				FFB20C4BF1BD6D83D3404F2B /* StreamingText.swift in Sources */,

@@ -452,14 +452,32 @@ final class RelayService {
 // MARK: - Chat Message Model
 
 struct ChatMessage: Identifiable {
-    let id = UUID()
+    let id: UUID
     let role: ChatRole
     var content: String
-    let timestamp = Date()
+    let timestamp: Date
     var toolName: String?
     var toolStatus: ToolStatus?
     var toolOutput: String?
     var isCollapsed: Bool = true
+
+    init(
+        role: ChatRole,
+        content: String,
+        toolName: String? = nil,
+        toolStatus: ToolStatus? = nil,
+        toolOutput: String? = nil,
+        id: UUID = UUID(),
+        timestamp: Date = Date()
+    ) {
+        self.id = id
+        self.role = role
+        self.content = content
+        self.timestamp = timestamp
+        self.toolName = toolName
+        self.toolStatus = toolStatus
+        self.toolOutput = toolOutput
+    }
 }
 
 enum ChatRole {
