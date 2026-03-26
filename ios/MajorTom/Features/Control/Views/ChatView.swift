@@ -2,8 +2,11 @@ import SwiftUI
 
 struct ChatView: View {
     @State private var viewModel: ChatViewModel
+    @State private var isPermissionExpanded = false
+    private let relay: RelayService
 
     init(relay: RelayService) {
+        self.relay = relay
         _viewModel = State(initialValue: ChatViewModel(relay: relay))
     }
 
@@ -11,8 +14,17 @@ struct ChatView: View {
         @Bindable var viewModel = viewModel
 
         VStack(spacing: 0) {
-            // Connection status bar + cost
+            // Connection status bar + cost + permission pill
             connectionBar
+
+            // Expandable permission mode picker
+            if isPermissionExpanded {
+                PermissionModeView(relay: relay)
+                    .padding(.horizontal, MajorTomTheme.Spacing.md)
+                    .padding(.vertical, MajorTomTheme.Spacing.sm)
+                    .background(MajorTomTheme.Colors.surface)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
 
             // Pending approvals
             if !viewModel.pendingApprovals.isEmpty {
@@ -33,6 +45,7 @@ struct ChatView: View {
             inputBar(text: $viewModel.inputText)
         }
         .background(MajorTomTheme.Colors.background)
+        .animation(.spring(duration: 0.3), value: isPermissionExpanded)
         .task {
             if !viewModel.hasSession {
                 await viewModel.startSession()
@@ -60,6 +73,15 @@ struct ChatView: View {
                 inputTokens: viewModel.sessionInputTokens,
                 outputTokens: viewModel.sessionOutputTokens
             )
+
+            PermissionModePill(
+                mode: relay.permissionMode,
+                godSubMode: relay.godSubMode,
+                isExpanded: isPermissionExpanded
+            ) {
+                HapticService.buttonTap()
+                isPermissionExpanded.toggle()
+            }
         }
         .padding(.horizontal, MajorTomTheme.Spacing.lg)
         .padding(.vertical, MajorTomTheme.Spacing.sm)
