@@ -31,8 +31,11 @@ struct ApprovalView: View {
                     type: "approval.request",
                     requestId: "1",
                     tool: "Bash",
-                    description: "npm install",
-                    details: nil
+                    description: "rm -rf /tmp/build && npm install",
+                    details: [
+                        "command": .string("rm -rf /tmp/build && npm install"),
+                        "working_directory": .string("/Users/dev/project"),
+                    ]
                 )
             ),
             ApprovalRequest(
@@ -41,7 +44,22 @@ struct ApprovalView: View {
                     requestId: "2",
                     tool: "Edit",
                     description: "Editing src/server.ts",
-                    details: nil
+                    details: [
+                        "file_path": .string("src/server.ts"),
+                        "old_string": .string("const port = 3000;"),
+                        "new_string": .string("const port = process.env.PORT || 3000;"),
+                    ]
+                )
+            ),
+            ApprovalRequest(
+                from: ApprovalRequestEvent(
+                    type: "approval.request",
+                    requestId: "3",
+                    tool: "Read",
+                    description: "Reading package.json",
+                    details: [
+                        "path": .string("package.json")
+                    ]
                 )
             ),
         ],

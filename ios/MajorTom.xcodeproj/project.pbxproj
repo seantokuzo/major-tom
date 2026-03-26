@@ -51,10 +51,12 @@
 		E4C11D19C5CBC7B5653532FD /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 345B4AA475B96036D85853BA /* Theme.swift */; };
 		ECD4CC99C031E1B803D88C76 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 591E0D4455AD31B2BBD8761C /* Session.swift */; };
 		ED4F918BF0F4278063303B34 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2873A7A68C25BFA4E7C9756 /* AuthService.swift */; };
+		FD27662CD00A7F829ABC6FA4 /* DangerScoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F013B10B2AA2CD96B19588 /* DangerScoring.swift */; };
 		FFB20C4BF1BD6D83D3404F2B /* StreamingText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D57C1446E7A203616CCE20 /* StreamingText.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		10F013B10B2AA2CD96B19588 /* DangerScoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DangerScoring.swift; sourceTree = "<group>"; };
 		1494C1C717DD39A7E7813BF7 /* PermissionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionViewModel.swift; sourceTree = "<group>"; };
 		2155A4D6123944C4CDE2BEE8 /* MajorTom.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MajorTom.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		21F681FC6A3D7B14792DDC15 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -218,6 +220,7 @@
 			isa = PBXGroup;
 			children = (
 				A2873A7A68C25BFA4E7C9756 /* AuthService.swift */,
+				10F013B10B2AA2CD96B19588 /* DangerScoring.swift */,
 				7794C5813F5964F288D432AD /* HapticService.swift */,
 				A9BD8A95DFAD6160FF41E83F /* KeychainService.swift */,
 				6EF58FBAC8341407F9E3E7A0 /* RelayService.swift */,
@@ -505,6 +508,7 @@
 				50BB1C73D342CB99FCFD747C /* ConnectionView.swift in Sources */,
 				C9D6EF3F81D2EB74C1C3C741 /* ConnectionViewModel.swift in Sources */,
 				D2AA323DD9F0C43560F0DA89 /* CostBadge.swift in Sources */,
+				FD27662CD00A7F829ABC6FA4 /* DangerScoring.swift in Sources */,
 				38E33EB668F17E0408DEBF7C /* DelayCountdownView.swift in Sources */,
 				DEC7A03BAD629CB026FDD77F /* DeviceManagementView.swift in Sources */,
 				C73A60CB24EFABD14D9C2A2F /* GodModeConfirmation.swift in Sources */,

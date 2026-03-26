@@ -26,7 +26,7 @@ struct ChatView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            // Pending approvals
+            // Pending approvals (vertical stack)
             if !viewModel.pendingApprovals.isEmpty {
                 approvalsList
             }
@@ -96,22 +96,48 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - Approvals
+    // MARK: - Approvals (Vertical Stack)
 
     private var approvalsList: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: MajorTomTheme.Spacing.md) {
+        ScrollView {
+            LazyVStack(spacing: MajorTomTheme.Spacing.md) {
+                // Pending approvals
                 ForEach(viewModel.pendingApprovals) { request in
-                    ApprovalCard(request: request) { decision in
-                        Task {
-                            await viewModel.handleApproval(requestId: request.id, decision: decision)
-                        }
-                    }
-                    .frame(width: 300)
+                    let countdown: Int? = viewModel.isDelayMode
+                        ? viewModel.countdownFor(request: request)
+                        : nil
+
+                    ApprovalCard(
+                        request: request,
+                        onDecision: { decision in
+                            Task {
+                                await viewModel.handleApproval(requestId: request.id, decision: decision)
+                            }
+                        },
+                        countdownRemaining: countdown
+                    )
+                }
+
+                // Recent auto-approved tools (dimmed)
+                ForEach(viewModel.recentAutoApproved) { autoTool in
+                    ApprovalCard(
+                        request: ApprovalRequest(
+                            from: ApprovalRequestEvent(
+                                type: "approval.auto",
+                                requestId: autoTool.id.uuidString,
+                                tool: autoTool.tool,
+                                description: autoTool.description,
+                                details: nil
+                            )
+                        ),
+                        onDecision: { _ in },
+                        isAutoApproved: true
+                    )
                 }
             }
             .padding(MajorTomTheme.Spacing.md)
         }
+        .frame(maxHeight: 400)
         .background(MajorTomTheme.Colors.surface.opacity(0.5))
     }
 

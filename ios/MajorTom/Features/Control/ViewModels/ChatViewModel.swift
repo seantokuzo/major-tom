@@ -37,53 +37,44 @@ final class ChatViewModel {
 
     // MARK: - Cost Passthrough
 
-    var sessionCostUsd: Double {
-        relay.sessionCostUsd
-    }
-
-    var sessionTurnCount: Int {
-        relay.sessionTurnCount
-    }
-
-    var sessionInputTokens: Int {
-        relay.sessionInputTokens
-    }
-
-    var sessionOutputTokens: Int {
-        relay.sessionOutputTokens
-    }
+    var sessionCostUsd: Double { relay.sessionCostUsd }
+    var sessionTurnCount: Int { relay.sessionTurnCount }
+    var sessionInputTokens: Int { relay.sessionInputTokens }
+    var sessionOutputTokens: Int { relay.sessionOutputTokens }
 
     // MARK: - Streaming Detection
 
     var isStreaming: Bool {
-        // Streaming if the last message is from the assistant and tools are running
         guard let last = messages.last else { return false }
         return last.role == .assistant && !relay.activeTools.isEmpty
+    }
+
+    // MARK: - Permission / Delay Mode
+
+    var isDelayMode: Bool { relay.permissionMode == .delay }
+
+    var recentAutoApproved: [AutoApprovedTool] {
+        Array(relay.autoApprovedTools.suffix(5))
+    }
+
+    func countdownFor(request: ApprovalRequest) -> Int {
+        guard isDelayMode else { return 0 }
+        let elapsed = Int(Date().timeIntervalSince(request.receivedAt))
+        return max(0, relay.delaySeconds - elapsed)
     }
 
     // MARK: - Smart Scroll
 
     func updateScrollPosition(contentMaxY: CGFloat) {
-        // contentMaxY is the max Y of the content relative to the scroll view's coordinate space.
-        // When near the bottom, this value is close to the scroll view's height.
-        // We consider "near bottom" if the content bottom is within threshold of visible area.
         let wasNearBottom = isNearBottom
         isNearBottom = contentMaxY < nearBottomThreshold
 
         if !isNearBottom && wasNearBottom {
-            withMainActorAnimation {
-                showScrollFab = true
-            }
+            showScrollFab = true
         } else if isNearBottom && !wasNearBottom {
             unreadCount = 0
-            withMainActorAnimation {
-                showScrollFab = false
-            }
+            showScrollFab = false
         }
-    }
-
-    private func withMainActorAnimation(_ body: () -> Void) {
-        body()
     }
 
     // MARK: - Actions
