@@ -25,14 +25,17 @@ struct ApprovalCard: View {
             // Action buttons
             HStack(spacing: MajorTomTheme.Spacing.md) {
                 ApprovalButton(title: "Allow", color: MajorTomTheme.Colors.allow) {
+                    HapticService.approve()
                     onDecision(.allow)
                 }
 
                 ApprovalButton(title: "Skip", color: MajorTomTheme.Colors.skip) {
+                    HapticService.skip()
                     onDecision(.skip)
                 }
 
                 ApprovalButton(title: "Deny", color: MajorTomTheme.Colors.deny) {
+                    HapticService.deny()
                     onDecision(.deny)
                 }
             }

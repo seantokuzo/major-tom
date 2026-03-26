@@ -51,10 +51,12 @@ struct ConnectionView: View {
                     .foregroundStyle(MajorTomTheme.Colors.deny)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, MajorTomTheme.Spacing.xl)
+                    .hapticOnAppear(.heavy)
             }
 
             // Connect/Disconnect button
             Button {
+                HapticService.impact(.medium)
                 Task {
                     if viewModel.isConnected {
                         viewModel.disconnect()
@@ -71,6 +73,7 @@ struct ConnectionView: View {
                     .background(viewModel.isConnected ? MajorTomTheme.Colors.deny : MajorTomTheme.Colors.accent)
                     .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.medium))
             }
+            .buttonStyle(.haptic(.medium))
             .disabled(viewModel.isConnecting)
             .padding(.horizontal, MajorTomTheme.Spacing.xxl)
 

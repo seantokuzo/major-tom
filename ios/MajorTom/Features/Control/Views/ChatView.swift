@@ -114,6 +114,7 @@ struct ChatView: View {
                 }
 
             Button {
+                HapticService.impact(.medium)
                 Task { await viewModel.sendPrompt() }
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
@@ -124,6 +125,7 @@ struct ChatView: View {
                             : MajorTomTheme.Colors.accent
                     )
             }
+            .buttonStyle(.haptic)
             .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(MajorTomTheme.Spacing.md)
