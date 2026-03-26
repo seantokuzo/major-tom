@@ -13,39 +13,95 @@ struct ChatView: View {
     var body: some View {
         @Bindable var viewModel = viewModel
 
-        VStack(spacing: 0) {
-            // Connection status bar + cost + permission pill
-            connectionBar
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 0) {
+                // Connection status bar + cost + permission pill
+                connectionBar
 
-            // Expandable permission mode picker
-            if isPermissionExpanded {
-                PermissionModeView(relay: relay)
-                    .padding(.horizontal, MajorTomTheme.Spacing.md)
-                    .padding(.vertical, MajorTomTheme.Spacing.sm)
-                    .background(MajorTomTheme.Colors.surface)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
-            // Pending approvals (vertical stack)
-            if !viewModel.pendingApprovals.isEmpty {
-                approvalsList
-            }
-
-            // Messages with smart scroll
-            ZStack(alignment: .bottomTrailing) {
-                messagesList
-
-                // Scroll-to-bottom FAB
-                if viewModel.showScrollFab {
-                    scrollToBottomFab
+                // Expandable permission mode picker
+                if isPermissionExpanded {
+                    PermissionModeView(relay: relay)
+                        .padding(.horizontal, MajorTomTheme.Spacing.md)
+                        .padding(.vertical, MajorTomTheme.Spacing.sm)
+                        .background(MajorTomTheme.Colors.surface)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-            }
 
-            // Input bar
-            inputBar(text: $viewModel.inputText)
+                // Pending approvals (vertical stack)
+                if !viewModel.pendingApprovals.isEmpty {
+                    approvalsList
+                }
+
+                // Messages with smart scroll
+                ZStack(alignment: .bottomTrailing) {
+                    messagesList
+
+                    // Scroll-to-bottom FAB
+                    if viewModel.showScrollFab {
+                        scrollToBottomFab
+                    }
+                }
+
+                // Command palette (above input bar)
+                if viewModel.showCommandPalette {
+                    CommandPaletteView(
+                        query: viewModel.commandQuery,
+                        onSelectCommand: { command in
+                            viewModel.executeCommand(command)
+                        }
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                // Context chips
+                ContextChipsBar(paths: viewModel.contextPaths) { path in
+                    viewModel.removeContextFile(path)
+                }
+
+                // Input bar
+                inputBar(text: $viewModel.inputText)
+            }
+            .background(MajorTomTheme.Colors.background)
+
+            // History overlay
+            if viewModel.showHistoryOverlay {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        viewModel.showHistoryOverlay = false
+                    }
+
+                PromptHistoryOverlay(
+                    viewModel: viewModel.historyViewModel,
+                    onSelectEntry: { text in
+                        viewModel.insertHistoryEntry(text)
+                    },
+                    isPresented: $viewModel.showHistoryOverlay
+                )
+                .frame(maxHeight: 400)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
-        .background(MajorTomTheme.Colors.background)
         .animation(.spring(duration: 0.3), value: isPermissionExpanded)
+        .animation(.spring(duration: 0.3), value: viewModel.showHistoryOverlay)
+        .animation(.spring(duration: 0.2), value: viewModel.showCommandPalette)
+        .sheet(isPresented: $viewModel.showTemplates) {
+            TemplateListView(
+                viewModel: viewModel.templateViewModel,
+                onSelectTemplate: { content in
+                    viewModel.insertTemplate(content)
+                }
+            )
+        }
+        .sheet(isPresented: $viewModel.showFileContext) {
+            FileContextView(
+                relay: viewModel.relay,
+                onFilesSelected: { paths in
+                    viewModel.addContextFiles(paths)
+                },
+                isPresented: $viewModel.showFileContext
+            )
+        }
         .task {
             if !viewModel.hasSession {
                 await viewModel.startSession()
@@ -101,7 +157,6 @@ struct ChatView: View {
     private var approvalsList: some View {
         ScrollView {
             LazyVStack(spacing: MajorTomTheme.Spacing.md) {
-                // Pending approvals
                 ForEach(viewModel.pendingApprovals) { request in
                     let countdown: Int? = viewModel.isDelayMode
                         ? viewModel.countdownFor(request: request)
@@ -148,12 +203,10 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(spacing: MajorTomTheme.Spacing.sm) {
                     ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
-                        // Turn separator: insert between user→assistant transitions
                         if shouldShowTurnSeparator(at: index) {
                             TurnSeparator(timestamp: message.timestamp)
                         }
 
-                        // Route to appropriate view
                         if message.role == .tool {
                             ToolMessageView(message: message)
                                 .id(message.id)
@@ -163,7 +216,6 @@ struct ChatView: View {
                         }
                     }
 
-                    // Streaming indicator
                     if viewModel.isStreaming {
                         HStack {
                             StreamingIndicator()
@@ -171,14 +223,12 @@ struct ChatView: View {
                         }
                     }
 
-                    // Scroll anchor
                     Color.clear
                         .frame(height: 1)
                         .id("bottom")
                 }
                 .padding(MajorTomTheme.Spacing.md)
 
-                // Track scroll position
                 GeometryReader { geometry in
                     Color.clear
                         .preference(
@@ -229,7 +279,6 @@ struct ChatView: View {
                     .clipShape(Circle())
                     .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
 
-                // Unread badge
                 if viewModel.unreadCount > 0 {
                     Text("\(min(viewModel.unreadCount, 99))")
                         .font(.caption2.weight(.bold))
@@ -254,39 +303,71 @@ struct ChatView: View {
         let messages = viewModel.messages
         let current = messages[index]
         let previous = messages[index - 1]
-
-        // Show separator when transitioning from non-user to user (new turn)
         return current.role == .user && previous.role != .user
     }
 
     // MARK: - Input Bar
 
     private func inputBar(text: Binding<String>) -> some View {
-        HStack(spacing: MajorTomTheme.Spacing.md) {
-            TextField("Send a prompt...", text: text, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(MajorTomTheme.Typography.body)
-                .foregroundStyle(MajorTomTheme.Colors.textPrimary)
-                .lineLimit(1...5)
-                .onSubmit {
-                    Task { await viewModel.sendPrompt() }
+        VStack(spacing: 0) {
+            HStack(spacing: MajorTomTheme.Spacing.sm) {
+                // Voice input button
+                VoiceInputButton(
+                    speechService: viewModel.speechService,
+                    onTranscription: { transcribed in
+                        viewModel.handleTranscription(transcribed)
+                    }
+                )
+
+                // Text field
+                TextField("Send a prompt...", text: text, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(MajorTomTheme.Typography.body)
+                    .foregroundStyle(MajorTomTheme.Colors.textPrimary)
+                    .lineLimit(1...5)
+                    .onChange(of: viewModel.inputText) { _, newValue in
+                        viewModel.handleInputChange(newValue)
+                    }
+                    .onSubmit {
+                        Task { await viewModel.sendPrompt() }
+                    }
+
+                // Templates button
+                Button {
+                    HapticService.buttonTap()
+                    viewModel.showTemplates = true
+                } label: {
+                    Image(systemName: "doc.on.clipboard")
+                        .font(.body)
+                        .foregroundStyle(MajorTomTheme.Colors.textSecondary)
                 }
 
-            Button {
-                Task { await viewModel.sendPrompt() }
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(
-                        viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? MajorTomTheme.Colors.textTertiary
-                            : MajorTomTheme.Colors.accent
-                    )
+                // Send button
+                Button {
+                    Task { await viewModel.sendPrompt() }
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(
+                            viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                ? MajorTomTheme.Colors.textTertiary
+                                : MajorTomTheme.Colors.accent
+                        )
+                }
+                .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .padding(MajorTomTheme.Spacing.md)
+            .background(MajorTomTheme.Colors.surface)
         }
-        .padding(MajorTomTheme.Spacing.md)
-        .background(MajorTomTheme.Colors.surface)
+        .gesture(
+            DragGesture(minimumDistance: 30)
+                .onEnded { value in
+                    if value.translation.height < -50 {
+                        HapticService.buttonTap()
+                        viewModel.showHistoryOverlay = true
+                    }
+                }
+        )
     }
 }
 
