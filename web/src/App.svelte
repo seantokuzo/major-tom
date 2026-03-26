@@ -10,9 +10,10 @@
   import AgentInspector from './lib/components/AgentInspector.svelte';
   import { relay } from './lib/stores/relay.svelte';
   import { toasts } from './lib/stores/toast.svelte';
-  import { createOfficeState } from './lib/office/state.svelte';
+  import { createOfficeSessionManager } from './lib/office/session-manager.svelte';
   import type { OfficeView } from './lib/office/types';
   import { OFFICE_VIEWS } from './lib/office/layout';
+  import { sessionsStore } from './lib/stores/sessions.svelte';
   import NotificationToggle from './lib/components/NotificationToggle.svelte';
   import AuthSettings from './lib/components/AuthSettings.svelte';
   import LoginScreen from './lib/components/LoginScreen.svelte';
@@ -71,12 +72,33 @@
   let activeView = $state<OfficeView>('office');
   let headerCollapsed = $state(false);
 
-  const office = createOfficeState();
+  const officeManager = createOfficeSessionManager();
+
+  // Convenience: derived ref to the active session's office state
+  const office = $derived(officeManager.active);
 
   // Expose for debug/demo (dev-only)
   if (import.meta.env.DEV) {
-    (window as any).__office = office;
+    (window as any).__office = officeManager;
   }
+
+  // ── Per-session state switching ─────────────────────────────
+  // When relay.sessionId changes, switch the office to that session's state.
+  // Derive session name from sessionsStore metadata when available.
+  $effect(() => {
+    const sessionId = relay.sessionId;
+    const sessions = sessionsStore.sessions;
+
+    untrack(() => {
+      const meta = sessions.find(s => s.id === sessionId);
+      const name = meta?.workingDirName ?? undefined;
+      officeManager.switchTo(sessionId, name);
+    });
+  });
+
+  // Lazy rendering: OfficeCanvas is only mounted when activeTab === 'office'
+  // (via Svelte {#if}), so its $effect lifecycle automatically starts/stops
+  // the engine. No additional pause/resume logic needed here.
 
   // Wire relay agent events to office state.
   // We track which agents have been processed to avoid duplicate handling.
@@ -302,6 +324,9 @@
       <CharacterGallery />
     {:else}
       <div class="office-wrapper" class:demo-active={office.demoMode}>
+        {#if officeManager.activeSessionId}
+          <div class="session-badge">{officeManager.activeSessionName}</div>
+        {/if}
         <OfficeCanvas
           engine={office.engine}
           desks={office.desks}
@@ -588,6 +613,25 @@
     position: relative;
     display: flex;
     min-height: 0;
+  }
+
+  .session-badge {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    background: rgba(30, 30, 40, 0.85);
+    border: 1px solid var(--border);
+    padding: 2px 10px;
+    border-radius: var(--r-full);
+    pointer-events: none;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
   }
 
   .office-wrapper.demo-active {
