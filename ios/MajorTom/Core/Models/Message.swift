@@ -9,13 +9,23 @@ enum MessageType: String, Codable {
     case cancel
     case sessionStart = "session.start"
     case sessionAttach = "session.attach"
+    case sessionEnd = "session.end"
+    case sessionList = "session.list"
     case agentMessage = "agent.message"
     case workspaceTree = "workspace.tree"
     case contextAdd = "context.add"
+    case contextRemove = "context.remove"
+    case settingsApproval = "settings.approval"
+    case deviceList = "device.list"
+    case deviceRevoke = "device.revoke"
+    case fsLs = "fs.ls"
+    case fsReadFile = "fs.readFile"
+    case fsCwd = "fs.cwd"
 
     // Server → Client
     case output
     case approvalRequest = "approval.request"
+    case approvalAuto = "approval.auto"
     case toolStart = "tool.start"
     case toolComplete = "tool.complete"
     case agentSpawn = "agent.spawn"
@@ -25,7 +35,21 @@ enum MessageType: String, Codable {
     case agentDismissed = "agent.dismissed"
     case connectionStatus = "connection.status"
     case sessionInfo = "session.info"
+    case sessionResult = "session.result"
+    case sessionEnded = "session.ended"
+    case sessionListResponse = "session.list.response"
+    case sessionHistory = "session.history"
     case workspaceTreeResponse = "workspace.tree.response"
+    case contextAddResponse = "context.add.response"
+    case contextRemoveResponse = "context.remove.response"
+    case permissionMode = "permission.mode"
+    case notification
+    case deviceListResponse = "device.list.response"
+    case deviceRevokeResponse = "device.revoke.response"
+    case fsLsResponse = "fs.ls.response"
+    case fsReadFileResponse = "fs.readFile.response"
+    case fsCwdResponse = "fs.cwd.response"
+    case fsError = "fs.error"
     case error
 }
 
@@ -42,6 +66,7 @@ struct ApprovalDecisionMessage: Codable {
     let type: String = "approval"
     let requestId: String
     let decision: ApprovalDecision
+    var toolUseId: String?
 }
 
 enum ApprovalDecision: String, Codable {
@@ -72,6 +97,88 @@ struct SessionAttachMessage: Codable {
     let sessionId: String
 }
 
+struct SessionEndMessage: Codable {
+    let type: String = "session.end"
+    let sessionId: String
+}
+
+struct SessionListRequestMessage: Codable {
+    let type: String = "session.list"
+}
+
+struct AgentMessageMessage: Codable {
+    let type: String = "agent.message"
+    let sessionId: String
+    let agentId: String
+    let text: String
+}
+
+struct WorkspaceTreeRequestMessage: Codable {
+    let type: String = "workspace.tree"
+    var path: String?
+    var sessionId: String?
+}
+
+struct ContextAddMessage: Codable {
+    let type: String = "context.add"
+    let sessionId: String
+    let path: String
+    let contextType: ContextType
+}
+
+struct ContextRemoveMessage: Codable {
+    let type: String = "context.remove"
+    let sessionId: String
+    let path: String
+}
+
+enum ContextType: String, Codable {
+    case file
+    case folder
+}
+
+struct SettingsApprovalMessage: Codable {
+    let type: String = "settings.approval"
+    let mode: PermissionMode
+    var delaySeconds: Int?
+    var godSubMode: GodSubMode?
+}
+
+enum PermissionMode: String, Codable {
+    case manual
+    case smart
+    case delay
+    case god
+}
+
+enum GodSubMode: String, Codable {
+    case normal
+    case yolo
+}
+
+struct DeviceListRequestMessage: Codable {
+    let type: String = "device.list"
+}
+
+struct DeviceRevokeRequestMessage: Codable {
+    let type: String = "device.revoke"
+    let deviceId: String
+}
+
+struct FsLsRequestMessage: Codable {
+    let type: String = "fs.ls"
+    let path: String
+}
+
+struct FsReadFileRequestMessage: Codable {
+    let type: String = "fs.readFile"
+    let path: String
+}
+
+struct FsCwdRequestMessage: Codable {
+    let type: String = "fs.cwd"
+}
+
 // MARK: - Server → Client Messages
 
 struct OutputEvent: Codable, Identifiable {
@@ -80,7 +187,6 @@ struct OutputEvent: Codable, Identifiable {
     let chunk: String
     let format: OutputFormat
 
-    // Use UUID for stable identity — hashValue is not stable across runs
     let id = UUID().uuidString
 
     enum CodingKeys: String, CodingKey {
@@ -103,6 +209,21 @@ struct ApprovalRequestEvent: Codable, Identifiable {
     var id: String { requestId }
 }
 
+struct ApprovalAutoEvent: Codable {
+    let type: String
+    let tool: String
+    let description: String
+    let reason: AutoApprovalReason
+    var toolUseId: String?
+}
+
+enum AutoApprovalReason: String, Codable {
+    case smartSettings = "smart:settings"
+    case smartSession = "smart:session"
+    case godYolo = "god:yolo"
+    case godNormal = "god:normal"
+}
+
 struct ToolStartEvent: Codable {
     let type: String
     let sessionId: String
@@ -114,6 +235,7 @@ struct ToolCompleteEvent: Codable {
     let type: String
     let sessionId: String
     let tool: String
+    var toolUseId: String?
     let output: String
     let success: Bool
 }
@@ -171,6 +293,156 @@ struct TokenUsage: Codable {
     let remaining: Int
 }
 
+struct SessionResultEvent: Codable {
+    let type: String
+    let sessionId: String
+    let costUsd: Double
+    let numTurns: Int
+    let durationMs: Int
+    var inputTokens: Int?
+    var outputTokens: Int?
+}
+
+struct SessionEndedEvent: Codable {
+    let type: String
+    let sessionId: String
+}
+
+struct SessionMetaInfo: Codable, Identifiable {
+    let id: String
+    let adapter: String
+    let workingDirName: String
+    let status: String
+    let startedAt: String
+    let totalCost: Double
+    let inputTokens: Int
+    let outputTokens: Int
+    let turnCount: Int
+    let totalDuration: Int
+}
+
+struct SessionListResponseEvent: Codable {
+    let type: String
+    let sessions: [SessionMetaInfo]
+}
+
+struct TranscriptEntry: Codable, Identifiable {
+    let type: String
+    let content: String
+    let timestamp: String
+    var meta: [String: AnyCodableValue]?
+
+    let id = UUID().uuidString
+
+    enum CodingKeys: String, CodingKey {
+        case type, content, timestamp, meta
+    }
+}
+
+struct SessionHistoryEvent: Codable {
+    let type: String
+    let sessionId: String
+    let entries: [TranscriptEntry]
+}
+
+struct PermissionModeEvent: Codable {
+    let type: String
+    let mode: PermissionMode
+    let delaySeconds: Int
+    let godSubMode: GodSubMode
+}
+
+struct NotificationEvent: Codable {
+    let type: String
+    let title: String
+    let message: String
+    let notificationType: String
+}
+
+struct DeviceInfo: Codable, Identifiable {
+    let id: String
+    let name: String
+    let createdAt: String
+    let lastSeenAt: String
+}
+
+struct DeviceListResponseEvent: Codable {
+    let type: String
+    let devices: [DeviceInfo]
+}
+
+struct DeviceRevokeResponseEvent: Codable {
+    let type: String
+    let deviceId: String
+    let success: Bool
+}
+
+struct FileNode: Codable, Identifiable {
+    let name: String
+    let path: String
+    let isDirectory: Bool
+    var children: [FileNode]?
+
+    var id: String { path }
+}
+
+struct WorkspaceTreeResponseEvent: Codable {
+    let type: String
+    let files: [FileNode]
+}
+
+struct ContextAddResponseEvent: Codable {
+    let type: String
+    let path: String
+    let success: Bool
+    var error: String?
+    let totalContextSize: Int
+}
+
+struct ContextRemoveResponseEvent: Codable {
+    let type: String
+    let path: String
+    let success: Bool
+    var error: String?
+    let totalContextSize: Int
+}
+
+struct FsEntry: Codable, Identifiable {
+    let name: String
+    let type: String
+    let size: Int
+    let modified: String
+    var permissions: String?
+
+    var id: String { name }
+
+    var isDirectory: Bool { type == "directory" }
+}
+
+struct FsLsResponseEvent: Codable {
+    let type: String
+    let path: String
+    let entries: [FsEntry]
+}
+
+struct FsReadFileResponseEvent: Codable {
+    let type: String
+    let path: String
+    let content: String
+    let size: Int
+}
+
+struct FsCwdResponseEvent: Codable {
+    let type: String
+    let path: String
+}
+
+struct FsErrorEvent: Codable {
+    let type: String
+    let message: String
+    var path: String?
+}
+
 struct ErrorEvent: Codable {
     let type: String
     let code: String
@@ -179,7 +451,7 @@ struct ErrorEvent: Codable {
 
 // MARK: - Type-erased JSON value for dynamic fields
 
-enum AnyCodableValue: Codable {
+enum AnyCodableValue: Codable, Sendable {
     case string(String)
     case int(Int)
     case double(Double)
@@ -220,6 +492,27 @@ enum AnyCodableValue: Codable {
         case .array(let val): try container.encode(val)
         case .null: try container.encodeNil()
         }
+    }
+
+    var stringValue: String? {
+        if case .string(let val) = self { return val }
+        return nil
+    }
+
+    var intValue: Int? {
+        if case .int(let val) = self { return val }
+        return nil
+    }
+
+    var doubleValue: Double? {
+        if case .double(let val) = self { return val }
+        if case .int(let val) = self { return Double(val) }
+        return nil
+    }
+
+    var boolValue: Bool? {
+        if case .bool(let val) = self { return val }
+        return nil
     }
 }
 
