@@ -58,6 +58,17 @@ void import('highlight.js/lib/core').then(async (mod) => {
   // highlight.js failed to load — rendering still works without highlighting
 });
 
+// Display names for common language aliases
+const LANG_DISPLAY: Record<string, string> = {
+  ts: 'TypeScript', typescript: 'TypeScript',
+  js: 'JavaScript', javascript: 'JavaScript',
+  json: 'JSON', bash: 'Bash', sh: 'Bash', shell: 'Shell',
+  css: 'CSS', html: 'HTML', xml: 'XML',
+  python: 'Python', py: 'Python',
+  go: 'Go', rust: 'Rust', swift: 'Swift',
+  yaml: 'YAML', yml: 'YAML', sql: 'SQL', diff: 'Diff',
+};
+
 const marked = new Marked({
   renderer: {
     code({ text, lang }: { text: string; lang?: string }) {
@@ -80,7 +91,12 @@ const marked = new Marked({
         highlighted = escapeHtml(text);
       }
       const langClass = safeLang ? ` class="language-${safeLang}"` : '';
-      return `<pre><code${langClass}>${highlighted}</code></pre>`;
+      const langLabel = safeLang ? LANG_DISPLAY[safeLang] ?? safeLang : '';
+      // Encode raw text as base64 for the copy button (avoids escaping issues)
+      const bytes = new TextEncoder().encode(text);
+      const encoded = btoa(String.fromCharCode(...bytes));
+      const header = `<div class="code-header"><span class="code-lang">${escapeHtml(langLabel)}</span><button class="code-copy-btn" data-code="${encoded}" type="button">Copy</button></div>`;
+      return `<div class="code-block-wrap">${header}<pre><code${langClass}>${highlighted}</code></pre></div>`;
     },
   },
   gfm: true,
@@ -89,5 +105,30 @@ const marked = new Marked({
 
 export function renderMarkdown(content: string): string {
   const raw = marked.parse(content) as string;
-  return DOMPurify.sanitize(raw);
+  return DOMPurify.sanitize(raw, {
+    ADD_ATTR: ['data-code'],
+  });
+}
+
+/** Attach click handlers to all code copy buttons inside a container element.
+ *  Call after mounting/updating {@html rendered} content. */
+export function attachCopyHandlers(container: HTMLElement) {
+  for (const btn of container.querySelectorAll<HTMLButtonElement>('.code-copy-btn')) {
+    if (btn.dataset.bound) continue;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', () => {
+      try {
+        const encoded = btn.dataset.code;
+        if (!encoded) return;
+        const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+        const text = new TextDecoder().decode(bytes);
+        navigator.clipboard.writeText(text).then(() => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        });
+      } catch {
+        // Decoding or clipboard failed — silently ignore
+      }
+    });
+  }
 }

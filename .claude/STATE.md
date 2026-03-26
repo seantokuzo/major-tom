@@ -7,7 +7,7 @@
 
 ## Current Phase
 
-**Phase 5: "Power User"** — Voice, templates, history, sessions, pairing, file context — COMPLETE
+**Phase 6: "ClaudeGod"** — Permission control, sprite polish, chat polish — IN PROGRESS
 
 ## Strategy
 
@@ -121,6 +121,31 @@
 - [x] Device management with revoke capability
 - [x] @file context attachment for workspace files
 
+## In Progress — Phase 6: "ClaudeGod"
+
+### Track A: ClaudeGod Permission Control — SHIPPED (PR #44)
+- [x] Permission modes: Manual / Smart / Delay / God (Normal + YOLO) (PR #44)
+- [x] Settings.json allowlist matching via PermissionFilter
+- [x] Collapsible header, mode switcher pills, countdown toasts
+- [x] Mid-response mode switching with pending approval flush
+- [x] "Always" button session-scoped allowlist
+- [x] PR review fixes: toolUseId correlation, cancel bug, a11y, filter improvements
+- [x] Stale localStorage chat cleared on new session / dead session detection
+
+### Track B: Sprite Bugs — OPEN (next session)
+- [ ] Bug: subagent sprites don't go to desks when real agents spawn (handleSpawn/promoteSessionAgent flow)
+- [ ] Bug: sprites escape room bounds — wander outside visible area, map "populated" but empty
+- Key files: `web/src/lib/office/state.svelte.ts`, `web/src/App.svelte` (agent spawn $effect)
+
+### Track C: Slash Commands — NOT STARTED
+- `/new`, `/clear`, `/compact`, `/model`, `/btw`
+- Command palette with `/` trigger
+
+### Track D: Chat Window Polish — NOT STARTED
+
+### Future: Local DB for Chat Persistence
+- Replace localStorage with IndexedDB + TTL purging (see memory: project_local_db_plan.md)
+
 ---
 
-_Last updated: 2026-03-21_
+_Last updated: 2026-03-25_

@@ -190,7 +190,29 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           });
           break;
         }
-        const session = await cliAdapter.attach(message.sessionId);
+        // Try to attach — distinguish not-found from other failures
+        let session;
+        try {
+          session = await cliAdapter.attach(message.sessionId);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const isNotFound = msg.includes('not found') || msg.includes('SESSION_NOT_FOUND');
+          if (isNotFound) {
+            sendToClient(ws, {
+              type: 'error',
+              code: 'SESSION_NOT_FOUND',
+              message: `Session not found: ${message.sessionId}`,
+            });
+          } else {
+            logger.error({ err, sessionId: message.sessionId }, 'Failed to attach to CLI session');
+            sendToClient(ws, {
+              type: 'error',
+              code: 'SESSION_ATTACH_FAILED',
+              message: `Failed to attach to session: ${message.sessionId}`,
+            });
+          }
+          break;
+        }
         trackClientSession(ws, session.id);
         sendToClient(ws, {
           type: 'session.info',
@@ -383,7 +405,34 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'settings.approval': {
-        approvalQueue.setMode(message.mode, message.delaySeconds);
+        // Map high-level permission modes to queue-level modes
+        const permFilter = cliAdapter.permissionFilter;
+        permFilter.setMode(message.mode, message.delaySeconds, message.godSubMode);
+
+        // When switching modes mid-response, re-evaluate pending approvals:
+        // - God mode: flush ALL pending (auto-allow everything)
+        // - Smart mode: flush pending that the filter would now auto-allow
+        // - Delay mode: ApprovalQueue.setMode('delay') attaches delay timers
+        // - Manual mode: pending stay queued (already in manual queue)
+        if (message.mode === 'god') {
+          approvalQueue.flushPending();
+        } else if (message.mode === 'smart') {
+          approvalQueue.flushMatching((tool, details) => {
+            const input = (details?.['tool_input'] as Record<string, unknown>) ?? {};
+            return permFilter.check(tool, input).allowed;
+          });
+        }
+
+        const queueMode = message.mode === 'delay' ? 'delay' : 'manual';
+        approvalQueue.setMode(queueMode, message.delaySeconds);
+
+        // Broadcast updated mode to all clients
+        broadcast({
+          type: 'permission.mode',
+          mode: message.mode,
+          delaySeconds: permFilter.getMode().delaySeconds,
+          godSubMode: permFilter.getMode().godSubMode,
+        });
         break;
       }
 
@@ -426,6 +475,16 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         details: request.details,
       });
       notificationBatcher.addApprovalRequest(request.tool, request.requestId);
+    });
+
+    cliAdapter.on('auto-allow', (event) => {
+      broadcast({
+        type: 'approval.auto',
+        tool: event.tool,
+        description: event.description,
+        reason: event.reason,
+        toolUseId: event.toolUseId,
+      });
     });
 
     cliAdapter.on('tool-start', (info) => {
@@ -580,6 +639,15 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         type: 'connection.status',
         status: 'connected',
         adapter: 'cli',
+      });
+
+      // Send current permission mode so client can sync
+      const modeState = cliAdapter.permissionFilter.getMode();
+      sendToClient(socket, {
+        type: 'permission.mode',
+        mode: modeState.mode,
+        delaySeconds: modeState.delaySeconds,
+        godSubMode: modeState.godSubMode,
       });
     }
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { relay } from '../stores/relay.svelte';
   import { toasts } from '../stores/toast.svelte';
 
@@ -10,7 +10,7 @@
 
   // PIN state
   let pinDigits = $state<string[]>(['', '', '', '', '', '']);
-  let pinInputs: HTMLInputElement[] = [];
+  let pinInputs = $state<HTMLInputElement[]>([]);
   let pinSubmitting = $state(false);
 
   async function handleCredentialResponse(response: google.accounts.id.CredentialResponse) {
@@ -114,6 +114,12 @@
               use_fedcm_for_prompt: false,
             });
 
+            // Mark available and flush DOM so buttonContainer is bound
+            // (it lives inside {:else} which needs loading=false to render)
+            googleAvailable = true;
+            loading = false;
+            await tick();
+
             if (buttonContainer) {
               google.accounts.id.renderButton(buttonContainer, {
                 theme: 'filled_black',
@@ -123,7 +129,6 @@
             }
 
             google.accounts.id.prompt();
-            googleAvailable = true;
           }
         }
       }

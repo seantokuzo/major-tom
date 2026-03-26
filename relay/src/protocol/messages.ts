@@ -71,8 +71,9 @@ export interface ContextRemoveMessage {
 
 export interface SettingsApprovalMessage {
   type: 'settings.approval';
-  mode: 'manual' | 'auto' | 'delay';
+  mode: 'manual' | 'smart' | 'delay' | 'god';
   delaySeconds?: number;
+  godSubMode?: 'normal' | 'yolo';
 }
 
 export interface SessionListMessage {
@@ -250,6 +251,21 @@ export interface SessionEndedMessage {
   sessionId: string;
 }
 
+export interface ApprovalAutoMessage {
+  type: 'approval.auto';
+  tool: string;
+  description: string;
+  reason: 'smart:settings' | 'smart:session' | 'god:yolo' | 'god:normal';
+  toolUseId?: string;
+}
+
+export interface PermissionModeMessage {
+  type: 'permission.mode';
+  mode: 'manual' | 'smart' | 'delay' | 'god';
+  delaySeconds: number;
+  godSubMode: 'normal' | 'yolo';
+}
+
 export interface ErrorMessage {
   type: 'error';
   code: string;
@@ -310,7 +326,9 @@ export type ServerMessage =
   | SessionEndedMessage
   | ErrorMessage
   | SessionListResponseMessage
-  | SessionHistoryMessage;
+  | SessionHistoryMessage
+  | ApprovalAutoMessage
+  | PermissionModeMessage;
 
 // ── Utilities ───────────────────────────────────────────────
 

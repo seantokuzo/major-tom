@@ -16,6 +16,7 @@
   import AuthSettings from './lib/components/AuthSettings.svelte';
   import LoginScreen from './lib/components/LoginScreen.svelte';
   import CharacterGallery from './lib/components/CharacterGallery.svelte';
+  import PermissionModeSwitcher from './lib/components/PermissionModeSwitcher.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
   // ── Toast notifications for connection state ────────────────
@@ -65,6 +66,7 @@
   type ViewTab = 'chat' | 'office' | 'characters';
   let activeTab = $state<ViewTab>('chat');
   let activeView = $state<OfficeView>('office');
+  let headerCollapsed = $state(false);
 
   const office = createOfficeState();
 
@@ -82,11 +84,12 @@
     // Subscribe to relay.agents (the trigger) but untrack office mutations
     // to avoid read-write cycles on office.agents within this effect.
     const agents = relay.agents;
+    const agentCount = agents.length; // Track array length to fire on push/splice
     const stateSize = processedAgentStates.size;
 
     untrack(() => {
       // Clear tracking and office state when relay agents are reset (e.g. newSession)
-      if (agents.length === 0 && stateSize > 0) {
+      if (agentCount === 0 && stateSize > 0) {
         processedAgentStates.clear();
         office.reset();
         return;
@@ -98,6 +101,16 @@
         if (prevKey === key) continue;
 
         processedAgentStates.set(agent.id, key);
+
+        // Always ensure handleSpawn is called first for new agents.
+        // Svelte 5 batches reactive updates — if agent.spawn and agent.working
+        // arrive in the same microtask, the effect may only fire once with
+        // the agent already in 'working' state. Without this guard,
+        // handleSpawn would never be called and the sprite never promotes.
+        const isNew = !prevKey;
+        if (isNew && agent.status !== 'spawned') {
+          office.handleSpawn(agent.id, agent.role, agent.task);
+        }
 
         switch (agent.status) {
           case 'spawned':
@@ -122,9 +135,8 @@
 
   // Session mode: when relay is connected with an active session, populate crew as idle
   // When disconnected or no session, exit session mode
+  // Not gated on activeTab — agents can spawn while on Chat tab
   $effect(() => {
-    if (activeTab !== 'office') return;
-
     const hasSession = relay.isConnected && relay.hasSession;
 
     const timer = setTimeout(() => {
@@ -169,51 +181,80 @@
 
 <div class="app">
   <header class="header">
-    <h1 class="title">MT</h1>
-    <nav class="tabs">
-      <button
-        class="tab"
-        class:active={activeTab === 'chat'}
-        onclick={() => (activeTab = 'chat')}
-      >
-        Chat
-      </button>
-      <button
-        class="tab"
-        class:active={activeTab === 'office'}
-        onclick={() => (activeTab = 'office')}
-      >
-        Office
-        {#if office.agents.length > 0}
-          <span class="agent-count">{office.agents.length}</span>
-        {/if}
-      </button>
-      <button
-        class="tab"
-        class:active={activeTab === 'characters'}
-        onclick={() => (activeTab = 'characters')}
-      >
-        Crew
-      </button>
-    </nav>
     <button
-      class="demo-btn"
-      class:active={office.demoMode}
-      disabled={(!office.canDemo && !office.demoMode) || office.sessionMode}
-      onclick={() => office.toggleDemo()}
-      title={office.sessionMode ? 'Demo disabled during active session' : office.demoMode ? 'Exit demo' : 'Launch demo office'}
+      class="collapse-btn"
+      onclick={() => (headerCollapsed = !headerCollapsed)}
+      title={headerCollapsed ? 'Expand header' : 'Collapse header'}
+      aria-label={headerCollapsed ? 'Expand header' : 'Collapse header'}
     >
-      {office.demoMode ? '■ Demo' : '▶ Demo'}
+      {headerCollapsed ? '\u25B6' : '\u25BC'}
     </button>
-    <div class="header-spacer"></div>
-    <div class="header-actions">
-      <AuthSettings />
-      <NotificationToggle />
-    </div>
+    {#if !headerCollapsed}
+      <h1 class="title">MT</h1>
+      <nav class="tabs">
+        <button
+          class="tab"
+          class:active={activeTab === 'chat'}
+          onclick={() => (activeTab = 'chat')}
+        >
+          Chat
+        </button>
+        <button
+          class="tab"
+          class:active={activeTab === 'office'}
+          onclick={() => (activeTab = 'office')}
+        >
+          Office
+          {#if office.agents.length > 0}
+            <span class="agent-count">{office.agents.length}</span>
+          {/if}
+        </button>
+        <button
+          class="tab"
+          class:active={activeTab === 'characters'}
+          onclick={() => (activeTab = 'characters')}
+        >
+          Crew
+        </button>
+      </nav>
+      <button
+        class="demo-btn"
+        class:active={office.demoMode}
+        disabled={(!office.canDemo && !office.demoMode) || office.sessionMode}
+        onclick={() => office.toggleDemo()}
+        title={office.sessionMode ? 'Demo disabled during active session' : office.demoMode ? 'Exit demo' : 'Launch demo office'}
+      >
+        {office.demoMode ? '■ Demo' : '▶ Demo'}
+      </button>
+      <div class="header-spacer"></div>
+      <div class="header-actions">
+        <AuthSettings />
+        <NotificationToggle />
+      </div>
+    {:else}
+      <span class="collapsed-status">
+        {relay.permissionMode.mode.toUpperCase()}
+        {#if relay.isConnected}
+          <span class="collapsed-dot connected"></span>
+        {:else}
+          <span class="collapsed-dot"></span>
+        {/if}
+      </span>
+    {/if}
   </header>
-  <ConnectionBar />
-  <ConnectionStatus />
-  <SessionInfo />
+  {#if !headerCollapsed}
+    <ConnectionBar />
+    <ConnectionStatus />
+    {#if relay.isConnected && relay.hasSession}
+      <div
+        class="mode-row"
+        class:mode-row-yolo={relay.permissionMode.mode === 'god' && relay.permissionMode.godSubMode === 'yolo'}
+      >
+        <PermissionModeSwitcher />
+      </div>
+    {/if}
+    <SessionInfo />
+  {/if}
 
   {#if activeTab === 'office'}
     <nav class="view-tabs">
@@ -279,6 +320,65 @@
     align-items: center;
     gap: var(--sp-sm);
     overflow: hidden;
+  }
+
+  .mode-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px var(--sp-sm);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    transition: background 0.3s, border-color 0.3s;
+  }
+
+  .mode-row-yolo {
+    background: rgba(248, 113, 113, 0.04);
+    border-bottom-color: rgba(248, 113, 113, 0.3);
+  }
+
+  .collapse-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 0.55rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-sm);
+    transition: all 0.15s;
+  }
+
+  .collapse-btn:hover {
+    color: var(--text-secondary);
+    background: var(--surface-hover);
+  }
+
+  .collapsed-status {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-xs);
+  }
+
+  .collapsed-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--deny);
+  }
+
+  .collapsed-dot.connected {
+    background: var(--allow);
   }
 
   .title {

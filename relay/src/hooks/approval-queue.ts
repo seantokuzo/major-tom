@@ -1,7 +1,8 @@
 import { logger } from '../utils/logger.js';
 
 export type ApprovalDecision = 'allow' | 'deny' | 'skip' | 'allow_always';
-export type ApprovalMode = 'manual' | 'auto' | 'delay';
+/** Queue-level mode: manual blocks, auto resolves immediately, delay resolves after timer */
+export type ApprovalQueueMode = 'manual' | 'auto' | 'delay';
 
 interface PendingApproval {
   requestId: string;
@@ -22,7 +23,7 @@ interface PendingApproval {
 export class ApprovalQueue {
   private pending = new Map<string, PendingApproval>();
   private timeoutMs: number;
-  private mode: ApprovalMode = 'manual';
+  private mode: ApprovalQueueMode = 'manual';
   private delaySeconds = 10;
 
   constructor(timeoutMs = 5 * 60 * 1000) {
@@ -35,7 +36,7 @@ export class ApprovalQueue {
    * - 'auto': immediately allow all requests (ClaudeGod mode)
    * - 'delay': auto-allow after delaySeconds unless client responds first
    */
-  setMode(mode: ApprovalMode, delaySeconds?: number): void {
+  setMode(mode: ApprovalQueueMode, delaySeconds?: number): void {
     const prevMode = this.mode;
     this.mode = mode;
 
@@ -85,9 +86,27 @@ export class ApprovalQueue {
     logger.info({ mode, prevMode, delaySeconds: this.delaySeconds }, 'Approval mode updated');
   }
 
-  /** Get current approval mode */
-  getMode(): ApprovalMode {
+  /** Get current queue mode */
+  getMode(): ApprovalQueueMode {
     return this.mode;
+  }
+
+  /** Flush all pending approvals by auto-allowing them (used when switching to god mode) */
+  flushPending(): void {
+    for (const requestId of [...this.pending.keys()]) {
+      logger.info({ requestId, reason: 'god-mode-flush' }, 'Flushing pending approval');
+      this.resolve(requestId, 'allow');
+    }
+  }
+
+  /** Flush pending approvals that match a predicate (used when switching to smart mode) */
+  flushMatching(predicate: (tool: string, details: Record<string, unknown>) => boolean): void {
+    for (const [requestId, entry] of [...this.pending.entries()]) {
+      if (predicate(entry.tool, entry.details)) {
+        logger.info({ requestId, tool: entry.tool, reason: 'smart-mode-flush' }, 'Flushing matching pending approval');
+        this.resolve(requestId, 'allow');
+      }
+    }
   }
 
   /**

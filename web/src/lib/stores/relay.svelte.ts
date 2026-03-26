@@ -72,6 +72,19 @@ export interface ToolActivity {
   success: boolean | null;
   duration: number | null;
   input?: Record<string, unknown>;
+  /** Set when tool was auto-allowed by permission filter */
+  autoAllowed?: 'smart:settings' | 'smart:session' | 'god:yolo' | 'god:normal';
+}
+
+// ── Permission mode model ────────────────────────────────────
+
+export type PermissionMode = 'manual' | 'smart' | 'delay' | 'god';
+export type GodSubMode = 'normal' | 'yolo';
+
+export interface PermissionModeState {
+  mode: PermissionMode;
+  delaySeconds: number;
+  godSubMode: GodSubMode;
 }
 
 // ── Auth user model ─────────────────────────────────────────
@@ -202,6 +215,13 @@ class RelayStore {
 
   // Command palette
   inputPrefix = $state('');
+
+  // Permission mode (synced with relay)
+  permissionMode = $state<PermissionModeState>({
+    mode: 'smart',
+    delaySeconds: 5,
+    godSubMode: 'normal',
+  });
 
   // Manual disconnect flag — prevents auto-reconnect after user clicks Disconnect
   manuallyDisconnected = $state(false);
@@ -449,25 +469,27 @@ class RelayStore {
   }
 
   startSession(): void {
-    this.socket.send({ type: 'session.start', adapter: 'cli' });
-  }
-
-  newSession(): void {
-    // Tear down current session, clear everything, start fresh
+    // Starting a new session — clear stale state from any prior session
     this.messages = [];
-    this.sessionId = null;
-    this.isViewingHistory = false;
     this.pendingApprovals = [];
     this.agents = [];
     this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
     this.isWaitingForResponse = false;
     this.activeToolName = null;
     this.toolActivities = [];
+    this.isViewingHistory = false;
+    contextStore.clear();
+    this.socket.send({ type: 'session.start', adapter: 'cli' });
+  }
+
+  newSession(): void {
+    // Tear down current session and clear input state
+    this.sessionId = null;
     this.inputText = '';
     this.inputPrefix = '';
-    contextStore.clear();
     this.persistSessionId();
     if (this.isConnected) {
+      // startSession() handles clearing messages, approvals, agents, stats, etc.
       this.startSession();
     }
   }
@@ -540,6 +562,23 @@ class RelayStore {
   cancelOperation(): void {
     if (!this.sessionId) return;
     this.socket.send({ type: 'cancel', sessionId: this.sessionId });
+  }
+
+  setPermissionMode(
+    mode: PermissionMode,
+    delaySeconds?: number,
+    godSubMode?: GodSubMode,
+  ): void {
+    this.permissionMode.mode = mode;
+    if (delaySeconds !== undefined) this.permissionMode.delaySeconds = delaySeconds;
+    if (godSubMode) this.permissionMode.godSubMode = godSubMode;
+
+    this.socket.send({
+      type: 'settings.approval',
+      mode,
+      delaySeconds: delaySeconds ?? this.permissionMode.delaySeconds,
+      godSubMode: godSubMode ?? this.permissionMode.godSubMode,
+    });
   }
 
   requestSessionList(): void {
@@ -711,13 +750,16 @@ class RelayStore {
         break;
 
       case 'agent.spawn':
-        this.agents.push({
-          id: message.agentId,
-          parentId: message.parentId,
-          task: message.task,
-          role: message.role,
-          status: 'spawned',
-        });
+        // Guard against duplicate spawn messages (e.g. reconnect replay)
+        if (!this.agents.some(a => a.id === message.agentId)) {
+          this.agents.push({
+            id: message.agentId,
+            parentId: message.parentId,
+            task: message.task,
+            role: message.role,
+            status: 'spawned',
+          });
+        }
         this.messages.push({
           id: uid(),
           role: 'system',
@@ -762,21 +804,23 @@ class RelayStore {
         break;
       }
 
-      case 'error':
+      case 'error': {
         this.isWaitingForResponse = false;
         this.activeToolName = null;
         this.isReattaching = false;
-        // Handle session attach failure
-        if (message.code === 'SESSION_NOT_FOUND' || message.code === 'SESSION_EXPIRED') {
+        const isSessionGone =
+          message.code === 'SESSION_NOT_FOUND' ||
+          message.code === 'SESSION_EXPIRED' ||
+          (typeof message.message === 'string' && message.message.includes('Session not found'));
+        if (isSessionGone) {
+          // Dead session — clear stale state, user gets a clean "Start Session" screen
           this.sessionId = null;
           this.storedSessionId = null;
           this.persistSessionId();
-          this.messages.push({
-            id: uid(),
-            role: 'system',
-            content: 'Session expired \u2014 start a new session',
-            timestamp: new Date(),
-          });
+          this.messages = [];
+          this.pendingApprovals = [];
+          this.agents = [];
+          this.toolActivities = [];
         } else {
           this.messages.push({
             id: uid(),
@@ -786,6 +830,7 @@ class RelayStore {
           });
         }
         break;
+      }
 
       case 'notification':
         this.messages.push({
@@ -841,6 +886,38 @@ class RelayStore {
             timestamp: new Date(),
           });
         }
+        break;
+
+      case 'approval.auto': {
+        // Tool was auto-allowed by permission filter — record as immediately
+        // completed so it doesn't conflict with tool.start/tool.complete lifecycle.
+        const now = new Date();
+        this.toolActivities.push({
+          id: uid(),
+          tool: message.tool,
+          startedAt: now,
+          completedAt: now,
+          success: true,
+          duration: 0,
+          autoAllowed: message.reason,
+        });
+        if (this.toolActivities.length > 50) {
+          const completedIdx = this.toolActivities.findIndex(a => a.completedAt !== null);
+          if (completedIdx >= 0) {
+            this.toolActivities.splice(completedIdx, 1);
+          } else {
+            this.toolActivities.shift();
+          }
+        }
+        break;
+      }
+
+      case 'permission.mode':
+        this.permissionMode = {
+          mode: message.mode,
+          delaySeconds: message.delaySeconds,
+          godSubMode: message.godSubMode,
+        };
         break;
     }
   }

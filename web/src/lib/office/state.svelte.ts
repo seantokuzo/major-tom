@@ -752,8 +752,17 @@ export function createOfficeState(): OfficeState {
     sessionMode = true;
     startSocialScanner();
 
-    // Spawn all 14 characters with stagger
+    // Collect character types already occupied by real agents so we don't duplicate
+    const occupiedCharTypes = new Set<CharacterType>(
+      agents
+        .filter(a => !isDemoAgent(a.id) && !isSessionAgent(a.id))
+        .map(a => a.characterType),
+    );
+
+    // Spawn session crew only for character slots NOT already used by real agents
     ALL_CHARACTER_TYPES.forEach((charType, i) => {
+      if (occupiedCharTypes.has(charType)) return; // real agent already using this slot
+
       const id = `${SESSION_PREFIX}${charType}`;
       const config = CHARACTER_CATALOG.find(c => c.type === charType);
       const name = config?.displayName ?? charType;
@@ -992,15 +1001,15 @@ export function createOfficeState(): OfficeState {
       dismissAllDemoAgents();
     }
 
+    // Assign character type once (avoids double-incrementing ENGINEER_POOL rotation)
+    const characterType = assignCharacterForRole(role);
+
     // In session mode, try to promote an existing idle crew member
     if (sessionMode) {
-      const charType = assignCharacterForRole(role);
-      if (promoteSessionAgent(charType, id, role, task)) {
+      if (promoteSessionAgent(characterType, id, role, task)) {
         return;
       }
     }
-
-    const characterType = assignCharacterForRole(role);
     const deskIndex = assignNextAvailableDesk(id);
 
     // Deduplicate name when same CharacterType already active
