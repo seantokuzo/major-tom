@@ -152,7 +152,7 @@
     if (isNearBottom) queueMicrotask(scrollToBottom);
   });
 
-  // Persist messages to localStorage (debounced to avoid jank during streaming)
+  // Persist messages to IndexedDB (debounced to avoid jank during streaming)
   let persistTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
     relay.messages.length;

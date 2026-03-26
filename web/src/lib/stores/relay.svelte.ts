@@ -13,6 +13,7 @@ import type {
 import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
 import { contextStore } from './context.svelte';
+import { db, type DbMessage } from '../db';
 
 // ── Chat message model ──────────────────────────────────────
 
@@ -95,66 +96,12 @@ export interface AuthUser {
   picture?: string;
 }
 
-// ── localStorage keys ───────────────────────────────────────
+// ── localStorage keys (only for small synchronous state) ────
 
 const STORAGE_KEYS = {
-  messages: 'mt-chat-messages',
   sessionId: 'mt-session-id',
-  commandUsage: 'mt-command-usage',
   authToken: 'mt-auth-token',
 } as const;
-
-// ── Serialization helpers ───────────────────────────────────
-
-interface SerializedMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'tool' | 'system';
-  content: string;
-  timestamp: string;
-  toolMeta?: ToolMeta;
-}
-
-/** Truncate large string values in toolMeta to prevent localStorage quota blowout */
-function truncateToolMeta(meta: ToolMeta): ToolMeta {
-  const truncate = (val: unknown): unknown => {
-    if (typeof val === 'string' && val.length > 500) return val.slice(0, 500) + '\u2026[truncated]';
-    if (typeof val === 'object' && val !== null) {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(val)) out[k] = truncate(v);
-      return out;
-    }
-    return val;
-  };
-  const result: ToolMeta = { ...meta, input: truncate(meta.input) as Record<string, unknown> };
-  // Also truncate output which can be a very large JSON string
-  if (typeof result.output === 'string' && result.output.length > 500) {
-    result.output = result.output.slice(0, 500) + '\u2026[truncated]';
-  }
-  return result;
-}
-
-function serializeMessages(messages: ChatMessage[]): string {
-  const serializable: SerializedMessage[] = messages.map((m) => ({
-    id: m.id,
-    role: m.role,
-    content: m.content,
-    timestamp: m.timestamp.toISOString(),
-    ...(m.toolMeta ? { toolMeta: truncateToolMeta(m.toolMeta) } : {}),
-  }));
-  return JSON.stringify(serializable);
-}
-
-function deserializeMessages(json: string): ChatMessage[] {
-  try {
-    const parsed = JSON.parse(json) as SerializedMessage[];
-    return parsed.map((m) => ({
-      ...m,
-      timestamp: new Date(m.timestamp),
-    }));
-  } catch {
-    return [];
-  }
-}
 
 // ── Relay store ─────────────────────────────────────────────
 
@@ -282,7 +229,7 @@ class RelayStore {
       this.handleMessage(message);
     };
 
-    // Restore from localStorage
+    // Restore synchronous state from localStorage, then async from IndexedDB
     this.restoreFromStorage();
 
     // Check auth session (cookie-based)
@@ -366,15 +313,13 @@ class RelayStore {
     if (typeof window === 'undefined') return;
 
     try {
-      const storedMessages = localStorage.getItem(STORAGE_KEYS.messages);
-      if (storedMessages) {
-        this.messages = deserializeMessages(storedMessages);
-      }
-
       const storedSessionId = localStorage.getItem(STORAGE_KEYS.sessionId);
       if (storedSessionId) {
         this.storedSessionId = storedSessionId;
         // Don't set sessionId yet — wait for successful reattach
+
+        // Load messages for this session from IndexedDB (async)
+        this.loadMessagesFromDb(storedSessionId);
       }
 
       const storedToken = localStorage.getItem(STORAGE_KEYS.authToken);
@@ -392,14 +337,67 @@ class RelayStore {
     this.persistenceInitialized = true;
   }
 
+  /** Load messages from IndexedDB for a given session */
+  private async loadMessagesFromDb(sessionId: string): Promise<void> {
+    try {
+      const rows = await db.messages
+        .where('sessionId')
+        .equals(sessionId)
+        .toArray();
+
+      if (rows.length > 0) {
+        this.messages = rows.map((row) => ({
+          id: row.messageId,
+          role: row.role,
+          content: row.content,
+          timestamp: new Date(row.timestamp),
+          ...(row.toolMeta ? { toolMeta: row.toolMeta } : {}),
+        }));
+      }
+    } catch (e) {
+      console.warn('[MajorTom] Failed to load messages from IndexedDB:', e);
+    }
+  }
+
   /** Call from an $effect in a component to persist messages reactively */
   persistMessages(): void {
     if (!this.persistenceInitialized || typeof window === 'undefined') return;
+    const sessionId = this.sessionId ?? this.storedSessionId;
+    if (!sessionId) return;
+
+    const messages = this.messages;
+    this.persistMessagesToDb(sessionId, messages).catch(() => {
+      // IndexedDB unavailable — degrade gracefully
+    });
+  }
+
+  /** Write current messages to IndexedDB for the active session */
+  private async persistMessagesToDb(sessionId: string, messages: ChatMessage[]): Promise<void> {
     try {
-      const json = serializeMessages(this.messages);
-      localStorage.setItem(STORAGE_KEYS.messages, json);
-    } catch {
-      // localStorage unavailable or quota exceeded — degrade gracefully
+      // Clear existing messages for this session, then bulk-insert current state
+      await db.transaction('rw', db.messages, db.sessionMeta, async () => {
+        await db.messages.where('sessionId').equals(sessionId).delete();
+
+        if (messages.length > 0) {
+          const rows: DbMessage[] = messages.map((m) => ({
+            sessionId,
+            messageId: m.id,
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp.toISOString(),
+            ...(m.toolMeta ? { toolMeta: m.toolMeta } : {}),
+          }));
+          await db.messages.bulkAdd(rows);
+        }
+
+        // Upsert session metadata
+        await db.sessionMeta.put({
+          sessionId,
+          lastActive: new Date().toISOString(),
+        });
+      });
+    } catch (e) {
+      console.warn('[MajorTom] Failed to persist messages to IndexedDB:', e);
     }
   }
 
@@ -631,26 +629,42 @@ class RelayStore {
     });
   }
 
-  // ── Command usage tracking ────────────────────────────────
+  // ── Command usage tracking (IndexedDB) ─────────────────────
+
+  /** In-memory cache of command usage counts, synced from IndexedDB */
+  private commandUsageCache: Record<string, number> = {};
+  private commandUsageLoaded = false;
+
+  /** Load command usage from IndexedDB into cache */
+  private async loadCommandUsage(): Promise<void> {
+    if (this.commandUsageLoaded) return;
+    try {
+      const setting = await db.settings.get('commandUsage');
+      if (setting && typeof setting.value === 'object' && setting.value !== null) {
+        this.commandUsageCache = setting.value as Record<string, number>;
+      }
+      this.commandUsageLoaded = true;
+    } catch {
+      // IndexedDB unavailable — use empty cache
+    }
+  }
 
   getCommandUsage(): Record<string, number> {
     if (typeof window === 'undefined') return {};
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEYS.commandUsage) || '{}');
-    } catch {
-      return {};
+    // Kick off async load if not yet loaded — returns cache (may be empty on first call)
+    if (!this.commandUsageLoaded) {
+      this.loadCommandUsage();
     }
+    return { ...this.commandUsageCache };
   }
 
   trackCommandUsage(command: string): void {
     if (typeof window === 'undefined') return;
-    try {
-      const usage = this.getCommandUsage();
-      usage[command] = (usage[command] || 0) + 1;
-      localStorage.setItem(STORAGE_KEYS.commandUsage, JSON.stringify(usage));
-    } catch {
-      // localStorage unavailable — skip tracking
-    }
+    this.commandUsageCache[command] = (this.commandUsageCache[command] || 0) + 1;
+    // Fire-and-forget persist to IndexedDB
+    db.settings.put({ key: 'commandUsage', value: { ...this.commandUsageCache } }).catch(() => {
+      // IndexedDB unavailable — in-memory only
+    });
   }
 
   // ── Message routing ─────────────────────────────────────
