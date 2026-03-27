@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Haptic View Modifiers
 
@@ -7,8 +8,7 @@ extension View {
     func hapticOnTap(
         _ style: UIImpactFeedbackGenerator.FeedbackStyle = .light
     ) -> some View {
-        self.sensoryFeedback(.impact(flexibility: .solid, intensity: feedbackIntensity(for: style)), trigger: false)
-            .modifier(HapticTapModifier(style: style))
+        self.modifier(HapticTapModifier(style: style))
     }
 
     /// Trigger a haptic when the view appears.
@@ -95,7 +95,7 @@ private struct HapticTapModifier: ViewModifier {
 
 // MARK: - Haptic Selection Modifier
 
-/// Fires a selection haptic whenever the provided value changes.
+/// Fires a selection haptic on tap gesture.
 private struct HapticSelectionModifier: ViewModifier {
     func body(content: Content) -> some View {
         content

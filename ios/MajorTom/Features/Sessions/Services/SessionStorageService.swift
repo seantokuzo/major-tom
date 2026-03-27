@@ -156,12 +156,12 @@ struct StoredMessage: Codable {
         case "tool": .tool
         default: .system
         }
-        let toolStatus: ToolStatus? = toolStatusRaw.map { raw in
+        let toolStatus: ToolStatus? = toolStatusRaw.flatMap { raw in
             switch raw {
             case "running": .running
             case "success": .success
             case "failure": .failure
-            default: .running
+            default: nil
             }
         }
         return ChatMessage(
@@ -169,7 +169,8 @@ struct StoredMessage: Codable {
             content: content,
             toolName: toolName,
             toolStatus: toolStatus,
-            toolOutput: toolOutput
+            toolOutput: toolOutput,
+            timestamp: timestamp
         )
     }
 }

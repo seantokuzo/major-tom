@@ -78,18 +78,16 @@ final class RelayService {
     // MARK: - Connection
 
     func connect(to urlString: String) async throws {
-        guard let url = URL(string: "ws://\(urlString)") else {
+        // Ensure /ws path is appended for the relay WebSocket route
+        let wsPath = urlString.hasSuffix("/ws") ? urlString : "\(urlString)/ws"
+        guard let url = URL(string: "ws://\(wsPath)") else {
             throw WebSocketError.invalidURL
         }
 
-        // Add auth token as query parameter if available
-        if let token = authService?.deviceToken {
-            var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            components?.queryItems = [URLQueryItem(name: "token", value: token)]
-            if let authenticatedURL = components?.url {
-                try await webSocket.connect(url: authenticatedURL)
-                return
-            }
+        // Include session cookie for authentication if available
+        if let cookie = authService?.sessionCookie {
+            try await webSocket.connect(url: url, cookie: "mt_session=\(cookie)")
+            return
         }
 
         try await webSocket.connect(url: url)

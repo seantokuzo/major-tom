@@ -145,9 +145,10 @@ struct ToolActivityView: View {
                         .padding(.bottom, MajorTomTheme.Spacing.lg)
                     }
                     .onChange(of: viewModel.activeTools.count) {
-                        if let first = viewModel.activeTools.first {
+                        // List is sorted newest-first, so the most recent active tool is at the top
+                        if let newest = viewModel.displayedTools.first {
                             withAnimation(.spring(duration: 0.3)) {
-                                proxy.scrollTo(first.id, anchor: .top)
+                                proxy.scrollTo(newest.id, anchor: .top)
                             }
                         }
                     }

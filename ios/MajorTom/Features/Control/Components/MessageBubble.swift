@@ -4,6 +4,8 @@ struct MessageBubble: View {
     let message: ChatMessage
     @State private var relativeTime = ""
 
+    private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 60) }
@@ -23,12 +25,8 @@ struct MessageBubble: View {
 
             if message.role != .user { Spacer(minLength: 60) }
         }
-        .task {
-            updateRelativeTime()
-        }
-        .task(id: timerTick) {
-            updateRelativeTime()
-        }
+        .onAppear { updateRelativeTime() }
+        .onReceive(timer) { _ in updateRelativeTime() }
     }
 
     // MARK: - Content Router
@@ -86,10 +84,6 @@ struct MessageBubble: View {
 
     // MARK: - Relative Time
 
-    private var timerTick: Int {
-        Int(Date().timeIntervalSince1970 / 30)
-    }
-
     private func updateRelativeTime() {
         relativeTime = RelativeTimeFormatter.format(message.timestamp)
     }
@@ -103,11 +97,15 @@ enum ContentSegment {
 }
 
 enum ContentParser {
+    // Cache regex to avoid recompilation on every parse call
+    private static let codeBlockRegex: NSRegularExpression? = {
+        try? NSRegularExpression(pattern: "```(\\w*)\\n([\\s\\S]*?)```", options: [])
+    }()
+
     static func parse(_ content: String) -> [ContentSegment] {
         var segments: [ContentSegment] = []
-        let pattern = "```(\\w*)\\n([\\s\\S]*?)```"
 
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+        guard let regex = codeBlockRegex else {
             return [.text(content)]
         }
 

@@ -40,7 +40,7 @@ struct FileContextView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Add") {
                         HapticService.buttonTap()
-                        onFilesSelected(Array(selectedPaths))
+                        onFilesSelected(selectedPaths.sorted())
                         isPresented = false
                     }
                     .foregroundStyle(

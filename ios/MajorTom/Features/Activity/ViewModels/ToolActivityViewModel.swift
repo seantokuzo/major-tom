@@ -9,9 +9,9 @@ final class ToolActivityViewModel {
     }
 
     var selectedTab: Tab = .active
-    var isPanelExpanded = false
 
     private let relay: RelayService
+    private static let autoApprovalMatchWindowSeconds: TimeInterval = 2.0
 
     init(relay: RelayService) {
         self.relay = relay
@@ -68,13 +68,8 @@ final class ToolActivityViewModel {
     func autoApproval(for activity: ToolActivity) -> AutoApprovedTool? {
         autoApprovedTools.first { autoTool in
             autoTool.tool == activity.tool &&
-            abs(autoTool.timestamp.timeIntervalSince(activity.startedAt)) < 2.0
+            abs(autoTool.timestamp.timeIntervalSince(activity.startedAt)) < Self.autoApprovalMatchWindowSeconds
         }
     }
 
-    // MARK: - Actions
-
-    func togglePanel() {
-        isPanelExpanded.toggle()
-    }
 }

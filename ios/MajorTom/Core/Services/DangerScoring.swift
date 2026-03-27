@@ -85,8 +85,11 @@ enum DangerScoring {
         let toolLower = tool.lowercased()
         let descLower = description.lowercased()
 
-        // Extract command string from details or description
-        let command = details?["command"]?.stringValue ?? description
+        // Extract command string from details, tool_input, or description
+        let toolInput = details?["tool_input"]?.dictionaryValue
+        let command = details?["command"]?.stringValue
+            ?? toolInput?["command"]?.stringValue
+            ?? description
 
         switch toolLower {
         case "bash":
@@ -131,8 +134,10 @@ enum DangerScoring {
     }
 
     private static func scoreWrite(details: [String: AnyCodableValue]?, descLower: String) -> DangerLevel {
+        let toolInput = details?["tool_input"]?.dictionaryValue
         let filePath = details?["file_path"]?.stringValue
             ?? details?["filePath"]?.stringValue
+            ?? toolInput?["file_path"]?.stringValue
 
         let pathLower = (filePath ?? descLower).lowercased()
 
@@ -148,23 +153,25 @@ enum DangerScoring {
     }
 
     private static func scoreEdit(details: [String: AnyCodableValue]?, descLower: String) -> DangerLevel {
+        let toolInput = details?["tool_input"]?.dictionaryValue
         let filePath = details?["file_path"]?.stringValue
             ?? details?["filePath"]?.stringValue
+            ?? toolInput?["file_path"]?.stringValue
             ?? ""
 
         let pathLower = filePath.lowercased() + descLower
+
+        // Check sensitive paths first (higher severity than config)
+        for sensitive in sensitivePaths {
+            if pathLower.contains(sensitive) {
+                return .high
+            }
+        }
 
         // Check for config files
         for pattern in configPatterns {
             if pathLower.contains(pattern) {
                 return .medium
-            }
-        }
-
-        // Check for sensitive paths
-        for sensitive in sensitivePaths {
-            if pathLower.contains(sensitive) {
-                return .high
             }
         }
 

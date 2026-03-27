@@ -51,17 +51,18 @@ final class SessionListViewModel {
         HapticService.modeSwitch()
 
         // Save current messages before switching
-        if let currentId = relay.currentSession?.id {
-            storage.saveMessages(relay.chatMessages, for: currentId)
-            storage.saveFromSessionInfo(relay.currentSession!, messageCount: relay.chatMessages.count)
+        if let currentSession = relay.currentSession {
+            storage.saveMessages(relay.chatMessages, for: currentSession.id)
+            storage.saveFromSessionInfo(currentSession, messageCount: relay.chatMessages.count)
         }
-
-        // Clear current chat
-        relay.chatMessages.removeAll()
 
         // Attach to the new session
         do {
             try await relay.attachSession(id: session.id)
+
+            // Clear current chat only after successful attach
+            relay.chatMessages.removeAll()
+
             // Brief pause for session.info to arrive
             try? await Task.sleep(for: .milliseconds(300))
 
@@ -79,16 +80,11 @@ final class SessionListViewModel {
 
     /// Start a new session.
     func startNewSession() async {
-        HapticService.notification(.success)
-
         // Save current messages before starting new
-        if let currentId = relay.currentSession?.id {
-            storage.saveMessages(relay.chatMessages, for: currentId)
-            storage.saveFromSessionInfo(relay.currentSession!, messageCount: relay.chatMessages.count)
+        if let currentSession = relay.currentSession {
+            storage.saveMessages(relay.chatMessages, for: currentSession.id)
+            storage.saveFromSessionInfo(currentSession, messageCount: relay.chatMessages.count)
         }
-
-        // Clear chat
-        relay.chatMessages.removeAll()
 
         let dir = newSessionWorkingDir.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -97,6 +93,11 @@ final class SessionListViewModel {
                 adapter: .cli,
                 workingDir: dir.isEmpty ? nil : dir
             )
+
+            // Clear chat and fire haptic only after successful start
+            relay.chatMessages.removeAll()
+            HapticService.notification(.success)
+
             newSessionWorkingDir = ""
             showNewSessionInput = false
         } catch {

@@ -22,7 +22,8 @@ enum AuthState: Equatable {
 @MainActor
 final class AuthService {
     var authState: AuthState = .unpaired
-    var deviceToken: String?
+    /// Session cookie value obtained from PIN login (used for WebSocket auth).
+    var sessionCookie: String?
     var serverURL: String = "localhost:9090"
 
     init() {
@@ -44,9 +45,9 @@ final class AuthService {
             serverURL = url
         }
 
-        if let token = KeychainService.load(.deviceToken),
+        if let cookie = KeychainService.load(.deviceToken),
            let deviceId = KeychainService.load(.deviceId) {
-            deviceToken = token
+            sessionCookie = cookie
             authState = .paired(deviceId: deviceId)
         } else {
             authState = .unpaired
@@ -65,7 +66,7 @@ final class AuthService {
 
         let scheme = serverURL.contains("://") ? "" : "http://"
         let baseURL = "\(scheme)\(serverURL)"
-        guard let url = URL(string: "\(baseURL)/api/pair") else {
+        guard let url = URL(string: "\(baseURL)/auth/pin/login") else {
             authState = .error("Invalid server URL")
             return
         }
@@ -74,10 +75,7 @@ final class AuthService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let body: [String: String] = [
-            "pin": pin,
-            "deviceName": deviceName,
-        ]
+        let body: [String: String] = ["pin": pin]
 
         do {
             request.httpBody = try JSONEncoder().encode(body)
@@ -89,12 +87,23 @@ final class AuthService {
             }
 
             if httpResponse.statusCode == 200 {
-                let result = try JSONDecoder().decode(PairResponse.self, from: data)
-                try KeychainService.save(result.token, for: .deviceToken)
-                try KeychainService.save(result.deviceId, for: .deviceId)
+                // Extract session cookie from Set-Cookie header
+                let cookie = extractSessionCookie(from: httpResponse)
+
+                guard let cookie else {
+                    authState = .error("No session cookie received")
+                    return
+                }
+
+                let deviceId = UUID().uuidString
+                try KeychainService.save(cookie, for: .deviceToken)
+                try KeychainService.save(deviceId, for: .deviceId)
                 try KeychainService.save(deviceName, for: .deviceName)
-                deviceToken = result.token
-                authState = .paired(deviceId: result.deviceId)
+                sessionCookie = cookie
+                authState = .paired(deviceId: deviceId)
+
+                // Also decode the response for display (optional)
+                _ = try? JSONDecoder().decode(PinLoginResponse.self, from: data)
             } else if httpResponse.statusCode == 401 {
                 authState = .error("Invalid PIN")
             } else if httpResponse.statusCode == 429 {
@@ -108,18 +117,30 @@ final class AuthService {
         }
     }
 
+    // MARK: - Cookie Extraction
+
+    private func extractSessionCookie(from response: HTTPURLResponse) -> String? {
+        guard let headers = response.allHeaderFields as? [String: String],
+              let url = response.url else { return nil }
+
+        let cookies = HTTPCookie.cookies(withResponseHeaderFields: headers, for: url)
+        // Look for the session cookie (relay uses "mt_session")
+        return cookies.first(where: { $0.name == "mt_session" })?.value
+            ?? cookies.first?.value
+    }
+
     // MARK: - Unpair
 
     func unpair() {
         KeychainService.deleteAll()
-        deviceToken = nil
+        sessionCookie = nil
         authState = .unpaired
     }
 }
 
-// MARK: - Pairing Response
+// MARK: - PIN Login Response
 
-private struct PairResponse: Codable {
-    let token: String
-    let deviceId: String
+private struct PinLoginResponse: Codable {
+    let email: String
+    let name: String
 }

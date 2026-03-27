@@ -40,7 +40,7 @@ final class NotificationService: NSObject {
     func requestPermission() async -> Bool {
         do {
             let granted = try await center.requestAuthorization(
-                options: [.alert, .sound, .badge, .provisional]
+                options: [.alert, .sound, .badge]
             )
             isAuthorized = granted
             if granted {
@@ -200,7 +200,8 @@ final class NotificationService: NSObject {
     }
 
     func removeAllPendingApprovals() {
-        center.removeDeliveredNotifications(withIdentifiers: [])
+        center.removeAllDeliveredNotifications()
+        center.removeAllPendingNotificationRequests()
     }
 }
 

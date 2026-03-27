@@ -10,7 +10,6 @@ struct ApprovalCard: View {
 
     @State private var isExpanded = false
     @State private var dragOffset: CGFloat = 0
-    @State private var swipeTriggered = false
 
     private let swipeThreshold: CGFloat = 100
 
@@ -46,6 +45,7 @@ struct ApprovalCard: View {
                 }
                 .foregroundStyle(.white)
             }
+            .frame(maxWidth: .infinity)
 
             Spacer()
 
@@ -60,6 +60,7 @@ struct ApprovalCard: View {
                 }
                 .foregroundStyle(.white)
             }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -313,15 +314,13 @@ struct ApprovalCard: View {
                 guard !isAutoApproved else { return }
 
                 if value.translation.width > swipeThreshold {
-                    // Swipe right = Allow
-                    swipeTriggered = true
-                    dragOffset = UIScreen.main.bounds.width
+                    // Swipe right = Allow — fling offscreen
+                    dragOffset = 500
                     HapticService.approve()
                     onDecision(.allow)
                 } else if value.translation.width < -swipeThreshold {
-                    // Swipe left = Deny
-                    swipeTriggered = true
-                    dragOffset = -UIScreen.main.bounds.width
+                    // Swipe left = Deny — fling offscreen
+                    dragOffset = -500
                     HapticService.deny()
                     onDecision(.deny)
                 } else {
@@ -436,7 +435,7 @@ struct ApprovalButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        let button = Button(action: action) {
             Text(title)
                 .font(MajorTomTheme.Typography.headline)
                 .foregroundStyle(.white)
@@ -445,7 +444,12 @@ struct ApprovalButton: View {
                 .background(color)
                 .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.small))
         }
-        .keyboardShortcut(shortcutKey ?? "a", modifiers: shortcutKey != nil ? [] : .command)
+
+        if let key = shortcutKey {
+            button.keyboardShortcut(key, modifiers: [])
+        } else {
+            button
+        }
     }
 }
 

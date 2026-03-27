@@ -4,6 +4,9 @@ struct TurnSeparator: View {
     let timestamp: Date
     @State private var relativeTime = ""
 
+    /// Timer that fires every 30 seconds to update the relative timestamp.
+    private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+
     var body: some View {
         HStack(spacing: MajorTomTheme.Spacing.sm) {
             line
@@ -13,23 +16,14 @@ struct TurnSeparator: View {
             line
         }
         .padding(.vertical, MajorTomTheme.Spacing.xs)
-        .task {
-            updateRelativeTime()
-        }
-        .task(id: timerTick) {
-            updateRelativeTime()
-        }
+        .onAppear { updateRelativeTime() }
+        .onReceive(timer) { _ in updateRelativeTime() }
     }
 
     private var line: some View {
         Rectangle()
             .fill(MajorTomTheme.Colors.textTertiary.opacity(0.3))
             .frame(height: 0.5)
-    }
-
-    /// Triggers a re-render roughly every 30 seconds
-    private var timerTick: Int {
-        Int(Date().timeIntervalSince1970 / 30)
     }
 
     private func updateRelativeTime() {

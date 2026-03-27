@@ -13,6 +13,9 @@ final class PermissionViewModel {
     // Active delay countdowns keyed by approval request ID
     var activeCountdowns: [String: DelayCountdownState] = [:]
 
+    // Tracks running countdown Tasks so we can cancel duplicates and cancel-all on mode switch
+    private var countdownTasks: [String: Task<Void, Never>] = [:]
+
     private let relay: RelayService
 
     init(relay: RelayService) {
@@ -56,26 +59,44 @@ final class PermissionViewModel {
     // MARK: - Delay Countdown
 
     func startCountdown(for requestId: String) {
+        // Skip if a countdown for this requestId is already running
+        if countdownTasks[requestId] != nil { return }
+
+        let seconds = delaySeconds
         let state = DelayCountdownState(
             requestId: requestId,
-            totalSeconds: delaySeconds,
-            remainingSeconds: delaySeconds
+            totalSeconds: seconds,
+            remainingSeconds: seconds
         )
         activeCountdowns[requestId] = state
 
-        Task {
-            await runCountdown(requestId: requestId)
+        let task = Task {
+            await runCountdown(requestId: requestId, seconds: seconds)
         }
+        countdownTasks[requestId] = task
     }
 
     func cancelCountdown(for requestId: String) {
+        countdownTasks[requestId]?.cancel()
+        countdownTasks.removeValue(forKey: requestId)
         activeCountdowns.removeValue(forKey: requestId)
     }
 
     // MARK: - Private
 
+    private func cancelAllCountdowns() {
+        for (_, task) in countdownTasks {
+            task.cancel()
+        }
+        countdownTasks.removeAll()
+        activeCountdowns.removeAll()
+    }
+
     private func applyMode(_ mode: PermissionMode, godSubMode: GodSubMode? = nil) async {
         HapticService.modeSwitch()
+
+        // Cancel all active countdowns when switching modes — they belong to the previous mode
+        cancelAllCountdowns()
 
         do {
             let delay = mode == .delay ? delaySeconds : nil
@@ -88,6 +109,11 @@ final class PermissionViewModel {
         }
     }
 
+    /// Flush pending approvals client-side on mode switch.
+    ///
+    /// NOTE: This intentionally performs client-side approval for god/smart modes
+    /// to provide immediate UX feedback when switching modes. The relay still validates
+    /// and enforces the actual permission decision server-side.
     private func flushPendingApprovals(for mode: PermissionMode) async {
         let pending = relay.pendingApprovals
         guard !pending.isEmpty else { return }
@@ -109,17 +135,21 @@ final class PermissionViewModel {
         }
     }
 
-    private func runCountdown(requestId: String) async {
-        for tick in stride(from: delaySeconds, through: 1, by: -1) {
+    private func runCountdown(requestId: String, seconds: Int) async {
+        for tick in stride(from: seconds, through: 1, by: -1) {
             guard activeCountdowns[requestId] != nil else { return }
             activeCountdowns[requestId]?.remainingSeconds = tick
 
             try? await Task.sleep(for: .seconds(1))
+
+            // Check for cancellation after sleep
+            guard !Task.isCancelled else { return }
         }
 
         // Countdown finished -- auto-approve
         guard activeCountdowns[requestId] != nil else { return }
         activeCountdowns.removeValue(forKey: requestId)
+        countdownTasks.removeValue(forKey: requestId)
 
         do {
             try await relay.sendApproval(requestId: requestId, decision: .allow)

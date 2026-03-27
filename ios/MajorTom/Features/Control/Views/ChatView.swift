@@ -191,7 +191,8 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: MajorTomTheme.Spacing.sm) {
-                    ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
+                    ForEach(viewModel.messages.indices, id: \.self) { index in
+                        let message = viewModel.messages[index]
                         if shouldShowTurnSeparator(at: index) { TurnSeparator(timestamp: message.timestamp) }
                         if message.role == .tool {
                             ToolMessageView(message: message).id(message.id)
@@ -274,7 +275,6 @@ struct ChatView: View {
                     Image(systemName: "arrow.up.circle.fill").font(.title2)
                         .foregroundStyle(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? MajorTomTheme.Colors.textTertiary : MajorTomTheme.Colors.accent)
                 }
-                .buttonStyle(.haptic)
                 .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(MajorTomTheme.Spacing.md)

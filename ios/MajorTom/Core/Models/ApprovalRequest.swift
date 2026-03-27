@@ -28,20 +28,29 @@ struct ApprovalRequest: Identifiable {
         guard tool == "Bash" else { return nil }
         return details?["command"]?.stringValue
             ?? details?["cmd"]?.stringValue
+            ?? toolInput?["command"]?.stringValue
+    }
+
+    /// Nested tool_input dictionary from relay approval messages.
+    private var toolInput: [String: AnyCodableValue]? {
+        details?["tool_input"]?.dictionaryValue
     }
 
     /// The working directory for Bash tool requests.
     var workingDirectory: String? {
-        return details?["working_directory"]?.stringValue
-            ?? details?["workingDirectory"]?.stringValue
-            ?? details?["cwd"]?.stringValue
+        if let v = details?["working_directory"]?.stringValue { return v }
+        if let v = details?["workingDirectory"]?.stringValue { return v }
+        if let v = details?["cwd"]?.stringValue { return v }
+        return toolInput?["working_directory"]?.stringValue
     }
 
     /// The file path for file operation tools (Edit, Write, Read).
     var filePath: String? {
-        return details?["file_path"]?.stringValue
-            ?? details?["filePath"]?.stringValue
-            ?? details?["path"]?.stringValue
+        if let v = details?["file_path"]?.stringValue { return v }
+        if let v = details?["filePath"]?.stringValue { return v }
+        if let v = details?["path"]?.stringValue { return v }
+        if let v = toolInput?["file_path"]?.stringValue { return v }
+        return toolInput?["path"]?.stringValue
     }
 
     /// The diff content for Edit tool requests (old_string -> new_string).

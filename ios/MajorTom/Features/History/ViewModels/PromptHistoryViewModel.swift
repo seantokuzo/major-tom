@@ -84,6 +84,12 @@ struct PromptHistoryEntry: Identifiable, Codable, Equatable {
     let text: String
     let timestamp: Date
 
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
+
     init(id: UUID = UUID(), text: String, timestamp: Date = Date()) {
         self.id = id
         self.text = text
@@ -91,9 +97,7 @@ struct PromptHistoryEntry: Identifiable, Codable, Equatable {
     }
 
     var relativeTime: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: timestamp, relativeTo: Date())
+        Self.relativeFormatter.localizedString(for: timestamp, relativeTo: Date())
     }
 
     var truncatedText: String {

@@ -34,8 +34,9 @@ final class WebSocketClient {
 
     // MARK: - Connection
 
-    func connect(url: URL) async throws {
+    func connect(url: URL, cookie: String? = nil) async throws {
         serverURL = url
+        storedCookie = cookie
         isIntentionalDisconnect = false
         reconnectAttempt = 0
         connectionState = .connecting
@@ -43,6 +44,9 @@ final class WebSocketClient {
 
         establishConnection(url: url)
     }
+
+    /// Cookie value for authenticated WebSocket connections.
+    private var storedCookie: String?
 
     func disconnect() {
         isIntentionalDisconnect = true
@@ -69,7 +73,13 @@ final class WebSocketClient {
     // MARK: - Private
 
     private func establishConnection(url: URL) {
-        webSocketTask = session.webSocketTask(with: url)
+        if let cookie = storedCookie {
+            var request = URLRequest(url: url)
+            request.setValue(cookie, forHTTPHeaderField: "Cookie")
+            webSocketTask = session.webSocketTask(with: request)
+        } else {
+            webSocketTask = session.webSocketTask(with: url)
+        }
         webSocketTask?.resume()
         // Stay in .connecting — first successful receive sets .connected
         if connectionState != .reconnecting {

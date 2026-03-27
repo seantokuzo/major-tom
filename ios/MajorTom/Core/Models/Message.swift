@@ -514,6 +514,11 @@ enum AnyCodableValue: Codable, Sendable {
         if case .bool(let val) = self { return val }
         return nil
     }
+
+    var dictionaryValue: [String: AnyCodableValue]? {
+        if case .object(let val) = self { return val }
+        return nil
+    }
 }
 
 // MARK: - Server message routing envelope

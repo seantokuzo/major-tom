@@ -27,7 +27,7 @@ struct PermissionModeView: View {
             // Active countdowns
             if !viewModel.activeCountdowns.isEmpty {
                 VStack(spacing: MajorTomTheme.Spacing.sm) {
-                    ForEach(Array(viewModel.activeCountdowns.values)) { countdown in
+                    ForEach(Array(viewModel.activeCountdowns.values).sorted(by: { $0.requestId < $1.requestId })) { countdown in
                         DelayCountdownView(state: countdown) {
                             viewModel.cancelCountdown(for: countdown.requestId)
                         }

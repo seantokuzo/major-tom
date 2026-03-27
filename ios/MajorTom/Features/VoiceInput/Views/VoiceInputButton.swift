@@ -5,6 +5,7 @@ struct VoiceInputButton: View {
     var onTranscription: (String) -> Void
 
     @State private var pulseScale: CGFloat = 1.0
+    @State private var showTranscriptionPopover = false
 
     var body: some View {
         Button {
@@ -34,6 +35,7 @@ struct VoiceInputButton: View {
                 startPulse()
             } else {
                 pulseScale = 1.0
+                showTranscriptionPopover = false
                 // Send transcription when recording stops
                 let text = speechService.transcribedText.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !text.isEmpty {
@@ -41,7 +43,10 @@ struct VoiceInputButton: View {
                 }
             }
         }
-        .popover(isPresented: .constant(speechService.isRecording && !speechService.transcribedText.isEmpty)) {
+        .onChange(of: speechService.transcribedText) {
+            showTranscriptionPopover = speechService.isRecording && !speechService.transcribedText.isEmpty
+        }
+        .popover(isPresented: $showTranscriptionPopover) {
             transcriptionPreview
                 .presentationCompactAdaptation(.popover)
         }

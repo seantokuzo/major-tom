@@ -56,7 +56,6 @@ struct ConnectionView: View {
 
             // Connect/Disconnect button
             Button {
-                HapticService.impact(.medium)
                 Task {
                     if viewModel.isConnected {
                         viewModel.disconnect()

@@ -14,6 +14,12 @@ final class SettingsViewModel {
     init(auth: AuthService, relay: RelayService) {
         self.auth = auth
         self.relay = relay
+        // Wire up device list updates from relay
+        relay.onDeviceListUpdate = { [weak self] devices in
+            Task { @MainActor [weak self] in
+                self?.updateDevices(devices)
+            }
+        }
     }
 
     var serverURL: String { auth.serverURL }
@@ -40,8 +46,11 @@ final class SettingsViewModel {
         isLoadingDevices = true
         do {
             try await relay.requestDeviceList()
+            // Timeout: if response hasn't arrived in 5s, stop loading
+            try? await Task.sleep(for: .seconds(5))
+            if isLoadingDevices { isLoadingDevices = false }
         } catch {
-            // Error handled by relay service
+            isLoadingDevices = false
         }
     }
 
