@@ -6,7 +6,7 @@
  * (FS_SANDBOX_ROOT env var, defaulting to ~/Documents).
  */
 import { readdir, readFile, lstat, realpath } from 'node:fs/promises';
-import { resolve, join, relative, basename } from 'node:path';
+import { resolve, join, relative, basename, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { WebSocket } from 'ws';
 import { logger } from '../utils/logger.js';
@@ -96,7 +96,7 @@ function formatPermissions(mode: number): string {
 function isWithinBoundary(parent: string, child: string): boolean {
   const rel = relative(parent, child);
   // Outside the boundary if relative path starts with '..' or is absolute
-  return rel !== '' && !rel.startsWith('..') && !resolve(rel).startsWith('/');
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
 }
 
 /**

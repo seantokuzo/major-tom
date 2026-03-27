@@ -13,7 +13,7 @@ import type {
 import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
 import { contextStore } from './context.svelte';
-import { db, type DbMessage } from '../db';
+import { db } from '../db';
 import { terminalStore } from './terminal.svelte';
 import { sessionStateManager, extractDirName } from './session-state.svelte';
 
@@ -622,6 +622,7 @@ class RelayStore {
 
     // Set sessionId immediately so any prompt sent after switchSession targets the right session
     this.sessionId = sessionId;
+    sessionStateManager.activeSessionId = sessionId;
 
     // Try to restore target session from cache for instant switch
     const restored = sessionStateManager.restoreTo(this, sessionId);

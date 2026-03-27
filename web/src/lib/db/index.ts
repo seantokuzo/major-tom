@@ -1,13 +1,11 @@
 // Major Tom IndexedDB database — Dexie.js wrapper
 // Replaces localStorage for chat messages, templates, prompt history, and settings.
 
-import Dexie, { type EntityTable } from 'dexie';
+import Dexie, { type EntityTable, type Table } from 'dexie';
 
 // ── Stored models ───────────────────────────────────────────
 
 export interface DbMessage {
-  /** Auto-incremented primary key */
-  id?: number;
   /** Session this message belongs to */
   sessionId: string;
   /** In-app message ID (e.g. "msg-1-17...") */
@@ -61,7 +59,7 @@ export interface DbSetting {
 // ── Database class ──────────────────────────────────────────
 
 class MajorTomDB extends Dexie {
-  messages!: EntityTable<DbMessage, 'id'>;
+  messages!: Table<DbMessage, [string, string]>;
   sessionMeta!: EntityTable<DbSessionMeta, 'sessionId'>;
   templates!: EntityTable<DbTemplate, 'id'>;
   promptHistory!: EntityTable<DbPromptHistory, 'id'>;
@@ -77,6 +75,11 @@ class MajorTomDB extends Dexie {
       templates: 'id, name, category, updatedAt',
       promptHistory: '++id, text, timestamp',
       settings: 'key',
+    });
+
+    // v2: promote [sessionId+messageId] to primary key so bulkPut upserts correctly
+    this.version(2).stores({
+      messages: '[sessionId+messageId], sessionId, timestamp',
     });
   }
 }

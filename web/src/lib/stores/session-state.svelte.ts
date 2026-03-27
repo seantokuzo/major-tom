@@ -5,7 +5,7 @@
 // This manager caches snapshots of per-session state. On session switch, relay calls
 // snapshotFrom(relay) to save current, then restoreTo(relay) to load target.
 
-import { db, type DbMessage, type DbSessionMeta } from '../db';
+import { db, type DbMessage } from '../db';
 import type {
   ChatMessage,
   ApprovalRequest,
@@ -260,12 +260,11 @@ class SessionStateManager {
         // Delete messages that no longer exist in the snapshot
         const currentMessageIds = new Set(snap.messages.map((m) => m.id));
         const existingRows = await db.messages.where('sessionId').equals(sessionId).toArray();
-        const staleIds = existingRows
+        const staleKeys = existingRows
           .filter((row) => !currentMessageIds.has(row.messageId))
-          .map((row) => row.id)
-          .filter((id): id is number => id !== undefined);
-        if (staleIds.length > 0) {
-          await db.messages.bulkDelete(staleIds);
+          .map((row) => [row.sessionId, row.messageId] as [string, string]);
+        if (staleKeys.length > 0) {
+          await db.messages.bulkDelete(staleKeys);
         }
 
         await db.sessionMeta.put({
