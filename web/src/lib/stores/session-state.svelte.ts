@@ -235,25 +235,39 @@ class SessionStateManager {
 
   // ── IndexedDB persistence ──────────────────────────────────
 
-  /** Save a snapshot to IndexedDB */
+  /** Save a snapshot to IndexedDB (incremental — upserts changed, deletes removed) */
   async saveToDb(sessionId: string): Promise<void> {
     const snap = this.cache.get(sessionId);
     if (!snap) return;
 
     try {
       await db.transaction('rw', db.messages, db.sessionMeta, async () => {
-        await db.messages.where('sessionId').equals(sessionId).delete();
-        if (snap.messages.length > 0) {
-          const rows: DbMessage[] = snap.messages.map((m) => ({
-            sessionId,
-            messageId: m.id,
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp.toISOString(),
-            ...(m.toolMeta ? { toolMeta: m.toolMeta } : {}),
-          }));
-          await db.messages.bulkAdd(rows);
+        // Build rows from current snapshot
+        const rows: DbMessage[] = snap.messages.map((m) => ({
+          sessionId,
+          messageId: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp.toISOString(),
+          ...(m.toolMeta ? { toolMeta: m.toolMeta } : {}),
+        }));
+
+        // Upsert all current messages (uses compound index [sessionId+messageId])
+        if (rows.length > 0) {
+          await db.messages.bulkPut(rows);
         }
+
+        // Delete messages that no longer exist in the snapshot
+        const currentMessageIds = new Set(snap.messages.map((m) => m.id));
+        const existingRows = await db.messages.where('sessionId').equals(sessionId).toArray();
+        const staleIds = existingRows
+          .filter((row) => !currentMessageIds.has(row.messageId))
+          .map((row) => row.id)
+          .filter((id): id is number => id !== undefined);
+        if (staleIds.length > 0) {
+          await db.messages.bulkDelete(staleIds);
+        }
+
         await db.sessionMeta.put({
           sessionId,
           name: snap.name,

@@ -19,6 +19,9 @@ export interface HistoryEntry {
 class PromptHistoryStore {
   entries = $state<HistoryEntry[]>([]);
 
+  /** Serialization chain — ensures only one persistToDb runs at a time */
+  private persistChain: Promise<void> = Promise.resolve();
+
   /** Current navigation index. -1 = not navigating (user is typing fresh input) */
   private navIndex = -1;
   /** Saved input text before navigation started */
@@ -54,7 +57,12 @@ class PromptHistoryStore {
     }
   }
 
-  private async persistToDb(): Promise<void> {
+  private persistToDb(): void {
+    // Chain persists so overlapping calls don't race (clear + bulkAdd is not atomic across calls)
+    this.persistChain = this.persistChain.then(() => this.doPersistToDb()).catch(() => {});
+  }
+
+  private async doPersistToDb(): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
       const rows: Omit<DbPromptHistory, 'id'>[] = this.entries.map((e) => ({

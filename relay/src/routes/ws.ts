@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { WebSocket } from 'ws';
-import { resolve, relative, join } from 'node:path';
+import { resolve, relative, join, isAbsolute } from 'node:path';
 import { readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
@@ -180,7 +180,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           }
           resolved = resolve(sandboxRoot, resolved);
 
-          if (!resolved.startsWith(sandboxRoot)) {
+          // Use path.relative() boundary check to prevent prefix attacks
+          // (e.g., sandboxRoot "/home/u/Documents" accepting "/home/u/Documents_evil")
+          const rel = relative(sandboxRoot, resolved);
+          if (resolved !== sandboxRoot && (rel.startsWith('..') || isAbsolute(rel))) {
             sendToClient(ws, {
               type: 'error',
               code: 'INVALID_WORKING_DIR',

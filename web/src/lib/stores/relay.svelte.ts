@@ -620,6 +620,9 @@ class RelayStore {
       sessionStateManager.saveToDb(this.sessionId).catch(() => {});
     }
 
+    // Set sessionId immediately so any prompt sent after switchSession targets the right session
+    this.sessionId = sessionId;
+
     // Try to restore target session from cache for instant switch
     const restored = sessionStateManager.restoreTo(this, sessionId);
     if (!restored) {
@@ -1060,8 +1063,9 @@ class RelayStore {
 
       case 'fs.cwd.response':
         terminalStore.isLoading = false;
-        terminalStore.cwd = message.path;
         terminalStore.sandboxRoot = message.path;
+        // cwd uses sandbox-relative notation — ~ represents the sandbox root
+        terminalStore.cwd = '~';
         break;
 
       case 'fs.error':

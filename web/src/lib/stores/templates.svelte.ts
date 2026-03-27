@@ -28,6 +28,9 @@ function uid(): string {
 class TemplateStore {
   templates = $state<PromptTemplate[]>([]);
 
+  /** Serialization chain — ensures only one persist runs at a time */
+  private persistChain: Promise<void> = Promise.resolve();
+
   /** All unique categories from existing templates */
   categories = $derived(
     [...new Set(this.templates.map((t) => t.category).filter(Boolean))] as string[]
@@ -67,7 +70,12 @@ class TemplateStore {
     }
   }
 
-  private async persist(): Promise<void> {
+  private persist(): void {
+    // Chain persists so overlapping calls don't race (clear + bulkPut is not atomic across calls)
+    this.persistChain = this.persistChain.then(() => this.doPersist()).catch(() => {});
+  }
+
+  private async doPersist(): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
       const rows: DbTemplate[] = this.templates.map((t) => ({

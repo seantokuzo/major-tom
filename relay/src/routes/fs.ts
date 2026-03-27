@@ -90,6 +90,16 @@ function formatPermissions(mode: number): string {
 }
 
 /**
+ * Check whether `child` is strictly within `parent` using path.relative().
+ * Safe against prefix collisions (e.g. /home/u/Documents vs /home/u/Documents_evil).
+ */
+function isWithinBoundary(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  // Outside the boundary if relative path starts with '..' or is absolute
+  return rel !== '' && !rel.startsWith('..') && !resolve(rel).startsWith('/');
+}
+
+/**
  * Validate that a resolved path is within the sandbox root.
  * Returns the resolved absolute path or null if outside sandbox.
  */
@@ -97,15 +107,15 @@ async function validatePath(requestedPath: string, sandboxRoot: string): Promise
   // Resolve the path relative to sandbox root
   const resolved = resolve(sandboxRoot, requestedPath);
 
-  // Must start with sandbox root (prevents traversal via ../)
-  if (!resolved.startsWith(sandboxRoot)) {
+  // Must be within sandbox root (prevents traversal and prefix attacks)
+  if (resolved !== sandboxRoot && !isWithinBoundary(sandboxRoot, resolved)) {
     return null;
   }
 
   // For symlinks, also verify the real path is within sandbox
   try {
     const real = await realpath(resolved);
-    if (!real.startsWith(sandboxRoot)) {
+    if (real !== sandboxRoot && !isWithinBoundary(sandboxRoot, real)) {
       return null;
     }
   } catch {
@@ -156,7 +166,7 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
             // Verify symlink target is within sandbox
             try {
               const realTarget = await realpath(fullPath);
-              if (!realTarget.startsWith(sandboxRoot)) {
+              if (realTarget !== sandboxRoot && !isWithinBoundary(sandboxRoot, realTarget)) {
                 continue; // Skip symlinks pointing outside sandbox
               }
             } catch {
