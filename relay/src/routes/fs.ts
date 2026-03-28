@@ -72,9 +72,9 @@ const MAX_READ_SIZE = 1 * 1024 * 1024; // 1 MB
 function getSandboxRoot(): string {
   const envRoot = process.env['FS_SANDBOX_ROOT'];
   if (envRoot) {
-    // Expand ~ to homedir
-    const expanded = envRoot.startsWith('~')
-      ? join(homedir(), envRoot.slice(1))
+    // Expand ~ to homedir (strip ~/ not just ~, otherwise /path overrides homedir in join)
+    const expanded = envRoot.startsWith('~/') || envRoot === '~'
+      ? join(homedir(), envRoot.slice(2))
       : envRoot;
     return resolve(expanded);
   }
@@ -97,15 +97,15 @@ async function validatePath(requestedPath: string, sandboxRoot: string): Promise
   // Resolve the path relative to sandbox root
   const resolved = resolve(sandboxRoot, requestedPath);
 
-  // Must start with sandbox root (prevents traversal via ../)
-  if (!resolved.startsWith(sandboxRoot)) {
+  // Boundary-safe sandbox check (prevents prefix attacks like /sandbox2 matching /sandbox)
+  if (resolved !== sandboxRoot && !resolved.startsWith(sandboxRoot + '/')) {
     return null;
   }
 
   // For symlinks, also verify the real path is within sandbox
   try {
     const real = await realpath(resolved);
-    if (!real.startsWith(sandboxRoot)) {
+    if (real !== sandboxRoot && !real.startsWith(sandboxRoot + '/')) {
       return null;
     }
   } catch {
@@ -156,7 +156,7 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
             // Verify symlink target is within sandbox
             try {
               const realTarget = await realpath(fullPath);
-              if (!realTarget.startsWith(sandboxRoot)) {
+              if (realTarget !== sandboxRoot && !realTarget.startsWith(sandboxRoot + '/')) {
                 continue; // Skip symlinks pointing outside sandbox
               }
             } catch {
