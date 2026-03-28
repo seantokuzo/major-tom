@@ -72,9 +72,9 @@ const MAX_READ_SIZE = 1 * 1024 * 1024; // 1 MB
 function getSandboxRoot(): string {
   const envRoot = process.env['FS_SANDBOX_ROOT'];
   if (envRoot) {
-    // Expand ~ to homedir
-    const expanded = envRoot.startsWith('~')
-      ? join(homedir(), envRoot.slice(1))
+    // Expand ~ to homedir (strip ~/ not just ~, otherwise /path overrides homedir in join)
+    const expanded = envRoot.startsWith('~/') || envRoot === '~'
+      ? join(homedir(), envRoot.slice(2))
       : envRoot;
     return resolve(expanded);
   }
