@@ -7,6 +7,7 @@ import SpriteKit
 /// Manages the bridge between OfficeViewModel state changes and the SKScene.
 struct OfficeView: View {
     @Bindable var viewModel: OfficeViewModel
+    var relay: RelayService?
     @State private var scene: OfficeScene = {
         let scene = OfficeScene()
         scene.size = CGSize(width: OfficeLayout.sceneWidth, height: OfficeLayout.sceneHeight)
@@ -27,16 +28,38 @@ struct OfficeView: View {
                     syncScene(with: newAgents)
                 }
 
-            // Top overlay: agent count + mini-map placeholder
+            // Top overlay: agent count + controls
             VStack {
                 topBar
                 Spacer()
+
+                // Demo mode indicator
+                if viewModel.isDemoMode {
+                    demoModeBanner
+                }
             }
         }
         .onAppear {
             scene.onAgentTapped = { agentId in
                 if let agent = viewModel.agents.first(where: { $0.id == agentId }) {
+                    HapticService.selection()
                     viewModel.selectAgent(agent)
+                }
+            }
+
+            // Start activity cycling
+            viewModel.activityManager.startCycling { [weak scene] agentId, station in
+                if let station {
+                    scene?.moveAgentToStation(id: agentId, stationType: station.type)
+                }
+            }
+
+            // Auto-detect demo mode if no active agents and not connected
+            if viewModel.agents.isEmpty {
+                if let relay, relay.connectionState == .disconnected {
+                    viewModel.startDemoMode()
+                } else if relay == nil {
+                    viewModel.startDemoMode()
                 }
             }
         }
@@ -47,16 +70,34 @@ struct OfficeView: View {
             if let agent = viewModel.selectedAgent {
                 AgentInspectorView(
                     agent: agent,
+                    activityDescription: viewModel.activityManager.activityDescription(for: agent.id),
                     onRename: { newName in
                         viewModel.renameAgent(id: agent.id, newName: newName)
                         scene.updateAgentName(id: agent.id, name: newName)
                     },
+                    onSendMessage: relay != nil ? { message in
+                        guard let sessionId = relay?.currentSession?.id, !sessionId.isEmpty else { return }
+                        Task {
+                            try? await relay?.sendAgentMessage(
+                                sessionId: sessionId,
+                                agentId: agent.id,
+                                text: message
+                            )
+                        }
+                    } : nil,
                     onDismiss: {
+                        HapticService.impact(.medium)
                         viewModel.dismissInspector()
                     }
                 )
             }
         }
+        .sheet(isPresented: $viewModel.showCharacterGallery) {
+            CharacterGalleryView(onDismiss: {
+                viewModel.showCharacterGallery = false
+            })
+        }
+        .hapticOnSheet(isPresented: viewModel.selectedAgentId != nil)
     }
 
     // MARK: - Top Bar
@@ -64,19 +105,66 @@ struct OfficeView: View {
     private var topBar: some View {
         HStack {
             // Agent count
-            Label("\(viewModel.agents.count) agents", systemImage: "person.2.fill")
-                .font(MajorTomTheme.Typography.caption)
-                .foregroundStyle(MajorTomTheme.Colors.textSecondary)
-                .padding(.horizontal, MajorTomTheme.Spacing.md)
-                .padding(.vertical, MajorTomTheme.Spacing.sm)
-                .glassBackground()
+            Label(
+                "\(viewModel.agents.count) agent\(viewModel.agents.count == 1 ? "" : "s")",
+                systemImage: "person.2.fill"
+            )
+            .font(MajorTomTheme.Typography.caption)
+            .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+            .padding(.horizontal, MajorTomTheme.Spacing.md)
+            .padding(.vertical, MajorTomTheme.Spacing.sm)
+            .glassBackground()
 
             Spacer()
+
+            // Character gallery button
+            Button {
+                viewModel.showCharacterGallery = true
+            } label: {
+                Image(systemName: "person.crop.rectangle.stack")
+                    .font(.system(size: 16))
+                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                    .padding(MajorTomTheme.Spacing.sm)
+                    .glassBackground()
+            }
+
+            // Demo mode toggle
+            Button {
+                viewModel.toggleDemoMode()
+            } label: {
+                Image(systemName: viewModel.isDemoMode ? "play.slash.fill" : "play.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(
+                        viewModel.isDemoMode
+                            ? MajorTomTheme.Colors.accent
+                            : MajorTomTheme.Colors.textSecondary
+                    )
+                    .padding(MajorTomTheme.Spacing.sm)
+                    .glassBackground()
+            }
 
             // Mini-map placeholder
             miniMapPlaceholder
         }
         .padding(MajorTomTheme.Spacing.md)
+    }
+
+    /// Demo mode banner at bottom of screen.
+    private var demoModeBanner: some View {
+        HStack(spacing: MajorTomTheme.Spacing.sm) {
+            Image(systemName: "theatermasks.fill")
+                .font(.system(size: 12))
+            Text("DEMO MODE")
+                .font(.system(.caption2, design: .monospaced, weight: .bold))
+            Text("Tap play to stop")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+        }
+        .foregroundStyle(MajorTomTheme.Colors.accent)
+        .padding(.horizontal, MajorTomTheme.Spacing.md)
+        .padding(.vertical, MajorTomTheme.Spacing.sm)
+        .glassBackground()
+        .padding(.bottom, MajorTomTheme.Spacing.md)
     }
 
     /// Placeholder for the mini-map concept.
@@ -157,13 +245,18 @@ struct OfficeView: View {
             }
 
         case .idle:
-            // Pick a random break area based on character config
-            let config = CharacterCatalog.config(for: agent.characterType)
-            if let destination = config.breakBehaviors.randomElement() {
-                let areaType = breakDestinationToArea(destination)
-                scene.moveAgentToBreakArea(id: agent.id, areaType: areaType)
+            // Try to assign to an activity station first
+            if let station = viewModel.activityManager.assignStation(for: agent.id) {
+                scene.moveAgentToStation(id: agent.id, stationType: station.type)
             } else {
-                scene.updateAgentStatus(id: agent.id, status: .idle)
+                // Fall back to break area behavior
+                let config = CharacterCatalog.config(for: agent.characterType)
+                if let destination = config.breakBehaviors.randomElement() {
+                    let areaType = breakDestinationToArea(destination)
+                    scene.moveAgentToBreakArea(id: agent.id, areaType: areaType)
+                } else {
+                    scene.updateAgentStatus(id: agent.id, status: .idle)
+                }
             }
 
         case .celebrating:
@@ -190,3 +283,6 @@ struct OfficeView: View {
     }
 }
 
+#Preview {
+    OfficeView(viewModel: OfficeViewModel())
+}

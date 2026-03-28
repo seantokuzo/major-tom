@@ -17,6 +17,8 @@ enum MajorTomTheme {
         static let allow = Color(red: 0.30, green: 0.85, blue: 0.45)
         static let deny = Color(red: 0.95, green: 0.30, blue: 0.30)
         static let skip = Color(red: 0.55, green: 0.55, blue: 0.60)
+        static let warning = Color(red: 0.95, green: 0.80, blue: 0.20)
+        static let danger = Color(red: 0.95, green: 0.30, blue: 0.30)
 
         static let textPrimary = Color.white
         static let textSecondary = Color(white: 0.65)

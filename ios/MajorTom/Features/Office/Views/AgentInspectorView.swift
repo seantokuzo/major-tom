@@ -4,13 +4,17 @@ import SwiftUI
 
 /// Overlay panel showing details about a selected agent.
 /// Presented as a sheet when an agent sprite is tapped.
+/// Includes text input for sending messages to the agent via relay.
 struct AgentInspectorView: View {
     let agent: AgentState
+    let activityDescription: String?
     let onRename: (String) -> Void
+    let onSendMessage: ((String) -> Void)?
     let onDismiss: () -> Void
 
     @State private var isRenaming = false
     @State private var renameText = ""
+    @State private var messageText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.md) {
@@ -20,22 +24,35 @@ struct AgentInspectorView: View {
             Divider()
                 .background(MajorTomTheme.Colors.textTertiary)
 
+            // Role & Task (prominent)
+            roleAndTask
+
+            // Activity (if at a station)
+            if let activity = activityDescription {
+                activitySection(activity)
+            }
+
             // Details
             detailRows
 
-            // Current task
+            // Current task (if any)
             if let task = agent.currentTask {
                 taskSection(task)
             }
 
             Spacer()
 
+            // Message input (only when connected to relay)
+            if onSendMessage != nil {
+                messageInput
+            }
+
             // Actions
             actions
         }
         .padding(MajorTomTheme.Spacing.lg)
         .background(MajorTomTheme.Colors.surface)
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
 
@@ -85,9 +102,58 @@ struct AgentInspectorView: View {
         }
     }
 
+    // MARK: - Role & Task (Prominent)
+
+    private var roleAndTask: some View {
+        VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.sm) {
+            // Role
+            HStack(spacing: MajorTomTheme.Spacing.sm) {
+                Image(systemName: "person.badge.key.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(MajorTomTheme.Colors.accent)
+                Text(agent.role.capitalized)
+                    .font(MajorTomTheme.Typography.headline)
+                    .foregroundStyle(MajorTomTheme.Colors.textPrimary)
+            }
+
+            // Current task or status
+            if let task = agent.currentTask {
+                HStack(alignment: .top, spacing: MajorTomTheme.Spacing.sm) {
+                    Image(systemName: "chevron.right.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(MajorTomTheme.Colors.allow)
+                    Text(task)
+                        .font(MajorTomTheme.Typography.body)
+                        .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(MajorTomTheme.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MajorTomTheme.Colors.background)
+        .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.small))
+    }
+
+    // MARK: - Activity Section
+
+    private func activitySection(_ activity: String) -> some View {
+        HStack(spacing: MajorTomTheme.Spacing.sm) {
+            Image(systemName: "figure.walk")
+                .font(.system(size: 12))
+                .foregroundStyle(MajorTomTheme.Colors.accent)
+            Text(activity)
+                .font(MajorTomTheme.Typography.caption)
+                .foregroundStyle(MajorTomTheme.Colors.accent)
+        }
+        .padding(.horizontal, MajorTomTheme.Spacing.sm)
+        .padding(.vertical, MajorTomTheme.Spacing.xs)
+        .background(MajorTomTheme.Colors.accentSubtle)
+        .clipShape(Capsule())
+    }
+
     private var detailRows: some View {
         VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.sm) {
-            detailRow(label: "Role", value: agent.role)
             detailRow(label: "Agent ID", value: String(agent.id.prefix(12)) + "...")
             detailRow(label: "Desk", value: agent.deskIndex.map { "Desk \($0 + 1)" } ?? "None")
             detailRow(label: "Uptime", value: agent.uptime)
@@ -120,6 +186,36 @@ struct AgentInspectorView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(MajorTomTheme.Colors.background)
                 .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.small))
+        }
+    }
+
+    // MARK: - Message Input
+
+    private var messageInput: some View {
+        VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.xs) {
+            Text("Send Message")
+                .font(MajorTomTheme.Typography.caption)
+                .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+
+            HStack(spacing: MajorTomTheme.Spacing.sm) {
+                TextField("Message to agent...", text: $messageText)
+                    .font(MajorTomTheme.Typography.codeFontSmall)
+                    .foregroundStyle(MajorTomTheme.Colors.textPrimary)
+                    .padding(MajorTomTheme.Spacing.sm)
+                    .background(MajorTomTheme.Colors.background)
+                    .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.small))
+
+                Button {
+                    guard !messageText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                    onSendMessage?(messageText)
+                    messageText = ""
+                } label: {
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(messageText.isEmpty ? MajorTomTheme.Colors.textTertiary : MajorTomTheme.Colors.accent)
+                }
+                .disabled(messageText.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
         }
     }
 
@@ -160,4 +256,22 @@ struct AgentInspectorView: View {
             .tint(MajorTomTheme.Colors.textTertiary)
         }
     }
+}
+
+#Preview {
+    AgentInspectorView(
+        agent: AgentState(
+            id: "preview-1",
+            name: "Alice",
+            role: "frontend",
+            characterType: .dev,
+            status: .working,
+            currentTask: "Building the login page",
+            deskIndex: 0
+        ),
+        activityDescription: nil,
+        onRename: { _ in },
+        onSendMessage: { _ in },
+        onDismiss: {}
+    )
 }

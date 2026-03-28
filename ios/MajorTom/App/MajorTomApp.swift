@@ -4,37 +4,125 @@ import SwiftUI
 struct MajorTomApp: App {
     @State private var relay = RelayService()
     @State private var officeViewModel = OfficeViewModel()
+    @State private var auth = AuthService()
+    @State private var sessionStorage = SessionStorageService()
+    @State private var notificationService = NotificationService()
+    @State private var liveActivityService = LiveActivityService()
+    @State private var selectedTab: AppTab = .control
 
     var body: some Scene {
         WindowGroup {
-            TabView {
-                ChatView(relay: relay)
-                    .tabItem {
-                        Label("Control", systemImage: "terminal")
-                    }
-
-                OfficeView(viewModel: officeViewModel)
-                    .tabItem {
-                        Label("Office", systemImage: "building.2")
-                    }
-
-                ConnectionView(relay: relay)
-                    .tabItem {
-                        Label("Connect", systemImage: "antenna.radiowaves.left.and.right")
-                    }
-
-                SettingsView()
-                    .tabItem {
-                        Label("Settings", systemImage: "gear")
-                    }
+            Group {
+                if auth.isPaired {
+                    mainTabView
+                } else {
+                    PairingView(auth: auth)
+                }
             }
             .tint(MajorTomTheme.Colors.accent)
             .preferredColorScheme(.dark)
             .onAppear {
-                // Wire the office view model to the relay service
-                // so agent events flow from WebSocket → RelayService → OfficeViewModel → OfficeScene
                 relay.officeViewModel = officeViewModel
+                relay.authService = auth
+                relay.notificationService = notificationService
+                relay.liveActivityService = liveActivityService
+                setupNotificationHandlers()
+            }
+            .onChange(of: auth.isPaired) { _, isPaired in
+                if isPaired {
+                    Task {
+                        // Request notification permission after pairing
+                        _ = await notificationService.requestPermission()
+                        try? await relay.connect(to: auth.serverURL)
+                    }
+                }
+            }
+            // Handle deep links from notifications
+            .onChange(of: notificationService.pendingDeepLink) { _, deepLink in
+                guard let deepLink else { return }
+                handleDeepLink(deepLink)
+                notificationService.pendingDeepLink = nil
+            }
+            // Handle Siri shortcut notifications
+            .onReceive(NotificationCenter.default.publisher(for: .startSessionFromShortcut)) { _ in
+                selectedTab = .control
+                Task {
+                    if relay.currentSession == nil {
+                        try? await relay.startSession()
+                    }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .navigateToOfficeFromShortcut)) { _ in
+                selectedTab = .office
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .showCostFromShortcut)) { _ in
+                selectedTab = .control
             }
         }
     }
+
+    private var mainTabView: some View {
+        TabView(selection: $selectedTab) {
+            ChatView(relay: relay, storage: sessionStorage)
+                .tabItem {
+                    Label("Control", systemImage: "terminal")
+                }
+                .tag(AppTab.control)
+
+            OfficeView(viewModel: officeViewModel, relay: relay)
+                .tabItem {
+                    Label("Office", systemImage: "building.2")
+                }
+                .tag(AppTab.office)
+
+            ConnectionView(relay: relay)
+                .tabItem {
+                    Label("Connect", systemImage: "antenna.radiowaves.left.and.right")
+                }
+                .tag(AppTab.connect)
+
+            SettingsView(auth: auth, relay: relay)
+                .tabItem {
+                    Label("Settings", systemImage: "gear")
+                }
+                .tag(AppTab.settings)
+        }
+        .sensoryFeedback(.selection, trigger: selectedTab)
+    }
+
+    // MARK: - Notification Handlers
+
+    private func setupNotificationHandlers() {
+        notificationService.onApprovalAction = { requestId, approved in
+            Task {
+                let decision: ApprovalDecision = approved ? .allow : .deny
+                try? await relay.sendApproval(requestId: requestId, decision: decision)
+                if approved {
+                    HapticService.approve()
+                } else {
+                    HapticService.deny()
+                }
+            }
+        }
+    }
+
+    private func handleDeepLink(_ deepLink: NotificationDeepLink) {
+        if deepLink.isApproval {
+            selectedTab = .control
+        } else if deepLink.isOffice {
+            selectedTab = .office
+        } else if deepLink.isSession {
+            selectedTab = .control
+        }
+        HapticService.impact(.light)
+    }
+}
+
+// MARK: - Tab Enum
+
+enum AppTab: Hashable {
+    case control
+    case office
+    case connect
+    case settings
 }

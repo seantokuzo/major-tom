@@ -131,6 +131,7 @@ final class AgentSprite: SKSpriteNode {
     /// Simple idle bobbing animation.
     func startIdleAnimation() {
         removeAction(forKey: "idle")
+        removeAction(forKey: "station")
         let bob = SKAction.sequence([
             SKAction.moveBy(x: 0, y: 3, duration: 0.8),
             SKAction.moveBy(x: 0, y: -3, duration: 0.8),
@@ -142,6 +143,7 @@ final class AgentSprite: SKSpriteNode {
     func startWorkAnimation() {
         removeAction(forKey: "idle")
         removeAction(forKey: "work")
+        removeAction(forKey: "station")
         let shake = SKAction.sequence([
             SKAction.moveBy(x: 2, y: 0, duration: 0.15),
             SKAction.moveBy(x: -4, y: 0, duration: 0.15),
@@ -161,6 +163,76 @@ final class AgentSprite: SKSpriteNode {
         let spin = SKAction.rotate(byAngle: .pi * 2, duration: 0.4)
         let celebrate = SKAction.group([jump, spin])
         run(SKAction.repeat(celebrate, count: 3), withKey: "celebrate")
+    }
+
+    /// Station-specific idle animations.
+    func startStationAnimation(stationType: ActivityStationType) {
+        removeAction(forKey: "idle")
+        removeAction(forKey: "work")
+        removeAction(forKey: "station")
+
+        let animation: SKAction
+
+        switch stationType {
+        case .pingPong:
+            // Side-to-side swinging motion
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 6, y: 0, duration: 0.25),
+                SKAction.moveBy(x: -12, y: 0, duration: 0.5),
+                SKAction.moveBy(x: 6, y: 0, duration: 0.25),
+                SKAction.wait(forDuration: 0.3),
+            ]))
+
+        case .coffeeMachine:
+            // Slight lean forward (waiting for coffee)
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 0, y: -2, duration: 0.6),
+                SKAction.moveBy(x: 0, y: 2, duration: 0.6),
+                SKAction.wait(forDuration: 1.5),
+            ]))
+
+        case .waterCooler:
+            // Gentle sway (chatting at the cooler)
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 2, y: 1, duration: 0.7),
+                SKAction.moveBy(x: -4, y: 0, duration: 1.0),
+                SKAction.moveBy(x: 2, y: -1, duration: 0.7),
+            ]))
+
+        case .arcade:
+            // Rapid button mashing
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 1, y: -1, duration: 0.1),
+                SKAction.moveBy(x: -2, y: 1, duration: 0.1),
+                SKAction.moveBy(x: 1, y: 0, duration: 0.1),
+                SKAction.wait(forDuration: 0.2),
+            ]))
+
+        case .yoga:
+            // Slow breathing motion
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 0, y: 4, duration: 1.5),
+                SKAction.moveBy(x: 0, y: -4, duration: 1.5),
+            ]))
+
+        case .nap:
+            // Very slow bob (sleeping)
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 0, y: 1, duration: 2.0),
+                SKAction.moveBy(x: 0, y: -1, duration: 2.0),
+            ]))
+
+        case .whiteboard:
+            // Drawing motion
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 3, y: 2, duration: 0.3),
+                SKAction.moveBy(x: -1, y: -4, duration: 0.4),
+                SKAction.moveBy(x: -2, y: 2, duration: 0.3),
+                SKAction.wait(forDuration: 0.5),
+            ]))
+        }
+
+        run(animation, withKey: "station")
     }
 
     /// Stop all animations.

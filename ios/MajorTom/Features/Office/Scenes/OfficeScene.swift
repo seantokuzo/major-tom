@@ -3,8 +3,7 @@ import SpriteKit
 // MARK: - Office Scene
 
 /// The main SpriteKit scene that renders the office floor plan and agent sprites.
-/// Placeholder version: colored rectangles for areas, colored sprites for agents.
-/// Pretty pixel art comes in a future phase.
+/// Includes activity stations, ambient animations, and agent management.
 final class OfficeScene: SKScene {
 
     /// Callback when an agent sprite is tapped (wired to SwiftUI via OfficeView).
@@ -15,6 +14,9 @@ final class OfficeScene: SKScene {
 
     /// Desk node references for visual rendering.
     private var deskNodes: [Int: SKShapeNode] = [:]
+
+    /// Station node references.
+    private var stationNodes: [ActivityStationType: SKNode] = [:]
 
     // MARK: - Scene Lifecycle
 
@@ -28,6 +30,8 @@ final class OfficeScene: SKScene {
         renderFloorPlan()
         renderDesks()
         renderDoor()
+        renderStations()
+        startAmbientAnimations()
     }
 
     // MARK: - Floor Plan Rendering
@@ -119,6 +123,150 @@ final class OfficeScene: SKScene {
         door.addChild(label)
     }
 
+    // MARK: - Station Rendering
+
+    /// Render activity station sprites in the scene.
+    private func renderStations() {
+        for station in StationLayout.stations {
+            let container = SKNode()
+            container.position = station.position
+            container.zPosition = 5
+            container.name = "station_\(station.type.rawValue)"
+
+            // Station icon (colored rectangle)
+            let iconSize: CGSize
+            switch station.type {
+            case .pingPong:
+                iconSize = CGSize(width: 30, height: 20)
+            case .coffeeMachine:
+                iconSize = CGSize(width: 16, height: 22)
+            case .waterCooler:
+                iconSize = CGSize(width: 14, height: 20)
+            case .arcade:
+                iconSize = CGSize(width: 22, height: 28)
+            case .yoga:
+                iconSize = CGSize(width: 28, height: 18)
+            case .nap:
+                iconSize = CGSize(width: 32, height: 14)
+            case .whiteboard:
+                iconSize = CGSize(width: 30, height: 24)
+            }
+
+            let (r, g, b) = station.spriteColor
+            let icon = SKShapeNode(rectOf: iconSize, cornerRadius: 3)
+            icon.fillColor = SKColor(red: r, green: g, blue: b, alpha: 0.7)
+            icon.strokeColor = SKColor(red: r, green: g, blue: b, alpha: 1.0)
+            icon.lineWidth = 1
+            container.addChild(icon)
+
+            // Station label
+            let label = SKLabelNode(fontNamed: "Menlo")
+            label.text = station.label.uppercased()
+            label.fontSize = 7
+            label.fontColor = SKColor(white: 0.6, alpha: 0.8)
+            label.position = CGPoint(x: 0, y: -(iconSize.height / 2 + 10))
+            label.horizontalAlignmentMode = .center
+            container.addChild(label)
+
+            // Station-specific decoration
+            addStationDecoration(to: container, type: station.type)
+
+            addChild(container)
+            stationNodes[station.type] = container
+        }
+    }
+
+    /// Add station-specific decorative elements.
+    private func addStationDecoration(to container: SKNode, type: ActivityStationType) {
+        switch type {
+        case .coffeeMachine:
+            // Coffee steam particles (3 small dots that float up)
+            for i in 0..<3 {
+                let steam = SKShapeNode(circleOfRadius: 1.5)
+                steam.fillColor = SKColor(white: 0.7, alpha: 0.4)
+                steam.strokeColor = .clear
+                steam.position = CGPoint(x: CGFloat(i - 1) * 3, y: 14)
+                steam.zPosition = 1
+                steam.name = "steam_\(i)"
+                container.addChild(steam)
+            }
+
+        case .pingPong:
+            // Ball indicator
+            let ball = SKShapeNode(circleOfRadius: 2)
+            ball.fillColor = SKColor(red: 1.0, green: 0.8, blue: 0.2, alpha: 0.9)
+            ball.strokeColor = .clear
+            ball.position = CGPoint(x: 0, y: 0)
+            ball.zPosition = 1
+            ball.name = "pingpong_ball"
+            container.addChild(ball)
+
+        case .arcade:
+            // Screen glow
+            let glow = SKShapeNode(rectOf: CGSize(width: 16, height: 12), cornerRadius: 2)
+            glow.fillColor = SKColor(red: 0.3, green: 0.9, blue: 0.3, alpha: 0.3)
+            glow.strokeColor = .clear
+            glow.position = CGPoint(x: 0, y: 4)
+            glow.zPosition = 1
+            glow.name = "arcade_glow"
+            container.addChild(glow)
+
+        default:
+            break
+        }
+    }
+
+    // MARK: - Ambient Animations
+
+    /// Start subtle ambient animations for stations.
+    private func startAmbientAnimations() {
+        // Coffee steam animation
+        if let coffeeStation = stationNodes[.coffeeMachine] {
+            for i in 0..<3 {
+                guard let steam = coffeeStation.childNode(withName: "steam_\(i)") else { continue }
+                let delay = Double(i) * 0.4
+                let rise = SKAction.sequence([
+                    SKAction.wait(forDuration: delay),
+                    SKAction.repeatForever(SKAction.sequence([
+                        SKAction.group([
+                            SKAction.moveBy(x: CGFloat.random(in: -2...2), y: 8, duration: 1.2),
+                            SKAction.fadeOut(withDuration: 1.2),
+                        ]),
+                        SKAction.run { [weak steam] in
+                            steam?.position = CGPoint(x: CGFloat(i - 1) * 3, y: 14)
+                            steam?.alpha = 0.4
+                        },
+                    ])),
+                ])
+                steam.run(rise)
+            }
+        }
+
+        // Ping pong ball bounce
+        if let ppStation = stationNodes[.pingPong],
+           let ball = ppStation.childNode(withName: "pingpong_ball") {
+            let bounce = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 12, y: 5, duration: 0.3),
+                SKAction.moveBy(x: -12, y: -5, duration: 0.3),
+                SKAction.moveBy(x: 12, y: -3, duration: 0.25),
+                SKAction.moveBy(x: -12, y: 3, duration: 0.25),
+            ]))
+            ball.run(bounce)
+        }
+
+        // Arcade screen flicker
+        if let arcadeStation = stationNodes[.arcade],
+           let glow = arcadeStation.childNode(withName: "arcade_glow") {
+            let flicker = SKAction.repeatForever(SKAction.sequence([
+                SKAction.fadeAlpha(to: 0.5, duration: 0.8),
+                SKAction.fadeAlpha(to: 0.2, duration: 0.4),
+                SKAction.fadeAlpha(to: 0.6, duration: 0.3),
+                SKAction.fadeAlpha(to: 0.3, duration: 0.5),
+            ]))
+            glow.run(flicker)
+        }
+    }
+
     // MARK: - Agent Sprite Management
 
     /// Add a new agent sprite to the scene at the door position.
@@ -171,6 +319,29 @@ final class OfficeScene: SKScene {
         sprite.moveTo(position: position, duration: 2.0) {
             sprite.updateStatus(.idle)
             sprite.startIdleAnimation()
+        }
+    }
+
+    /// Move an agent to a specific activity station.
+    func moveAgentToStation(id: String, stationType: ActivityStationType) {
+        guard let sprite = agentSprites[id] else { return }
+        guard let station = StationLayout.stations.first(where: { $0.type == stationType }) else { return }
+
+        // Offset slightly so multiple agents don't overlap exactly
+        let offset = CGPoint(
+            x: CGFloat.random(in: -10...10),
+            y: CGFloat.random(in: -8...8)
+        )
+        let targetPos = CGPoint(
+            x: station.position.x + offset.x,
+            y: station.position.y + offset.y + 20 // Above the station icon
+        )
+
+        sprite.updateStatus(.walking)
+        sprite.stopAnimations()
+        sprite.moveTo(position: targetPos, duration: 1.5) {
+            sprite.updateStatus(.idle)
+            sprite.startStationAnimation(stationType: stationType)
         }
     }
 
