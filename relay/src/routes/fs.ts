@@ -147,44 +147,45 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
 
     try {
       const dirents = await readdir(resolved, { withFileTypes: true });
-      const entries: FsEntry[] = [];
 
-      for (const dirent of dirents) {
-        // Skip hidden files (dotfiles)
-        if (dirent.name.startsWith('.')) continue;
+      // Process directory entries in parallel for better performance
+      const visibleDirents = dirents.filter((d) => !d.name.startsWith('.'));
+      const settled = await Promise.all(
+        visibleDirents.map(async (dirent): Promise<FsEntry | null> => {
+          try {
+            const fullPath = join(resolved, dirent.name);
+            const stat = await lstat(fullPath);
 
-        try {
-          const fullPath = join(resolved, dirent.name);
-          const stat = await lstat(fullPath);
+            let entryType: FsEntry['type'] = 'file';
+            if (dirent.isDirectory()) {
+              entryType = 'directory';
+            } else if (dirent.isSymbolicLink()) {
+              entryType = 'symlink';
 
-          let entryType: FsEntry['type'] = 'file';
-          if (dirent.isDirectory()) {
-            entryType = 'directory';
-          } else if (dirent.isSymbolicLink()) {
-            entryType = 'symlink';
-
-            // Verify symlink target is within sandbox
-            try {
-              const realTarget = await realpath(fullPath);
-              if (realTarget !== sandboxRoot && !isWithinBoundary(sandboxRoot, realTarget)) {
-                continue; // Skip symlinks pointing outside sandbox
+              // Verify symlink target is within sandbox
+              try {
+                const realTarget = await realpath(fullPath);
+                if (realTarget !== sandboxRoot && !isWithinBoundary(sandboxRoot, realTarget)) {
+                  return null; // Skip symlinks pointing outside sandbox
+                }
+              } catch {
+                return null; // Skip broken symlinks
               }
-            } catch {
-              continue; // Skip broken symlinks
             }
-          }
 
-          entries.push({
-            name: dirent.name,
-            type: entryType,
-            size: stat.size,
-            modified: stat.mtime.toISOString(),
-            permissions: formatPermissions(stat.mode),
-          });
-        } catch {
-          // Skip entries we can't stat (permission denied, etc.)
-        }
-      }
+            return {
+              name: dirent.name,
+              type: entryType,
+              size: stat.size,
+              modified: stat.mtime.toISOString(),
+              permissions: formatPermissions(stat.mode),
+            };
+          } catch {
+            return null; // Skip entries we can't stat (permission denied, etc.)
+          }
+        }),
+      );
+      const entries: FsEntry[] = settled.filter((e): e is FsEntry => e !== null);
 
       // Sort: directories first, then alphabetically
       entries.sort((a, b) => {

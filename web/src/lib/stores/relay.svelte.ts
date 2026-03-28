@@ -625,6 +625,8 @@ class RelayStore {
     // Set sessionId immediately so any prompt sent after switchSession targets the right session
     this.sessionId = sessionId;
     sessionStateManager.activeSessionId = sessionId;
+    // Persist immediately so a reload during attach reattaches to the correct session
+    this.persistSessionId();
 
     // Try to restore target session from cache for instant switch
     const restored = sessionStateManager.restoreTo(this, sessionId);
