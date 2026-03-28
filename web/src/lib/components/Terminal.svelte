@@ -8,11 +8,11 @@
   // Scroll to bottom when new lines are added
   $effect(() => {
     terminalStore.lines.length;
-    if (outputContainer) {
-      queueMicrotask(() => {
-        outputContainer!.scrollTop = outputContainer!.scrollHeight;
-      });
-    }
+    if (!outputContainer) return;
+    const container = outputContainer;
+    queueMicrotask(() => {
+      container.scrollTop = container.scrollHeight;
+    });
   });
 
   // Request sandbox root on mount
@@ -93,8 +93,18 @@
       return;
     }
     const cwdPath = terminalStore.cwd;
+    // Translate sandbox-relative cwd to a path the relay understands:
+    // ~ → . (sandbox root), ~/subdir → subdir
+    let workingDir: string;
+    if (cwdPath === '~') {
+      workingDir = '.';
+    } else if (cwdPath.startsWith('~/')) {
+      workingDir = cwdPath.slice(2);
+    } else {
+      workingDir = cwdPath;
+    }
     terminalStore.addInfo(`Starting Claude session in ${cwdPath}...`);
-    relay.startSessionAt(cwdPath);
+    relay.startSessionAt(workingDir);
   }
 
   function handleHelp(): void {

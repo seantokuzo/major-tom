@@ -6,7 +6,7 @@
  * (FS_SANDBOX_ROOT env var, defaulting to ~/Documents).
  */
 import { readdir, readFile, lstat, realpath } from 'node:fs/promises';
-import { resolve, join, relative, basename } from 'node:path';
+import { resolve, join, relative, basename, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { WebSocket } from 'ws';
 import { logger } from '../utils/logger.js';
@@ -90,22 +90,34 @@ function formatPermissions(mode: number): string {
 }
 
 /**
+ * Check whether `child` is strictly within `parent` using path.relative().
+ * Safe against prefix collisions (e.g. /home/u/Documents vs /home/u/Documents_evil).
+ */
+function isWithinBoundary(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  // Outside the boundary if relative path starts with '..' or is absolute
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+/**
  * Validate that a resolved path is within the sandbox root.
  * Returns the resolved absolute path or null if outside sandbox.
+ *
+ * @param canonicalRoot - The realpath-resolved sandbox root (for symlink checks)
  */
-async function validatePath(requestedPath: string, sandboxRoot: string): Promise<string | null> {
+async function validatePath(requestedPath: string, sandboxRoot: string, canonicalRoot: string): Promise<string | null> {
   // Resolve the path relative to sandbox root
   const resolved = resolve(sandboxRoot, requestedPath);
 
-  // Boundary-safe sandbox check (prevents prefix attacks like /sandbox2 matching /sandbox)
-  if (resolved !== sandboxRoot && !resolved.startsWith(sandboxRoot + '/')) {
+  // Must be within sandbox root (prevents traversal and prefix attacks)
+  if (resolved !== sandboxRoot && !isWithinBoundary(sandboxRoot, resolved)) {
     return null;
   }
 
-  // For symlinks, also verify the real path is within sandbox
+  // For symlinks, also verify the real path is within the canonical sandbox root
   try {
     const real = await realpath(resolved);
-    if (real !== sandboxRoot && !real.startsWith(sandboxRoot + '/')) {
+    if (real !== canonicalRoot && !isWithinBoundary(canonicalRoot, real)) {
       return null;
     }
   } catch {
@@ -116,15 +128,41 @@ async function validatePath(requestedPath: string, sandboxRoot: string): Promise
   return resolved;
 }
 
+/**
+ * Sanitize filesystem error messages to avoid leaking absolute paths to clients.
+ * Maps common Node error codes to safe messages; falls back to a generic message.
+ */
+function sanitizeFsError(err: unknown): string {
+  if (err instanceof Error) {
+    const code = (err as NodeJS.ErrnoException).code;
+    switch (code) {
+      case 'ENOENT': return 'Path not found';
+      case 'EACCES': return 'Permission denied';
+      case 'EPERM': return 'Operation not permitted';
+      case 'EISDIR': return 'Is a directory';
+      case 'ENOTDIR': return 'Not a directory';
+      default: return 'Filesystem operation failed';
+    }
+  }
+  return 'Filesystem operation failed';
+}
+
 // ── Handlers ─────────────────────────────────────────────────
 
 export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMessage) => void) {
   const sandboxRoot = getSandboxRoot();
+
+  // Resolve the canonical (realpath) sandbox root once at init for symlink-safe boundary checks
+  let canonicalRoot = sandboxRoot;
+  realpath(sandboxRoot)
+    .then((resolved) => { canonicalRoot = resolved; })
+    .catch(() => { /* fall back to raw sandboxRoot */ });
+
   logger.info({ sandboxRoot }, 'Filesystem sandbox initialized');
 
   async function handleFsLs(ws: WebSocket, message: FsLsMessage): Promise<void> {
     const requestedPath = message.path || '.';
-    const resolved = await validatePath(requestedPath, sandboxRoot);
+    const resolved = await validatePath(requestedPath, sandboxRoot, canonicalRoot);
 
     if (!resolved) {
       sendToClient(ws, {
@@ -137,44 +175,45 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
 
     try {
       const dirents = await readdir(resolved, { withFileTypes: true });
-      const entries: FsEntry[] = [];
 
-      for (const dirent of dirents) {
-        // Skip hidden files (dotfiles)
-        if (dirent.name.startsWith('.')) continue;
+      // Process directory entries in parallel for better performance
+      const visibleDirents = dirents.filter((d) => !d.name.startsWith('.'));
+      const settled = await Promise.all(
+        visibleDirents.map(async (dirent): Promise<FsEntry | null> => {
+          try {
+            const fullPath = join(resolved, dirent.name);
+            const stat = await lstat(fullPath);
 
-        try {
-          const fullPath = join(resolved, dirent.name);
-          const stat = await lstat(fullPath);
+            let entryType: FsEntry['type'] = 'file';
+            if (dirent.isDirectory()) {
+              entryType = 'directory';
+            } else if (dirent.isSymbolicLink()) {
+              entryType = 'symlink';
 
-          let entryType: FsEntry['type'] = 'file';
-          if (dirent.isDirectory()) {
-            entryType = 'directory';
-          } else if (dirent.isSymbolicLink()) {
-            entryType = 'symlink';
-
-            // Verify symlink target is within sandbox
-            try {
-              const realTarget = await realpath(fullPath);
-              if (realTarget !== sandboxRoot && !realTarget.startsWith(sandboxRoot + '/')) {
-                continue; // Skip symlinks pointing outside sandbox
+              // Verify symlink target is within sandbox
+              try {
+                const realTarget = await realpath(fullPath);
+                if (realTarget !== canonicalRoot && !isWithinBoundary(canonicalRoot, realTarget)) {
+                  return null; // Skip symlinks pointing outside sandbox
+                }
+              } catch {
+                return null; // Skip broken symlinks
               }
-            } catch {
-              continue; // Skip broken symlinks
             }
-          }
 
-          entries.push({
-            name: dirent.name,
-            type: entryType,
-            size: stat.size,
-            modified: stat.mtime.toISOString(),
-            permissions: formatPermissions(stat.mode),
-          });
-        } catch {
-          // Skip entries we can't stat (permission denied, etc.)
-        }
-      }
+            return {
+              name: dirent.name,
+              type: entryType,
+              size: stat.size,
+              modified: stat.mtime.toISOString(),
+              permissions: formatPermissions(stat.mode),
+            };
+          } catch {
+            return null; // Skip entries we can't stat (permission denied, etc.)
+          }
+        }),
+      );
+      const entries: FsEntry[] = settled.filter((e): e is FsEntry => e !== null);
 
       // Sort: directories first, then alphabetically
       entries.sort((a, b) => {
@@ -191,11 +230,10 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
         entries,
       });
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : 'Failed to list directory';
-      logger.warn({ path: resolved, err: errMsg }, 'fs.ls failed');
+      logger.warn({ path: resolved, err: err instanceof Error ? err.message : String(err) }, 'fs.ls failed');
       sendToClient(ws, {
         type: 'fs.error',
-        message: errMsg,
+        message: sanitizeFsError(err),
         path: requestedPath,
       });
     }
@@ -203,7 +241,7 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
 
   async function handleFsReadFile(ws: WebSocket, message: FsReadFileMessage): Promise<void> {
     const requestedPath = message.path;
-    const resolved = await validatePath(requestedPath, sandboxRoot);
+    const resolved = await validatePath(requestedPath, sandboxRoot, canonicalRoot);
 
     if (!resolved) {
       sendToClient(ws, {
@@ -245,11 +283,10 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
         size: stat.size,
       });
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : 'Failed to read file';
-      logger.warn({ path: resolved, err: errMsg }, 'fs.readFile failed');
+      logger.warn({ path: resolved, err: err instanceof Error ? err.message : String(err) }, 'fs.readFile failed');
       sendToClient(ws, {
         type: 'fs.error',
-        message: errMsg,
+        message: sanitizeFsError(err),
         path: requestedPath,
       });
     }

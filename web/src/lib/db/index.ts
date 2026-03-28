@@ -1,13 +1,11 @@
 // Major Tom IndexedDB database — Dexie.js wrapper
 // Replaces localStorage for chat messages, templates, prompt history, and settings.
 
-import Dexie, { type EntityTable } from 'dexie';
+import Dexie, { type EntityTable, type Table } from 'dexie';
 
 // ── Stored models ───────────────────────────────────────────
 
 export interface DbMessage {
-  /** Auto-incremented primary key */
-  id?: number;
   /** Session this message belongs to */
   sessionId: string;
   /** In-app message ID (e.g. "msg-1-17...") */
@@ -61,7 +59,7 @@ export interface DbSetting {
 // ── Database class ──────────────────────────────────────────
 
 class MajorTomDB extends Dexie {
-  messages!: EntityTable<DbMessage, 'id'>;
+  messages!: Table<DbMessage, [string, string]>;
   sessionMeta!: EntityTable<DbSessionMeta, 'sessionId'>;
   templates!: EntityTable<DbTemplate, 'id'>;
   promptHistory!: EntityTable<DbPromptHistory, 'id'>;
@@ -78,19 +76,16 @@ class MajorTomDB extends Dexie {
       promptHistory: '++id, text, timestamp',
       settings: 'key',
     });
+
+    // v2: promote [sessionId+messageId] to primary key so bulkPut upserts correctly
+    this.version(2).stores({
+      messages: '[sessionId+messageId], sessionId, timestamp',
+    });
   }
 }
 
 // Singleton instance
 export const db = new MajorTomDB();
-
-/**
- * Promise that resolves once localStorage→IndexedDB migration is complete.
- * Stores should await this before reading from IndexedDB to avoid seeing empty data.
- * Set by migrateFromLocalStorage() — resolves immediately if migration already ran.
- */
-let migrationResolve: () => void;
-export const migrationReady: Promise<void> = new Promise((r) => { migrationResolve = r; });
 
 // ── Migration helpers ───────────────────────────────────────
 
@@ -107,18 +102,20 @@ const MIGRATION_FLAGS = {
  * After successful migration, the original localStorage key is removed.
  */
 export async function migrateFromLocalStorage(): Promise<void> {
-  if (typeof window === 'undefined') {
-    migrationResolve();
-    return;
-  }
+  if (typeof window === 'undefined') return;
 
-  await Promise.all([
+  const results = await Promise.allSettled([
     migrateMessages(),
     migrateTemplates(),
     migratePromptHistory(),
     migrateCommandUsage(),
   ]);
-  migrationResolve();
+
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      console.warn('[MajorTom DB] Migration task failed:', result.reason);
+    }
+  }
 }
 
 async function migrateMessages(): Promise<void> {
@@ -153,7 +150,7 @@ async function migrateMessages(): Promise<void> {
         ...(m.toolMeta ? { toolMeta: m.toolMeta } : {}),
       }));
 
-      await db.messages.bulkAdd(rows);
+      await db.messages.bulkPut(rows);
     }
 
     localStorage.removeItem('mt-chat-messages');

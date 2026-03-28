@@ -5,7 +5,7 @@
 // This manager caches snapshots of per-session state. On session switch, relay calls
 // snapshotFrom(relay) to save current, then restoreTo(relay) to load target.
 
-import { db, type DbMessage, type DbSessionMeta } from '../db';
+import { db, type DbMessage } from '../db';
 import type {
   ChatMessage,
   ApprovalRequest,
@@ -21,6 +21,8 @@ export interface SessionSnapshot {
   sessionId: string;
   name: string;
   workingDir: string;
+  /** Relay-provided status (set via updateFromRelayList). Undefined until first relay sync. */
+  status?: 'active' | 'idle' | 'closed';
   messages: ChatMessage[];
   agents: Agent[];
   pendingApprovals: ApprovalRequest[];
@@ -90,6 +92,9 @@ export interface RelayStateAccessor {
 class SessionStateManager {
   // In-memory cache of session snapshots for instant switching
   private cache = new Map<string, SessionSnapshot>();
+
+  // Chain concurrent saves per-session so only one runs at a time
+  private persistChains = new Map<string, Promise<void>>();
 
   // Active session ID
   activeSessionId = $state<string | null>(null);
@@ -179,6 +184,7 @@ class SessionStateManager {
   removeSession(sessionId: string): void {
     this.cache.delete(sessionId);
     this.names.delete(sessionId);
+    this.persistChains.delete(sessionId);
     if (this.activeSessionId === sessionId) {
       this.activeSessionId = null;
     }
@@ -214,10 +220,15 @@ class SessionStateManager {
   /** Update session list from relay's session.list.response */
   updateFromRelayList(relaySessions: Array<{ id: string; workingDirName: string; status: string; totalCost: number }>): void {
     for (const rs of relaySessions) {
+      const relayStatus = (rs.status === 'active' || rs.status === 'idle' || rs.status === 'closed')
+        ? rs.status as 'active' | 'idle' | 'closed'
+        : undefined;
+
       if (!this.cache.has(rs.id)) {
         // Create a lightweight entry from relay metadata
         const snap = createEmptySnapshot(rs.id, undefined, rs.workingDirName);
         snap.sessionStats.totalCost = rs.totalCost;
+        if (relayStatus) snap.status = relayStatus;
         this.cache.set(rs.id, snap);
       } else {
         const snap = this.cache.get(rs.id)!;
@@ -228,6 +239,7 @@ class SessionStateManager {
           snap.name = extractDirName(rs.workingDirName);
           this.names.set(rs.id, snap.name);
         }
+        if (relayStatus) snap.status = relayStatus;
       }
     }
     this.refreshSessionList();
@@ -235,25 +247,42 @@ class SessionStateManager {
 
   // ── IndexedDB persistence ──────────────────────────────────
 
-  /** Save a snapshot to IndexedDB */
+  /** Save a snapshot to IndexedDB (incremental — upserts changed, deletes removed) */
   async saveToDb(sessionId: string): Promise<void> {
     const snap = this.cache.get(sessionId);
     if (!snap) return;
 
     try {
       await db.transaction('rw', db.messages, db.sessionMeta, async () => {
-        await db.messages.where('sessionId').equals(sessionId).delete();
-        if (snap.messages.length > 0) {
-          const rows: DbMessage[] = snap.messages.map((m) => ({
-            sessionId,
-            messageId: m.id,
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp.toISOString(),
-            ...(m.toolMeta ? { toolMeta: m.toolMeta } : {}),
-          }));
-          await db.messages.bulkAdd(rows);
+        // Build rows from current snapshot
+        const rows: DbMessage[] = snap.messages.map((m) => ({
+          sessionId,
+          messageId: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp.toISOString(),
+          ...(m.toolMeta ? { toolMeta: m.toolMeta } : {}),
+        }));
+
+        // Upsert all current messages (uses compound index [sessionId+messageId])
+        if (rows.length > 0) {
+          await db.messages.bulkPut(rows);
         }
+
+        // Delete stale messages only when count decreased (append-only streaming stays write-only)
+        const currentCount = snap.messages.length;
+        const persistedCount = await db.messages.where('sessionId').equals(sessionId).count();
+        if (persistedCount > currentCount) {
+          const currentMessageIds = new Set(snap.messages.map((m) => m.id));
+          const existingRows = await db.messages.where('sessionId').equals(sessionId).toArray();
+          const staleKeys = existingRows
+            .filter((row) => !currentMessageIds.has(row.messageId))
+            .map((row) => [row.sessionId, row.messageId] as [string, string]);
+          if (staleKeys.length > 0) {
+            await db.messages.bulkDelete(staleKeys);
+          }
+        }
+
         await db.sessionMeta.put({
           sessionId,
           name: snap.name,
@@ -285,6 +314,8 @@ class SessionStateManager {
       );
 
       if (rows.length > 0) {
+        // Sort by timestamp ascending — lexical messageId order breaks at counter 10+
+        rows.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
         snap.messages = rows.map((row) => ({
           id: row.messageId,
           role: row.role,
@@ -305,13 +336,22 @@ class SessionStateManager {
     }
   }
 
-  /** Persist active session messages (called from ChatView persist effect) */
+  /** Persist active session messages (called from ChatView persist effect).
+   *  Chains saves per-session so only one saveToDb runs at a time, preventing
+   *  interleaved writes where an older snapshot could clobber a newer one. */
   async persistActive(relay: RelayStateAccessor): Promise<void> {
     const id = relay.sessionId;
     if (!id) return;
     // Update cache from current relay state first
     this.snapshotFrom(relay);
-    await this.saveToDb(id);
+
+    // Chain onto previous save for this session
+    const prev = this.persistChains.get(id) ?? Promise.resolve();
+    const next = prev.then(() => this.saveToDb(id)).catch(() => {
+      // saveToDb already logs warnings internally
+    });
+    this.persistChains.set(id, next);
+    await next;
   }
 
   // ── Session list ────────────────────────────────────────────
@@ -323,7 +363,7 @@ class SessionStateManager {
         sessionId: id,
         name: this.names.get(id) ?? snap.name,
         workingDir: snap.workingDir,
-        status: id === this.activeSessionId ? 'active' : (snap.messages.length > 0 ? 'idle' : 'closed'),
+        status: id === this.activeSessionId ? 'active' : (snap.status ?? (snap.messages.length > 0 ? 'idle' : 'closed')),
         totalCost: snap.sessionStats.totalCost,
         agentCount: snap.agents.filter(a => a.status !== 'dismissed' && a.status !== 'complete').length,
       });

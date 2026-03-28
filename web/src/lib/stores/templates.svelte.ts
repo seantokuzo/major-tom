@@ -2,7 +2,7 @@
 // Uses Svelte 5 runes ($state, $derived)
 // Persisted via IndexedDB (Dexie)
 
-import { db, migrationReady, type DbTemplate } from '../db';
+import { db, type DbTemplate } from '../db';
 
 const MAX_TEMPLATES = 100;
 
@@ -28,6 +28,9 @@ function uid(): string {
 class TemplateStore {
   templates = $state<PromptTemplate[]>([]);
 
+  /** Serialization chain — ensures only one persist runs at a time */
+  private persistChain: Promise<void> = Promise.resolve();
+
   /** All unique categories from existing templates */
   categories = $derived(
     [...new Set(this.templates.map((t) => t.category).filter(Boolean))] as string[]
@@ -49,7 +52,6 @@ class TemplateStore {
 
   private async loadFromDb(): Promise<void> {
     if (typeof window === 'undefined') return;
-    await migrationReady;
     try {
       const rows = await db.templates.toArray();
       if (rows.length > 0) {
@@ -68,10 +70,8 @@ class TemplateStore {
     }
   }
 
-  /** Serialized persistence — each call chains on the previous to prevent overlapping transactions */
-  private persistChain: Promise<void> = Promise.resolve();
-
   private persist(): void {
+    // Chain persists so overlapping calls don't race (clear + bulkPut is not atomic across calls)
     this.persistChain = this.persistChain.then(() => this.doPersist()).catch(() => {});
   }
 

@@ -2,7 +2,7 @@
 // Uses Svelte 5 runes ($state)
 // Persisted via IndexedDB (Dexie)
 
-import { db, migrationReady, type DbPromptHistory } from '../db';
+import { db, type DbPromptHistory } from '../db';
 
 const MAX_ENTRIES = 200;
 
@@ -19,6 +19,9 @@ export interface HistoryEntry {
 class PromptHistoryStore {
   entries = $state<HistoryEntry[]>([]);
 
+  /** Serialization chain — ensures only one persistToDb runs at a time */
+  private persistChain: Promise<void> = Promise.resolve();
+
   /** Current navigation index. -1 = not navigating (user is typing fresh input) */
   private navIndex = -1;
   /** Saved input text before navigation started */
@@ -34,7 +37,6 @@ class PromptHistoryStore {
 
   private async loadFromDb(): Promise<void> {
     if (typeof window === 'undefined') return;
-    await migrationReady;
     try {
       const rows = await db.promptHistory.toArray();
       if (rows.length > 0) {
@@ -55,10 +57,8 @@ class PromptHistoryStore {
     }
   }
 
-  /** Serialized persistence — each call chains on the previous to prevent overlapping transactions */
-  private persistChain: Promise<void> = Promise.resolve();
-
   private persistToDb(): void {
+    // Chain persists so overlapping calls don't race (clear + bulkAdd is not atomic across calls)
     this.persistChain = this.persistChain.then(() => this.doPersistToDb()).catch(() => {});
   }
 

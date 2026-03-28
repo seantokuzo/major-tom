@@ -13,7 +13,7 @@ import type {
 import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
 import { contextStore } from './context.svelte';
-import { db, type DbMessage } from '../db';
+import { db } from '../db';
 import { terminalStore } from './terminal.svelte';
 import { sessionStateManager, extractDirName } from './session-state.svelte';
 
@@ -355,7 +355,10 @@ class RelayStore {
         .equals(sessionId)
         .toArray();
 
-      if (rows.length > 0) {
+      if (rows.length > 0 && this.messages.length === 0) {
+        // Only apply DB rows if no newer messages have arrived (e.g. from socket reattach)
+        // Sort by timestamp ascending — lexical messageId order breaks at counter 10+
+        rows.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
         this.messages = rows.map((row) => ({
           id: row.messageId,
           role: row.role,
@@ -619,6 +622,12 @@ class RelayStore {
       // Fire-and-forget save to IndexedDB
       sessionStateManager.saveToDb(this.sessionId).catch(() => {});
     }
+
+    // Set sessionId immediately so any prompt sent after switchSession targets the right session
+    this.sessionId = sessionId;
+    sessionStateManager.activeSessionId = sessionId;
+    // Persist immediately so a reload during attach reattaches to the correct session
+    this.persistSessionId();
 
     // Try to restore target session from cache for instant switch
     const restored = sessionStateManager.restoreTo(this, sessionId);
@@ -951,14 +960,24 @@ class RelayStore {
         });
         break;
 
-      case 'session.ended':
+      case 'session.ended': {
         // Session was ended (by us or another client) — clean up
-        if (this.sessionId === message.sessionId) {
+        const endedId = message.sessionId;
+        if (this.sessionId === endedId) {
           this.sessionId = null;
+          this.messages = [];
+          this.pendingApprovals = [];
+          this.agents = [];
+          this.toolActivities = [];
+          this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
+          this.isWaitingForResponse = false;
+          this.activeToolName = null;
           sessionStateManager.activeSessionId = null;
           this.persistSessionId();
         }
+        sessionStateManager.removeSession(endedId);
         break;
+      }
 
       case 'connection.status':
         // Handled implicitly by socket state
@@ -1060,8 +1079,9 @@ class RelayStore {
 
       case 'fs.cwd.response':
         terminalStore.isLoading = false;
-        terminalStore.cwd = message.path;
         terminalStore.sandboxRoot = message.path;
+        // cwd uses sandbox-relative notation — ~ represents the sandbox root
+        terminalStore.cwd = '~';
         break;
 
       case 'fs.error':
