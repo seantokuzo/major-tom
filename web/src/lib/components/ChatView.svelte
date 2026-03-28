@@ -5,7 +5,7 @@
   import ApprovalCard from './ApprovalCard.svelte';
   import CommandPalette from './CommandPalette.svelte';
   import PromptHistoryOverlay from './PromptHistoryOverlay.svelte';
-  import SessionDrawer from './SessionDrawer.svelte';
+
   import { sessionStateManager } from '../stores/session-state.svelte';
   import DeviceList from './DeviceList.svelte';
   import StreamingIndicator from './StreamingIndicator.svelte';
@@ -26,7 +26,7 @@
   let templateSaveOpen = $state(false);
   let saveDialogContent = $state('');
   let historyOpen = $state(false);
-  let sessionDrawerOpen = $state(false);
+
   let devicesOpen = $state(false);
   let fileTreeOpen = $state(false);
   let countdownToastRef: CountdownToast | undefined;
@@ -295,7 +295,7 @@
   <TemplateDrawer bind:open={templateDrawerOpen} onClose={handleTemplateDrawerClose} />
   <TemplateSaveDialog bind:open={templateSaveOpen} onClose={handleTemplateSaveClose} initialContent={saveDialogContent} />
   <PromptHistoryOverlay bind:open={historyOpen} onClose={handleHistoryClose} onSelectEntry={handleHistorySelect} />
-  <SessionDrawer bind:open={sessionDrawerOpen} onclose={() => { sessionDrawerOpen = false; }} />
+
 
   {#if devicesOpen}
     <!-- svelte-ignore a11y_no_static_element_interactions -->

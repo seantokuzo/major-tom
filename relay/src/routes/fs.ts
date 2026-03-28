@@ -193,7 +193,7 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
               // Verify symlink target is within sandbox
               try {
                 const realTarget = await realpath(fullPath);
-                if (realTarget !== sandboxRoot && !isWithinBoundary(sandboxRoot, realTarget)) {
+                if (realTarget !== canonicalRoot && !isWithinBoundary(canonicalRoot, realTarget)) {
                   return null; // Skip symlinks pointing outside sandbox
                 }
               } catch {

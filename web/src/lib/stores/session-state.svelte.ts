@@ -269,14 +269,18 @@ class SessionStateManager {
           await db.messages.bulkPut(rows);
         }
 
-        // Delete messages that no longer exist in the snapshot
-        const currentMessageIds = new Set(snap.messages.map((m) => m.id));
-        const existingRows = await db.messages.where('sessionId').equals(sessionId).toArray();
-        const staleKeys = existingRows
-          .filter((row) => !currentMessageIds.has(row.messageId))
-          .map((row) => [row.sessionId, row.messageId] as [string, string]);
-        if (staleKeys.length > 0) {
-          await db.messages.bulkDelete(staleKeys);
+        // Delete stale messages only when count decreased (append-only streaming stays write-only)
+        const currentCount = snap.messages.length;
+        const persistedCount = await db.messages.where('sessionId').equals(sessionId).count();
+        if (persistedCount > currentCount) {
+          const currentMessageIds = new Set(snap.messages.map((m) => m.id));
+          const existingRows = await db.messages.where('sessionId').equals(sessionId).toArray();
+          const staleKeys = existingRows
+            .filter((row) => !currentMessageIds.has(row.messageId))
+            .map((row) => [row.sessionId, row.messageId] as [string, string]);
+          if (staleKeys.length > 0) {
+            await db.messages.bulkDelete(staleKeys);
+          }
         }
 
         await db.sessionMeta.put({

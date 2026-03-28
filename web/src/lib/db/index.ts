@@ -104,12 +104,18 @@ const MIGRATION_FLAGS = {
 export async function migrateFromLocalStorage(): Promise<void> {
   if (typeof window === 'undefined') return;
 
-  await Promise.all([
+  const results = await Promise.allSettled([
     migrateMessages(),
     migrateTemplates(),
     migratePromptHistory(),
     migrateCommandUsage(),
   ]);
+
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      console.warn('[MajorTom DB] Migration task failed:', result.reason);
+    }
+  }
 }
 
 async function migrateMessages(): Promise<void> {
