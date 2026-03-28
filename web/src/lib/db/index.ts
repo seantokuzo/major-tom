@@ -84,6 +84,14 @@ class MajorTomDB extends Dexie {
 // Singleton instance
 export const db = new MajorTomDB();
 
+/**
+ * Promise that resolves once localStorage→IndexedDB migration is complete.
+ * Stores should await this before reading from IndexedDB to avoid seeing empty data.
+ * Set by migrateFromLocalStorage() — resolves immediately if migration already ran.
+ */
+let migrationResolve: () => void;
+export const migrationReady: Promise<void> = new Promise((r) => { migrationResolve = r; });
+
 // ── Migration helpers ───────────────────────────────────────
 
 const MIGRATION_FLAGS = {
@@ -99,7 +107,10 @@ const MIGRATION_FLAGS = {
  * After successful migration, the original localStorage key is removed.
  */
 export async function migrateFromLocalStorage(): Promise<void> {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined') {
+    migrationResolve();
+    return;
+  }
 
   await Promise.all([
     migrateMessages(),
@@ -107,6 +118,7 @@ export async function migrateFromLocalStorage(): Promise<void> {
     migratePromptHistory(),
     migrateCommandUsage(),
   ]);
+  migrationResolve();
 }
 
 async function migrateMessages(): Promise<void> {

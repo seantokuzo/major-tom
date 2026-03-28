@@ -2,7 +2,7 @@
 // Uses Svelte 5 runes ($state)
 // Persisted via IndexedDB (Dexie)
 
-import { db, type DbPromptHistory } from '../db';
+import { db, migrationReady, type DbPromptHistory } from '../db';
 
 const MAX_ENTRIES = 200;
 
@@ -34,6 +34,7 @@ class PromptHistoryStore {
 
   private async loadFromDb(): Promise<void> {
     if (typeof window === 'undefined') return;
+    await migrationReady;
     try {
       const rows = await db.promptHistory.toArray();
       if (rows.length > 0) {
@@ -54,7 +55,14 @@ class PromptHistoryStore {
     }
   }
 
-  private async persistToDb(): Promise<void> {
+  /** Serialized persistence — each call chains on the previous to prevent overlapping transactions */
+  private persistChain: Promise<void> = Promise.resolve();
+
+  private persistToDb(): void {
+    this.persistChain = this.persistChain.then(() => this.doPersistToDb()).catch(() => {});
+  }
+
+  private async doPersistToDb(): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
       const rows: Omit<DbPromptHistory, 'id'>[] = this.entries.map((e) => ({

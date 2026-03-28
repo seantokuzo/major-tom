@@ -175,12 +175,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           const sandboxRoot = fsHandlers.sandboxRoot;
           // Resolve ~ prefix and make absolute
           let resolved = message.workingDir;
-          if (resolved.startsWith('~')) {
-            resolved = join(homedir(), resolved.slice(1));
+          if (resolved.startsWith('~/') || resolved === '~') {
+            resolved = join(homedir(), resolved.slice(2));
           }
           resolved = resolve(sandboxRoot, resolved);
 
-          if (!resolved.startsWith(sandboxRoot)) {
+          // Boundary-safe sandbox check: ensure resolved path is sandboxRoot or a child
+          if (resolved !== sandboxRoot && !resolved.startsWith(sandboxRoot + '/')) {
             sendToClient(ws, {
               type: 'error',
               code: 'INVALID_WORKING_DIR',

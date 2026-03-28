@@ -2,7 +2,7 @@
 // Uses Svelte 5 runes ($state, $derived)
 // Persisted via IndexedDB (Dexie)
 
-import { db, type DbTemplate } from '../db';
+import { db, migrationReady, type DbTemplate } from '../db';
 
 const MAX_TEMPLATES = 100;
 
@@ -49,6 +49,7 @@ class TemplateStore {
 
   private async loadFromDb(): Promise<void> {
     if (typeof window === 'undefined') return;
+    await migrationReady;
     try {
       const rows = await db.templates.toArray();
       if (rows.length > 0) {
@@ -67,7 +68,14 @@ class TemplateStore {
     }
   }
 
-  private async persist(): Promise<void> {
+  /** Serialized persistence — each call chains on the previous to prevent overlapping transactions */
+  private persistChain: Promise<void> = Promise.resolve();
+
+  private persist(): void {
+    this.persistChain = this.persistChain.then(() => this.doPersist()).catch(() => {});
+  }
+
+  private async doPersist(): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
       const rows: DbTemplate[] = this.templates.map((t) => ({

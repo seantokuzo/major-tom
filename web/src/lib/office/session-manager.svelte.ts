@@ -68,24 +68,20 @@ export function createOfficeSessionManager(): OfficeSessionManager {
     return state;
   }
 
-  /** Evict oldest cached states if over limit (never evict active or default) */
+  /** Evict oldest cached states until under limit (never evict active or default) */
   function evictOldIfNeeded(): void {
     while (accessOrder.length > MAX_CACHED_SESSIONS) {
-      const oldest = accessOrder[0];
-      if (oldest === activeKey || oldest === DEFAULT_KEY) {
-        // Can't evict active or default — move to end and break
-        accessOrder.shift();
-        accessOrder.push(oldest);
-        break;
-      }
-      accessOrder.shift();
-      const state = states.get(oldest);
+      // Find the first evictable entry (skip active and default)
+      const idx = accessOrder.findIndex((k) => k !== activeKey && k !== DEFAULT_KEY);
+      if (idx === -1) break; // All entries are protected — nothing to evict
+      const key = accessOrder.splice(idx, 1)[0];
+      const state = states.get(key);
       if (state) {
         state.reset();
         state.engine.stop();
       }
-      states.delete(oldest);
-      sessionNames.delete(oldest);
+      states.delete(key);
+      sessionNames.delete(key);
     }
   }
 
