@@ -102,8 +102,10 @@ function isWithinBoundary(parent: string, child: string): boolean {
 /**
  * Validate that a resolved path is within the sandbox root.
  * Returns the resolved absolute path or null if outside sandbox.
+ *
+ * @param canonicalRoot - The realpath-resolved sandbox root (for symlink checks)
  */
-async function validatePath(requestedPath: string, sandboxRoot: string): Promise<string | null> {
+async function validatePath(requestedPath: string, sandboxRoot: string, canonicalRoot: string): Promise<string | null> {
   // Resolve the path relative to sandbox root
   const resolved = resolve(sandboxRoot, requestedPath);
 
@@ -112,10 +114,10 @@ async function validatePath(requestedPath: string, sandboxRoot: string): Promise
     return null;
   }
 
-  // For symlinks, also verify the real path is within sandbox
+  // For symlinks, also verify the real path is within the canonical sandbox root
   try {
     const real = await realpath(resolved);
-    if (real !== sandboxRoot && !isWithinBoundary(sandboxRoot, real)) {
+    if (real !== canonicalRoot && !isWithinBoundary(canonicalRoot, real)) {
       return null;
     }
   } catch {
@@ -149,11 +151,18 @@ function sanitizeFsError(err: unknown): string {
 
 export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMessage) => void) {
   const sandboxRoot = getSandboxRoot();
+
+  // Resolve the canonical (realpath) sandbox root once at init for symlink-safe boundary checks
+  let canonicalRoot = sandboxRoot;
+  realpath(sandboxRoot)
+    .then((resolved) => { canonicalRoot = resolved; })
+    .catch(() => { /* fall back to raw sandboxRoot */ });
+
   logger.info({ sandboxRoot }, 'Filesystem sandbox initialized');
 
   async function handleFsLs(ws: WebSocket, message: FsLsMessage): Promise<void> {
     const requestedPath = message.path || '.';
-    const resolved = await validatePath(requestedPath, sandboxRoot);
+    const resolved = await validatePath(requestedPath, sandboxRoot, canonicalRoot);
 
     if (!resolved) {
       sendToClient(ws, {
@@ -232,7 +241,7 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
 
   async function handleFsReadFile(ws: WebSocket, message: FsReadFileMessage): Promise<void> {
     const requestedPath = message.path;
-    const resolved = await validatePath(requestedPath, sandboxRoot);
+    const resolved = await validatePath(requestedPath, sandboxRoot, canonicalRoot);
 
     if (!resolved) {
       sendToClient(ws, {

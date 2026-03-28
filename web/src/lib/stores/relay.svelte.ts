@@ -960,14 +960,24 @@ class RelayStore {
         });
         break;
 
-      case 'session.ended':
+      case 'session.ended': {
         // Session was ended (by us or another client) — clean up
-        if (this.sessionId === message.sessionId) {
+        const endedId = message.sessionId;
+        if (this.sessionId === endedId) {
           this.sessionId = null;
+          this.messages = [];
+          this.pendingApprovals = [];
+          this.agents = [];
+          this.toolActivities = [];
+          this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
+          this.isWaitingForResponse = false;
+          this.activeToolName = null;
           sessionStateManager.activeSessionId = null;
           this.persistSessionId();
         }
+        sessionStateManager.removeSession(endedId);
         break;
+      }
 
       case 'connection.status':
         // Handled implicitly by socket state

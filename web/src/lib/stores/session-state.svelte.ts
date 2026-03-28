@@ -21,6 +21,8 @@ export interface SessionSnapshot {
   sessionId: string;
   name: string;
   workingDir: string;
+  /** Relay-provided status (set via updateFromRelayList). Undefined until first relay sync. */
+  status?: 'active' | 'idle' | 'closed';
   messages: ChatMessage[];
   agents: Agent[];
   pendingApprovals: ApprovalRequest[];
@@ -182,6 +184,7 @@ class SessionStateManager {
   removeSession(sessionId: string): void {
     this.cache.delete(sessionId);
     this.names.delete(sessionId);
+    this.persistChains.delete(sessionId);
     if (this.activeSessionId === sessionId) {
       this.activeSessionId = null;
     }
@@ -217,10 +220,15 @@ class SessionStateManager {
   /** Update session list from relay's session.list.response */
   updateFromRelayList(relaySessions: Array<{ id: string; workingDirName: string; status: string; totalCost: number }>): void {
     for (const rs of relaySessions) {
+      const relayStatus = (rs.status === 'active' || rs.status === 'idle' || rs.status === 'closed')
+        ? rs.status as 'active' | 'idle' | 'closed'
+        : undefined;
+
       if (!this.cache.has(rs.id)) {
         // Create a lightweight entry from relay metadata
         const snap = createEmptySnapshot(rs.id, undefined, rs.workingDirName);
         snap.sessionStats.totalCost = rs.totalCost;
+        if (relayStatus) snap.status = relayStatus;
         this.cache.set(rs.id, snap);
       } else {
         const snap = this.cache.get(rs.id)!;
@@ -231,6 +239,7 @@ class SessionStateManager {
           snap.name = extractDirName(rs.workingDirName);
           this.names.set(rs.id, snap.name);
         }
+        if (relayStatus) snap.status = relayStatus;
       }
     }
     this.refreshSessionList();
@@ -350,7 +359,7 @@ class SessionStateManager {
         sessionId: id,
         name: this.names.get(id) ?? snap.name,
         workingDir: snap.workingDir,
-        status: id === this.activeSessionId ? 'active' : (snap.messages.length > 0 ? 'idle' : 'closed'),
+        status: id === this.activeSessionId ? 'active' : (snap.status ?? (snap.messages.length > 0 ? 'idle' : 'closed')),
         totalCost: snap.sessionStats.totalCost,
         agentCount: snap.agents.filter(a => a.status !== 'dismissed' && a.status !== 'complete').length,
       });

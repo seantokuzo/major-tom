@@ -8,11 +8,11 @@
   // Scroll to bottom when new lines are added
   $effect(() => {
     terminalStore.lines.length;
-    if (outputContainer) {
-      queueMicrotask(() => {
-        outputContainer!.scrollTop = outputContainer!.scrollHeight;
-      });
-    }
+    if (!outputContainer) return;
+    const container = outputContainer;
+    queueMicrotask(() => {
+      container.scrollTop = container.scrollHeight;
+    });
   });
 
   // Request sandbox root on mount

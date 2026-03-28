@@ -1,6 +1,5 @@
 import { mount } from 'svelte'
 import './lib/theme/theme.css'
-import App from './App.svelte'
 import { registerServiceWorker } from './lib/push/push-manager'
 import { migrateFromLocalStorage, purgeOldData } from './lib/db'
 
@@ -13,6 +12,7 @@ async function bootstrap() {
     console.warn('[MajorTom] DB init failed:', e)
   }
 
+  const { default: App } = await import('./App.svelte')
   const app = mount(App, {
     target: document.getElementById('app')!,
   })

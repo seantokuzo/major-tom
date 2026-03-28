@@ -195,9 +195,15 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
           // Resolve symlinks and verify real path is also within sandbox
           try {
+            let realSandbox: string;
+            try {
+              realSandbox = await realpath(sandboxRoot);
+            } catch {
+              realSandbox = sandboxRoot;
+            }
             const realResolved = await realpath(resolved);
-            const realRel = relative(sandboxRoot, realResolved);
-            if (realResolved !== sandboxRoot && (realRel.startsWith('..') || isAbsolute(realRel))) {
+            const realRel = relative(realSandbox, realResolved);
+            if (realResolved !== realSandbox && (realRel.startsWith('..') || isAbsolute(realRel))) {
               sendToClient(ws, {
                 type: 'error',
                 code: 'INVALID_WORKING_DIR',
