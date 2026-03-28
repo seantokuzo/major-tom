@@ -4,19 +4,23 @@
   import ConnectionStatus from './lib/components/ConnectionStatus.svelte';
   import SessionInfo from './lib/components/SessionInfo.svelte';
   import ChatView from './lib/components/ChatView.svelte';
+  import Terminal from './lib/components/Terminal.svelte';
   import Toast from './lib/components/Toast.svelte';
   import OfficeCanvas from './lib/components/OfficeCanvas.svelte';
   import AgentInspector from './lib/components/AgentInspector.svelte';
   import { relay } from './lib/stores/relay.svelte';
   import { toasts } from './lib/stores/toast.svelte';
-  import { createOfficeState } from './lib/office/state.svelte';
+  import { createOfficeSessionManager } from './lib/office/session-manager.svelte';
   import type { OfficeView } from './lib/office/types';
   import { OFFICE_VIEWS } from './lib/office/layout';
+  import { sessionsStore } from './lib/stores/sessions.svelte';
   import NotificationToggle from './lib/components/NotificationToggle.svelte';
   import AuthSettings from './lib/components/AuthSettings.svelte';
   import LoginScreen from './lib/components/LoginScreen.svelte';
   import CharacterGallery from './lib/components/CharacterGallery.svelte';
   import PermissionModeSwitcher from './lib/components/PermissionModeSwitcher.svelte';
+  import SessionPanel from './lib/components/SessionPanel.svelte';
+  import { sessionStateManager } from './lib/stores/session-state.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
   // ── Toast notifications for connection state ────────────────
@@ -68,12 +72,33 @@
   let activeView = $state<OfficeView>('office');
   let headerCollapsed = $state(false);
 
-  const office = createOfficeState();
+  const officeManager = createOfficeSessionManager();
+
+  // Convenience: derived ref to the active session's office state
+  const office = $derived(officeManager.active);
 
   // Expose for debug/demo (dev-only)
   if (import.meta.env.DEV) {
-    (window as any).__office = office;
+    (window as any).__office = officeManager;
   }
+
+  // ── Per-session state switching ─────────────────────────────
+  // When relay.sessionId changes, switch the office to that session's state.
+  // Derive session name from sessionsStore metadata when available.
+  $effect(() => {
+    const sessionId = relay.sessionId;
+    const sessions = sessionsStore.sessions;
+
+    untrack(() => {
+      const meta = sessions.find(s => s.id === sessionId);
+      const name = meta?.workingDirName ?? undefined;
+      officeManager.switchTo(sessionId, name);
+    });
+  });
+
+  // Lazy rendering: OfficeCanvas is only mounted when activeTab === 'office'
+  // (via Svelte {#if}), so its $effect lifecycle automatically starts/stops
+  // the engine. No additional pause/resume logic needed here.
 
   // Wire relay agent events to office state.
   // We track which agents have been processed to avoid duplicate handling.
@@ -227,9 +252,23 @@
         {office.demoMode ? '■ Demo' : '▶ Demo'}
       </button>
       <div class="header-spacer"></div>
+      {#if relay.hasSession && relay.sessionName}
+        <span class="session-label" title={relay.sessionName}>{relay.sessionName}</span>
+      {/if}
       <div class="header-actions">
-        <AuthSettings />
-        <NotificationToggle />
+        <span class="header-settings">
+          <AuthSettings />
+          <NotificationToggle />
+        </span>
+        <button
+          class="hamburger-btn"
+          onclick={() => sessionStateManager.togglePanel()}
+          title="Sessions"
+          aria-label="Toggle session panel"
+          disabled={!relay.isConnected}
+        >
+          &#9776;
+        </button>
       </div>
     {:else}
       <span class="collapsed-status">
@@ -276,11 +315,18 @@
 
   <div class="main-content">
     {#if activeTab === 'chat'}
-      <ChatView />
+      {#if relay.isConnected && !relay.hasSession}
+        <Terminal />
+      {:else}
+        <ChatView />
+      {/if}
     {:else if activeTab === 'characters'}
       <CharacterGallery />
     {:else}
       <div class="office-wrapper" class:demo-active={office.demoMode}>
+        {#if officeManager.activeSessionId}
+          <div class="session-badge">{officeManager.activeSessionName}</div>
+        {/if}
         <OfficeCanvas
           engine={office.engine}
           desks={office.desks}
@@ -299,6 +345,7 @@
     {/if}
   </div>
   <Toast />
+  <SessionPanel />
 
   {#if relay.authChecked && !relay.user}
     <LoginScreen />
@@ -438,9 +485,61 @@
     flex-shrink: 0;
   }
 
-  /* Hide auth & notification settings on mobile — accessible via ConnectionBar */
+  /* Hide auth & notification settings on mobile — accessible via ConnectionBar.
+     But keep hamburger visible. Use a wrapper span to target hiding. */
   @media (max-width: 600px) {
-    .header-actions {
+    .header-settings {
+      display: none;
+    }
+  }
+
+  .header-settings {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-sm);
+  }
+
+  .hamburger-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--r-sm);
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .hamburger-btn:hover:not(:disabled) {
+    color: var(--text-primary);
+    background: var(--surface-hover);
+    border-color: var(--accent);
+  }
+
+  .hamburger-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .session-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  @media (max-width: 400px) {
+    .session-label {
       display: none;
     }
   }
@@ -514,6 +613,25 @@
     position: relative;
     display: flex;
     min-height: 0;
+  }
+
+  .session-badge {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    background: rgba(30, 30, 40, 0.85);
+    border: 1px solid var(--border);
+    padding: 2px 10px;
+    border-radius: var(--r-full);
+    pointer-events: none;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
   }
 
   .office-wrapper.demo-active {

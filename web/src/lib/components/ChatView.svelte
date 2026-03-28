@@ -5,7 +5,8 @@
   import ApprovalCard from './ApprovalCard.svelte';
   import CommandPalette from './CommandPalette.svelte';
   import PromptHistoryOverlay from './PromptHistoryOverlay.svelte';
-  import SessionDrawer from './SessionDrawer.svelte';
+
+  import { sessionStateManager } from '../stores/session-state.svelte';
   import DeviceList from './DeviceList.svelte';
   import StreamingIndicator from './StreamingIndicator.svelte';
   import ToolFeed from './ToolFeed.svelte';
@@ -25,7 +26,7 @@
   let templateSaveOpen = $state(false);
   let saveDialogContent = $state('');
   let historyOpen = $state(false);
-  let sessionDrawerOpen = $state(false);
+
   let devicesOpen = $state(false);
   let fileTreeOpen = $state(false);
   let countdownToastRef: CountdownToast | undefined;
@@ -152,7 +153,7 @@
     if (isNearBottom) queueMicrotask(scrollToBottom);
   });
 
-  // Persist messages to localStorage (debounced to avoid jank during streaming)
+  // Persist messages to IndexedDB (debounced to avoid jank during streaming)
   let persistTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
     relay.messages.length;
@@ -287,14 +288,14 @@
     onClose={handlePaletteClose}
     onOpenTemplates={handleOpenTemplates}
     onOpenSaveTemplate={handleOpenSaveTemplate}
-    onOpenSessions={() => { sessionDrawerOpen = true; }}
+    onOpenSessions={() => { sessionStateManager.togglePanel(); }}
     onOpenDevices={() => { devicesOpen = true; }}
     onOpenFiles={openFileTree}
   />
   <TemplateDrawer bind:open={templateDrawerOpen} onClose={handleTemplateDrawerClose} />
   <TemplateSaveDialog bind:open={templateSaveOpen} onClose={handleTemplateSaveClose} initialContent={saveDialogContent} />
   <PromptHistoryOverlay bind:open={historyOpen} onClose={handleHistoryClose} onSelectEntry={handleHistorySelect} />
-  <SessionDrawer bind:open={sessionDrawerOpen} onclose={() => { sessionDrawerOpen = false; }} />
+
 
   {#if devicesOpen}
     <!-- svelte-ignore a11y_no_static_element_interactions -->

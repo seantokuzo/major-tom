@@ -13,6 +13,9 @@ import type {
 import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
 import { contextStore } from './context.svelte';
+import { db } from '../db';
+import { terminalStore } from './terminal.svelte';
+import { sessionStateManager, extractDirName } from './session-state.svelte';
 
 // ── Chat message model ──────────────────────────────────────
 
@@ -95,66 +98,12 @@ export interface AuthUser {
   picture?: string;
 }
 
-// ── localStorage keys ───────────────────────────────────────
+// ── localStorage keys (only for small synchronous state) ────
 
 const STORAGE_KEYS = {
-  messages: 'mt-chat-messages',
   sessionId: 'mt-session-id',
-  commandUsage: 'mt-command-usage',
   authToken: 'mt-auth-token',
 } as const;
-
-// ── Serialization helpers ───────────────────────────────────
-
-interface SerializedMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'tool' | 'system';
-  content: string;
-  timestamp: string;
-  toolMeta?: ToolMeta;
-}
-
-/** Truncate large string values in toolMeta to prevent localStorage quota blowout */
-function truncateToolMeta(meta: ToolMeta): ToolMeta {
-  const truncate = (val: unknown): unknown => {
-    if (typeof val === 'string' && val.length > 500) return val.slice(0, 500) + '\u2026[truncated]';
-    if (typeof val === 'object' && val !== null) {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(val)) out[k] = truncate(v);
-      return out;
-    }
-    return val;
-  };
-  const result: ToolMeta = { ...meta, input: truncate(meta.input) as Record<string, unknown> };
-  // Also truncate output which can be a very large JSON string
-  if (typeof result.output === 'string' && result.output.length > 500) {
-    result.output = result.output.slice(0, 500) + '\u2026[truncated]';
-  }
-  return result;
-}
-
-function serializeMessages(messages: ChatMessage[]): string {
-  const serializable: SerializedMessage[] = messages.map((m) => ({
-    id: m.id,
-    role: m.role,
-    content: m.content,
-    timestamp: m.timestamp.toISOString(),
-    ...(m.toolMeta ? { toolMeta: truncateToolMeta(m.toolMeta) } : {}),
-  }));
-  return JSON.stringify(serializable);
-}
-
-function deserializeMessages(json: string): ChatMessage[] {
-  try {
-    const parsed = JSON.parse(json) as SerializedMessage[];
-    return parsed.map((m) => ({
-      ...m,
-      timestamp: new Date(m.timestamp),
-    }));
-  } catch {
-    return [];
-  }
-}
 
 // ── Relay store ─────────────────────────────────────────────
 
@@ -235,12 +184,20 @@ class RelayStore {
     return this.user !== null;
   }
 
+  /** Display name for the active session (from sessionStateManager) */
+  get sessionName(): string {
+    if (!this.sessionId) return '';
+    return sessionStateManager.getSessionName(this.sessionId);
+  }
+
   // Internal
   private socket = new RelaySocket();
   private wasConnected = false;
   private storedSessionId: string | null = null;
   private persistenceInitialized = false;
   private isReattaching = false;
+  /** Pending working dir from startSessionAt — used to tag session on session.info */
+  private pendingWorkingDir: string | null = null;
 
   constructor() {
     this.socket.onStateChange = (state) => {
@@ -282,7 +239,7 @@ class RelayStore {
       this.handleMessage(message);
     };
 
-    // Restore from localStorage
+    // Restore synchronous state from localStorage, then async from IndexedDB
     this.restoreFromStorage();
 
     // Check auth session (cookie-based)
@@ -366,15 +323,13 @@ class RelayStore {
     if (typeof window === 'undefined') return;
 
     try {
-      const storedMessages = localStorage.getItem(STORAGE_KEYS.messages);
-      if (storedMessages) {
-        this.messages = deserializeMessages(storedMessages);
-      }
-
       const storedSessionId = localStorage.getItem(STORAGE_KEYS.sessionId);
       if (storedSessionId) {
         this.storedSessionId = storedSessionId;
         // Don't set sessionId yet — wait for successful reattach
+
+        // Load messages for this session from IndexedDB (async)
+        this.loadMessagesFromDb(storedSessionId);
       }
 
       const storedToken = localStorage.getItem(STORAGE_KEYS.authToken);
@@ -392,15 +347,38 @@ class RelayStore {
     this.persistenceInitialized = true;
   }
 
+  /** Load messages from IndexedDB for a given session */
+  private async loadMessagesFromDb(sessionId: string): Promise<void> {
+    try {
+      const rows = await db.messages
+        .where('sessionId')
+        .equals(sessionId)
+        .toArray();
+
+      if (rows.length > 0 && this.messages.length === 0) {
+        // Only apply DB rows if no newer messages have arrived (e.g. from socket reattach)
+        // Sort by timestamp ascending — lexical messageId order breaks at counter 10+
+        rows.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        this.messages = rows.map((row) => ({
+          id: row.messageId,
+          role: row.role,
+          content: row.content,
+          timestamp: new Date(row.timestamp),
+          ...(row.toolMeta ? { toolMeta: row.toolMeta } : {}),
+        }));
+      }
+    } catch (e) {
+      console.warn('[MajorTom] Failed to load messages from IndexedDB:', e);
+    }
+  }
+
   /** Call from an $effect in a component to persist messages reactively */
   persistMessages(): void {
     if (!this.persistenceInitialized || typeof window === 'undefined') return;
-    try {
-      const json = serializeMessages(this.messages);
-      localStorage.setItem(STORAGE_KEYS.messages, json);
-    } catch {
-      // localStorage unavailable or quota exceeded — degrade gracefully
-    }
+    // Delegate to session state manager which handles IndexedDB
+    sessionStateManager.persistActive(this).catch(() => {
+      // IndexedDB unavailable — degrade gracefully
+    });
   }
 
   private persistSessionId(): void {
@@ -483,15 +461,61 @@ class RelayStore {
   }
 
   newSession(): void {
+    // Snapshot current session before tearing down
+    if (this.sessionId) {
+      sessionStateManager.snapshotFrom(this);
+      sessionStateManager.saveToDb(this.sessionId).catch(() => {});
+    }
     // Tear down current session and clear input state
     this.sessionId = null;
     this.inputText = '';
     this.inputPrefix = '';
+    sessionStateManager.activeSessionId = null;
+    this.persistSessionId();
+    // Don't auto-start — go to terminal so user picks a directory
+  }
+
+  /** Start a new session (legacy path — starts without directory picker) */
+  newSessionImmediate(): void {
+    if (this.sessionId) {
+      sessionStateManager.snapshotFrom(this);
+      sessionStateManager.saveToDb(this.sessionId).catch(() => {});
+    }
+    this.sessionId = null;
+    this.inputText = '';
+    this.inputPrefix = '';
+    sessionStateManager.activeSessionId = null;
     this.persistSessionId();
     if (this.isConnected) {
-      // startSession() handles clearing messages, approvals, agents, stats, etc.
       this.startSession();
     }
+  }
+
+  /** End current session and return to terminal (no auto-restart) */
+  endSession(): void {
+    const endingId = this.sessionId;
+    if (endingId && this.isConnected) {
+      this.socket.send({ type: 'session.end', sessionId: endingId });
+    }
+    // Snapshot before clearing so it's saved
+    if (endingId) {
+      sessionStateManager.snapshotFrom(this);
+      sessionStateManager.saveToDb(endingId).catch(() => {});
+    }
+    this.sessionId = null;
+    this.inputText = '';
+    this.inputPrefix = '';
+    this.messages = [];
+    this.pendingApprovals = [];
+    this.agents = [];
+    this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
+    this.isWaitingForResponse = false;
+    this.activeToolName = null;
+    this.toolActivities = [];
+    this.isViewingHistory = false;
+    sessionStateManager.activeSessionId = null;
+    this.persistSessionId();
+    contextStore.clear();
   }
 
   clearMessages(): void {
@@ -585,9 +609,41 @@ class RelayStore {
     if (!this.isConnected) return;
     sessionsStore.markLoading();
     this.socket.send({ type: 'session.list' });
+    // Snapshot current state so session list is accurate
+    if (this.sessionId) {
+      sessionStateManager.snapshotFrom(this);
+    }
   }
 
   switchSession(sessionId: string): void {
+    // Snapshot current session state before switching
+    if (this.sessionId && this.sessionId !== sessionId) {
+      sessionStateManager.snapshotFrom(this);
+      // Fire-and-forget save to IndexedDB
+      sessionStateManager.saveToDb(this.sessionId).catch(() => {});
+    }
+
+    // Set sessionId immediately so any prompt sent after switchSession targets the right session
+    this.sessionId = sessionId;
+    sessionStateManager.activeSessionId = sessionId;
+    // Persist immediately so a reload during attach reattaches to the correct session
+    this.persistSessionId();
+
+    // Try to restore target session from cache for instant switch
+    const restored = sessionStateManager.restoreTo(this, sessionId);
+    if (!restored) {
+      // No cached state — clear for a fresh start
+      this.messages = [];
+      this.pendingApprovals = [];
+      this.agents = [];
+      this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
+      this.toolActivities = [];
+      this.isWaitingForResponse = false;
+      this.activeToolName = null;
+      this.isViewingHistory = false;
+    }
+
+    // Send attach to relay server
     this.socket.send({ type: 'session.attach', sessionId });
   }
 
@@ -631,26 +687,76 @@ class RelayStore {
     });
   }
 
-  // ── Command usage tracking ────────────────────────────────
+  // ── Filesystem browsing ─────────────────────────────────
+
+  requestFsLs(path: string): void {
+    this.socket.send({ type: 'fs.ls', path });
+  }
+
+  requestFsReadFile(path: string): void {
+    this.socket.send({ type: 'fs.readFile', path });
+  }
+
+  requestFsCwd(): void {
+    this.socket.send({ type: 'fs.cwd' });
+  }
+
+  /** Start a session at a specific working directory */
+  startSessionAt(workingDir: string): void {
+    // Snapshot current session before starting new one
+    if (this.sessionId) {
+      sessionStateManager.snapshotFrom(this);
+      sessionStateManager.saveToDb(this.sessionId).catch(() => {});
+    }
+    this.messages = [];
+    this.pendingApprovals = [];
+    this.agents = [];
+    this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
+    this.isWaitingForResponse = false;
+    this.activeToolName = null;
+    this.toolActivities = [];
+    this.isViewingHistory = false;
+    contextStore.clear();
+    this.pendingWorkingDir = workingDir;
+    this.socket.send({ type: 'session.start', adapter: 'cli', workingDir });
+  }
+
+  // ── Command usage tracking (IndexedDB) ─────────────────────
+
+  /** In-memory cache of command usage counts, synced from IndexedDB */
+  private commandUsageCache: Record<string, number> = {};
+  private commandUsageLoaded = false;
+
+  /** Load command usage from IndexedDB into cache */
+  private async loadCommandUsage(): Promise<void> {
+    if (this.commandUsageLoaded) return;
+    try {
+      const setting = await db.settings.get('commandUsage');
+      if (setting && typeof setting.value === 'object' && setting.value !== null) {
+        this.commandUsageCache = setting.value as Record<string, number>;
+      }
+      this.commandUsageLoaded = true;
+    } catch {
+      // IndexedDB unavailable — use empty cache
+    }
+  }
 
   getCommandUsage(): Record<string, number> {
     if (typeof window === 'undefined') return {};
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEYS.commandUsage) || '{}');
-    } catch {
-      return {};
+    // Kick off async load if not yet loaded — returns cache (may be empty on first call)
+    if (!this.commandUsageLoaded) {
+      this.loadCommandUsage();
     }
+    return { ...this.commandUsageCache };
   }
 
   trackCommandUsage(command: string): void {
     if (typeof window === 'undefined') return;
-    try {
-      const usage = this.getCommandUsage();
-      usage[command] = (usage[command] || 0) + 1;
-      localStorage.setItem(STORAGE_KEYS.commandUsage, JSON.stringify(usage));
-    } catch {
-      // localStorage unavailable — skip tracking
-    }
+    this.commandUsageCache[command] = (this.commandUsageCache[command] || 0) + 1;
+    // Fire-and-forget persist to IndexedDB
+    db.settings.put({ key: 'commandUsage', value: { ...this.commandUsageCache } }).catch(() => {
+      // IndexedDB unavailable — in-memory only
+    });
   }
 
   // ── Message routing ─────────────────────────────────────
@@ -669,10 +775,20 @@ class RelayStore {
         this.addApproval(message);
         break;
 
-      case 'session.info':
+      case 'session.info': {
         this.sessionId = message.sessionId;
         this.isViewingHistory = false;
         this.persistSessionId();
+
+        // Register with session state manager, using pending working dir if available
+        const wd = this.pendingWorkingDir;
+        this.pendingWorkingDir = null;
+        sessionStateManager.registerSession(
+          message.sessionId,
+          wd ? extractDirName(wd) : undefined,
+          wd ?? undefined,
+        );
+
         // Only show "Session restored" when we were explicitly reattaching
         if (this.isReattaching && this.messages.length > 0) {
           this.messages.push({
@@ -684,6 +800,7 @@ class RelayStore {
         }
         this.isReattaching = false;
         break;
+      }
 
       case 'session.result':
         this.isWaitingForResponse = false;
@@ -814,6 +931,7 @@ class RelayStore {
           (typeof message.message === 'string' && message.message.includes('Session not found'));
         if (isSessionGone) {
           // Dead session — clear stale state, user gets a clean "Start Session" screen
+          const deadId = this.sessionId;
           this.sessionId = null;
           this.storedSessionId = null;
           this.persistSessionId();
@@ -821,6 +939,7 @@ class RelayStore {
           this.pendingApprovals = [];
           this.agents = [];
           this.toolActivities = [];
+          if (deadId) sessionStateManager.removeSession(deadId);
         } else {
           this.messages.push({
             id: uid(),
@@ -841,6 +960,25 @@ class RelayStore {
         });
         break;
 
+      case 'session.ended': {
+        // Session was ended (by us or another client) — clean up
+        const endedId = message.sessionId;
+        if (this.sessionId === endedId) {
+          this.sessionId = null;
+          this.messages = [];
+          this.pendingApprovals = [];
+          this.agents = [];
+          this.toolActivities = [];
+          this.sessionStats = { totalCost: 0, turnCount: 0, totalDuration: 0, inputTokens: 0, outputTokens: 0 };
+          this.isWaitingForResponse = false;
+          this.activeToolName = null;
+          sessionStateManager.activeSessionId = null;
+          this.persistSessionId();
+        }
+        sessionStateManager.removeSession(endedId);
+        break;
+      }
+
       case 'connection.status':
         // Handled implicitly by socket state
         break;
@@ -859,6 +997,8 @@ class RelayStore {
 
       case 'session.list.response':
         sessionsStore.handleListResponse(message.sessions);
+        // Update session state manager with relay's session list
+        sessionStateManager.updateFromRelayList(message.sessions);
         break;
 
       case 'session.history':
@@ -918,6 +1058,36 @@ class RelayStore {
           delaySeconds: message.delaySeconds,
           godSubMode: message.godSubMode,
         };
+        break;
+
+      // ── Filesystem responses ──────────────────────────────
+      case 'fs.ls.response':
+        terminalStore.isLoading = false;
+        // If this was a cd validation, update cwd
+        if (terminalStore.pendingCdTarget) {
+          terminalStore.cwd = terminalStore.pendingCdTarget;
+          terminalStore.pendingCdTarget = null;
+        } else {
+          terminalStore.addOutput(terminalStore.formatLsOutput(message.entries, terminalStore.lastLsDetailed ?? false));
+        }
+        break;
+
+      case 'fs.readFile.response':
+        terminalStore.isLoading = false;
+        terminalStore.addOutput(message.content);
+        break;
+
+      case 'fs.cwd.response':
+        terminalStore.isLoading = false;
+        terminalStore.sandboxRoot = message.path;
+        // cwd uses sandbox-relative notation — ~ represents the sandbox root
+        terminalStore.cwd = '~';
+        break;
+
+      case 'fs.error':
+        terminalStore.isLoading = false;
+        terminalStore.pendingCdTarget = null; // Clear pending cd on error
+        terminalStore.addError(message.message);
         break;
     }
   }

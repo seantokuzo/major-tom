@@ -1,7 +1,9 @@
 // Prompt template store — reactive state for saved prompt templates
 // Uses Svelte 5 runes ($state, $derived)
+// Persisted via IndexedDB (Dexie)
 
-const STORAGE_KEY = 'mt-prompt-templates';
+import { db, type DbTemplate } from '../db';
+
 const MAX_TEMPLATES = 100;
 
 // ── Template model ──────────────────────────────────────────
@@ -26,6 +28,9 @@ function uid(): string {
 class TemplateStore {
   templates = $state<PromptTemplate[]>([]);
 
+  /** Serialization chain — ensures only one persist runs at a time */
+  private persistChain: Promise<void> = Promise.resolve();
+
   /** All unique categories from existing templates */
   categories = $derived(
     [...new Set(this.templates.map((t) => t.category).filter(Boolean))] as string[]
@@ -40,56 +45,56 @@ class TemplateStore {
   );
 
   constructor() {
-    this.loadFromStorage();
+    this.loadFromDb();
   }
 
-  // ── Persistence ───────────────────────────────────────────
+  // ── Persistence (IndexedDB) ────────────────────────────────
 
-  private loadFromStorage(): void {
+  private async loadFromDb(): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          const now = new Date().toISOString();
-          this.templates = parsed
-            .filter(
-              (entry: unknown): entry is Record<string, unknown> =>
-                typeof entry === 'object' &&
-                entry !== null &&
-                typeof (entry as Record<string, unknown>).name === 'string' &&
-                typeof (entry as Record<string, unknown>).content === 'string'
-            )
-            .map((entry) => {
-              const id = typeof entry.id === 'string' && entry.id ? entry.id : uid();
-              const cat = typeof entry.category === 'string' ? entry.category.trim() : '';
-              const rawCount = typeof entry.usageCount === 'number' ? entry.usageCount : 0;
-              const usageCount = Number.isFinite(rawCount) && rawCount >= 0 ? rawCount : 0;
-              return {
-                id,
-                name: entry.name as string,
-                content: entry.content as string,
-                category: cat || undefined,
-                usageCount,
-                createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : now,
-                updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt : now,
-              };
-            })
-            .slice(0, MAX_TEMPLATES);
-        }
+      const rows = await db.templates.toArray();
+      if (rows.length > 0) {
+        this.templates = rows.slice(0, MAX_TEMPLATES).map((row) => ({
+          id: row.id,
+          name: row.name,
+          content: row.content,
+          category: row.category,
+          usageCount: row.usageCount,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        }));
       }
     } catch {
-      // Corrupted data — start fresh
+      // IndexedDB unavailable — start fresh
     }
   }
 
   private persist(): void {
+    // Chain persists so overlapping calls don't race (clear + bulkPut is not atomic across calls)
+    this.persistChain = this.persistChain.then(() => this.doPersist()).catch(() => {});
+  }
+
+  private async doPersist(): Promise<void> {
     if (typeof window === 'undefined') return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.templates));
+      const rows: DbTemplate[] = this.templates.map((t) => ({
+        id: t.id,
+        name: t.name,
+        content: t.content,
+        category: t.category,
+        usageCount: t.usageCount,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
+      }));
+      await db.transaction('rw', db.templates, async () => {
+        await db.templates.clear();
+        if (rows.length > 0) {
+          await db.templates.bulkPut(rows);
+        }
+      });
     } catch {
-      // localStorage unavailable or quota exceeded
+      // IndexedDB unavailable or quota exceeded
     }
   }
 

@@ -1,7 +1,9 @@
 // Prompt history store — deduplicated history with arrow-key navigation and search
 // Uses Svelte 5 runes ($state)
+// Persisted via IndexedDB (Dexie)
 
-const STORAGE_KEY = 'mt-prompt-history';
+import { db, type DbPromptHistory } from '../db';
+
 const MAX_ENTRIES = 200;
 
 // ── History entry model ─────────────────────────────────────
@@ -12,42 +14,13 @@ export interface HistoryEntry {
   count: number;
 }
 
-// ── Serialization helpers ───────────────────────────────────
-
-function loadFromStorage(): HistoryEntry[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const json = localStorage.getItem(STORAGE_KEY);
-    if (!json) return [];
-    const parsed = JSON.parse(json);
-    if (!Array.isArray(parsed)) return [];
-    const entries = parsed
-      .filter((item: unknown): item is HistoryEntry => {
-        if (typeof item !== 'object' || item === null) return false;
-        const c = item as { text?: unknown; timestamp?: unknown; count?: unknown };
-        return typeof c.text === 'string' && typeof c.timestamp === 'string'
-          && typeof c.count === 'number' && Number.isFinite(c.count);
-      })
-      .slice(0, MAX_ENTRIES);
-    return entries;
-  } catch {
-    return [];
-  }
-}
-
-function saveToStorage(entries: HistoryEntry[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  } catch {
-    // localStorage unavailable or quota exceeded — degrade gracefully
-  }
-}
-
 // ── Prompt history store ────────────────────────────────────
 
 class PromptHistoryStore {
   entries = $state<HistoryEntry[]>([]);
+
+  /** Serialization chain — ensures only one persistToDb runs at a time */
+  private persistChain: Promise<void> = Promise.resolve();
 
   /** Current navigation index. -1 = not navigating (user is typing fresh input) */
   private navIndex = -1;
@@ -57,7 +30,55 @@ class PromptHistoryStore {
   private navigating = false;
 
   constructor() {
-    this.entries = loadFromStorage();
+    this.loadFromDb();
+  }
+
+  // ── Persistence (IndexedDB) ────────────────────────────────
+
+  private async loadFromDb(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      const rows = await db.promptHistory.toArray();
+      if (rows.length > 0) {
+        // Sort by timestamp descending (most recent first) to match the old LIFO behavior
+        const sorted = rows
+          .filter((r) => typeof r.text === 'string' && typeof r.timestamp === 'string')
+          .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+          .slice(0, MAX_ENTRIES);
+
+        this.entries = sorted.map((r) => ({
+          text: r.text,
+          timestamp: r.timestamp,
+          count: r.count,
+        }));
+      }
+    } catch {
+      // IndexedDB unavailable — start fresh
+    }
+  }
+
+  private persistToDb(): void {
+    // Chain persists so overlapping calls don't race (clear + bulkAdd is not atomic across calls)
+    this.persistChain = this.persistChain.then(() => this.doPersistToDb()).catch(() => {});
+  }
+
+  private async doPersistToDb(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      const rows: Omit<DbPromptHistory, 'id'>[] = this.entries.map((e) => ({
+        text: e.text,
+        timestamp: e.timestamp,
+        count: e.count,
+      }));
+      await db.transaction('rw', db.promptHistory, async () => {
+        await db.promptHistory.clear();
+        if (rows.length > 0) {
+          await db.promptHistory.bulkAdd(rows);
+        }
+      });
+    } catch {
+      // IndexedDB unavailable — degrade gracefully
+    }
   }
 
   // ── Mutations ─────────────────────────────────────────────
@@ -93,7 +114,7 @@ class PromptHistoryStore {
       }
     }
 
-    this.persist();
+    this.persistToDb();
     this.resetNavigation();
   }
 
@@ -154,14 +175,8 @@ class PromptHistoryStore {
   /** Clear all history entries. */
   clear(): void {
     this.entries = [];
-    this.persist();
+    this.persistToDb();
     this.resetNavigation();
-  }
-
-  // ── Persistence ───────────────────────────────────────────
-
-  private persist(): void {
-    saveToStorage(this.entries);
   }
 }
 

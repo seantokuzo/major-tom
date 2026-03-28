@@ -1,7 +1,9 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { WebSocket } from 'ws';
-import { resolve, relative } from 'node:path';
+import { resolve, relative, join, isAbsolute } from 'node:path';
 import { readFileSync, statSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
 import type { SessionManager } from '../sessions/session-manager.js';
 import type { SessionPersistence, PersistedSession } from '../sessions/session-persistence.js';
@@ -15,6 +17,7 @@ import { encodeServerMessage, safeDecode } from '../protocol/codec.js';
 import { truncateMetaField } from '../sessions/session-transcript.js';
 import { scanWorkspaceTree } from '../workspace/tree-scanner.js';
 import type { ClientMessage, ServerMessage, FileNode } from '../protocol/messages.js';
+import { createFsHandlers, type FsServerMessage } from './fs.js';
 import { logger } from '../utils/logger.js';
 
 interface WsDeps {
@@ -42,6 +45,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
   const notificationBatcher = new NotificationBatcher(pushManager);
   const clients = new Set<WebSocket>();
+
+  // ── Filesystem handlers (sandboxed browsing) ──────────────
+  const fsHandlers = createFsHandlers((ws: WebSocket, msg: FsServerMessage) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(encodeServerMessage(msg as ServerMessage));
+    }
+  });
 
   // ── Session keepalive: 10-minute timeout when all clients disconnect ──
   const SESSION_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -159,7 +169,54 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promise<void> {
     switch (message.type) {
       case 'session.start': {
-        const workDir = message.workingDir ?? claudeWorkDir;
+        let workDir = message.workingDir ?? claudeWorkDir;
+
+        // Validate workingDir against filesystem sandbox if provided
+        if (message.workingDir) {
+          const sandboxRoot = fsHandlers.sandboxRoot;
+          // Resolve ~ prefix and make absolute
+          let resolved = message.workingDir;
+          if (resolved.startsWith('~')) {
+            resolved = join(homedir(), resolved.slice(1));
+          }
+          resolved = resolve(sandboxRoot, resolved);
+
+          // Use path.relative() boundary check to prevent prefix attacks
+          // (e.g., sandboxRoot "/home/u/Documents" accepting "/home/u/Documents_evil")
+          const rel = relative(sandboxRoot, resolved);
+          if (resolved !== sandboxRoot && (rel.startsWith('..') || isAbsolute(rel))) {
+            sendToClient(ws, {
+              type: 'error',
+              code: 'INVALID_WORKING_DIR',
+              message: `Working directory is outside sandbox: ${message.workingDir}`,
+            });
+            break;
+          }
+
+          // Resolve symlinks and verify real path is also within sandbox
+          try {
+            let realSandbox: string;
+            try {
+              realSandbox = await realpath(sandboxRoot);
+            } catch {
+              realSandbox = sandboxRoot;
+            }
+            const realResolved = await realpath(resolved);
+            const realRel = relative(realSandbox, realResolved);
+            if (realResolved !== realSandbox && (realRel.startsWith('..') || isAbsolute(realRel))) {
+              sendToClient(ws, {
+                type: 'error',
+                code: 'INVALID_WORKING_DIR',
+                message: `Working directory resolves outside sandbox: ${message.workingDir}`,
+              });
+              break;
+            }
+          } catch {
+            // Path doesn't exist yet — the CLI adapter will fail with a proper error
+          }
+          workDir = resolved;
+        }
+
         const session = await cliAdapter.start(workDir);
         trackClientSession(ws, session.id);
         sendToClient(ws, {
@@ -439,6 +496,22 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       case 'session.list': {
         const sessions = sessionManager.listMeta();
         sendToClient(ws, { type: 'session.list.response', sessions });
+        break;
+      }
+
+      // ── Filesystem browsing ──────────────────────────────
+      case 'fs.ls': {
+        await fsHandlers.handleFsLs(ws, message);
+        break;
+      }
+
+      case 'fs.readFile': {
+        await fsHandlers.handleFsReadFile(ws, message);
+        break;
+      }
+
+      case 'fs.cwd': {
+        fsHandlers.handleFsCwd(ws);
         break;
       }
 
