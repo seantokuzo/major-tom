@@ -91,6 +91,9 @@ class SessionStateManager {
   // In-memory cache of session snapshots for instant switching
   private cache = new Map<string, SessionSnapshot>();
 
+  // Chain concurrent saves per-session so only one runs at a time
+  private persistChains = new Map<string, Promise<void>>();
+
   // Active session ID
   activeSessionId = $state<string | null>(null);
 
@@ -320,13 +323,22 @@ class SessionStateManager {
     }
   }
 
-  /** Persist active session messages (called from ChatView persist effect) */
+  /** Persist active session messages (called from ChatView persist effect).
+   *  Chains saves per-session so only one saveToDb runs at a time, preventing
+   *  interleaved writes where an older snapshot could clobber a newer one. */
   async persistActive(relay: RelayStateAccessor): Promise<void> {
     const id = relay.sessionId;
     if (!id) return;
     // Update cache from current relay state first
     this.snapshotFrom(relay);
-    await this.saveToDb(id);
+
+    // Chain onto previous save for this session
+    const prev = this.persistChains.get(id) ?? Promise.resolve();
+    const next = prev.then(() => this.saveToDb(id)).catch(() => {
+      // saveToDb already logs warnings internally
+    });
+    this.persistChains.set(id, next);
+    await next;
   }
 
   // ── Session list ────────────────────────────────────────────

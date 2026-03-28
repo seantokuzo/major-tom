@@ -68,11 +68,16 @@ export function createOfficeSessionManager(): OfficeSessionManager {
     return state;
   }
 
+  /** Count non-default entries in access order (DEFAULT_KEY is always-present, doesn't count) */
+  function nonDefaultCount(): number {
+    return accessOrder.filter((k) => k !== DEFAULT_KEY).length;
+  }
+
   /** Evict oldest cached states if over limit (never evict active or default) */
   function evictOldIfNeeded(): void {
     let rotations = 0;
     const maxRotations = accessOrder.length;
-    while (accessOrder.length > MAX_CACHED_SESSIONS && rotations < maxRotations) {
+    while (nonDefaultCount() > MAX_CACHED_SESSIONS && rotations < maxRotations) {
       const oldest = accessOrder[0];
       if (oldest === activeKey || oldest === DEFAULT_KEY) {
         // Can't evict active or default — rotate to end and keep trying

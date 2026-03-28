@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { WebSocket } from 'ws';
 import { resolve, relative, join, isAbsolute } from 'node:path';
 import { readFileSync, statSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
 import type { SessionManager } from '../sessions/session-manager.js';
@@ -190,6 +191,22 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
               message: `Working directory is outside sandbox: ${message.workingDir}`,
             });
             break;
+          }
+
+          // Resolve symlinks and verify real path is also within sandbox
+          try {
+            const realResolved = await realpath(resolved);
+            const realRel = relative(sandboxRoot, realResolved);
+            if (realResolved !== sandboxRoot && (realRel.startsWith('..') || isAbsolute(realRel))) {
+              sendToClient(ws, {
+                type: 'error',
+                code: 'INVALID_WORKING_DIR',
+                message: `Working directory resolves outside sandbox: ${message.workingDir}`,
+              });
+              break;
+            }
+          } catch {
+            // Path doesn't exist yet — the CLI adapter will fail with a proper error
           }
           workDir = resolved;
         }

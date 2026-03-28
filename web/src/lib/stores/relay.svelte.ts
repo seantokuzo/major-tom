@@ -355,7 +355,8 @@ class RelayStore {
         .equals(sessionId)
         .toArray();
 
-      if (rows.length > 0) {
+      if (rows.length > 0 && this.messages.length === 0) {
+        // Only apply DB rows if no newer messages have arrived (e.g. from socket reattach)
         // Sort by timestamp ascending — lexical messageId order breaks at counter 10+
         rows.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
         this.messages = rows.map((row) => ({

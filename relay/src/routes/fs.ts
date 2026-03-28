@@ -126,6 +126,25 @@ async function validatePath(requestedPath: string, sandboxRoot: string): Promise
   return resolved;
 }
 
+/**
+ * Sanitize filesystem error messages to avoid leaking absolute paths to clients.
+ * Maps common Node error codes to safe messages; falls back to a generic message.
+ */
+function sanitizeFsError(err: unknown): string {
+  if (err instanceof Error) {
+    const code = (err as NodeJS.ErrnoException).code;
+    switch (code) {
+      case 'ENOENT': return 'Path not found';
+      case 'EACCES': return 'Permission denied';
+      case 'EPERM': return 'Operation not permitted';
+      case 'EISDIR': return 'Is a directory';
+      case 'ENOTDIR': return 'Not a directory';
+      default: return 'Filesystem operation failed';
+    }
+  }
+  return 'Filesystem operation failed';
+}
+
 // ── Handlers ─────────────────────────────────────────────────
 
 export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMessage) => void) {
@@ -202,11 +221,10 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
         entries,
       });
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : 'Failed to list directory';
-      logger.warn({ path: resolved, err: errMsg }, 'fs.ls failed');
+      logger.warn({ path: resolved, err: err instanceof Error ? err.message : String(err) }, 'fs.ls failed');
       sendToClient(ws, {
         type: 'fs.error',
-        message: errMsg,
+        message: sanitizeFsError(err),
         path: requestedPath,
       });
     }
@@ -256,11 +274,10 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
         size: stat.size,
       });
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : 'Failed to read file';
-      logger.warn({ path: resolved, err: errMsg }, 'fs.readFile failed');
+      logger.warn({ path: resolved, err: err instanceof Error ? err.message : String(err) }, 'fs.readFile failed');
       sendToClient(ws, {
         type: 'fs.error',
-        message: errMsg,
+        message: sanitizeFsError(err),
         path: requestedPath,
       });
     }
