@@ -5,7 +5,6 @@
   import ApprovalCard from './ApprovalCard.svelte';
   import CommandPalette from './CommandPalette.svelte';
   import PromptHistoryOverlay from './PromptHistoryOverlay.svelte';
-  import SessionDrawer from './SessionDrawer.svelte';
   import { sessionStateManager } from '../stores/session-state.svelte';
   import DeviceList from './DeviceList.svelte';
   import StreamingIndicator from './StreamingIndicator.svelte';

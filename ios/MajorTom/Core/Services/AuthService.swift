@@ -124,8 +124,8 @@ final class AuthService {
               let url = response.url else { return nil }
 
         let cookies = HTTPCookie.cookies(withResponseHeaderFields: headers, for: url)
-        // Look for the session cookie (relay uses "mt_session")
-        return cookies.first(where: { $0.name == "mt_session" })?.value
+        // Look for the session cookie (relay uses "mt-session")
+        return cookies.first(where: { $0.name == "mt-session" })?.value
             ?? cookies.first?.value
     }
 

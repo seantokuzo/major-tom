@@ -86,7 +86,7 @@ final class RelayService {
 
         // Include session cookie for authentication if available
         if let cookie = authService?.sessionCookie {
-            try await webSocket.connect(url: url, cookie: "mt_session=\(cookie)")
+            try await webSocket.connect(url: url, cookie: "mt-session=\(cookie)")
             return
         }
 

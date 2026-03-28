@@ -4,8 +4,6 @@ struct MessageBubble: View {
     let message: ChatMessage
     @State private var relativeTime = ""
 
-    private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
-
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 60) }
@@ -26,7 +24,7 @@ struct MessageBubble: View {
             if message.role != .user { Spacer(minLength: 60) }
         }
         .onAppear { updateRelativeTime() }
-        .onReceive(timer) { _ in updateRelativeTime() }
+        .onReceive(sharedRelativeTimeTimer) { _ in updateRelativeTime() }
     }
 
     // MARK: - Content Router

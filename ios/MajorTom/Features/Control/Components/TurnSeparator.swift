@@ -1,11 +1,11 @@
 import SwiftUI
 
+/// Shared timer for relative time updates — one timer for all message bubbles and separators.
+let sharedRelativeTimeTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+
 struct TurnSeparator: View {
     let timestamp: Date
     @State private var relativeTime = ""
-
-    /// Timer that fires every 30 seconds to update the relative timestamp.
-    private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     var body: some View {
         HStack(spacing: MajorTomTheme.Spacing.sm) {
@@ -17,7 +17,7 @@ struct TurnSeparator: View {
         }
         .padding(.vertical, MajorTomTheme.Spacing.xs)
         .onAppear { updateRelativeTime() }
-        .onReceive(timer) { _ in updateRelativeTime() }
+        .onReceive(sharedRelativeTimeTimer) { _ in updateRelativeTime() }
     }
 
     private var line: some View {

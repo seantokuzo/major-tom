@@ -76,9 +76,10 @@ struct OfficeView: View {
                         scene.updateAgentName(id: agent.id, name: newName)
                     },
                     onSendMessage: relay != nil ? { message in
+                        guard let sessionId = relay?.currentSession?.id, !sessionId.isEmpty else { return }
                         Task {
                             try? await relay?.sendAgentMessage(
-                                sessionId: relay?.currentSession?.id ?? "",
+                                sessionId: sessionId,
                                 agentId: agent.id,
                                 text: message
                             )
