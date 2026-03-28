@@ -80,6 +80,12 @@ final class PermissionViewModel {
         countdownTasks[requestId]?.cancel()
         countdownTasks.removeValue(forKey: requestId)
         activeCountdowns.removeValue(forKey: requestId)
+
+        // Tell the relay to deny this request — otherwise the relay's server-side
+        // delay timer will still auto-approve after delaySeconds
+        Task {
+            try? await relay.sendApproval(requestId: requestId, decision: .deny)
+        }
     }
 
     // MARK: - Private
@@ -111,19 +117,24 @@ final class PermissionViewModel {
 
     /// Flush pending approvals client-side on mode switch.
     ///
-    /// NOTE: This intentionally performs client-side approval for god/smart modes
-    /// to provide immediate UX feedback when switching modes. The relay still validates
-    /// and enforces the actual permission decision server-side.
+    /// God mode: client auto-approves all pending (relay validates server-side).
+    /// Smart mode: relay handles via PermissionFilter allowlist — client doesn't intervene.
+    /// Delay mode: start visual countdowns (relay's server-side timer handles actual approval).
     private func flushPendingApprovals(for mode: PermissionMode) async {
         let pending = relay.pendingApprovals
         guard !pending.isEmpty else { return }
 
         switch mode {
-        case .god, .smart:
-            // Auto-approve all pending
+        case .god:
+            // Auto-approve all pending — god mode is explicit blanket approval
             for request in pending {
                 try? await relay.sendApproval(requestId: request.id, decision: .allow)
             }
+        case .smart:
+            // Smart mode is relay-driven via PermissionFilter/settings.json allowlist.
+            // Don't blanket auto-approve — the relay will resolve each request based on
+            // whether the tool matches the configured allowlist.
+            break
         case .delay:
             // Start countdowns for all pending
             for request in pending {
@@ -146,16 +157,13 @@ final class PermissionViewModel {
             guard !Task.isCancelled else { return }
         }
 
-        // Countdown finished -- auto-approve
+        // Countdown finished — clean up local state.
+        // The relay's server-side delay timer handles the actual auto-approval,
+        // so we don't send an approval here. This avoids drift between client/server
+        // timers and inconsistency when multiple clients are connected.
         guard activeCountdowns[requestId] != nil else { return }
         activeCountdowns.removeValue(forKey: requestId)
         countdownTasks.removeValue(forKey: requestId)
-
-        do {
-            try await relay.sendApproval(requestId: requestId, decision: .allow)
-        } catch {
-            // Failed to auto-approve; it will remain in manual queue
-        }
     }
 }
 
