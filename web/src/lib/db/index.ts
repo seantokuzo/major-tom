@@ -144,7 +144,7 @@ async function migrateMessages(): Promise<void> {
         ...(m.toolMeta ? { toolMeta: m.toolMeta } : {}),
       }));
 
-      await db.messages.bulkAdd(rows);
+      await db.messages.bulkPut(rows);
     }
 
     localStorage.removeItem('mt-chat-messages');

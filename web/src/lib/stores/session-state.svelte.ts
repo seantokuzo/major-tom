@@ -298,6 +298,8 @@ class SessionStateManager {
       );
 
       if (rows.length > 0) {
+        // Sort by timestamp ascending — lexical messageId order breaks at counter 10+
+        rows.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
         snap.messages = rows.map((row) => ({
           id: row.messageId,
           role: row.role,
