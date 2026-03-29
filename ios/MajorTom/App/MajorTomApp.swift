@@ -9,6 +9,7 @@ struct MajorTomApp: App {
     @State private var notificationService = NotificationService()
     @State private var liveActivityService = LiveActivityService()
     @State private var selectedTab: AppTab = .control
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -43,20 +44,23 @@ struct MajorTomApp: App {
                 handleDeepLink(deepLink)
                 notificationService.pendingDeepLink = nil
             }
-            // Handle Siri shortcut notifications
+            // Handle Siri shortcut notifications (in-process, e.g. Spotlight)
             .onReceive(NotificationCenter.default.publisher(for: .startSessionFromShortcut)) { _ in
-                selectedTab = .control
-                Task {
-                    if relay.currentSession == nil {
-                        try? await relay.startSession()
-                    }
-                }
+                handleShortcutAction(.startSession)
             }
             .onReceive(NotificationCenter.default.publisher(for: .navigateToOfficeFromShortcut)) { _ in
-                selectedTab = .office
+                handleShortcutAction(.navigateToOffice)
             }
             .onReceive(NotificationCenter.default.publisher(for: .showCostFromShortcut)) { _ in
-                selectedTab = .control
+                handleShortcutAction(.showCost)
+            }
+            // Check for cross-process shortcut actions (Siri / Shortcuts app) on scene phase change
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    if let action = ShortcutActionKey.consumeAction() {
+                        handleShortcutAction(action)
+                    }
+                }
             }
         }
     }
@@ -103,6 +107,22 @@ struct MajorTomApp: App {
                     HapticService.deny()
                 }
             }
+        }
+    }
+
+    private func handleShortcutAction(_ action: ShortcutActionKey.Action) {
+        switch action {
+        case .startSession:
+            selectedTab = .control
+            Task {
+                if relay.currentSession == nil {
+                    try? await relay.startSession()
+                }
+            }
+        case .navigateToOffice:
+            selectedTab = .office
+        case .showCost:
+            selectedTab = .control
         }
     }
 

@@ -1,6 +1,51 @@
 import AppIntents
 import SwiftUI
 
+// MARK: - Shortcut Action Keys
+
+/// Shared keys for cross-process shortcut communication via App Groups UserDefaults.
+/// NotificationCenter.default.post() does NOT work across processes (Siri/Shortcuts app).
+/// We use a shared UserDefaults suite to pass the action, and the app polls on foreground.
+enum ShortcutActionKey {
+    static let suiteName = "group.com.majortom.shortcuts"
+    static let pendingActionKey = "pendingShortcutAction"
+    static let timestampKey = "shortcutActionTimestamp"
+
+    enum Action: String {
+        case startSession
+        case navigateToOffice
+        case showCost
+    }
+
+    /// Write a pending action to App Groups UserDefaults.
+    static func postAction(_ action: Action) {
+        let defaults = UserDefaults(suiteName: suiteName) ?? UserDefaults.standard
+        defaults.set(action.rawValue, forKey: pendingActionKey)
+        defaults.set(Date().timeIntervalSince1970, forKey: timestampKey)
+    }
+
+    /// Read and consume a pending action. Returns nil if no action or stale (>10s old).
+    static func consumeAction() -> Action? {
+        let defaults = UserDefaults(suiteName: suiteName) ?? UserDefaults.standard
+        guard let rawAction = defaults.string(forKey: pendingActionKey),
+              let action = Action(rawValue: rawAction) else {
+            return nil
+        }
+
+        // Check staleness — ignore actions older than 10 seconds
+        let timestamp = defaults.double(forKey: timestampKey)
+        let age = Date().timeIntervalSince1970 - timestamp
+        guard age < 10 else {
+            defaults.removeObject(forKey: pendingActionKey)
+            return nil
+        }
+
+        // Consume the action
+        defaults.removeObject(forKey: pendingActionKey)
+        return action
+    }
+}
+
 // MARK: - Start Claude Session Intent
 
 struct StartClaudeSessionIntent: AppIntent {
@@ -9,11 +54,10 @@ struct StartClaudeSessionIntent: AppIntent {
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
-        // Post notification so the app can react to this intent
-        NotificationCenter.default.post(
-            name: .startSessionFromShortcut,
-            object: nil
-        )
+        // Write to shared UserDefaults so the app can react when it foregrounds.
+        // Also post in-process notification for Spotlight (in-app) usage.
+        ShortcutActionKey.postAction(.startSession)
+        NotificationCenter.default.post(name: .startSessionFromShortcut, object: nil)
         return .result()
     }
 }
@@ -26,10 +70,8 @@ struct CheckAgentsIntent: AppIntent {
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
-        NotificationCenter.default.post(
-            name: .navigateToOfficeFromShortcut,
-            object: nil
-        )
+        ShortcutActionKey.postAction(.navigateToOffice)
+        NotificationCenter.default.post(name: .navigateToOfficeFromShortcut, object: nil)
         return .result()
     }
 }
@@ -42,10 +84,8 @@ struct ShowCostIntent: AppIntent {
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
-        NotificationCenter.default.post(
-            name: .showCostFromShortcut,
-            object: nil
-        )
+        ShortcutActionKey.postAction(.showCost)
+        NotificationCenter.default.post(name: .showCostFromShortcut, object: nil)
         return .result()
     }
 }
@@ -92,7 +132,7 @@ struct MajorTomShortcutsProvider: AppShortcutsProvider {
     }
 }
 
-// MARK: - Notification Names for Shortcut Actions
+// MARK: - Notification Names for In-Process Shortcut Actions
 
 extension Notification.Name {
     static let startSessionFromShortcut = Notification.Name("com.majortom.shortcut.startSession")
