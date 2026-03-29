@@ -334,8 +334,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           cliAdapter.destroySession(message.sessionId);
         }
         healthMonitor.untrackSession(message.sessionId);
-        eventBuffer.removeSession(message.sessionId);
+        // Broadcast BEFORE removing buffer — broadcast() records events by sessionId,
+        // so removing first would recreate a fresh (leaked) buffer for this session.
         broadcast({ type: 'session.ended', sessionId: message.sessionId });
+        eventBuffer.removeSession(message.sessionId);
         break;
       }
 
@@ -379,6 +381,18 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
               startedAt: meta.startedAt ?? new Date().toISOString(),
             });
           }
+        }
+
+        // For persisted-only sessions the event buffer is empty (no live stream).
+        // Send the persisted transcript as session.history so the client has context,
+        // mirroring what session.attach does.
+        if (isPersistedOnly) {
+          const transcript = await sessionManager.getPersistedTranscript(resumeSessionId);
+          sendToClient(ws, {
+            type: 'session.history',
+            sessionId: resumeSessionId,
+            entries: transcript,
+          });
         }
 
         // Replay missed events from the event buffer

@@ -35,6 +35,11 @@ final class RelayService {
     // Workspace tree
     var workspaceFiles: [FileNode] = []
 
+    /// Monotonic counter bumped on every relay response. Poll loops can snapshot
+    /// this before sending a request and break as soon as the value changes,
+    /// which correctly handles empty-result responses.
+    private(set) var responseCounter: UInt64 = 0
+
     // Context
     var contextFiles: [String] = []
 
@@ -287,6 +292,7 @@ final class RelayService {
                     startedAt: event.startedAt,
                     tokenUsage: event.tokenUsage
                 )
+                responseCounter &+= 1
                 // Start Live Activity for new session
                 liveActivityService?.startActivity(
                     sessionId: event.sessionId,
@@ -326,6 +332,7 @@ final class RelayService {
         case .sessionListResponse:
             if let event = try? MessageCodec.decode(SessionListResponseEvent.self, from: data) {
                 sessionList = event.sessions
+                responseCounter &+= 1
             }
 
         case .sessionHistory:
@@ -435,6 +442,7 @@ final class RelayService {
         case .workspaceTreeResponse:
             if let event = try? MessageCodec.decode(WorkspaceTreeResponseEvent.self, from: data) {
                 workspaceFiles = event.files
+                responseCounter &+= 1
             }
 
         case .contextAddResponse, .contextRemoveResponse:

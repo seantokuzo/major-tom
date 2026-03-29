@@ -19,9 +19,11 @@ interface PersistedSubscriptions {
   version: 1;
   updatedAt: string;
   subscriptions: PushSubscriptionData[];
+  /** VAPID public key that was active when these subscriptions were created */
+  vapidPublicKey?: string;
 }
 
-// ── Constants ─────────��──────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────
 
 const SUBSCRIPTIONS_FILE = join(homedir(), '.major-tom', 'push-subscriptions.json');
 const DEBOUNCE_MS = 2000;
@@ -31,8 +33,12 @@ const DEBOUNCE_MS = 2000;
 export class PushPersistence {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /** Load subscriptions from disk. Returns empty array if file doesn't exist. */
-  async load(): Promise<PushSubscriptionData[]> {
+  /**
+   * Load subscriptions from disk. Returns empty array if file doesn't exist
+   * or if the current VAPID key doesn't match the persisted key (subscriptions
+   * are bound to the VAPID key that created them — mismatched keys = stale subs).
+   */
+  async load(currentVapidPublicKey: string): Promise<PushSubscriptionData[]> {
     try {
       const data = await readFile(SUBSCRIPTIONS_FILE, 'utf-8');
       const parsed = JSON.parse(data) as PersistedSubscriptions;
@@ -40,6 +46,18 @@ export class PushPersistence {
       // Validate structure
       if (!parsed.subscriptions || !Array.isArray(parsed.subscriptions)) {
         logger.warn('Push subscriptions file has invalid format, returning empty');
+        return [];
+      }
+
+      // If VAPID key changed since these subscriptions were saved, they are stale.
+      // Push sends will fail because the subscription is bound to the old key pair.
+      if (parsed.vapidPublicKey && parsed.vapidPublicKey !== currentVapidPublicKey) {
+        logger.warn(
+          { persisted: parsed.subscriptions.length },
+          'VAPID key changed since subscriptions were saved — clearing stale subscriptions',
+        );
+        // Overwrite the file to clear stale data
+        await this.writeToDisk([], currentVapidPublicKey);
         return [];
       }
 
@@ -65,27 +83,27 @@ export class PushPersistence {
   }
 
   /** Debounced save — waits DEBOUNCE_MS after last call before writing */
-  save(subscriptions: PushSubscriptionData[]): void {
+  save(subscriptions: PushSubscriptionData[], vapidPublicKey: string): void {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
 
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null;
-      void this.writeToDisk(subscriptions);
+      void this.writeToDisk(subscriptions, vapidPublicKey);
     }, DEBOUNCE_MS);
   }
 
   /** Immediate save — bypasses debounce (for shutdown) */
-  async saveImmediate(subscriptions: PushSubscriptionData[]): Promise<void> {
+  async saveImmediate(subscriptions: PushSubscriptionData[], vapidPublicKey: string): Promise<void> {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
-    await this.writeToDisk(subscriptions);
+    await this.writeToDisk(subscriptions, vapidPublicKey);
   }
 
-  private async writeToDisk(subscriptions: PushSubscriptionData[]): Promise<void> {
+  private async writeToDisk(subscriptions: PushSubscriptionData[], vapidPublicKey: string): Promise<void> {
     try {
       await mkdir(dirname(SUBSCRIPTIONS_FILE), { recursive: true });
 
@@ -93,6 +111,7 @@ export class PushPersistence {
         version: 1,
         updatedAt: new Date().toISOString(),
         subscriptions,
+        vapidPublicKey,
       };
 
       await writeFile(SUBSCRIPTIONS_FILE, JSON.stringify(persisted, null, 2), 'utf-8');

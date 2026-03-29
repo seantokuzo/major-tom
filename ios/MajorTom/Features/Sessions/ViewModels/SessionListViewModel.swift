@@ -36,17 +36,18 @@ final class SessionListViewModel {
         isLoading = true
         defer { isLoading = false }
 
-        let previousCount = relay.sessionList.count
         do {
+            let counterBefore = relay.responseCounter
             try await relay.requestSessionList()
-            // Poll for response arrival instead of arbitrary sleep.
-            // Check every 50ms for up to 2 seconds.
+            // Poll until the relay response arrives (responseCounter changes).
+            // Respects task cancellation so the loop stops when the view disappears.
             for _ in 0..<40 {
-                if relay.sessionList.count != previousCount || !relay.sessionList.isEmpty { break }
-                try? await Task.sleep(for: .milliseconds(50))
+                if Task.isCancelled { break }
+                if relay.responseCounter != counterBefore { break }
+                try await Task.sleep(for: .milliseconds(50))
             }
         } catch {
-            // Silently fail — list will just not update
+            // Silently fail — list will just not update (includes CancellationError)
         }
     }
 
@@ -69,10 +70,13 @@ final class SessionListViewModel {
             // Clear current chat only after successful attach
             relay.chatMessages.removeAll()
 
-            // Poll for session.info to arrive instead of arbitrary sleep.
+            // Poll until session.info arrives (responseCounter changes).
+            // Respects task cancellation so the loop stops when the view disappears.
+            let counterBefore = relay.responseCounter
             for _ in 0..<40 {
-                if relay.currentSession?.id == session.id { break }
-                try? await Task.sleep(for: .milliseconds(50))
+                if Task.isCancelled { break }
+                if relay.responseCounter != counterBefore { break }
+                try await Task.sleep(for: .milliseconds(50))
             }
 
             // Restore locally saved messages for this session

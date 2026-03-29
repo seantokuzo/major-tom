@@ -53,6 +53,7 @@ export class HealthMonitor {
   private config: HealthMonitorConfig;
   private cliAdapter: ClaudeCliAdapter;
   private sessionManager: SessionManager;
+  private wired = false;
 
   constructor(
     cliAdapter: ClaudeCliAdapter,
@@ -234,8 +235,11 @@ export class HealthMonitor {
     }
   }
 
-  /** Wire into adapter events to auto-track activity */
+  /** Wire into adapter events to auto-track activity (idempotent — only wires once) */
   private wireAdapterEvents(): void {
+    if (this.wired) return;
+    this.wired = true;
+
     this.cliAdapter.on('output', (sessionId: string, _chunk: string) => {
       this.recordActivity(sessionId);
     });

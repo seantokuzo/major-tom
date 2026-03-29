@@ -60,9 +60,10 @@ export class PushManager {
     logger.info({ subscriptionCount: 0 }, 'PushManager initialized');
   }
 
-  /** Load persisted subscriptions from disk. Call during startup. */
+  /** Load persisted subscriptions from disk. Call during startup.
+   *  Clears stale subscriptions if the VAPID key changed since last save. */
   async restoreFromDisk(): Promise<void> {
-    const restored = await this.persistence.load();
+    const restored = await this.persistence.load(this.vapidPublicKey);
     for (const sub of restored) {
       this.subscriptions.set(sub.endpoint, sub);
     }
@@ -169,14 +170,14 @@ export class PushManager {
     return [...this.subscriptions.values()];
   }
 
-  /** Trigger a debounced save to disk */
+  /** Trigger a debounced save to disk (includes VAPID key for stale-sub detection) */
   private persistSubscriptions(): void {
-    this.persistence.save(this.getSubscriptionsArray());
+    this.persistence.save(this.getSubscriptionsArray(), this.vapidPublicKey);
   }
 
   /** Flush pending writes and clean up (call on shutdown) */
   async dispose(): Promise<void> {
-    await this.persistence.saveImmediate(this.getSubscriptionsArray());
+    await this.persistence.saveImmediate(this.getSubscriptionsArray(), this.vapidPublicKey);
     this.persistence.dispose();
   }
 }

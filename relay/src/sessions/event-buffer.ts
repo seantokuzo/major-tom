@@ -64,7 +64,7 @@ class SessionEventBuffer {
     // Prune old events first
     this.pruneExpired();
 
-    // Binary search-ish: events are in order, so find the first one > afterSeq
+    // Linear scan over ordered events: find the first one with seq > afterSeq
     const idx = this.events.findIndex((e) => e.seq > afterSeq);
     if (idx === -1) return [];
     return this.events.slice(idx);
