@@ -1,6 +1,21 @@
 import SwiftUI
 import SpriteKit
 
+// MARK: - Office Sheet State
+
+/// Enum to consolidate sheet presentations and avoid .sheet conflicts.
+private enum OfficeSheetType: Identifiable {
+    case inspector
+    case gallery
+
+    var id: String {
+        switch self {
+        case .inspector: return "inspector"
+        case .gallery: return "gallery"
+        }
+    }
+}
+
 // MARK: - Office View
 
 /// SwiftUI wrapper for the SpriteKit office scene.
@@ -8,6 +23,8 @@ import SpriteKit
 struct OfficeView: View {
     @Bindable var viewModel: OfficeViewModel
     var relay: RelayService?
+
+    @State private var activeSheet: OfficeSheetType?
     @State private var scene: OfficeScene = {
         let scene = OfficeScene()
         scene.size = CGSize(width: OfficeLayout.sceneWidth, height: OfficeLayout.sceneHeight)
@@ -63,41 +80,68 @@ struct OfficeView: View {
                 }
             }
         }
-        .sheet(isPresented: Binding(
-            get: { viewModel.selectedAgentId != nil },
-            set: { if !$0 { viewModel.dismissInspector() } }
-        )) {
-            if let agent = viewModel.selectedAgent {
-                AgentInspectorView(
-                    agent: agent,
-                    activityDescription: viewModel.activityManager.activityDescription(for: agent.id),
-                    onRename: { newName in
-                        viewModel.renameAgent(id: agent.id, newName: newName)
-                        scene.updateAgentName(id: agent.id, name: newName)
-                    },
-                    onSendMessage: relay != nil ? { message in
-                        guard let sessionId = relay?.currentSession?.id, !sessionId.isEmpty else { return }
-                        Task {
-                            try? await relay?.sendAgentMessage(
-                                sessionId: sessionId,
-                                agentId: agent.id,
-                                text: message
-                            )
-                        }
-                    } : nil,
-                    onDismiss: {
-                        HapticService.impact(.medium)
-                        viewModel.dismissInspector()
-                    }
-                )
+        .onDisappear {
+            // Stop activity cycling timer when view disappears
+            viewModel.activityManager.stopCycling()
+        }
+        .onChange(of: viewModel.selectedAgentId) { _, newValue in
+            if newValue != nil {
+                activeSheet = .inspector
+            } else if activeSheet == .inspector {
+                activeSheet = nil
             }
         }
-        .sheet(isPresented: $viewModel.showCharacterGallery) {
-            CharacterGalleryView(onDismiss: {
-                viewModel.showCharacterGallery = false
-            })
+        .onChange(of: viewModel.showCharacterGallery) { _, show in
+            if show {
+                activeSheet = .gallery
+            } else if activeSheet == .gallery {
+                activeSheet = nil
+            }
         }
-        .hapticOnSheet(isPresented: viewModel.selectedAgentId != nil)
+        .sheet(item: $activeSheet) { sheetType in
+            switch sheetType {
+            case .inspector:
+                if let agent = viewModel.selectedAgent {
+                    AgentInspectorView(
+                        agent: agent,
+                        activityDescription: viewModel.activityManager.activityDescription(for: agent.id),
+                        onRename: { newName in
+                            viewModel.renameAgent(id: agent.id, newName: newName)
+                            scene.updateAgentName(id: agent.id, name: newName)
+                        },
+                        onSendMessage: relay != nil ? { message in
+                            guard let sessionId = relay?.currentSession?.id, !sessionId.isEmpty else { return }
+                            Task {
+                                try? await relay?.sendAgentMessage(
+                                    sessionId: sessionId,
+                                    agentId: agent.id,
+                                    text: message
+                                )
+                            }
+                        } : nil,
+                        onDismiss: {
+                            HapticService.impact(.medium)
+                            viewModel.dismissInspector()
+                        }
+                    )
+                }
+            case .gallery:
+                CharacterGalleryView(onDismiss: {
+                    viewModel.showCharacterGallery = false
+                })
+            }
+        }
+        .onChange(of: activeSheet) { _, newValue in
+            // Sync sheet dismissal back to view model state
+            if newValue == nil {
+                if viewModel.selectedAgentId != nil {
+                    viewModel.dismissInspector()
+                }
+                if viewModel.showCharacterGallery {
+                    viewModel.showCharacterGallery = false
+                }
+            }
+        }
     }
 
     // MARK: - Top Bar

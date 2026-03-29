@@ -35,7 +35,6 @@ private enum DemoData {
 private enum DemoPhase: CaseIterable {
     case idle
     case work
-    case breakTime
     case celebrate
 }
 
@@ -80,9 +79,14 @@ final class OfficeViewModel {
     /// Start demo mode with 14 fake agents.
     func startDemoMode() {
         guard !isDemoMode else { return }
+
+        // Don't wipe real (non-demo) agents if any exist
+        let realAgents = agents.filter { !$0.id.hasPrefix("demo-") }
+        if !realAgents.isEmpty { return }
+
         isDemoMode = true
 
-        // Clear existing state
+        // Clear existing state (safe — only demo agents or empty)
         agents.removeAll()
         desks = OfficeLayout.desks
         nextCharacterIndex = 0
@@ -157,10 +161,6 @@ final class OfficeViewModel {
                         self.agents[index].status = .working
                         self.agents[index].currentTask = DemoData.agents
                             .randomElement()?.task ?? "Working hard"
-
-                    case .breakTime:
-                        self.agents[index].status = .idle
-                        self.agents[index].currentTask = nil
 
                     case .celebrate:
                         self.agents[index].status = .celebrating
@@ -257,6 +257,9 @@ final class OfficeViewModel {
         agents[index].status = .celebrating
         agents[index].currentTask = result
 
+        // Release any activity station immediately on completion
+        activityManager.releaseStation(for: id)
+
         // After a brief celebration, transition to leaving
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
@@ -277,6 +280,7 @@ final class OfficeViewModel {
         agents[index].status = .leaving
         agents[index].currentTask = nil
         releaseDesk(for: id)
+        activityManager.releaseStation(for: id)
 
         // Remove after walking out
         Task { @MainActor in
