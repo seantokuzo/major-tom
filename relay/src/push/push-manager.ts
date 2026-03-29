@@ -1,5 +1,6 @@
 import webpush from 'web-push';
 import { logger } from '../utils/logger.js';
+import { PushPersistence } from './push-persistence.js';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -20,13 +21,14 @@ export interface NotificationPayload {
 
 // ── Push Manager ─────────────────────────────────────────────
 // Manages VAPID keys and push subscriptions.
-// Subscriptions are in-memory only — clients re-subscribe on reconnect.
+// Subscriptions are persisted to disk and restored on startup.
 
 export class PushManager {
   private subscriptions = new Map<string, PushSubscriptionData>();
   private vapidPublicKey: string;
   private vapidPrivateKey: string;
   private initialized = false;
+  private persistence = new PushPersistence();
 
   constructor() {
     const envPublic = process.env['VAPID_PUBLIC_KEY'];
@@ -58,17 +60,41 @@ export class PushManager {
     logger.info({ subscriptionCount: 0 }, 'PushManager initialized');
   }
 
+  /** Load persisted subscriptions from disk. Call during startup. */
+  async restoreFromDisk(): Promise<void> {
+    const restored = await this.persistence.load();
+    for (const sub of restored) {
+      this.subscriptions.set(sub.endpoint, sub);
+    }
+    if (restored.length > 0) {
+      logger.info(
+        { count: restored.length },
+        'Push subscriptions restored from disk',
+      );
+    }
+  }
+
   /** Returns the VAPID public key for clients to use when subscribing */
   getVapidPublicKey(): string {
     return this.vapidPublicKey;
   }
 
-  /** Store a push subscription */
+  /**
+   * Store a push subscription.
+   * Dedup: if same endpoint re-subscribes, update keys rather than duplicate.
+   */
   subscribe(subscription: PushSubscriptionData): void {
+    const isUpdate = this.subscriptions.has(subscription.endpoint);
     this.subscriptions.set(subscription.endpoint, subscription);
+    this.persistSubscriptions();
+
     logger.info(
-      { endpoint: subscription.endpoint, total: this.subscriptions.size },
-      'Push subscription added',
+      {
+        endpoint: subscription.endpoint,
+        total: this.subscriptions.size,
+        updated: isUpdate,
+      },
+      isUpdate ? 'Push subscription updated (dedup)' : 'Push subscription added',
     );
   }
 
@@ -76,6 +102,7 @@ export class PushManager {
   unsubscribe(endpoint: string): boolean {
     const removed = this.subscriptions.delete(endpoint);
     if (removed) {
+      this.persistSubscriptions();
       logger.info({ endpoint, total: this.subscriptions.size }, 'Push subscription removed');
     }
     return removed;
@@ -118,9 +145,12 @@ export class PushManager {
       }),
     );
 
-    // Clean up expired subscriptions
-    for (const endpoint of expiredEndpoints) {
-      this.subscriptions.delete(endpoint);
+    // Clean up expired subscriptions and persist if any were pruned
+    if (expiredEndpoints.length > 0) {
+      for (const endpoint of expiredEndpoints) {
+        this.subscriptions.delete(endpoint);
+      }
+      this.persistSubscriptions();
     }
 
     logger.debug(
@@ -132,5 +162,21 @@ export class PushManager {
   /** Number of active subscriptions */
   get size(): number {
     return this.subscriptions.size;
+  }
+
+  /** Get all subscriptions as an array (for persistence) */
+  private getSubscriptionsArray(): PushSubscriptionData[] {
+    return [...this.subscriptions.values()];
+  }
+
+  /** Trigger a debounced save to disk */
+  private persistSubscriptions(): void {
+    this.persistence.save(this.getSubscriptionsArray());
+  }
+
+  /** Flush pending writes and clean up (call on shutdown) */
+  async dispose(): Promise<void> {
+    await this.persistence.saveImmediate(this.getSubscriptionsArray());
+    this.persistence.dispose();
   }
 }
