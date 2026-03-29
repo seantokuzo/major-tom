@@ -103,6 +103,13 @@ export interface FsCwdMessage {
   type: 'fs.cwd';
 }
 
+export interface SessionResumeMessage {
+  type: 'session.resume';
+  sessionId: string;
+  /** Sequence number of last event the client received. Events after this will be replayed. */
+  lastSeq?: number;
+}
+
 
 export type ClientMessage =
   | PromptMessage
@@ -121,7 +128,8 @@ export type ClientMessage =
   | DeviceRevokeMessage
   | FsLsMessage
   | FsReadFileMessage
-  | FsCwdMessage;
+  | FsCwdMessage
+  | SessionResumeMessage;
 
 // ── Server → Client (Relay → iOS) ──────────────────────────
 
@@ -352,6 +360,17 @@ export interface FsErrorMessage {
   path?: string;
 }
 
+export interface SessionResumeResponseMessage {
+  type: 'session.resume.response';
+  sessionId: string;
+  /** Whether the session was found and resumed */
+  success: boolean;
+  /** Number of events replayed to the client */
+  replayedCount: number;
+  /** Current sequence number (client should track this for next resume) */
+  currentSeq: number;
+}
+
 
 export type ServerMessage =
   | OutputMessage
@@ -381,7 +400,8 @@ export type ServerMessage =
   | FsLsResponseMessage
   | FsReadFileResponseMessage
   | FsCwdResponseMessage
-  | FsErrorMessage;
+  | FsErrorMessage
+  | SessionResumeResponseMessage;
 
 // ── Utilities ───────────────────────────────────────────────
 
