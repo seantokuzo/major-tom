@@ -166,8 +166,12 @@ struct FileContextView: View {
 
         do {
             try await relay.requestWorkspaceTree()
-            // Small delay to let the response come back
-            try? await Task.sleep(for: .milliseconds(500))
+            // Poll for response arrival instead of arbitrary sleep.
+            // Check every 50ms for up to 3 seconds.
+            for _ in 0..<60 {
+                if !relay.workspaceFiles.isEmpty { break }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
         } catch {
             // workspace files will remain empty
         }

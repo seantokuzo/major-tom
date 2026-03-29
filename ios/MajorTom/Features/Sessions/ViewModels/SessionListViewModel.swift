@@ -35,10 +35,16 @@ final class SessionListViewModel {
     func refreshSessions() async {
         isLoading = true
         defer { isLoading = false }
+
+        let previousCount = relay.sessionList.count
         do {
             try await relay.requestSessionList()
-            // Brief pause to let the response arrive
-            try? await Task.sleep(for: .milliseconds(300))
+            // Poll for response arrival instead of arbitrary sleep.
+            // Check every 50ms for up to 2 seconds.
+            for _ in 0..<40 {
+                if relay.sessionList.count != previousCount || !relay.sessionList.isEmpty { break }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
         } catch {
             // Silently fail — list will just not update
         }
@@ -63,8 +69,11 @@ final class SessionListViewModel {
             // Clear current chat only after successful attach
             relay.chatMessages.removeAll()
 
-            // Brief pause for session.info to arrive
-            try? await Task.sleep(for: .milliseconds(300))
+            // Poll for session.info to arrive instead of arbitrary sleep.
+            for _ in 0..<40 {
+                if relay.currentSession?.id == session.id { break }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
 
             // Restore locally saved messages for this session
             let restored = storage.loadMessages(for: session.id)
@@ -114,14 +123,4 @@ final class SessionListViewModel {
         storage.saveFromSessionInfo(session, messageCount: relay.chatMessages.count)
     }
 
-    /// Restore messages for current session on launch.
-    func restoreCurrentSession() {
-        guard let session = relay.currentSession else { return }
-        if relay.chatMessages.isEmpty {
-            let restored = storage.loadMessages(for: session.id)
-            if !restored.isEmpty {
-                relay.chatMessages = restored
-            }
-        }
-    }
 }
