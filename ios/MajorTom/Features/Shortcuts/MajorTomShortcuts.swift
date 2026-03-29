@@ -17,16 +17,25 @@ enum ShortcutActionKey {
         case showCost
     }
 
+    /// Returns the App Group `UserDefaults` used for cross-process shortcut communication.
+    /// Asserts in debug builds if the suite is not available, which typically indicates
+    /// a missing or incorrect App Group entitlement configuration.
+    private static func appGroupDefaults() -> UserDefaults? {
+        let defaults = UserDefaults(suiteName: suiteName)
+        assert(defaults != nil, "App Group UserDefaults not available. Check entitlements for suite \(suiteName).")
+        return defaults
+    }
+
     /// Write a pending action to App Groups UserDefaults.
     static func postAction(_ action: Action) {
-        let defaults = UserDefaults(suiteName: suiteName) ?? UserDefaults.standard
+        guard let defaults = appGroupDefaults() else { return }
         defaults.set(action.rawValue, forKey: pendingActionKey)
         defaults.set(Date().timeIntervalSince1970, forKey: timestampKey)
     }
 
     /// Read and consume a pending action. Returns nil if no action or stale (>10s old).
     static func consumeAction() -> Action? {
-        let defaults = UserDefaults(suiteName: suiteName) ?? UserDefaults.standard
+        guard let defaults = appGroupDefaults() else { return nil }
         guard let rawAction = defaults.string(forKey: pendingActionKey),
               let action = Action(rawValue: rawAction) else {
             return nil
