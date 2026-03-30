@@ -134,9 +134,9 @@ final class LiveActivityManager {
     }
 
     /// Called when session cost is updated.
-    func handleCostUpdate(sessionId: String, costUsd: Double) {
+    func handleCostUpdate(sessionId: String, costDollars: Double) {
         guard snapshots[sessionId] != nil else { return }
-        snapshots[sessionId]!.costDollars = costUsd
+        snapshots[sessionId]!.costDollars = costDollars
         debouncedUpdate(for: sessionId)
     }
 
@@ -174,7 +174,7 @@ final class LiveActivityManager {
         debounceTasks[sessionId] = Task { [weak self] in
             try? await Task.sleep(for: .seconds(self?.debounceInterval ?? 3.0))
             guard !Task.isCancelled else { return }
-            await self?.immediateUpdate(for: sessionId)
+            self?.immediateUpdate(for: sessionId)
         }
     }
 

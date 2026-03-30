@@ -39,6 +39,7 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Major Tom uses the microphone for voice input to Claude"
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Major Tom uses speech recognition for voice input"
         INFOPLIST_KEY_NSSupportsLiveActivities: "YES"
+        INFOPLIST_FILE: MajorTom/Info.plist
     dependencies:
       - target: MajorTomWidgets
 

@@ -109,7 +109,7 @@ private struct MajorTomLockScreenView: View {
                     Spacer()
 
                     HStack(spacing: 8) {
-                        Link(destination: URL(string: "majortom://approve/latest")!) {
+                        Link(destination: LiveActivityDeepLinks.approveLatest) {
                             Text("Approve")
                                 .font(.system(.caption, weight: .semibold))
                                 .foregroundStyle(.white)
@@ -118,7 +118,7 @@ private struct MajorTomLockScreenView: View {
                                 .background(allowColor, in: Capsule())
                         }
 
-                        Link(destination: URL(string: "majortom://deny/latest")!) {
+                        Link(destination: LiveActivityDeepLinks.denyLatest) {
                             Text("Deny")
                                 .font(.system(.caption, weight: .semibold))
                                 .foregroundStyle(.white)
@@ -209,7 +209,7 @@ private enum MajorTomDynamicIslandContent {
                 }
             }
         }
-        .widgetURL(URL(string: "majortom://session/\(context.attributes.sessionId)"))
+        .widgetURL(LiveActivityDeepLinks.session(context.attributes.sessionId))
     }
 
     // MARK: - Expanded Content
@@ -288,7 +288,7 @@ private enum MajorTomDynamicIslandContent {
                         Spacer()
 
                         HStack(spacing: 6) {
-                            Link(destination: URL(string: "majortom://approve/latest")!) {
+                            Link(destination: LiveActivityDeepLinks.approveLatest) {
                                 Text("Approve")
                                     .font(.system(.caption2, weight: .bold))
                                     .foregroundStyle(.white)
@@ -297,7 +297,7 @@ private enum MajorTomDynamicIslandContent {
                                     .background(allowColor, in: Capsule())
                             }
 
-                            Link(destination: URL(string: "majortom://deny/latest")!) {
+                            Link(destination: LiveActivityDeepLinks.denyLatest) {
                                 Text("Deny")
                                     .font(.system(.caption2, weight: .bold))
                                     .foregroundStyle(.white)

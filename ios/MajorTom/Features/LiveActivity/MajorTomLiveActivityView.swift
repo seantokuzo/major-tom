@@ -99,7 +99,7 @@ struct MajorTomLiveActivityView: View {
 
                     // Deep-link buttons for approve/deny
                     HStack(spacing: 8) {
-                        Link(destination: URL(string: "majortom://approve/latest")!) {
+                        Link(destination: LiveActivityDeepLinks.approveLatest) {
                             Text("Approve")
                                 .font(.system(.caption, weight: .semibold))
                                 .foregroundStyle(.white)
@@ -108,7 +108,7 @@ struct MajorTomLiveActivityView: View {
                                 .background(Color(red: 0.30, green: 0.85, blue: 0.45), in: Capsule())
                         }
 
-                        Link(destination: URL(string: "majortom://deny/latest")!) {
+                        Link(destination: LiveActivityDeepLinks.denyLatest) {
                             Text("Deny")
                                 .font(.system(.caption, weight: .semibold))
                                 .foregroundStyle(.white)

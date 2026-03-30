@@ -329,11 +329,17 @@ final class RelayService {
                     tokenUsage: event.tokenUsage
                 )
                 responseCounter &+= 1
-                // Start Live Activity for new session
+                // Start Live Activity for new session.
+                // workingDir may not be populated on sessionInfo; fall back to
+                // fsCurrentPath, session list metadata, or "~".
+                let resolvedDir = currentSession?.workingDir
+                    ?? sessionList.first(where: { $0.id == event.sessionId })?.workingDirName
+                    ?? (fsCurrentPath.isEmpty ? nil : fsCurrentPath)
+                    ?? "~"
                 let sessionInfo = SessionInfo(
                     sessionId: event.sessionId,
-                    sessionName: currentSession?.workingDir?.components(separatedBy: "/").last ?? "Session",
-                    workingDir: currentSession?.workingDir ?? "~"
+                    sessionName: resolvedDir.components(separatedBy: "/").last ?? "Session",
+                    workingDir: resolvedDir
                 )
                 Task { await liveActivityManager?.startActivity(for: sessionInfo) }
                 // Update widget data
@@ -349,7 +355,7 @@ final class RelayService {
                 if let output = event.outputTokens { sessionOutputTokens = output }
                 // Update Live Activity cost
                 if let sid = currentSession?.id {
-                    liveActivityManager?.handleCostUpdate(sessionId: sid, costUsd: event.costUsd)
+                    liveActivityManager?.handleCostUpdate(sessionId: sid, costDollars: event.costUsd)
                 }
                 updateWidgetData()
             }

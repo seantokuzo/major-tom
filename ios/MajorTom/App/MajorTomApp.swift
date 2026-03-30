@@ -173,6 +173,13 @@ struct MajorTomApp: App {
             let requestId = pathComponent ?? "latest"
             resolveApproval(requestId: requestId, approved: false)
         case "session":
+            // Navigate to the Control tab for the session.
+            // If a specific sessionId is provided and differs from the current session,
+            // attach to it so the user sees the right session context.
+            if let sessionId = pathComponent,
+               relay.currentSession?.id != sessionId {
+                Task { try? await relay.attachSession(id: sessionId) }
+            }
             selectedTab = .control
             HapticService.impact(.light)
         default:
@@ -182,12 +189,16 @@ struct MajorTomApp: App {
 
     /// Resolve an approval from a deep link.
     /// If requestId is "latest", approve/deny the most recent pending request.
+    /// Only acts if the resolved requestId is currently in `pendingApprovals`
+    /// to prevent untrusted callers from invoking arbitrary approvals.
     private func resolveApproval(requestId: String, approved: Bool) {
         let targetId: String
         if requestId == "latest" {
             guard let latest = relay.pendingApprovals.last else { return }
             targetId = latest.id
         } else {
+            // Validate that this request is actually pending
+            guard relay.pendingApprovals.contains(where: { $0.id == requestId }) else { return }
             targetId = requestId
         }
 

@@ -30,7 +30,7 @@ struct MajorTomDynamicIslandView {
             // Just a colored status dot
             minimalView(for: context)
         }
-        .widgetURL(URL(string: "majortom://session/\(context.attributes.sessionId)"))
+        .widgetURL(LiveActivityDeepLinks.session(context.attributes.sessionId))
     }
 
     // MARK: - Compact Leading
@@ -172,7 +172,7 @@ struct MajorTomDynamicIslandView {
 
                         // Deep-link buttons
                         HStack(spacing: 6) {
-                            Link(destination: URL(string: "majortom://approve/latest")!) {
+                            Link(destination: LiveActivityDeepLinks.approveLatest) {
                                 Text("Approve")
                                     .font(.system(.caption2, weight: .bold))
                                     .foregroundStyle(.white)
@@ -181,7 +181,7 @@ struct MajorTomDynamicIslandView {
                                     .background(allowColor, in: Capsule())
                             }
 
-                            Link(destination: URL(string: "majortom://deny/latest")!) {
+                            Link(destination: LiveActivityDeepLinks.denyLatest) {
                                 Text("Deny")
                                     .font(.system(.caption2, weight: .bold))
                                     .foregroundStyle(.white)

@@ -64,3 +64,16 @@ struct MajorTomActivityAttributes: ActivityAttributes {
     var sessionId: String
     var workingDir: String
 }
+
+// MARK: - Deep Link URLs
+
+/// Static deep link URLs used by Live Activity views.
+/// Centralized here so the app target and widget extension share the same definitions.
+enum LiveActivityDeepLinks {
+    static let approveLatest = URL(string: "majortom://approve/latest")!
+    static let denyLatest = URL(string: "majortom://deny/latest")!
+
+    static func session(_ sessionId: String) -> URL? {
+        URL(string: "majortom://session/\(sessionId)")
+    }
+}
