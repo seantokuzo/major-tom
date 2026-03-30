@@ -16,6 +16,8 @@ import { contextStore } from './context.svelte';
 import { db } from '../db';
 import { terminalStore } from './terminal.svelte';
 import { sessionStateManager, extractDirName } from './session-state.svelte';
+import { fleetStore } from './fleet.svelte';
+import { toasts } from './toast.svelte';
 
 // ── Chat message model ──────────────────────────────────────
 
@@ -244,6 +246,9 @@ class RelayStore {
 
     // Check auth session (cookie-based)
     this.checkAuth();
+
+    // Wire fleet store's request function
+    fleetStore.setRequestFn(() => this.requestFleetStatus());
   }
 
   // ── Auth (Google OAuth) ──────────────────────────────────
@@ -603,6 +608,11 @@ class RelayStore {
       delaySeconds: delaySeconds ?? this.permissionMode.delaySeconds,
       godSubMode: godSubMode ?? this.permissionMode.godSubMode,
     });
+  }
+
+  requestFleetStatus(): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'fleet.status' });
   }
 
   requestSessionList(): void {
@@ -1088,6 +1098,26 @@ class RelayStore {
         terminalStore.isLoading = false;
         terminalStore.pendingCdTarget = null; // Clear pending cd on error
         terminalStore.addError(message.message);
+        break;
+
+      // ── Fleet status messages ──────────────────────────────
+      case 'fleet.status.response':
+        fleetStore.handleStatusResponse(message);
+        break;
+
+      case 'fleet.worker.spawned':
+        fleetStore.handleWorkerSpawned(message);
+        toasts.info(`Worker spawned for ${message.dirName}`);
+        break;
+
+      case 'fleet.worker.crashed':
+        fleetStore.handleWorkerCrashed(message);
+        toasts.error(`Worker for ${message.dirName} crashed — restarting`);
+        break;
+
+      case 'fleet.worker.restarted':
+        fleetStore.handleWorkerRestarted(message);
+        toasts.success(`Worker for ${message.dirName} restarted`);
         break;
     }
   }

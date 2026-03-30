@@ -99,6 +99,10 @@ export interface FsCwdMessage {
   type: 'fs.cwd';
 }
 
+export interface FleetStatusMessage {
+  type: 'fleet.status';
+}
+
 
 export type ClientMessage =
   | PromptMessage
@@ -117,7 +121,8 @@ export type ClientMessage =
   | DeviceRevokeMessage
   | FsLsMessage
   | FsReadFileMessage
-  | FsCwdMessage;
+  | FsCwdMessage
+  | FleetStatusMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -347,6 +352,63 @@ export interface FsErrorMessage {
   path?: string;
 }
 
+// ── Fleet status messages ─────────────────────────────────
+
+export interface FleetSessionInfo {
+  sessionId: string;
+  status: string;
+  totalCost: number;
+  turnCount: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface FleetWorkerInfo {
+  workerId: string;
+  workingDir: string;
+  dirName: string;
+  sessionCount: number;
+  uptimeMs: number;
+  restartCount: number;
+  healthy: boolean;
+  sessions: FleetSessionInfo[];
+}
+
+export interface FleetStatusResponseMessage {
+  type: 'fleet.status.response';
+  totalWorkers: number;
+  totalSessions: number;
+  aggregateCost: number;
+  aggregateTokens: {
+    input: number;
+    output: number;
+  };
+  workers: FleetWorkerInfo[];
+}
+
+export interface FleetWorkerSpawnedMessage {
+  type: 'fleet.worker.spawned';
+  workerId: string;
+  workingDir: string;
+  dirName: string;
+}
+
+export interface FleetWorkerCrashedMessage {
+  type: 'fleet.worker.crashed';
+  workerId: string;
+  workingDir: string;
+  dirName: string;
+  restartCount: number;
+}
+
+export interface FleetWorkerRestartedMessage {
+  type: 'fleet.worker.restarted';
+  workerId: string;
+  workingDir: string;
+  dirName: string;
+  restartCount: number;
+}
+
 
 export type ServerMessage =
   | OutputMessage
@@ -376,4 +438,8 @@ export type ServerMessage =
   | FsLsResponseMessage
   | FsReadFileResponseMessage
   | FsCwdResponseMessage
-  | FsErrorMessage;
+  | FsErrorMessage
+  | FleetStatusResponseMessage
+  | FleetWorkerSpawnedMessage
+  | FleetWorkerCrashedMessage
+  | FleetWorkerRestartedMessage;
