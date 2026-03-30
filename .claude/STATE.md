@@ -199,15 +199,38 @@
 - [x] Push persistence — subscriptions to ~/.major-tom/push-subscriptions.json, VAPID key persistence
 - [x] Session resume — EventBufferManager (500 events, 10min TTL), session.resume protocol, seq numbers on broadcasts
 
-### Wave 2: Multi-Instance Relay + Fleet Dashboards — NEXT
-- Track C: FleetManager + child process per workingDir (relay)
-- Track D: Fleet dashboard (PWA) — depends on C
-- Track E: Fleet dashboard (iOS) — depends on C
+### Wave 2: Multi-Instance Relay + Fleet Dashboards — COMPLETE
 
-### Wave 3: Analytics + Smart Notifications
+#### Track C: FleetManager (PR #64)
+- [x] FleetManager parent-side orchestrator — forks one worker per unique workingDir
+- [x] IPC protocol — typed discriminated unions for parent↔child communication
+- [x] Worker script — child process runs ClaudeCliAdapter + SDK session with correct cwd
+- [x] Worker lifecycle — crash detection, exponential backoff restart (max 5 attempts)
+- [x] Message queuing during worker startup, async session start with acknowledgement
+- [x] Parent-side approval mirror for client reconnect re-broadcast
+- [x] HealthMonitor refactored to generic HealthMonitorTarget interface
+- [x] /health endpoint includes fleet worker status
+
+#### Track D: Fleet Dashboard PWA (PR #65)
+- [x] Fleet protocol — fleet.status request/response, fleet.worker.spawned/crashed/restarted events
+- [x] Fleet store — Svelte 5 reactive store, auto-polling (5s when panel open), health derivation
+- [x] FleetPanel — aggregate stats, per-worker cards with expandable sessions, click-to-switch
+- [x] FleetIndicator — header badge with health dot, worker count, 30s background poll
+- [x] Toast notifications for worker lifecycle events
+
+#### Track E: Fleet Dashboard iOS (PR #66)
+- [x] Fleet message types — FleetStatusResponseEvent, FleetWorkerInfo, FleetSessionInfo in Message.swift
+- [x] Fleet data models — FleetStatus, FleetWorker, FleetSession with wire-to-domain conversion
+- [x] FleetViewModel — @Observable, 5s auto-refresh, health summary, optimistic UI updates
+- [x] FleetDashboardView — sheet with aggregate stat cards, expandable worker list
+- [x] FleetWorkerCard — health dot, uptime, restart badge, expandable sessions
+- [x] FleetSessionRow — status dot, cost, tap-to-switch
+- [x] FleetStatusBadge — compact toolbar pill in ChatView
+
+### Wave 3: Analytics + Smart Notifications — NEXT
 ### Wave 4: Office 2.0 + Apple Watch + Widgets + Live Activities
 ### Wave 5: Achievements + Siri Shortcuts
 
 ---
 
-_Last updated: 2026-03-29_
+_Last updated: 2026-03-30_
