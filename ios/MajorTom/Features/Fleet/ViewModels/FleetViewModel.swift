@@ -8,10 +8,12 @@ final class FleetViewModel {
     var autoRefreshEnabled = true
 
     private let relay: RelayService
+    private let storage: SessionStorageService
     private var refreshTask: Task<Void, Never>?
 
-    init(relay: RelayService) {
+    init(relay: RelayService, storage: SessionStorageService) {
         self.relay = relay
+        self.storage = storage
     }
 
     // MARK: - Computed
@@ -91,7 +93,10 @@ final class FleetViewModel {
     }
 
     func handleWorkerSpawned(workerId: String, workingDir: String) {
-        guard var status = fleetStatus else { return }
+        var status = fleetStatus ?? FleetStatus(
+            totalWorkers: 0, totalSessions: 0, aggregateCost: 0,
+            aggregateTokens: TokenCount(input: 0, output: 0), workers: []
+        )
         // Add a new worker placeholder
         let dirName = (workingDir as NSString).lastPathComponent
         let worker = FleetWorker(
@@ -117,19 +122,55 @@ final class FleetViewModel {
         self.fleetStatus = status
     }
 
-    func handleWorkerRestarted(workerId: String) {
+    func handleWorkerRestarted(newWorkerId: String, workingDir: String) {
         guard var status = fleetStatus else { return }
-        if let index = status.workers.firstIndex(where: { $0.workerId == workerId }) {
-            status.workers[index].healthy = true
-            status.workers[index].restartCount += 1
+        // Match by workingDir since the restarted worker has a new workerId
+        if let index = status.workers.firstIndex(where: { $0.workingDir == workingDir }) {
+            status.workers[index] = FleetWorker(
+                workerId: newWorkerId,
+                workingDir: workingDir,
+                dirName: status.workers[index].dirName,
+                sessionCount: 0,
+                uptimeMs: 0,
+                restartCount: status.workers[index].restartCount + 1,
+                healthy: true,
+                sessions: []
+            )
         }
         self.fleetStatus = status
     }
 
     func switchToSession(sessionId: String) async {
+        guard sessionId != relay.currentSession?.id else { return }
+
+        HapticService.modeSwitch()
+
+        // Save current messages before switching
+        if let currentSession = relay.currentSession {
+            storage.saveMessages(relay.chatMessages, for: currentSession.id)
+            storage.saveFromSessionInfo(currentSession, messageCount: relay.chatMessages.count)
+        }
+
         do {
             try await relay.attachSession(id: sessionId)
-            HapticService.modeSwitch()
+            relay.chatMessages.removeAll()
+
+            // Poll until session.info arrives for the target session
+            let counterBefore = relay.responseCounter
+            for _ in 0..<40 {
+                if Task.isCancelled { break }
+                if relay.responseCounter != counterBefore,
+                   relay.currentSession?.id == sessionId {
+                    break
+                }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+
+            // Restore locally saved messages
+            let restored = storage.loadMessages(for: sessionId)
+            if !restored.isEmpty {
+                relay.chatMessages = restored
+            }
         } catch {
             // Silently fail
         }

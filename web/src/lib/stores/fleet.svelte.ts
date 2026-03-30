@@ -44,11 +44,11 @@ class FleetStore {
   }
 
   handleWorkerSpawned(msg: FleetWorkerSpawnedMessage): void {
-    // Increment counts optimistically; next poll will reconcile
-    this.totalWorkers++;
-    // Add a placeholder worker entry
-    const existing = this.workers.find(w => w.workerId === msg.workerId);
-    if (!existing) {
+    // Dedupe by workerId AND workingDir (restart flow gives new workerId for same dir)
+    const existingById = this.workers.find(w => w.workerId === msg.workerId);
+    const existingByDir = this.workers.find(w => w.workingDir === msg.workingDir);
+    if (!existingById && !existingByDir) {
+      // Genuinely new worker
       this.workers = [...this.workers, {
         workerId: msg.workerId,
         workingDir: msg.workingDir,
@@ -59,6 +59,14 @@ class FleetStore {
         healthy: true,
         sessions: [],
       }];
+      this.totalWorkers = this.workers.length;
+    } else if (existingByDir && !existingById) {
+      // Restart: same dir, new workerId — update in place
+      this.workers = this.workers.map(w =>
+        w.workingDir === msg.workingDir
+          ? { ...w, workerId: msg.workerId, healthy: true }
+          : w
+      );
     }
   }
 

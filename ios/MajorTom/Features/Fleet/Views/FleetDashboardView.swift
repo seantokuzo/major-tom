@@ -1,13 +1,9 @@
 import SwiftUI
 
 struct FleetDashboardView: View {
-    @State private var viewModel: FleetViewModel
+    var viewModel: FleetViewModel
     @State private var expandedWorkers: Set<String> = []
     @Environment(\.dismiss) private var dismiss
-
-    init(relay: RelayService) {
-        _viewModel = State(initialValue: FleetViewModel(relay: relay))
-    }
 
     var body: some View {
         NavigationStack {
@@ -243,6 +239,6 @@ private struct StatCard: View {
 }
 
 #Preview {
-    FleetDashboardView(relay: RelayService())
+    FleetDashboardView(viewModel: FleetViewModel(relay: RelayService(), storage: SessionStorageService()))
         .preferredColorScheme(.dark)
 }

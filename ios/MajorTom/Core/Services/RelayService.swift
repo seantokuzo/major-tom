@@ -53,7 +53,7 @@ final class RelayService {
 
     // Fleet
     var fleetStatus: FleetStatus?
-    var fleetViewModel: FleetViewModel?
+    weak var fleetViewModel: FleetViewModel?
 
     // Session-scoped allowlist (tool names auto-approved via "Always")
     var sessionAllowlist: Set<String> = []
@@ -519,7 +519,7 @@ final class RelayService {
 
         case .fleetWorkerRestarted:
             if let event = try? MessageCodec.decode(FleetWorkerRestartedEvent.self, from: data) {
-                fleetViewModel?.handleWorkerRestarted(workerId: event.workerId)
+                fleetViewModel?.handleWorkerRestarted(newWorkerId: event.workerId, workingDir: event.workingDir)
                 HapticService.notification(.warning)
             }
 

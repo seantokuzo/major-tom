@@ -14,7 +14,7 @@ struct ChatView: View {
     init(relay: RelayService, storage: SessionStorageService) {
         self.relay = relay
         self.storage = storage
-        let fleet = FleetViewModel(relay: relay)
+        let fleet = FleetViewModel(relay: relay, storage: storage)
         _viewModel = State(initialValue: ChatViewModel(relay: relay))
         _fleetViewModel = State(initialValue: fleet)
     }
@@ -98,7 +98,7 @@ struct ChatView: View {
             SessionListView(relay: relay, storage: storage)
         }
         .sheet(isPresented: $showFleetDashboard) {
-            FleetDashboardView(relay: relay)
+            FleetDashboardView(viewModel: fleetViewModel)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.hidden)
                 .presentationBackground(MajorTomTheme.Colors.background)
@@ -115,6 +115,9 @@ struct ChatView: View {
         .task {
             relay.fleetViewModel = fleetViewModel
             if !viewModel.hasSession { await viewModel.startSession() }
+        }
+        .onDisappear {
+            relay.fleetViewModel = nil
         }
     }
 
