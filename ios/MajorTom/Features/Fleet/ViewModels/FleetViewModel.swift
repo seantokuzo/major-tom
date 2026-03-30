@@ -122,11 +122,20 @@ final class FleetViewModel {
         self.fleetStatus = status
     }
 
-    func handleWorkerRestarted(workerId: String) {
+    func handleWorkerRestarted(newWorkerId: String, workingDir: String) {
         guard var status = fleetStatus else { return }
-        if let index = status.workers.firstIndex(where: { $0.workerId == workerId }) {
-            status.workers[index].healthy = true
-            status.workers[index].restartCount += 1
+        // Match by workingDir since the restarted worker has a new workerId
+        if let index = status.workers.firstIndex(where: { $0.workingDir == workingDir }) {
+            status.workers[index] = FleetWorker(
+                workerId: newWorkerId,
+                workingDir: workingDir,
+                dirName: status.workers[index].dirName,
+                sessionCount: 0,
+                uptimeMs: 0,
+                restartCount: status.workers[index].restartCount + 1,
+                healthy: true,
+                sessions: []
+            )
         }
         self.fleetStatus = status
     }

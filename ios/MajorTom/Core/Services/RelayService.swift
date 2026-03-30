@@ -519,7 +519,7 @@ final class RelayService {
 
         case .fleetWorkerRestarted:
             if let event = try? MessageCodec.decode(FleetWorkerRestartedEvent.self, from: data) {
-                fleetViewModel?.handleWorkerRestarted(workerId: event.workerId)
+                fleetViewModel?.handleWorkerRestarted(newWorkerId: event.workerId, workingDir: event.workingDir)
                 HapticService.notification(.warning)
             }
 
