@@ -70,8 +70,8 @@ final class RelayService {
     /// Notification service — posts local notifications for approvals and events.
     var notificationService: NotificationService?
 
-    /// Live Activity service — updates Lock Screen and Dynamic Island.
-    var liveActivityService: LiveActivityService?
+    /// Live Activity manager — updates Lock Screen and Dynamic Island.
+    var liveActivityManager: LiveActivityManager?
 
     /// Watch Connectivity service — forwards data to Apple Watch.
     var watchConnectivityService: PhoneWatchConnectivityService?
@@ -110,7 +110,7 @@ final class RelayService {
     func disconnect() {
         webSocket.disconnect()
         currentSession = nil
-        liveActivityService?.endActivity()
+        Task { await liveActivityManager?.endAllActivities() }
         clearSessionState()
         WidgetDataProvider.updateSessionStatus(.init(
             isActive: false,
@@ -171,6 +171,14 @@ final class RelayService {
             if let request = pendingApprovals.first(where: { $0.id == requestId }) ?? completedTools.last.map({ _ in pendingApprovals.first }).flatMap({ $0 }) {
                 sessionAllowlist.insert(request.tool)
             }
+        }
+
+        // Update Live Activity with new pending count
+        if let sid = currentSession?.id {
+            liveActivityManager?.handleApprovalResolved(
+                sessionId: sid,
+                pendingCount: pendingApprovals.count
+            )
         }
 
         // Update watch after approval removed
@@ -289,6 +297,13 @@ final class RelayService {
                         toolName: event.tool,
                         description: event.description
                     )
+                    // Update Live Activity immediately (high priority)
+                    if let sid = currentSession?.id {
+                        liveActivityManager?.handleApprovalRequest(
+                            sessionId: sid,
+                            pendingCount: pendingApprovals.count
+                        )
+                    }
                     // Forward to Apple Watch
                     updateWatchApprovals()
                     HapticService.notification(.warning)
@@ -314,11 +329,19 @@ final class RelayService {
                     tokenUsage: event.tokenUsage
                 )
                 responseCounter &+= 1
-                // Start Live Activity for new session
-                liveActivityService?.startActivity(
+                // Start Live Activity for new session.
+                // workingDir may not be populated on sessionInfo; fall back to
+                // fsCurrentPath, session list metadata, or "~".
+                let resolvedDir = currentSession?.workingDir
+                    ?? sessionList.first(where: { $0.id == event.sessionId })?.workingDirName
+                    ?? (fsCurrentPath.isEmpty ? nil : fsCurrentPath)
+                    ?? "~"
+                let sessionInfo = SessionInfo(
                     sessionId: event.sessionId,
-                    workingDirectory: currentSession?.workingDir ?? "~"
+                    sessionName: resolvedDir.components(separatedBy: "/").last ?? "Session",
+                    workingDir: resolvedDir
                 )
+                Task { await liveActivityManager?.startActivity(for: sessionInfo) }
                 // Update widget data
                 updateWidgetData()
             }
@@ -331,7 +354,9 @@ final class RelayService {
                 if let input = event.inputTokens { sessionInputTokens = input }
                 if let output = event.outputTokens { sessionOutputTokens = output }
                 // Update Live Activity cost
-                liveActivityService?.handleCostUpdate(costUsd: event.costUsd)
+                if let sid = currentSession?.id {
+                    liveActivityManager?.handleCostUpdate(sessionId: sid, costDollars: event.costUsd)
+                }
                 updateWidgetData()
             }
 
@@ -344,7 +369,7 @@ final class RelayService {
                         costUsd: sessionCostUsd
                     )
                     // End Live Activity
-                    liveActivityService?.handleSessionEnd()
+                    liveActivityManager?.handleSessionEnd(sessionId: event.sessionId)
                     currentSession = nil
                     updateWidgetData()
                 }
@@ -378,7 +403,9 @@ final class RelayService {
                 )
                 chatMessages.append(msg)
                 // Update Live Activity with current tool
-                liveActivityService?.handleToolStart(toolName: event.tool)
+                if let sid = currentSession?.id {
+                    liveActivityManager?.handleToolStart(sessionId: sid, toolName: event.tool)
+                }
                 updateWidgetData()
             }
 
@@ -402,7 +429,9 @@ final class RelayService {
                 )
                 chatMessages.append(msg)
                 // Update Live Activity — tool finished
-                liveActivityService?.handleToolComplete()
+                if let sid = currentSession?.id {
+                    liveActivityManager?.handleToolComplete(sessionId: sid)
+                }
                 updateWidgetData()
             }
 
@@ -414,7 +443,9 @@ final class RelayService {
                     role: event.role,
                     task: event.task
                 )
-                liveActivityService?.handleAgentSpawn(role: event.role)
+                if let sid = currentSession?.id {
+                    liveActivityManager?.handleAgentSpawn(sessionId: sid, role: event.role)
+                }
                 updateWidgetData()
             }
 
@@ -435,14 +466,18 @@ final class RelayService {
                     agentId: event.agentId,
                     result: event.result
                 )
-                liveActivityService?.handleAgentComplete()
+                if let sid = currentSession?.id {
+                    liveActivityManager?.handleAgentComplete(sessionId: sid)
+                }
                 updateWidgetData()
             }
 
         case .agentDismissed:
             if let event = try? MessageCodec.decode(AgentDismissedEvent.self, from: data) {
                 officeViewModel?.handleAgentDismissed(id: event.agentId)
-                liveActivityService?.handleAgentComplete()
+                if let sid = currentSession?.id {
+                    liveActivityManager?.handleAgentComplete(sessionId: sid)
+                }
                 updateWidgetData()
             }
 

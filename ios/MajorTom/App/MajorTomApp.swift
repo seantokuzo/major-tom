@@ -8,7 +8,7 @@ struct MajorTomApp: App {
     @State private var auth = AuthService()
     @State private var sessionStorage = SessionStorageService()
     @State private var notificationService = NotificationService()
-    @State private var liveActivityService = LiveActivityService()
+    @State private var liveActivityManager = LiveActivityManager()
     @State private var watchConnectivity = PhoneWatchConnectivityService()
     @State private var selectedTab: AppTab = .control
     @Environment(\.scenePhase) private var scenePhase
@@ -28,7 +28,7 @@ struct MajorTomApp: App {
                 relay.officeViewModel = officeViewModel
                 relay.authService = auth
                 relay.notificationService = notificationService
-                relay.liveActivityService = liveActivityService
+                relay.liveActivityManager = liveActivityManager
                 relay.watchConnectivityService = watchConnectivity
                 setupNotificationHandlers()
                 setupWatchConnectivity()
@@ -47,6 +47,10 @@ struct MajorTomApp: App {
                 guard let deepLink else { return }
                 handleDeepLink(deepLink)
                 notificationService.pendingDeepLink = nil
+            }
+            // Handle deep links from Live Activity approve/deny buttons and widget taps
+            .onOpenURL { url in
+                handleLiveActivityURL(url)
             }
             // Handle Siri shortcut notifications (in-process, e.g. Spotlight)
             .onReceive(NotificationCenter.default.publisher(for: .startSessionFromShortcut)) { _ in
@@ -145,6 +149,69 @@ struct MajorTomApp: App {
             selectedTab = .control
         }
         HapticService.impact(.light)
+    }
+
+    // MARK: - Live Activity Deep Links
+
+    /// Handle URLs from Live Activity approve/deny buttons and widget taps.
+    ///
+    /// Supported schemes:
+    /// - `majortom://approve/{requestId}` — approve the pending request
+    /// - `majortom://deny/{requestId}` — deny the pending request
+    /// - `majortom://session/{sessionId}` — navigate to session
+    private func handleLiveActivityURL(_ url: URL) {
+        guard url.scheme == "majortom" else { return }
+
+        let host = url.host()
+        let pathComponent = url.pathComponents.dropFirst().first // skip leading "/"
+
+        switch host {
+        case "approve":
+            let requestId = pathComponent ?? "latest"
+            resolveApproval(requestId: requestId, approved: true)
+        case "deny":
+            let requestId = pathComponent ?? "latest"
+            resolveApproval(requestId: requestId, approved: false)
+        case "session":
+            // Navigate to the Control tab for the session.
+            // If a specific sessionId is provided and differs from the current session,
+            // attach to it so the user sees the right session context.
+            if let sessionId = pathComponent,
+               relay.currentSession?.id != sessionId {
+                Task { try? await relay.attachSession(id: sessionId) }
+            }
+            selectedTab = .control
+            HapticService.impact(.light)
+        default:
+            break
+        }
+    }
+
+    /// Resolve an approval from a deep link.
+    /// If requestId is "latest", approve/deny the most recent pending request.
+    /// Only acts if the resolved requestId is currently in `pendingApprovals`
+    /// to prevent untrusted callers from invoking arbitrary approvals.
+    private func resolveApproval(requestId: String, approved: Bool) {
+        let targetId: String
+        if requestId == "latest" {
+            guard let latest = relay.pendingApprovals.last else { return }
+            targetId = latest.id
+        } else {
+            // Validate that this request is actually pending
+            guard relay.pendingApprovals.contains(where: { $0.id == requestId }) else { return }
+            targetId = requestId
+        }
+
+        selectedTab = .control
+        Task {
+            let decision: ApprovalDecision = approved ? .allow : .deny
+            try? await relay.sendApproval(requestId: targetId, decision: decision)
+            if approved {
+                HapticService.approve()
+            } else {
+                HapticService.deny()
+            }
+        }
     }
 
     // MARK: - Watch Connectivity

@@ -4,66 +4,76 @@ import ActivityKit
 // MARK: - Activity Attributes
 
 /// Defines the static and dynamic data for the Major Tom Live Activity.
-/// The actual Widget extension target must be set up separately to render this.
+/// The Widget extension target renders this on Lock Screen and Dynamic Island.
 struct MajorTomActivityAttributes: ActivityAttributes {
-    /// Static data — set once when the activity starts.
+    /// Dynamic data — updates throughout the activity lifetime.
     struct ContentState: Codable, Hashable {
-        /// Number of currently active agents.
-        var activeAgentCount: Int
-        /// Total number of agents spawned this session.
-        var totalAgentCount: Int
+        /// Human-readable session name (e.g. working dir basename).
+        var sessionName: String
+        /// Session status: "active", "waiting", "error", "idle".
+        var status: String
+        /// Elapsed time in seconds since session start.
+        var elapsedSeconds: Int
         /// Cumulative session cost in USD.
-        var costUsd: Double
-        /// Name of the latest tool being executed (nil if idle).
-        var currentTool: String?
-        /// Session start time — used to calculate elapsed duration.
-        var sessionStartDate: Date
-        /// Most recent agent role/name for display.
-        var latestAgentRole: String?
-        /// Whether the session is still active.
-        var isActive: Bool
+        var costDollars: Double
+        /// Number of pending approval requests.
+        var pendingApprovals: Int
+        /// Number of currently active agents.
+        var activeAgents: Int
+        /// Name of the most recent tool (nil if idle).
+        var latestTool: String?
 
         // MARK: - Formatted Strings
 
         var formattedCost: String {
-            String(format: "$%.4f", costUsd)
+            if costDollars >= 1.0 {
+                return String(format: "$%.2f", costDollars)
+            }
+            return String(format: "$%.4f", costDollars)
         }
 
         var agentSummary: String {
-            "\(activeAgentCount)/\(totalAgentCount)"
+            if activeAgents == 0 { return "No agents" }
+            return "\(activeAgents) agent\(activeAgents == 1 ? "" : "s")"
         }
 
         var toolDisplay: String {
-            currentTool ?? "Idle"
+            latestTool ?? "Idle"
+        }
+
+        var statusColor: String {
+            switch status {
+            case "active": return "green"
+            case "waiting": return "yellow"
+            case "error": return "red"
+            default: return "gray"
+            }
+        }
+
+        var elapsedFormatted: String {
+            let minutes = elapsedSeconds / 60
+            let seconds = elapsedSeconds % 60
+            if minutes > 0 {
+                return "\(minutes)m \(seconds)s"
+            }
+            return "\(seconds)s"
         }
     }
 
     /// Fixed metadata — does not change during the activity lifetime.
     var sessionId: String
-    var workingDirectory: String
+    var workingDir: String
 }
 
-// MARK: - Activity State Snapshot
+// MARK: - Deep Link URLs
 
-/// A snapshot of session state used to build ContentState updates.
-struct SessionActivitySnapshot {
-    var activeAgentCount: Int = 0
-    var totalAgentCount: Int = 0
-    var costUsd: Double = 0
-    var currentTool: String?
-    var sessionStartDate: Date = Date()
-    var latestAgentRole: String?
-    var isActive: Bool = true
+/// Static deep link URLs used by Live Activity views.
+/// Centralized here so the app target and widget extension share the same definitions.
+enum LiveActivityDeepLinks {
+    static let approveLatest = URL(string: "majortom://approve/latest")!
+    static let denyLatest = URL(string: "majortom://deny/latest")!
 
-    var contentState: MajorTomActivityAttributes.ContentState {
-        .init(
-            activeAgentCount: activeAgentCount,
-            totalAgentCount: totalAgentCount,
-            costUsd: costUsd,
-            currentTool: currentTool,
-            sessionStartDate: sessionStartDate,
-            latestAgentRole: latestAgentRole,
-            isActive: isActive
-        )
+    static func session(_ sessionId: String) -> URL? {
+        URL(string: "majortom://session/\(sessionId)")
     }
 }
