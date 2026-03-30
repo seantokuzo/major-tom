@@ -44,13 +44,20 @@ final class SettingsViewModel {
 
     func requestDeviceList() async {
         isLoadingDevices = true
+        defer { isLoadingDevices = false }
+
         do {
+            let counterBefore = relay.responseCounter
             try await relay.requestDeviceList()
-            // Timeout: if response hasn't arrived in 5s, stop loading
-            try? await Task.sleep(for: .seconds(5))
-            if isLoadingDevices { isLoadingDevices = false }
+            // Poll until the relay response arrives (responseCounter changes).
+            // Respects task cancellation so the loop stops when the view disappears.
+            for _ in 0..<40 {
+                if Task.isCancelled { break }
+                if relay.responseCounter != counterBefore { break }
+                try await Task.sleep(for: .milliseconds(50))
+            }
         } catch {
-            isLoadingDevices = false
+            // Silently fail — device list will just not update (includes CancellationError)
         }
     }
 
@@ -59,6 +66,8 @@ final class SettingsViewModel {
             try await relay.revokeDevice(id: id)
             devices.removeAll { $0.id == id }
             HapticService.notification(.success)
+            // Refresh the device list from server to ensure fresh data
+            await requestDeviceList()
         } catch {
             HapticService.notification(.error)
         }

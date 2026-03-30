@@ -35,6 +35,13 @@ final class RelayService {
     // Workspace tree
     var workspaceFiles: [FileNode] = []
 
+    /// Monotonic counter bumped on selected relay responses that update
+    /// polled state (e.g., session info, session lists, workspace, filesystem).
+    /// Poll loops can snapshot this before sending a request and break as soon
+    /// as the value changes, which correctly handles empty-result responses
+    /// for those message types.
+    private(set) var responseCounter: UInt64 = 0
+
     // Context
     var contextFiles: [String] = []
 
@@ -287,6 +294,7 @@ final class RelayService {
                     startedAt: event.startedAt,
                     tokenUsage: event.tokenUsage
                 )
+                responseCounter &+= 1
                 // Start Live Activity for new session
                 liveActivityService?.startActivity(
                     sessionId: event.sessionId,
@@ -326,6 +334,7 @@ final class RelayService {
         case .sessionListResponse:
             if let event = try? MessageCodec.decode(SessionListResponseEvent.self, from: data) {
                 sessionList = event.sessions
+                responseCounter &+= 1
             }
 
         case .sessionHistory:
@@ -435,6 +444,7 @@ final class RelayService {
         case .workspaceTreeResponse:
             if let event = try? MessageCodec.decode(WorkspaceTreeResponseEvent.self, from: data) {
                 workspaceFiles = event.files
+                responseCounter &+= 1
             }
 
         case .contextAddResponse, .contextRemoveResponse:
@@ -444,6 +454,7 @@ final class RelayService {
             if let event = try? MessageCodec.decode(DeviceListResponseEvent.self, from: data) {
                 deviceList = event.devices
                 onDeviceListUpdate?(event.devices)
+                responseCounter &+= 1
             }
 
         case .deviceRevokeResponse:
@@ -454,18 +465,21 @@ final class RelayService {
                 fsEntries = event.entries
                 fsCurrentPath = event.path
                 fsError = nil
+                responseCounter &+= 1
             }
 
         case .fsReadFileResponse:
             if let event = try? MessageCodec.decode(FsReadFileResponseEvent.self, from: data) {
                 fsFileContent = event.content
                 fsError = nil
+                responseCounter &+= 1
             }
 
         case .fsCwdResponse:
             if let event = try? MessageCodec.decode(FsCwdResponseEvent.self, from: data) {
                 fsCurrentPath = event.path
                 fsError = nil
+                responseCounter &+= 1
             }
 
         case .fsError:

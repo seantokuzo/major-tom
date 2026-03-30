@@ -35,11 +35,6 @@ struct AgentInspectorView: View {
             // Details
             detailRows
 
-            // Current task (if any)
-            if let task = agent.currentTask {
-                taskSection(task)
-            }
-
             Spacer()
 
             // Message input (only when connected to relay)
@@ -170,22 +165,6 @@ struct AgentInspectorView: View {
             Text(value)
                 .font(MajorTomTheme.Typography.codeFontSmall)
                 .foregroundStyle(MajorTomTheme.Colors.textSecondary)
-        }
-    }
-
-    private func taskSection(_ task: String) -> some View {
-        VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.xs) {
-            Text("Current Task")
-                .font(MajorTomTheme.Typography.caption)
-                .foregroundStyle(MajorTomTheme.Colors.textTertiary)
-
-            Text(task)
-                .font(MajorTomTheme.Typography.codeFontSmall)
-                .foregroundStyle(MajorTomTheme.Colors.textPrimary)
-                .padding(MajorTomTheme.Spacing.sm)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(MajorTomTheme.Colors.background)
-                .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.small))
         }
     }
 

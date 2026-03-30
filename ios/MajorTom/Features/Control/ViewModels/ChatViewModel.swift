@@ -69,17 +69,27 @@ final class ChatViewModel {
         Array(relay.autoApprovedTools.suffix(5))
     }
 
-    func countdownFor(request: ApprovalRequest) -> Int {
+    func countdownFor(request: ApprovalRequest, at now: Date = Date()) -> Int {
         guard isDelayMode else { return 0 }
-        let elapsed = Int(Date().timeIntervalSince(request.receivedAt))
+        let elapsed = Int(now.timeIntervalSince(request.receivedAt))
         return max(0, relay.delaySeconds - elapsed)
     }
 
     // MARK: - Smart Scroll
 
+    /// Track the visible height of the scroll view for accurate near-bottom detection.
+    var scrollViewHeight: CGFloat = 0
+
     func updateScrollPosition(contentMaxY: CGFloat) {
+        // contentMaxY is the position of the bottom-of-content marker in the scroll
+        // view's coordinate space. When scrolled to bottom, contentMaxY ~ scrollViewHeight.
+        // When scrolled up, contentMaxY > scrollViewHeight (the marker is below the visible area).
+        // Guard against uninitialized scrollViewHeight.
+        guard scrollViewHeight > 0 else { return }
+
         let wasNearBottom = isNearBottom
-        isNearBottom = contentMaxY < nearBottomThreshold
+        let distanceFromBottom = contentMaxY - scrollViewHeight
+        isNearBottom = distanceFromBottom < nearBottomThreshold
 
         if !isNearBottom && wasNearBottom {
             showScrollFab = true
