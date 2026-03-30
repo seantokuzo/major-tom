@@ -94,6 +94,19 @@ This project uses a **thin orchestrator, fat workers** pattern:
 2. **Subagents** get fresh context — each handles one component (iOS, relay, extension, sprites)
 3. **No nesting** — subagents never spawn sub-subagents
 4. **Atomic tasks** — one task = one commit
+5. **PR review pipeline** — after every PR, run the automated review loop (see `.agents/skills/pr-review-pipeline/SKILL.md`)
+6. **Never merge** — PRs are merged by the user, never by agents
+
+### PR Review Pipeline
+
+After creating any PR, agents MUST run the review pipeline:
+1. Poll for Copilot review comments (auto-requested)
+2. Address ALL comments, push fixes, reply inline
+3. Re-poll for round 2, fix and push
+4. Repeat up to 3 rounds until clean
+5. Report "ready for merge" — never merge yourself
+
+See `.agents/skills/pr-review-pipeline/SKILL.md` for full workflow.
 
 ### Context Management
 
