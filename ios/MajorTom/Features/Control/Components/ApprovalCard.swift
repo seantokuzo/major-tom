@@ -6,7 +6,6 @@ struct ApprovalCard: View {
     let request: ApprovalRequest
     let onDecision: (ApprovalDecision) -> Void
     var isAutoApproved: Bool = false
-    var autoApprovalReason: AutoApprovalReason? = nil
     var countdownRemaining: Int? = nil
 
     @State private var isExpanded = false
@@ -336,30 +335,14 @@ struct ApprovalCard: View {
     @ViewBuilder
     private var autoApprovedBadge: some View {
         if isAutoApproved {
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("Auto-approved")
-                    .font(MajorTomTheme.Typography.caption)
-                    .foregroundStyle(.white)
-                if let reason = autoApprovalReason {
-                    Text(autoApprovalReasonLabel(reason))
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.8))
-                }
-            }
-            .padding(.horizontal, MajorTomTheme.Spacing.sm)
-            .padding(.vertical, MajorTomTheme.Spacing.xs)
-            .background(MajorTomTheme.Colors.accent.opacity(0.8))
-            .clipShape(Capsule())
-            .padding(MajorTomTheme.Spacing.sm)
-        }
-    }
-
-    private func autoApprovalReasonLabel(_ reason: AutoApprovalReason) -> String {
-        switch reason {
-        case .smartSettings: return "Smart: settings"
-        case .smartSession: return "Smart: session"
-        case .godYolo: return "God: YOLO"
-        case .godNormal: return "God mode"
+            Text("Auto-approved")
+                .font(MajorTomTheme.Typography.caption)
+                .foregroundStyle(.white)
+                .padding(.horizontal, MajorTomTheme.Spacing.sm)
+                .padding(.vertical, MajorTomTheme.Spacing.xs)
+                .background(MajorTomTheme.Colors.accent.opacity(0.8))
+                .clipShape(Capsule())
+                .padding(MajorTomTheme.Spacing.sm)
         }
     }
 

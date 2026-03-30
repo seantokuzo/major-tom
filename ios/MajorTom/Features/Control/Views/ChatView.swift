@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatView: View {
     @State private var viewModel: ChatViewModel
+    @State private var activityViewModel: ToolActivityViewModel
     @State private var isPermissionExpanded = false
     @State private var showSessionList = false
     @State private var showActivitySheet = false
@@ -13,6 +14,7 @@ struct ChatView: View {
         self.relay = relay
         self.storage = storage
         _viewModel = State(initialValue: ChatViewModel(relay: relay))
+        _activityViewModel = State(initialValue: ToolActivityViewModel(relay: relay))
     }
 
     var body: some View {
@@ -38,7 +40,6 @@ struct ChatView: View {
                     messagesList
                     if viewModel.showScrollFab { scrollToBottomFab }
                 }
-                .animation(.spring(duration: 0.3), value: viewModel.showScrollFab)
 
                 if viewModel.showCommandPalette {
                     CommandPaletteView(
@@ -51,10 +52,10 @@ struct ChatView: View {
                 ContextChipsBar(paths: viewModel.contextPaths) { viewModel.removeContextFile($0) }
 
                 // Tool activity floating bar
-                if relay.activeTools.count + relay.completedTools.count > 0 {
+                if activityViewModel.totalToolCount > 0 {
                     ToolActivityFloatingBar(
-                        runningCount: relay.activeTools.count,
-                        totalCount: relay.activeTools.count + relay.completedTools.count
+                        runningCount: activityViewModel.runningCount,
+                        totalCount: activityViewModel.totalToolCount
                     ) {
                         HapticService.impact(.medium)
                         showActivitySheet = true
@@ -164,26 +165,21 @@ struct ChatView: View {
     // MARK: - Approvals
 
     private var approvalsList: some View {
-        // TimelineView ensures countdown timers re-render every second
-        TimelineView(.periodic(from: .now, by: 1.0)) { context in
-            ScrollView {
-                LazyVStack(spacing: MajorTomTheme.Spacing.md) {
-                    ForEach(viewModel.pendingApprovals) { request in
-                        ApprovalCard(request: request, onDecision: { decision in
-                            Task { await viewModel.handleApproval(requestId: request.id, decision: decision) }
-                        }, countdownRemaining: viewModel.isDelayMode ? viewModel.countdownFor(request: request, at: context.date) : nil)
-                    }
-                    ForEach(viewModel.recentAutoApproved) { autoTool in
-                        ApprovalCard(
-                            request: ApprovalRequest(from: ApprovalRequestEvent(type: "approval.auto", requestId: autoTool.id.uuidString, tool: autoTool.tool, description: autoTool.description, details: nil)),
-                            onDecision: { _ in },
-                            isAutoApproved: true,
-                            autoApprovalReason: autoTool.reason
-                        )
-                    }
+        ScrollView {
+            LazyVStack(spacing: MajorTomTheme.Spacing.md) {
+                ForEach(viewModel.pendingApprovals) { request in
+                    ApprovalCard(request: request, onDecision: { decision in
+                        Task { await viewModel.handleApproval(requestId: request.id, decision: decision) }
+                    }, countdownRemaining: viewModel.isDelayMode ? viewModel.countdownFor(request: request) : nil)
                 }
-                .padding(MajorTomTheme.Spacing.md)
+                ForEach(viewModel.recentAutoApproved) { autoTool in
+                    ApprovalCard(
+                        request: ApprovalRequest(from: ApprovalRequestEvent(type: "approval.auto", requestId: autoTool.id.uuidString, tool: autoTool.tool, description: autoTool.description, details: nil)),
+                        onDecision: { _ in }, isAutoApproved: true
+                    )
+                }
             }
+            .padding(MajorTomTheme.Spacing.md)
         }
         .frame(maxHeight: 400)
         .background(MajorTomTheme.Colors.surface.opacity(0.5))
@@ -213,16 +209,6 @@ struct ChatView: View {
                 }.frame(height: 0)
             }
             .coordinateSpace(name: "chatScroll")
-            .background(
-                GeometryReader { geo in
-                    Color.clear.onAppear {
-                        viewModel.scrollViewHeight = geo.size.height
-                    }
-                    .onChange(of: geo.size.height) { _, newHeight in
-                        viewModel.scrollViewHeight = newHeight
-                    }
-                }
-            )
             .onPreferenceChange(ScrollOffsetPreferenceKey.self) { viewModel.updateScrollPosition(contentMaxY: $0) }
             .onChange(of: viewModel.messages.count) {
                 if viewModel.isNearBottom {

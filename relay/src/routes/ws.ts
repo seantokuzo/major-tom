@@ -148,7 +148,9 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     // Extract sessionId from the message if present.
     const sessionId = extractSessionId(message);
     if (sessionId) {
-      eventBuffer.record(sessionId, message);
+      const seq = eventBuffer.record(sessionId, message);
+      // Surface the seq on the outbound message so clients can track lastSeq
+      (message as unknown as Record<string, unknown>).seq = seq;
     }
 
     const encoded = encodeServerMessage(message);

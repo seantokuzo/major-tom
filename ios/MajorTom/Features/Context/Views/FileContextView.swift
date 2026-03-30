@@ -165,17 +165,11 @@ struct FileContextView: View {
         defer { isLoading = false }
 
         do {
-            let counterBefore = relay.responseCounter
             try await relay.requestWorkspaceTree()
-            // Poll until the relay response arrives (responseCounter changes).
-            // Respects task cancellation so the loop stops when the view disappears.
-            for _ in 0..<60 {
-                if Task.isCancelled { break }
-                if relay.responseCounter != counterBefore { break }
-                try await Task.sleep(for: .milliseconds(50))
-            }
+            // Small delay to let the response come back
+            try? await Task.sleep(for: .milliseconds(500))
         } catch {
-            // workspace files will remain empty (includes CancellationError)
+            // workspace files will remain empty
         }
     }
 }

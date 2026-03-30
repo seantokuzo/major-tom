@@ -59,8 +59,6 @@ final class SettingsViewModel {
             try await relay.revokeDevice(id: id)
             devices.removeAll { $0.id == id }
             HapticService.notification(.success)
-            // Refresh the device list from server to ensure fresh data
-            await requestDeviceList()
         } catch {
             HapticService.notification(.error)
         }

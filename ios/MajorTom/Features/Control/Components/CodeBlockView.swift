@@ -123,22 +123,12 @@ struct CodeBlockView: View {
         if multiline { options.insert(.anchorsMatchLines) }
 
         guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return }
-
-        // Bridge through plain String indices first, then convert to AttributedString ranges.
-        // Using Range(nsRange, in: attributed) directly can produce incorrect results because
-        // AttributedString's index space doesn't map 1:1 with NSRange offsets.
-        let plainString = String(attributed.characters)
-        let nsString = plainString as NSString
-        let matches = regex.matches(in: plainString, range: NSRange(location: 0, length: nsString.length))
+        let nsString = String(attributed.characters) as NSString
+        let matches = regex.matches(in: String(attributed.characters), range: NSRange(location: 0, length: nsString.length))
 
         for match in matches {
-            // Convert NSRange -> Range<String.Index> via the plain String
-            guard let stringRange = Range(match.range, in: plainString) else { continue }
-            // Convert Range<String.Index> -> Range<AttributedString.Index>
-            let attrStart = AttributedString.Index(stringRange.lowerBound, within: attributed)
-            let attrEnd = AttributedString.Index(stringRange.upperBound, within: attributed)
-            guard let start = attrStart, let end = attrEnd else { continue }
-            attributed[start..<end].foregroundColor = color
+            guard let range = Range(match.range, in: attributed) else { continue }
+            attributed[range].foregroundColor = color
         }
     }
 

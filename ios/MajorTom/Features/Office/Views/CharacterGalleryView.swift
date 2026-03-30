@@ -86,7 +86,16 @@ struct CharacterGalleryView: View {
     }
 
     private func spritePreview(config: CharacterConfig) -> some View {
-        CachedSpritePreview(config: config)
+        let scene = CharacterPreviewScene(characterType: config.type)
+
+        return SpriteView(scene: scene)
+            .frame(width: 120, height: 120)
+            .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.large))
+            .overlay(
+                RoundedRectangle(cornerRadius: MajorTomTheme.Radius.large)
+                    .stroke(config.spriteColor.opacity(0.5), lineWidth: 2)
+            )
+            .shadow(color: config.spriteColor.opacity(0.3), radius: 8, y: 4)
     }
 
     private func traitsView(config: CharacterConfig) -> some View {
@@ -163,30 +172,6 @@ struct CharacterGalleryView: View {
         case .schnauzerPepper:
             return "Salt and pepper wisdom. Best beard in the office, no contest."
         }
-    }
-}
-
-// MARK: - Cached Sprite Preview
-
-/// Wraps the SpriteKit scene in a @State so it's created once and reused across re-renders.
-private struct CachedSpritePreview: View {
-    let config: CharacterConfig
-    @State private var scene: CharacterPreviewScene
-
-    init(config: CharacterConfig) {
-        self.config = config
-        _scene = State(initialValue: CharacterPreviewScene(characterType: config.type))
-    }
-
-    var body: some View {
-        SpriteView(scene: scene)
-            .frame(width: 120, height: 120)
-            .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.large))
-            .overlay(
-                RoundedRectangle(cornerRadius: MajorTomTheme.Radius.large)
-                    .stroke(config.spriteColor.opacity(0.5), lineWidth: 2)
-            )
-            .shadow(color: config.spriteColor.opacity(0.3), radius: 8, y: 4)
     }
 }
 

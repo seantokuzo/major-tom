@@ -372,7 +372,8 @@ export interface SessionResumeResponseMessage {
 }
 
 
-export type ServerMessage =
+/** Base server message union (without envelope fields). */
+type ServerMessageBase =
   | OutputMessage
   | ApprovalRequestMessage
   | ToolStartMessage
@@ -402,6 +403,14 @@ export type ServerMessage =
   | FsCwdResponseMessage
   | FsErrorMessage
   | SessionResumeResponseMessage;
+
+/**
+ * Every outbound server message may carry an optional `seq` —
+ * a monotonically-increasing sequence number stamped by the relay
+ * for session-scoped events. Clients use `lastSeq` during
+ * `session.resume` to request only events they missed.
+ */
+export type ServerMessage = ServerMessageBase & { seq?: number };
 
 // ── Utilities ───────────────────────────────────────────────
 
