@@ -2,9 +2,11 @@ import SwiftUI
 
 struct ChatView: View {
     @State private var viewModel: ChatViewModel
+    @State private var fleetViewModel: FleetViewModel
     @State private var isPermissionExpanded = false
     @State private var showSessionList = false
     @State private var showActivitySheet = false
+    @State private var showFleetDashboard = false
     @Environment(\.scenePhase) private var scenePhase
     private let relay: RelayService
     private let storage: SessionStorageService
@@ -12,7 +14,9 @@ struct ChatView: View {
     init(relay: RelayService, storage: SessionStorageService) {
         self.relay = relay
         self.storage = storage
+        let fleet = FleetViewModel(relay: relay)
         _viewModel = State(initialValue: ChatViewModel(relay: relay))
+        _fleetViewModel = State(initialValue: fleet)
     }
 
     var body: some View {
@@ -93,6 +97,12 @@ struct ChatView: View {
         .sheet(isPresented: $showSessionList) {
             SessionListView(relay: relay, storage: storage)
         }
+        .sheet(isPresented: $showFleetDashboard) {
+            FleetDashboardView(relay: relay)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.hidden)
+                .presentationBackground(MajorTomTheme.Colors.background)
+        }
         .sheet(isPresented: $showActivitySheet) {
             ToolActivityView(relay: relay)
                 .presentationDetents([.medium, .large])
@@ -103,6 +113,7 @@ struct ChatView: View {
             if newPhase == .background { saveCurrentSession() }
         }
         .task {
+            relay.fleetViewModel = fleetViewModel
             if !viewModel.hasSession { await viewModel.startSession() }
         }
     }
@@ -138,6 +149,15 @@ struct ChatView: View {
                 HapticService.buttonTap()
                 isPermissionExpanded.toggle()
             }
+
+            FleetStatusBadge(
+                workerCount: fleetViewModel.workerCount,
+                healthLevel: fleetViewModel.fleetHealthColor,
+                onTap: {
+                    HapticService.buttonTap()
+                    showFleetDashboard = true
+                }
+            )
 
             Button {
                 showSessionList = true
