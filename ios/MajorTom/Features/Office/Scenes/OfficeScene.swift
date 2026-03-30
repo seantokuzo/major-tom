@@ -3,7 +3,7 @@ import SpriteKit
 // MARK: - Office Scene
 
 /// The main SpriteKit scene that renders the office floor plan and agent sprites.
-/// Includes activity stations, ambient animations, and agent management.
+/// Includes activity stations, ambient animations, theme overlays, and agent management.
 final class OfficeScene: SKScene {
 
     /// Callback when an agent sprite is tapped (wired to SwiftUI via OfficeView).
@@ -18,6 +18,32 @@ final class OfficeScene: SKScene {
     /// Station node references.
     private var stationNodes: [ActivityStationType: SKNode] = [:]
 
+    // MARK: - Theme & Mood
+
+    /// Reference to the theme engine (set by OfficeView on appear).
+    var themeEngine: ThemeEngine?
+
+    /// Reference to the mood engine (set by OfficeView on appear).
+    var moodEngine: MoodEngine?
+
+    /// Overlay node for time-of-day tinting.
+    private var themeOverlay: SKSpriteNode?
+
+    /// Desk lamp glow nodes (visible at night).
+    private var lampNodes: [Int: SKShapeNode] = [:]
+
+    /// Snow decoration nodes (visible in winter).
+    private var snowNodes: [SKShapeNode] = []
+
+    /// Agent interaction scan timer.
+    private var interactionScanTime: TimeInterval = 0
+
+    /// Agents currently in an idle chat interaction.
+    private var chattingAgents: Set<String> = []
+
+    /// Mood speech timer — triggers random mood quips.
+    private var moodSpeechTime: TimeInterval = 0
+
     // MARK: - Scene Lifecycle
 
     override func didMove(to view: SKView) {
@@ -31,6 +57,7 @@ final class OfficeScene: SKScene {
         renderDesks()
         renderDoor()
         renderStations()
+        renderThemeOverlay()
         startAmbientAnimations()
     }
 
@@ -216,6 +243,216 @@ final class OfficeScene: SKScene {
         }
     }
 
+    // MARK: - Theme Rendering
+
+    /// Create the theme overlay node that covers the entire scene.
+    private func renderThemeOverlay() {
+        let overlay = SKSpriteNode(color: .clear, size: size)
+        overlay.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        overlay.zPosition = 50  // Above furniture, below agents (agents are at 10, but we want tint on the room)
+        overlay.alpha = 0
+        overlay.name = "themeOverlay"
+        addChild(overlay)
+        themeOverlay = overlay
+
+        // Create lamp glow nodes near each desk (hidden by default)
+        for desk in OfficeLayout.desks {
+            let glow = SKShapeNode(circleOfRadius: 18)
+            glow.fillColor = SKColor(red: 1.0, green: 0.86, blue: 0.59, alpha: 0.2)
+            glow.strokeColor = .clear
+            glow.position = CGPoint(x: desk.position.x + 15, y: desk.position.y + 10)
+            glow.zPosition = 8
+            glow.alpha = 0
+            glow.name = "lamp_\(desk.id)"
+            addChild(glow)
+            lampNodes[desk.id] = glow
+        }
+    }
+
+    /// Apply theme state to the scene. Called from update(currentTime:).
+    private func applyTheme() {
+        guard let theme = themeEngine else { return }
+
+        // Update overlay tint
+        if let overlay = themeOverlay {
+            overlay.color = theme.palette.overlayColor
+            overlay.alpha = theme.palette.overlayAlpha
+        }
+
+        // Desk lamps — visible at night when desks are occupied
+        for desk in OfficeLayout.desks {
+            guard let lampNode = lampNodes[desk.id] else { continue }
+            if theme.palette.lampsOn && desk.occupantId != nil {
+                lampNode.alpha = 0.25
+                // Subtle flicker
+                if lampNode.action(forKey: "flicker") == nil {
+                    let flicker = SKAction.repeatForever(SKAction.sequence([
+                        SKAction.fadeAlpha(to: 0.2, duration: 0.8),
+                        SKAction.fadeAlpha(to: 0.3, duration: 0.6),
+                    ]))
+                    lampNode.run(flicker, withKey: "flicker")
+                }
+            } else {
+                lampNode.removeAction(forKey: "flicker")
+                lampNode.alpha = 0
+            }
+        }
+
+        // Seasonal snow on window areas — add snow nodes if winter and not yet present
+        if theme.seasonal.showSnow && snowNodes.isEmpty {
+            addSnowDecorations()
+        } else if !theme.seasonal.showSnow && !snowNodes.isEmpty {
+            removeSnowDecorations()
+        }
+    }
+
+    /// Add snow decorations on top of the scene (window sills).
+    private func addSnowDecorations() {
+        // Snow along the top of the scene (window sill area)
+        for x in stride(from: 20, to: Int(size.width) - 20, by: 12) {
+            let snow = SKShapeNode(ellipseOf: CGSize(width: CGFloat.random(in: 6...10), height: CGFloat.random(in: 3...5)))
+            snow.fillColor = SKColor(white: 0.94, alpha: 0.7)
+            snow.strokeColor = .clear
+            snow.position = CGPoint(x: CGFloat(x) + CGFloat.random(in: -3...3), y: size.height - 5)
+            snow.zPosition = 55
+            addChild(snow)
+            snowNodes.append(snow)
+        }
+    }
+
+    /// Remove snow decorations.
+    private func removeSnowDecorations() {
+        for node in snowNodes {
+            node.removeFromParent()
+        }
+        snowNodes.removeAll()
+    }
+
+    // MARK: - Frame Update
+
+    override func update(_ currentTime: TimeInterval) {
+        super.update(currentTime)
+
+        // Apply theme every frame (cheap — just sets colors/alphas)
+        applyTheme()
+
+        // Update agent moods from mood engine (every ~30s, but we check each frame for visual updates)
+        applyAgentMoods()
+
+        // Scan for agent interactions every ~8 seconds
+        if currentTime - interactionScanTime > 8 {
+            interactionScanTime = currentTime
+            scanForInteractions()
+        }
+
+        // Random mood speech every ~15 seconds
+        if currentTime - moodSpeechTime > 15 {
+            moodSpeechTime = currentTime
+            triggerRandomMoodSpeech()
+        }
+    }
+
+    /// Apply mood engine state to agent sprites.
+    private func applyAgentMoods() {
+        guard let moodEngine else { return }
+        for (agentId, sprite) in agentSprites {
+            let mood = moodEngine.mood(for: agentId)
+            sprite.updateMood(mood)
+        }
+    }
+
+    // MARK: - Agent Interactions
+
+    /// Scan for idle agents near each other and trigger chat interactions.
+    private func scanForInteractions() {
+        let idleSprites = agentSprites.values.filter { sprite in
+            !chattingAgents.contains(sprite.agentId) &&
+            sprite.action(forKey: "move") == nil  // not currently moving
+        }
+
+        guard idleSprites.count >= 2 else { return }
+
+        // Check pairs of idle agents for proximity
+        for i in 0..<idleSprites.count {
+            for j in (i + 1)..<idleSprites.count {
+                let a = idleSprites[i]
+                let b = idleSprites[j]
+                let dx = a.position.x - b.position.x
+                let dy = a.position.y - b.position.y
+                let dist = sqrt(dx * dx + dy * dy)
+
+                // Within 80pt and 6% chance to chat
+                if dist < 80, Double.random(in: 0...1) < 0.06 {
+                    triggerIdleChat(between: a, and: b)
+                    return  // Only one chat per scan
+                }
+            }
+        }
+    }
+
+    /// Trigger a chat exchange between two idle agents.
+    private func triggerIdleChat(between a: AgentSprite, and b: AgentSprite) {
+        chattingAgents.insert(a.agentId)
+        chattingAgents.insert(b.agentId)
+
+        let chatTopics = [
+            ("Tests are failing again", "It's always the tests"),
+            ("We should use microservices", "Nah, monolith's fine"),
+            ("My dog ate my PR", "Good boy energy"),
+            ("Standup was long", "JIRA is down again"),
+            ("Who ordered pizza?", "Coffee run?"),
+            ("This PR is huge", "LGTM *eyes closed*"),
+            ("Merge conflict time", "Who owns this repo?"),
+        ]
+
+        guard let topic = chatTopics.randomElement() else { return }
+
+        // Agent A speaks first
+        a.showSpeechBubble(topic.0, duration: 2.5)
+
+        // Agent B responds after a delay
+        let delay = SKAction.wait(forDuration: 3.0)
+        b.run(delay) { [weak self, weak b] in
+            b?.showSpeechBubble(topic.1, duration: 2.5)
+
+            // Clear chatting state after exchange
+            let cleanup = SKAction.wait(forDuration: 3.5)
+            b?.run(cleanup) { [weak self] in
+                self?.chattingAgents.remove(a.agentId)
+                self?.chattingAgents.remove(b?.agentId ?? "")
+            }
+        }
+    }
+
+    /// Trigger a random mood-appropriate speech bubble on a random agent.
+    private func triggerRandomMoodSpeech() {
+        let candidates = agentSprites.values.filter { !chattingAgents.contains($0.agentId) }
+        guard let sprite = candidates.randomElement() else { return }
+        sprite.showMoodSpeech()
+    }
+
+    /// Broadcast a celebration to all agents near the source agent.
+    func broadcastCelebration(sourceId: String) {
+        guard let sourceSprite = agentSprites[sourceId] else { return }
+
+        // All other agents within 150pt react
+        for (id, sprite) in agentSprites where id != sourceId {
+            let dx = sprite.position.x - sourceSprite.position.x
+            let dy = sprite.position.y - sourceSprite.position.y
+            let dist = sqrt(dx * dx + dy * dy)
+
+            if dist < 150 {
+                let reactions = ["GG!", "Ship it!", "Nice work!", "*claps*", "Woohoo!", "Nice!"]
+                if let reaction = reactions.randomElement() {
+                    let delay = SKAction.wait(forDuration: Double.random(in: 0.3...1.2))
+                    sprite.run(delay) { [weak sprite] in
+                        sprite?.showSpeechBubble(reaction, duration: 2.0)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Ambient Animations
 
     /// Start subtle ambient animations for stations.
@@ -353,11 +590,12 @@ final class OfficeScene: SKScene {
         sprite.moveTo(position: OfficeLayout.doorPosition, duration: 1.5)
     }
 
-    /// Trigger celebration animation on an agent.
+    /// Trigger celebration animation on an agent + broadcast to nearby agents.
     func celebrateAgent(id: String) {
         guard let sprite = agentSprites[id] else { return }
         sprite.updateStatus(.celebrating)
         sprite.startCelebrationAnimation()
+        broadcastCelebration(sourceId: id)
     }
 
     /// Update an agent's displayed name.

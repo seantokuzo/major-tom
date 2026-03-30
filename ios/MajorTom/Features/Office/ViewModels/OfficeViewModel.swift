@@ -59,6 +59,12 @@ final class OfficeViewModel {
     /// Activity manager for station-based idle activities
     let activityManager = ActivityManager()
 
+    /// Theme engine — day/night cycle + seasonal themes
+    let themeEngine = ThemeEngine()
+
+    /// Mood engine — per-agent mood tracking
+    let moodEngine = MoodEngine()
+
     /// Live lookup — always returns current state, never a stale copy.
     var selectedAgent: AgentState? {
         guard let id = selectedAgentId else { return nil }
@@ -229,6 +235,7 @@ final class OfficeViewModel {
             deskIndex: deskIndex
         )
         agents.append(agent)
+        moodEngine.addAgent(id)
     }
 
     /// Called when the relay broadcasts `agent.working`.
@@ -240,6 +247,7 @@ final class OfficeViewModel {
 
         // Release any activity station
         activityManager.releaseStation(for: id)
+        moodEngine.recordActivity(id)
     }
 
     /// Called when the relay broadcasts `agent.idle`.
@@ -248,6 +256,7 @@ final class OfficeViewModel {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
         agents[index].status = .idle
         agents[index].currentTask = nil
+        moodEngine.recordIdle(id)
     }
 
     /// Called when the relay broadcasts `agent.complete`.
@@ -259,6 +268,7 @@ final class OfficeViewModel {
 
         // Release any activity station immediately on completion
         activityManager.releaseStation(for: id)
+        moodEngine.recordCompletion(id)
 
         // After a brief celebration, transition to leaving
         Task { @MainActor in
@@ -337,6 +347,7 @@ final class OfficeViewModel {
     private func removeAgent(id: String) {
         releaseDesk(for: id)
         activityManager.releaseStation(for: id)
+        moodEngine.removeAgent(id)
         agents.removeAll { $0.id == id }
         if selectedAgentId == id {
             selectedAgentId = nil

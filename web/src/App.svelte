@@ -341,6 +341,8 @@
           onAgentClick={handleAgentClick}
           onEmptyClick={() => office.dismissInspector()}
           activeView={activeView}
+          themeEngine={office.themeEngine}
+          moodEngine={office.moodEngine}
         />
         {#if office.selectedAgent}
           <AgentInspector

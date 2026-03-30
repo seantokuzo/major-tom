@@ -98,6 +98,8 @@
 		FB9ACD1627AF69650D07975D /* ActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDB924E236ABFE12B68C803 /* ActivityManager.swift */; };
 		FD27662CD00A7F829ABC6FA4 /* DangerScoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F013B10B2AA2CD96B19588 /* DangerScoring.swift */; };
 		FFB20C4BF1BD6D83D3404F2B /* StreamingText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D57C1446E7A203616CCE20 /* StreamingText.swift */; };
+		B2C3D4E5F6071829A3B4C5D6 /* ThemeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* ThemeEngine.swift */; };
+		D4E5F60718293AC5D6E7F8A9 /* MoodEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F60718293AB4C5D6E7 /* MoodEngine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -193,6 +195,8 @@
 		F2E379544E5140C04B00F724 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
 		F4BCC156442BF0A60A71BE43 /* MajorTomActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomActivity.swift; sourceTree = "<group>"; };
 		F4C73E14C8A94C37A496B3FF /* SessionStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStorageService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* ThemeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeEngine.swift; sourceTree = "<group>"; };
+		C3D4E5F60718293AB4C5D6E7 /* MoodEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoodEngine.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -428,7 +432,9 @@
 				F1C51280EF867529A6909DDD /* ActivityStation.swift */,
 				C3C4E64AF88E24ABC75AB59E /* AgentState.swift */,
 				49975C50EF000FB470E30360 /* CharacterConfig.swift */,
+				C3D4E5F60718293AB4C5D6E7 /* MoodEngine.swift */,
 				B2A5F6ECD6AEA9681C140DA3 /* OfficeLayout.swift */,
+				A1B2C3D4E5F60718293A4B5C /* ThemeEngine.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -1047,6 +1053,8 @@
 				961131A6B840819BB8224A5A /* WorkspaceTreeView.swift in Sources */,
 				159F42EE9DF5D54437E45580 /* NotificationSettingsViewModel.swift in Sources */,
 				2D704CFB9BAB51180F5D3EC3 /* NotificationSettingsView.swift in Sources */,
+				B2C3D4E5F6071829A3B4C5D6 /* ThemeEngine.swift in Sources */,
+				D4E5F60718293AC5D6E7F8A9 /* MoodEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
