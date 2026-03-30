@@ -27,7 +27,7 @@ struct MoodInputs {
     var completedAt: Date = .distantPast
     /// When agent started continuous work (nil if not working)
     var workStartTime: Date?
-    /// Total errors in last 5 turns
+    /// Total errors since last task completion (resets on completion)
     var recentErrors: Int = 0
 }
 
@@ -164,14 +164,14 @@ func deriveMood(from inputs: MoodInputs) -> AgentMood {
         return .frustrated
     }
 
-    // Bored: idle for >3 minutes
-    if idleSeconds > 180 {
-        return .bored
-    }
-
-    // Focused: working continuously for >2 minutes
+    // Focused: working continuously for >2 minutes (prioritized over bored)
     if let workStart = inputs.workStartTime, now.timeIntervalSince(workStart) > 120 {
         return .focused
+    }
+
+    // Bored: idle for >3 minutes (skipped while workStartTime is non-nil)
+    if inputs.workStartTime == nil, idleSeconds > 180 {
+        return .bored
     }
 
     // Happy: no recent errors and active

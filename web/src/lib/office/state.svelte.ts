@@ -15,9 +15,9 @@ import {
 } from './speech';
 import { ActivityManager } from './activity-manager';
 import { ThemeEngine } from './theme-engine';
-import { MoodEngine, pickMoodSpeech, MOOD_VISUALS } from './mood-engine';
+import { MoodEngine, pickMoodSpeech } from './mood-engine';
 import type { AgentMood } from './mood-engine';
-import { pickIdleChatExchange, pickEventReaction } from './interactions';
+import { pickEventReaction } from './interactions';
 import type { OfficeEvent } from './interactions';
 
 // ── Status colors ────────────────────────────────────────────
@@ -68,6 +68,8 @@ export interface OfficeState {
   exitSessionMode(): void;
   handleSpawn(id: string, role: string, task: string): void;
   handleWorking(id: string, task: string): void;
+  /** Record a tool error or denial for frustrated mood */
+  handleError(id: string): void;
   handleIdle(id: string): void;
   handleComplete(id: string, result: string): void;
   handleDismissed(id: string): void;
@@ -1394,12 +1396,25 @@ export function createOfficeState(): OfficeState {
   // When a significant session event happens, nearby agents react.
 
   function broadcastEvent(event: OfficeEvent, sourceAgentId?: string): void {
+    // Get source position for proximity check
+    const sourceEa = sourceAgentId ? engine.agents.get(sourceAgentId) : null;
+    const sourcePos = sourceEa?.position ?? null;
+    const MAX_REACTION_DISTANCE = 200;
+
     for (const agent of agents) {
       if (agent.id === sourceAgentId) continue;
       if (agent.status !== 'idle') continue;
       const ea = engine.agents.get(agent.id);
       if (!ea || ea.speechBubble) continue;
-      // 30% chance for each idle agent to react
+
+      // Proximity check — only agents within MAX_REACTION_DISTANCE react
+      if (sourcePos) {
+        const dx = ea.position.x - sourcePos.x;
+        const dy = ea.position.y - sourcePos.y;
+        if (Math.sqrt(dx * dx + dy * dy) > MAX_REACTION_DISTANCE) continue;
+      }
+
+      // 30% chance for each nearby idle agent to react
       if (Math.random() > 0.3) continue;
       const reaction = pickEventReaction(event);
       engine.setSpeechBubble(agent.id, reaction, 2000);
@@ -1479,6 +1494,10 @@ export function createOfficeState(): OfficeState {
       handleWorking(id, task);
       moodEngine.recordActivity(id);
     },
+    /** Record a tool error or denial for frustrated mood */
+    handleError(id: string) {
+      moodEngine.recordError(id);
+    },
     handleIdle(id: string) {
       handleIdle(id);
       moodEngine.recordIdle(id);
@@ -1491,6 +1510,12 @@ export function createOfficeState(): OfficeState {
     handleDismissed(id: string) {
       handleDismissed(id);
       moodEngine.removeAgent(id);
+      // Stop mood speech scanner when this is the last agent.
+      // Removal is delayed 600ms (fade-out), so defer scanner stop to match.
+      const remainingAgents = agents.filter((a) => a.id !== id).length;
+      if (remainingAgents === 0) {
+        setTimeout(() => { stopMoodSpeechScanner(); }, 600);
+      }
     },
     broadcastEvent,
     getAgentMood,

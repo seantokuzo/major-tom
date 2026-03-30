@@ -250,6 +250,11 @@ final class OfficeViewModel {
         moodEngine.recordActivity(id)
     }
 
+    /// Called when a tool error or permission denial occurs for an agent.
+    func handleAgentError(id: String) {
+        moodEngine.recordError(id)
+    }
+
     /// Called when the relay broadcasts `agent.idle`.
     /// Agent gets up and wanders to a break area.
     func handleAgentIdle(id: String) {
