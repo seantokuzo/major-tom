@@ -51,6 +51,10 @@ final class RelayService {
     var fsFileContent: String?
     var fsError: String?
 
+    // Fleet
+    var fleetStatus: FleetStatus?
+    var fleetViewModel: FleetViewModel?
+
     // Session-scoped allowlist (tool names auto-approved via "Always")
     var sessionAllowlist: Set<String> = []
 
@@ -242,6 +246,13 @@ final class RelayService {
 
     func fsCwd() async throws {
         let message = FsCwdRequestMessage()
+        try await webSocket.send(message)
+    }
+
+    // MARK: - Fleet
+
+    func requestFleetStatus() async throws {
+        let message = FleetStatusRequestMessage()
         try await webSocket.send(message)
     }
 
@@ -485,6 +496,31 @@ final class RelayService {
         case .fsError:
             if let event = try? MessageCodec.decode(FsErrorEvent.self, from: data) {
                 fsError = event.message
+            }
+
+        case .fleetStatusResponse:
+            if let event = try? MessageCodec.decode(FleetStatusResponseEvent.self, from: data) {
+                fleetStatus = FleetStatus(from: event)
+                fleetViewModel?.handleFleetResponse(event)
+                responseCounter &+= 1
+            }
+
+        case .fleetWorkerSpawned:
+            if let event = try? MessageCodec.decode(FleetWorkerSpawnedEvent.self, from: data) {
+                fleetViewModel?.handleWorkerSpawned(workerId: event.workerId, workingDir: event.workingDir)
+                HapticService.notification(.success)
+            }
+
+        case .fleetWorkerCrashed:
+            if let event = try? MessageCodec.decode(FleetWorkerCrashedEvent.self, from: data) {
+                fleetViewModel?.handleWorkerCrashed(workerId: event.workerId)
+                HapticService.notification(.error)
+            }
+
+        case .fleetWorkerRestarted:
+            if let event = try? MessageCodec.decode(FleetWorkerRestartedEvent.self, from: data) {
+                fleetViewModel?.handleWorkerRestarted(workerId: event.workerId)
+                HapticService.notification(.warning)
             }
 
         case .error:
