@@ -86,8 +86,8 @@ export function createAnalyticsRoutes(deps: AnalyticsDeps): FastifyPluginAsync {
         const filtered = events.filter((e) => {
           const ts = new Date(e.timestamp);
           if (ts < fromDate || ts > toDate) return false;
-          if (sessionId && 'sessionId' in e && e.sessionId !== sessionId) return false;
-          if (workerId && 'workerId' in e && e.workerId !== workerId) return false;
+          if (sessionId && ('sessionId' in e ? e.sessionId !== sessionId : true)) return false;
+          if (workerId && ('workerId' in e ? e.workerId !== workerId : true)) return false;
           return true;
         });
 

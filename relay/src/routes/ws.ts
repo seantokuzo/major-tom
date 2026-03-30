@@ -828,8 +828,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         triggerPersistence(result.sessionId);
       }
       // Record turn in analytics JSONL
+      const workerInfo = fleetManager.getWorkerForSessionId?.(result.sessionId);
       analyticsCollector.recordTurnComplete({
         sessionId: result.sessionId,
+        workerId: workerInfo?.workerId,
         inputTokens: result.inputTokens ?? 0,
         outputTokens: result.outputTokens ?? 0,
         cost: result.costUsd,

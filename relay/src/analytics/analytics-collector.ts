@@ -80,6 +80,7 @@ export class AnalyticsCollector {
   private writeQueue: Promise<void> = Promise.resolve();
   private filePath: string;
   private initialized = false;
+  private disabled = false;
 
   /** Per-session tool tracking: sessionId → tool names used in current turn */
   private turnTools = new Map<string, string[]>();
@@ -91,18 +92,21 @@ export class AnalyticsCollector {
   // ── Initialization ───────────────────────────────────────
 
   private async ensureDir(): Promise<void> {
-    if (this.initialized) return;
+    if (this.initialized || this.disabled) return;
     try {
       await mkdir(dirname(this.filePath), { recursive: true });
       this.initialized = true;
     } catch (err) {
-      logger.error({ err }, 'Failed to create analytics directory');
+      logger.error({ err }, 'Failed to create analytics directory — disabling analytics writes');
+      this.disabled = true;
+      throw err;
     }
   }
 
   // ── Write (atomic line append) ───────────────────────────
 
   private append(event: AnalyticsEvent): void {
+    if (this.disabled) return;
     this.writeQueue = this.writeQueue
       .then(() => this.ensureDir())
       .then(() => {
