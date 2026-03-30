@@ -21,6 +21,7 @@ enum MessageType: String, Codable {
     case fsLs = "fs.ls"
     case fsReadFile = "fs.readFile"
     case fsCwd = "fs.cwd"
+    case fleetStatus = "fleet.status"
 
     // Server → Client
     case output
@@ -50,6 +51,10 @@ enum MessageType: String, Codable {
     case fsReadFileResponse = "fs.readFile.response"
     case fsCwdResponse = "fs.cwd.response"
     case fsError = "fs.error"
+    case fleetStatusResponse = "fleet.status.response"
+    case fleetWorkerSpawned = "fleet.worker.spawned"
+    case fleetWorkerCrashed = "fleet.worker.crashed"
+    case fleetWorkerRestarted = "fleet.worker.restarted"
     case error
 }
 
@@ -177,6 +182,10 @@ struct FsReadFileRequestMessage: Codable {
 
 struct FsCwdRequestMessage: Codable {
     let type: String = "fs.cwd"
+}
+
+struct FleetStatusRequestMessage: Codable {
+    let type: String = "fleet.status"
 }
 
 // MARK: - Server → Client Messages
@@ -441,6 +450,65 @@ struct FsErrorEvent: Codable {
     let type: String
     let message: String
     var path: String?
+}
+
+// MARK: - Fleet Messages
+
+struct FleetSessionInfo: Codable, Identifiable {
+    let sessionId: String
+    let status: String
+    let totalCost: Double
+    let turnCount: Int
+    let inputTokens: Int
+    let outputTokens: Int
+
+    var id: String { sessionId }
+}
+
+struct FleetWorkerInfo: Codable, Identifiable {
+    let workerId: String
+    let workingDir: String
+    let dirName: String
+    let sessionCount: Int
+    let uptimeMs: Int
+    let restartCount: Int
+    let healthy: Bool
+    let sessions: [FleetSessionInfo]
+
+    var id: String { workerId }
+}
+
+struct FleetAggregateTokens: Codable {
+    let input: Int
+    let output: Int
+}
+
+struct FleetStatusResponseEvent: Codable {
+    let type: String
+    let totalWorkers: Int
+    let totalSessions: Int
+    let aggregateCost: Double
+    let aggregateTokens: FleetAggregateTokens
+    let workers: [FleetWorkerInfo]
+}
+
+struct FleetWorkerSpawnedEvent: Codable {
+    let type: String
+    let workerId: String
+    let workingDir: String
+}
+
+struct FleetWorkerCrashedEvent: Codable {
+    let type: String
+    let workerId: String
+    let workingDir: String
+    let exitCode: Int
+}
+
+struct FleetWorkerRestartedEvent: Codable {
+    let type: String
+    let workerId: String
+    let workingDir: String
 }
 
 struct ErrorEvent: Codable {
