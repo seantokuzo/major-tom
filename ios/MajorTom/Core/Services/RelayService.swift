@@ -454,21 +454,18 @@ final class RelayService {
                 fsEntries = event.entries
                 fsCurrentPath = event.path
                 fsError = nil
-                responseCounter &+= 1
             }
 
         case .fsReadFileResponse:
             if let event = try? MessageCodec.decode(FsReadFileResponseEvent.self, from: data) {
                 fsFileContent = event.content
                 fsError = nil
-                responseCounter &+= 1
             }
 
         case .fsCwdResponse:
             if let event = try? MessageCodec.decode(FsCwdResponseEvent.self, from: data) {
                 fsCurrentPath = event.path
                 fsError = nil
-                responseCounter &+= 1
             }
 
         case .fsError:
