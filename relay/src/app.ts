@@ -18,6 +18,7 @@ import { createHealthRoutes } from './routes/health.js';
 import { createPushRoutes } from './routes/push.js';
 import { createNotificationConfigRoutes } from './routes/notification-config.js';
 import { createAnalyticsRoutes } from './routes/analytics.js';
+import { createAchievementRoutes } from './routes/achievements.js';
 import { createWsRoute } from './routes/ws.js';
 
 // Services
@@ -28,6 +29,7 @@ import { PushManager } from './push/push-manager.js';
 import { NotificationConfigManager } from './push/notification-config.js';
 import { HealthMonitor } from './health/health-monitor.js';
 import { AnalyticsCollector } from './analytics/analytics-collector.js';
+import { AchievementService } from './achievements/achievement-service.js';
 import { getSessionSecret } from './auth/session.js';
 
 export interface AppConfig {
@@ -47,6 +49,7 @@ export async function buildApp(config: AppConfig) {
   const notificationConfigManager = new NotificationConfigManager();
   const healthMonitor = new HealthMonitor(fleetManager, sessionManager);
   const analyticsCollector = new AnalyticsCollector();
+  const achievementService = new AchievementService();
 
   // Start health monitoring
   healthMonitor.start();
@@ -57,6 +60,9 @@ export async function buildApp(config: AppConfig) {
   });
   await pushManager.restoreFromDisk().catch((err: unknown) => {
     logger.error({ err }, 'Failed to restore push subscriptions from disk, starting anyway');
+  });
+  await achievementService.load().catch((err: unknown) => {
+    logger.error({ err }, 'Failed to load achievement state from disk, starting fresh');
   });
 
   // ── Fastify instance ───────────────────────────────────
@@ -102,6 +108,9 @@ export async function buildApp(config: AppConfig) {
   // Analytics API (auth required)
   await app.register(createAnalyticsRoutes({ analyticsCollector }));
 
+  // Achievement API (auth required)
+  await app.register(createAchievementRoutes({ achievementService }));
+
   // WebSocket (auth via session cookie on upgrade)
   await app.register(createWsRoute({
     sessionManager,
@@ -111,6 +120,7 @@ export async function buildApp(config: AppConfig) {
     healthMonitor,
     notificationConfigManager,
     analyticsCollector,
+    achievementService,
     claudeWorkDir: config.claudeWorkDir,
   }));
 
@@ -122,6 +132,7 @@ export async function buildApp(config: AppConfig) {
   app.addHook('onClose', async () => {
     logger.info('Shutting down services...');
     healthMonitor.dispose();
+    await achievementService.flush();
     await analyticsCollector.flush();
     await fleetManager.dispose();
     await sessionPersistence.saveAllImmediate((id) => {

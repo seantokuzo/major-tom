@@ -114,6 +114,10 @@ export interface FleetStatusMessage {
   type: 'fleet.status';
 }
 
+export interface AchievementListMessage {
+  type: 'achievement.list';
+}
+
 
 export type ClientMessage =
   | PromptMessage
@@ -134,7 +138,8 @@ export type ClientMessage =
   | FsReadFileMessage
   | FsCwdMessage
   | SessionResumeMessage
-  | FleetStatusMessage;
+  | FleetStatusMessage
+  | AchievementListMessage;
 
 // ── Server → Client (Relay → iOS) ──────────────────────────
 
@@ -437,6 +442,48 @@ export interface FleetWorkerRestartedMessage {
   restartCount: number;
 }
 
+// ── Achievement messages ─────────────────────────────────────
+
+export interface AchievementStatusEntry {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  icon: string;
+  unlocked: boolean;
+  unlockedAt: string | null;
+  progress: number | null;
+  target: number | null;
+  percentage: number | null;
+  secret: boolean;
+}
+
+export interface AchievementUnlockedMessage {
+  type: 'achievement.unlocked';
+  achievementId: string;
+  name: string;
+  description: string;
+  category: string;
+  icon: string;
+  unlockedAt: string;
+}
+
+export interface AchievementProgressMessage {
+  type: 'achievement.progress';
+  achievementId: string;
+  name: string;
+  current: number;
+  target: number;
+  percentage: number;
+}
+
+export interface AchievementListResponseMessage {
+  type: 'achievement.list.response';
+  achievements: AchievementStatusEntry[];
+  totalCount: number;
+  unlockedCount: number;
+}
+
 
 /** Base server message union (without envelope fields). */
 type ServerMessageBase =
@@ -472,7 +519,10 @@ type ServerMessageBase =
   | FleetStatusResponseMessage
   | FleetWorkerSpawnedMessage
   | FleetWorkerCrashedMessage
-  | FleetWorkerRestartedMessage;
+  | FleetWorkerRestartedMessage
+  | AchievementUnlockedMessage
+  | AchievementProgressMessage
+  | AchievementListResponseMessage;
 
 /**
  * Every outbound server message may carry an optional `seq` —

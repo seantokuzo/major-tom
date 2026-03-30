@@ -22,6 +22,7 @@ import { scanWorkspaceTree } from '../workspace/tree-scanner.js';
 import type { ClientMessage, ServerMessage, FileNode } from '../protocol/messages.js';
 import { createFsHandlers, type FsServerMessage } from './fs.js';
 import type { AnalyticsCollector } from '../analytics/analytics-collector.js';
+import type { AchievementService } from '../achievements/achievement-service.js';
 import { logger } from '../utils/logger.js';
 
 interface WsDeps {
@@ -32,6 +33,7 @@ interface WsDeps {
   healthMonitor: HealthMonitor;
   notificationConfigManager: NotificationConfigManager;
   analyticsCollector: AnalyticsCollector;
+  achievementService: AchievementService;
   claudeWorkDir: string;
 }
 
@@ -48,12 +50,32 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     healthMonitor,
     notificationConfigManager,
     analyticsCollector,
+    achievementService,
     claudeWorkDir,
   } = deps;
 
   const notificationDigest = new NotificationDigest(pushManager, notificationConfigManager);
   const eventBuffer = new EventBufferManager();
   const clients = new Set<WebSocket>();
+
+  // ── Achievement event wiring ────────────────────────────────
+  // When an achievement unlocks, broadcast to all connected clients + record in analytics
+  achievementService.onUnlock((payload) => {
+    broadcast({
+      type: 'achievement.unlocked',
+      achievementId: payload.achievementId,
+      name: payload.name,
+      description: payload.description,
+      category: payload.category,
+      icon: payload.icon,
+      unlockedAt: payload.unlockedAt,
+    });
+    analyticsCollector.recordAchievementUnlocked({
+      achievementId: payload.achievementId,
+      achievementName: payload.name,
+      category: payload.category,
+    });
+  });
 
   // ── Filesystem handlers (sandboxed browsing) ──────────────
   const fsHandlers = createFsHandlers((ws: WebSocket, msg: FsServerMessage) => {
@@ -254,6 +276,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           sessionId: session.id,
           workingDir: workDir,
         });
+        // Track achievement: session started
+        achievementService.checkEvent('session.start');
         sendToClient(ws, {
           type: 'session.info',
           sessionId: session.id,
@@ -346,6 +370,11 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             totalTokens: session.inputTokens + session.outputTokens,
             durationMs: session.totalDuration,
             turnCount: session.turnCount,
+          });
+          // Track achievement: session ended with cost/duration data
+          achievementService.checkEvent('session.end', {
+            durationMs: session.totalDuration,
+            costUsd: session.totalCost,
           });
           triggerPersistence(message.sessionId);
           sessionManager.close(message.sessionId);
@@ -483,6 +512,16 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       case 'approval': {
         fleetManager.resolveApproval(message.requestId, message.decision);
+        // Track achievement: approval decisions
+        if (message.decision === 'allow' || message.decision === 'allow_always') {
+          // Source may come from extended client message (e.g., watch)
+          const approvalRaw = message as unknown as Record<string, unknown>;
+          achievementService.checkEvent('approval.granted', {
+            source: approvalRaw['source'],
+          });
+        } else if (message.decision === 'deny') {
+          achievementService.checkEvent('approval.denied');
+        }
         break;
       }
 
@@ -626,6 +665,11 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         fleetManager.setPermissionMode(message.mode, message.delaySeconds, message.godSubMode);
         const permFilter = fleetManager.permissionFilter;
 
+        // Track achievement: god mode enabled
+        if (message.mode === 'god') {
+          achievementService.checkEvent('god_mode.enabled');
+        }
+
         // Clear parent-side pending approval mirror when workers auto-flush
         // (god mode auto-allows all; smart mode may auto-allow some)
         if (message.mode === 'god' || message.mode === 'smart') {
@@ -725,6 +769,18 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         break;
       }
 
+      // ── Achievements ────────────────────────────────────────
+      case 'achievement.list': {
+        const achievements = achievementService.getAllStatus();
+        sendToClient(ws, {
+          type: 'achievement.list.response',
+          achievements,
+          totalCount: achievementService.getTotalCount(),
+          unlockedCount: achievementService.getUnlockedCount(),
+        });
+        break;
+      }
+
       // Device list/revoke removed — replaced by Google OAuth single-user auth
     }
   }
@@ -796,6 +852,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
       // Track tool usage for analytics
       analyticsCollector.trackToolUsage(info.sessionId, info.tool);
+      // Track achievement: tool usage
+      achievementService.checkEvent('tool.start', { tool: info.tool });
       broadcast({
         type: 'tool.start',
         sessionId: info.sessionId,
@@ -873,6 +931,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       switch (event.event) {
         case 'spawn':
           agentTracker.spawn(event.agentId, event.role ?? 'subagent', event.task ?? '', event.parentId);
+          // Track achievement: agent spawned
+          achievementService.checkEvent('agent.spawn');
           broadcast({
             type: 'agent.spawn',
             agentId: event.agentId,
@@ -906,6 +966,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         workerId: info.workerId,
         workingDir: info.workingDir,
       });
+      // Track achievement: fleet mode started (worker spawn implies fleet)
+      achievementService.checkEvent('fleet.started');
       broadcast({
         type: 'fleet.worker.spawned',
         workerId: info.workerId,
@@ -919,6 +981,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         workerId: info.workerId,
         reason: `crashed (restart #${info.restartCount})`,
       });
+      // Track achievement: survived a worker crash
+      achievementService.checkEvent('worker.crashed');
       broadcast({
         type: 'fleet.worker.crashed',
         workerId: info.workerId,

@@ -64,12 +64,21 @@ export interface WorkerStopEvent {
   timestamp: string;
 }
 
+export interface AchievementUnlockedEvent {
+  event: 'achievement_unlocked';
+  achievementId: string;
+  achievementName: string;
+  category: string;
+  timestamp: string;
+}
+
 export type AnalyticsEvent =
   | TurnCompleteEvent
   | SessionStartEvent
   | SessionEndEvent
   | WorkerStartEvent
-  | WorkerStopEvent;
+  | WorkerStopEvent
+  | AchievementUnlockedEvent;
 
 // ── AnalyticsCollector ─────────────────────────────────────
 
@@ -211,6 +220,20 @@ export class AnalyticsCollector {
       event: 'worker_stop',
       workerId: data.workerId,
       reason: data.reason,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  recordAchievementUnlocked(data: {
+    achievementId: string;
+    achievementName: string;
+    category: string;
+  }): void {
+    this.append({
+      event: 'achievement_unlocked',
+      achievementId: data.achievementId,
+      achievementName: data.achievementName,
+      category: data.category,
       timestamp: new Date().toISOString(),
     });
   }
