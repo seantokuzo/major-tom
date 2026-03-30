@@ -32,6 +32,11 @@ final class WatchConnectivityService: NSObject {
     // MARK: - Send Approval Decision
 
     func sendApprovalDecision(requestId: String, approved: Bool) {
+        // Optimistic removal — remove immediately so callers (e.g. advanceToNext)
+        // work with the already-updated list. The request is considered "handled"
+        // regardless of transport (sendMessage vs transferUserInfo fallback).
+        pendingApprovals.removeAll { $0.id == requestId }
+
         let payload: [String: Any] = [
             WatchConnectivityKeys.approvalDecision: true,
             WatchConnectivityKeys.requestId: requestId,
@@ -41,21 +46,15 @@ final class WatchConnectivityService: NSObject {
         guard let session = wcSession, session.isReachable else {
             // Fall back to transferUserInfo for background delivery
             wcSession?.transferUserInfo(payload)
-            pendingApprovals.removeAll { $0.id == requestId }
             return
         }
 
-        session.sendMessage(payload, replyHandler: { [weak self] _ in
-            Task { @MainActor in
-                self?.pendingApprovals.removeAll { $0.id == requestId }
-            }
-        }) { [weak self] error in
+        session.sendMessage(payload, replyHandler: { _ in
+            // Already removed optimistically
+        }) { error in
             print("Watch: sendMessage failed, falling back to transferUserInfo: \(error.localizedDescription)")
-            // Fall back to transferUserInfo on failure
+            // Fall back to transferUserInfo on failure — delivery still ensured
             session.transferUserInfo(payload)
-            Task { @MainActor in
-                self?.pendingApprovals.removeAll { $0.id == requestId }
-            }
         }
     }
 

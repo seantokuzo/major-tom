@@ -53,10 +53,13 @@ final class ApprovalViewModel {
     }
 
     func advanceToNext() {
-        if currentIndex < pendingApprovals.count - 1 {
-            currentIndex += 1
-        } else {
+        // After optimistic removal the list already shrunk, so just clamp
+        // currentIndex to stay in bounds (the next item slid into position).
+        if pendingApprovals.isEmpty {
+            currentIndex = 0
+        } else if currentIndex >= pendingApprovals.count {
             currentIndex = 0
         }
+        // Otherwise currentIndex already points at the next item.
     }
 }
