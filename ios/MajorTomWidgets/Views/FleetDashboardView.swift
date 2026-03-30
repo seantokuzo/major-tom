@@ -81,7 +81,7 @@ struct FleetDashboardWidgetView: View {
                     Image(systemName: "dollarsign.circle")
                         .font(.caption2)
                     Text(snapshot.formattedTotalCost)
-                        .font(.system(.caption2, design: .monospaced, weight: .semibold))
+                        .font(.system(.caption2, design: .monospaced).weight(.semibold))
                 }
 
                 HStack(spacing: 4) {
@@ -132,7 +132,7 @@ struct FleetSessionRowWidget: View {
 
             if session.agentCount > 0 {
                 Text("\(session.agentCount)")
-                    .font(.system(.caption2, design: .rounded, weight: .bold))
+                    .font(.system(.caption2, design: .rounded).weight(.bold))
                     .foregroundStyle(WidgetColors.background)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)

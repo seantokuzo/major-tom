@@ -32,28 +32,30 @@ final class WatchConnectivityService: NSObject {
     // MARK: - Send Approval Decision
 
     func sendApprovalDecision(requestId: String, approved: Bool) {
-        guard let session = wcSession, session.isReachable else {
-            // Fall back to transferUserInfo for background delivery
-            let payload: [String: Any] = [
-                WatchConnectivityKeys.approvalDecision: true,
-                WatchConnectivityKeys.requestId: requestId,
-                WatchConnectivityKeys.decision: approved ? "allow" : "deny",
-            ]
-            wcSession?.transferUserInfo(payload)
-            pendingApprovals.removeAll { $0.id == requestId }
-            return
-        }
+        // Optimistic removal — remove immediately so callers (e.g. advanceToNext)
+        // work with the already-updated list. The request is considered "handled"
+        // regardless of transport (sendMessage vs transferUserInfo fallback).
+        pendingApprovals.removeAll { $0.id == requestId }
 
-        let message: [String: Any] = [
+        let payload: [String: Any] = [
             WatchConnectivityKeys.approvalDecision: true,
             WatchConnectivityKeys.requestId: requestId,
             WatchConnectivityKeys.decision: approved ? "allow" : "deny",
         ]
 
-        session.sendMessage(message, replyHandler: nil) { error in
-            print("Watch: failed to send approval: \(error.localizedDescription)")
+        guard let session = wcSession, session.isReachable else {
+            // Fall back to transferUserInfo for background delivery
+            wcSession?.transferUserInfo(payload)
+            return
         }
-        pendingApprovals.removeAll { $0.id == requestId }
+
+        session.sendMessage(payload, replyHandler: { _ in
+            // Already removed optimistically
+        }) { error in
+            print("Watch: sendMessage failed, falling back to transferUserInfo: \(error.localizedDescription)")
+            // Fall back to transferUserInfo on failure — delivery still ensured
+            session.transferUserInfo(payload)
+        }
     }
 
     // MARK: - Process Incoming Data

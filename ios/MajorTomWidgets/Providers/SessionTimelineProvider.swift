@@ -23,7 +23,7 @@ struct SessionTimelineProvider: TimelineProvider {
         let snapshot = WidgetDataService.readSnapshot()
         let entry = SessionTimelineEntry(
             date: Date(),
-            snapshot: snapshot.sessions.isEmpty ? .placeholder : snapshot
+            snapshot: context.isPreview && snapshot.sessions.isEmpty ? .placeholder : snapshot
         )
         completion(entry)
     }

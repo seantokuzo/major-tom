@@ -69,7 +69,7 @@ struct ActiveSessionsView: View {
                     .font(.caption2)
                 Spacer()
                 Text(snapshot.formattedTotalCost)
-                    .font(.system(.caption2, design: .monospaced, weight: .semibold))
+                    .font(.system(.caption2, design: .monospaced).weight(.semibold))
             }
             .foregroundStyle(WidgetColors.textTertiary)
         }

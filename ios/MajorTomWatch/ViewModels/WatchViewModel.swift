@@ -1,5 +1,4 @@
 import Foundation
-import WatchKit
 
 // MARK: - Watch View Model
 

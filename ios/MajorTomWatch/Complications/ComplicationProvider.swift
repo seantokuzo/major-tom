@@ -177,6 +177,11 @@ struct CornerComplicationView: View {
 
 // MARK: - Widget Configuration
 
+// NOTE: This complication widget is registered via the MajorTomWidgets bundle (shared extension
+// on the iOS side). If a watch-specific widget were needed, it would require a separate watchOS
+// widget extension target. For now this is a known limitation — complications use the shared
+// App Group data written by the iOS app's PhoneWatchConnectivityService.
+
 struct MajorTomComplication: Widget {
     let kind: String = "MajorTomComplication"
 

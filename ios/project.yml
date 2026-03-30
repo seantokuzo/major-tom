@@ -59,31 +59,15 @@ targets:
         SWIFT_EMIT_LOC_STRINGS: "YES"
         GENERATE_INFOPLIST_FILE: "YES"
         INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        INFOPLIST_KEY_NSExtension_NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).WidgetExtension
         INFOPLIST_KEY_CFBundleDisplayName: Major Tom Widgets
+        CODE_SIGN_ENTITLEMENTS: MajorTomWidgets/MajorTomWidgets.entitlements
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../../Frameworks @executable_path/Frameworks"
         TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: "YES"
     dependencies:
       - sdk: WidgetKit.framework
       - sdk: ActivityKit.framework
-
-  MajorTomWidgets:
-    type: app-extension
-    platform: iOS
-    deploymentTarget: "17.0"
-    sources:
-      - MajorTomWidgets
-    settings:
-      base:
-        INFOPLIST_GENERATION_MODE: GeneratedFile
-        PRODUCT_BUNDLE_IDENTIFIER: com.majortom.app.widgets
-        PRODUCT_NAME: MajorTomWidgets
-        SWIFT_EMIT_LOC_STRINGS: "YES"
-        GENERATE_INFOPLIST_FILE: "YES"
-        TARGETED_DEVICE_FAMILY: "1,2"
-        CODE_SIGN_ENTITLEMENTS: ""
-        SKIP_INSTALL: "YES"
-        INFOPLIST_KEY_CFBundleDisplayName: MajorTomWidgets
-        INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
   MajorTomWatch:
     type: application
