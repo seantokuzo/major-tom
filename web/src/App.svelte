@@ -25,6 +25,8 @@
   import FleetIndicator from './lib/components/FleetIndicator.svelte';
   import AnalyticsPanel from './lib/components/AnalyticsPanel.svelte';
   import AnalyticsIndicator from './lib/components/AnalyticsIndicator.svelte';
+  import AchievementPanel from './lib/components/AchievementPanel.svelte';
+  import AchievementIndicator from './lib/components/AchievementIndicator.svelte';
   import { sessionStateManager } from './lib/stores/session-state.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
@@ -266,6 +268,7 @@
           <NotificationToggle />
           <NotificationSettings />
         </span>
+        <AchievementIndicator />
         <AnalyticsIndicator />
         <FleetIndicator />
         <button
@@ -358,6 +361,7 @@
   <SessionPanel />
   <FleetPanel />
   <AnalyticsPanel />
+  <AchievementPanel />
 
   {#if relay.authChecked && !relay.user}
     <LoginScreen />

@@ -56,6 +56,23 @@ export interface DbSetting {
   value: unknown;
 }
 
+export interface DbAchievement {
+  /** Achievement ID — primary key (e.g. "first_contact") */
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  icon: string;
+  unlocked: boolean;
+  unlockedAt: string | null;
+  progress: number | null;
+  target: number | null;
+  percentage: number | null;
+  secret: boolean;
+  /** Last updated from relay */
+  syncedAt: string;
+}
+
 // ── Database class ──────────────────────────────────────────
 
 class MajorTomDB extends Dexie {
@@ -64,6 +81,7 @@ class MajorTomDB extends Dexie {
   templates!: EntityTable<DbTemplate, 'id'>;
   promptHistory!: EntityTable<DbPromptHistory, 'id'>;
   settings!: EntityTable<DbSetting, 'key'>;
+  achievements!: EntityTable<DbAchievement, 'id'>;
 
   constructor() {
     super('MajorTomDB');
@@ -80,6 +98,11 @@ class MajorTomDB extends Dexie {
     // v2: promote [sessionId+messageId] to primary key so bulkPut upserts correctly
     this.version(2).stores({
       messages: '[sessionId+messageId], sessionId, timestamp',
+    });
+
+    // v3: add achievements table for local caching
+    this.version(3).stores({
+      achievements: 'id, category, unlocked',
     });
   }
 }

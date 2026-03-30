@@ -103,6 +103,10 @@ export interface FleetStatusMessage {
   type: 'fleet.status';
 }
 
+export interface AchievementListMessage {
+  type: 'achievement.list';
+}
+
 
 export type ClientMessage =
   | PromptMessage
@@ -122,7 +126,8 @@ export type ClientMessage =
   | FsLsMessage
   | FsReadFileMessage
   | FsCwdMessage
-  | FleetStatusMessage;
+  | FleetStatusMessage
+  | AchievementListMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -436,6 +441,48 @@ export interface FleetWorkerRestartedMessage {
 }
 
 
+// ── Achievement messages ─────────────────────────────────────
+
+export interface AchievementStatusEntry {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  icon: string;
+  unlocked: boolean;
+  unlockedAt: string | null;
+  progress: number | null;
+  target: number | null;
+  percentage: number | null;
+  secret: boolean;
+}
+
+export interface AchievementUnlockedMessage {
+  type: 'achievement.unlocked';
+  achievementId: string;
+  name: string;
+  description: string;
+  category: string;
+  icon: string;
+  unlockedAt: string;
+}
+
+export interface AchievementProgressMessage {
+  type: 'achievement.progress';
+  achievementId: string;
+  name: string;
+  current: number;
+  target: number;
+  percentage: number;
+}
+
+export interface AchievementListResponseMessage {
+  type: 'achievement.list.response';
+  achievements: AchievementStatusEntry[];
+  totalCount: number;
+  unlockedCount: number;
+}
+
 // ── Analytics types (HTTP API, not WebSocket) ──────────────
 
 export interface AnalyticsResponse {
@@ -506,4 +553,7 @@ export type ServerMessage =
   | FleetStatusResponseMessage
   | FleetWorkerSpawnedMessage
   | FleetWorkerCrashedMessage
-  | FleetWorkerRestartedMessage;
+  | FleetWorkerRestartedMessage
+  | AchievementUnlockedMessage
+  | AchievementProgressMessage
+  | AchievementListResponseMessage;
