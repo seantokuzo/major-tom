@@ -73,6 +73,9 @@ final class RelayService {
     /// Live Activity service — updates Lock Screen and Dynamic Island.
     var liveActivityService: LiveActivityService?
 
+    /// Watch Connectivity service — forwards data to Apple Watch.
+    var watchConnectivityService: PhoneWatchConnectivityService?
+
     /// Callbacks for device list updates
     var onDeviceListUpdate: (([DeviceInfo]) -> Void)?
 
@@ -169,6 +172,9 @@ final class RelayService {
                 sessionAllowlist.insert(request.tool)
             }
         }
+
+        // Update watch after approval removed
+        updateWatchApprovals()
     }
 
     // MARK: - Cancel
@@ -283,6 +289,8 @@ final class RelayService {
                         toolName: event.tool,
                         description: event.description
                     )
+                    // Forward to Apple Watch
+                    updateWatchApprovals()
                     HapticService.notification(.warning)
                 }
             }
@@ -556,7 +564,7 @@ final class RelayService {
         sessionDurationMs = 0
     }
 
-    /// Push latest session state to the widget data store.
+    /// Push latest session state to the widget data store and watch.
     private func updateWidgetData() {
         let agentCount = officeViewModel?.agents.count ?? 0
         let activeAgents = officeViewModel?.agents.filter { $0.status == .working || $0.status == .spawning }.count ?? 0
@@ -571,6 +579,84 @@ final class RelayService {
             isConnected: connectionState == .connected,
             workingDirectory: currentSession?.workingDir
         ))
+
+        updateWatchData()
+    }
+
+    /// Forward current state to the Apple Watch.
+    private func updateWatchData() {
+        guard let watchService = watchConnectivityService else { return }
+
+        // Build watch sessions from session list or current session
+        var watchSessions: [WatchSession] = sessionList.map { meta in
+            WatchSession(
+                id: meta.id,
+                name: meta.workingDirName,
+                workingDir: meta.workingDirName,
+                status: meta.status == "active" ? .active : (meta.status == "error" ? .error : .idle),
+                agentCount: 0,
+                cost: meta.totalCost,
+                startedAt: ISO8601DateFormatter().date(from: meta.startedAt)
+            )
+        }
+
+        // Include current session if not in list
+        if let session = currentSession,
+           !watchSessions.contains(where: { $0.id == session.id })
+        {
+            let agentCount = officeViewModel?.agents.count ?? 0
+            let watchSession = WatchSession(
+                id: session.id,
+                name: session.workingDir ?? "Session",
+                workingDir: session.workingDir ?? "~",
+                status: pendingApprovals.isEmpty ? .active : .waiting,
+                agentCount: agentCount,
+                cost: sessionCostUsd,
+                startedAt: session.startDate
+            )
+            watchSessions.insert(watchSession, at: 0)
+        }
+
+        // Fleet summary
+        var fleetSummary: WatchFleetSummary?
+        if let fleet = fleetStatus {
+            fleetSummary = WatchFleetSummary(
+                totalWorkers: fleet.totalWorkers,
+                healthyWorkers: fleet.workers.filter(\.healthy).count,
+                totalCostToday: fleet.aggregateCost
+            )
+        }
+
+        watchService.updateContext(
+            sessions: watchSessions,
+            fleetSummary: fleetSummary,
+            isRelayConnected: connectionState == .connected,
+            latestToolName: activeTools.last?.tool ?? completedTools.last?.tool,
+            latestToolStatus: activeTools.last != nil ? "running" : (completedTools.last?.success == true ? "completed" : nil)
+        )
+    }
+
+    /// Forward pending approvals to the Apple Watch.
+    private func updateWatchApprovals() {
+        guard let watchService = watchConnectivityService else { return }
+
+        let watchApprovals = pendingApprovals.map { request in
+            WatchApprovalRequest(
+                id: request.id,
+                toolName: request.tool,
+                description: request.description,
+                dangerLevel: {
+                    switch request.dangerLevel {
+                    case .high: return .dangerous
+                    case .medium: return .moderate
+                    case .normal: return .safe
+                    }
+                }(),
+                fileOrCommand: request.command ?? request.filePath
+            )
+        }
+
+        watchService.sendApprovalRequests(watchApprovals)
     }
 }
 

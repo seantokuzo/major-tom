@@ -1,4 +1,5 @@
 import SwiftUI
+import WatchConnectivity
 
 @main
 struct MajorTomApp: App {
@@ -8,6 +9,7 @@ struct MajorTomApp: App {
     @State private var sessionStorage = SessionStorageService()
     @State private var notificationService = NotificationService()
     @State private var liveActivityService = LiveActivityService()
+    @State private var watchConnectivity = PhoneWatchConnectivityService()
     @State private var selectedTab: AppTab = .control
     @Environment(\.scenePhase) private var scenePhase
 
@@ -27,7 +29,9 @@ struct MajorTomApp: App {
                 relay.authService = auth
                 relay.notificationService = notificationService
                 relay.liveActivityService = liveActivityService
+                relay.watchConnectivityService = watchConnectivity
                 setupNotificationHandlers()
+                setupWatchConnectivity()
             }
             .onChange(of: auth.isPaired) { _, isPaired in
                 if isPaired {
@@ -141,6 +145,25 @@ struct MajorTomApp: App {
             selectedTab = .control
         }
         HapticService.impact(.light)
+    }
+
+    // MARK: - Watch Connectivity
+
+    private func setupWatchConnectivity() {
+        watchConnectivity.activate()
+
+        // Handle approval decisions from watch
+        watchConnectivity.onApprovalDecision = { requestId, approved in
+            Task {
+                let decision: ApprovalDecision = approved ? .allow : .deny
+                try? await relay.sendApproval(requestId: requestId, decision: decision)
+                if approved {
+                    HapticService.approve()
+                } else {
+                    HapticService.deny()
+                }
+            }
+        }
     }
 }
 

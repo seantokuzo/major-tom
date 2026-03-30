@@ -39,3 +39,23 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Major Tom uses the microphone for voice input to Claude"
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Major Tom uses speech recognition for voice input"
         INFOPLIST_KEY_NSSupportsLiveActivities: "YES"
+
+  MajorTomWatch:
+    type: application
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources:
+      - MajorTomWatch
+    settings:
+      base:
+        INFOPLIST_GENERATION_MODE: GeneratedFile
+        PRODUCT_BUNDLE_IDENTIFIER: com.majortom.app.watchkitapp
+        PRODUCT_NAME: MajorTomWatch
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_EMIT_LOC_STRINGS: "YES"
+        GENERATE_INFOPLIST_FILE: "YES"
+        TARGETED_DEVICE_FAMILY: "4"
+        SUPPORTS_MACCATALYST: "NO"
+        INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.majortom.app
+        INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: "YES"
+        INFOPLIST_KEY_CFBundleDisplayName: Major Tom
