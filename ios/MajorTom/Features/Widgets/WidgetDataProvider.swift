@@ -34,6 +34,28 @@ enum WidgetDataProvider {
         static let widgetTotalCost = "widget_total_cost"
         static let widgetFleetHealth = "widget_fleet_health"
         static let widgetLastUpdated = "widget_last_updated"
+
+        // Siri Shortcuts: fleet status snapshot
+        static let fleetWorkerCount = "siri_fleet_worker_count"
+        static let fleetTotalCost = "siri_fleet_total_cost"
+        static let fleetActiveSessionCount = "siri_fleet_active_session_count"
+
+        // Siri Shortcuts: pending approval
+        static let pendingApprovalId = "siri_pending_approval_id"
+        static let pendingApprovalTool = "siri_pending_approval_tool"
+        static let pendingApprovalDescription = "siri_pending_approval_description"
+
+        // Siri Shortcuts: active session summary
+        static let sessionName = "siri_session_name"
+        static let sessionTokensIn = "siri_session_tokens_in"
+        static let sessionTokensOut = "siri_session_tokens_out"
+        static let sessionDurationMs = "siri_session_duration_ms"
+        static let sessionTurnCount = "siri_session_turn_count"
+
+        // Siri Shortcuts: prompt and god-mode toggle
+        static let pendingPromptText = "siri_pending_prompt_text"
+        static let pendingGodModeToggle = "siri_pending_god_mode_toggle"
+        static let currentPermissionMode = "siri_current_permission_mode"
     }
 
     // MARK: - Write (from main app)
@@ -123,6 +145,122 @@ enum WidgetDataProvider {
         return ISO8601DateFormatter().date(from: str)
     }
 
+    // MARK: - Siri Shortcuts: Fleet Status
+
+    /// Write fleet status snapshot for Siri to read inline.
+    static func updateFleetSnapshot(workerCount: Int, totalCost: Double, activeSessionCount: Int) {
+        guard let defaults = sharedDefaults else { return }
+        defaults.set(workerCount, forKey: Keys.fleetWorkerCount)
+        defaults.set(totalCost, forKey: Keys.fleetTotalCost)
+        defaults.set(activeSessionCount, forKey: Keys.fleetActiveSessionCount)
+    }
+
+    /// Read fleet snapshot for Siri inline result.
+    static func readFleetSnapshot() -> (workerCount: Int, totalCost: Double, activeSessionCount: Int) {
+        guard let defaults = sharedDefaults else { return (0, 0, 0) }
+        return (
+            workerCount: defaults.integer(forKey: Keys.fleetWorkerCount),
+            totalCost: defaults.double(forKey: Keys.fleetTotalCost),
+            activeSessionCount: defaults.integer(forKey: Keys.fleetActiveSessionCount)
+        )
+    }
+
+    // MARK: - Siri Shortcuts: Pending Approval
+
+    /// Write the most recent pending approval for Siri quick-approve.
+    static func updatePendingApproval(id: String?, tool: String?, description: String?) {
+        guard let defaults = sharedDefaults else { return }
+        defaults.set(id, forKey: Keys.pendingApprovalId)
+        defaults.set(tool, forKey: Keys.pendingApprovalTool)
+        defaults.set(description, forKey: Keys.pendingApprovalDescription)
+    }
+
+    /// Read pending approval for Siri quick-approve.
+    static func readPendingApproval() -> (id: String?, tool: String?, description: String?) {
+        guard let defaults = sharedDefaults else { return (nil, nil, nil) }
+        return (
+            id: defaults.string(forKey: Keys.pendingApprovalId),
+            tool: defaults.string(forKey: Keys.pendingApprovalTool),
+            description: defaults.string(forKey: Keys.pendingApprovalDescription)
+        )
+    }
+
+    // MARK: - Siri Shortcuts: Session Summary
+
+    /// Write active session summary for Siri inline result.
+    static func updateSessionSummary(
+        name: String,
+        costUsd: Double,
+        tokensIn: Int,
+        tokensOut: Int,
+        durationMs: Int,
+        turnCount: Int
+    ) {
+        guard let defaults = sharedDefaults else { return }
+        defaults.set(name, forKey: Keys.sessionName)
+        defaults.set(costUsd, forKey: Keys.sessionCost)
+        defaults.set(tokensIn, forKey: Keys.sessionTokensIn)
+        defaults.set(tokensOut, forKey: Keys.sessionTokensOut)
+        defaults.set(durationMs, forKey: Keys.sessionDurationMs)
+        defaults.set(turnCount, forKey: Keys.sessionTurnCount)
+    }
+
+    /// Read session summary for Siri inline result.
+    static func readSessionSummary() -> (name: String, costUsd: Double, tokensIn: Int, tokensOut: Int, durationMs: Int, turnCount: Int) {
+        guard let defaults = sharedDefaults else { return ("No Session", 0, 0, 0, 0, 0) }
+        return (
+            name: defaults.string(forKey: Keys.sessionName) ?? "No Session",
+            costUsd: defaults.double(forKey: Keys.sessionCost),
+            tokensIn: defaults.integer(forKey: Keys.sessionTokensIn),
+            tokensOut: defaults.integer(forKey: Keys.sessionTokensOut),
+            durationMs: defaults.integer(forKey: Keys.sessionDurationMs),
+            turnCount: defaults.integer(forKey: Keys.sessionTurnCount)
+        )
+    }
+
+    // MARK: - Siri Shortcuts: Prompt & God Mode
+
+    /// Write a pending prompt from Siri for the app to consume on foreground.
+    static func writePendingPrompt(_ text: String) {
+        guard let defaults = sharedDefaults else { return }
+        defaults.set(text, forKey: Keys.pendingPromptText)
+    }
+
+    /// Read and consume a pending Siri prompt. Returns nil if none.
+    static func consumePendingPrompt() -> String? {
+        guard let defaults = sharedDefaults else { return nil }
+        guard let text = defaults.string(forKey: Keys.pendingPromptText), !text.isEmpty else { return nil }
+        defaults.removeObject(forKey: Keys.pendingPromptText)
+        return text
+    }
+
+    /// Write a god-mode toggle request for the app to consume.
+    static func writeGodModeToggle() {
+        guard let defaults = sharedDefaults else { return }
+        defaults.set(true, forKey: Keys.pendingGodModeToggle)
+    }
+
+    /// Read and consume a pending god-mode toggle. Returns true if toggle was requested.
+    static func consumeGodModeToggle() -> Bool {
+        guard let defaults = sharedDefaults else { return false }
+        let requested = defaults.bool(forKey: Keys.pendingGodModeToggle)
+        if requested {
+            defaults.removeObject(forKey: Keys.pendingGodModeToggle)
+        }
+        return requested
+    }
+
+    /// Write current permission mode for Siri to read.
+    static func updatePermissionMode(_ mode: String) {
+        guard let defaults = sharedDefaults else { return }
+        defaults.set(mode, forKey: Keys.currentPermissionMode)
+    }
+
+    /// Read current permission mode.
+    static func readPermissionMode() -> String {
+        sharedDefaults?.string(forKey: Keys.currentPermissionMode) ?? "manual"
+    }
+
     /// Clear all widget data (e.g., on disconnect/unpair).
     static func clear() {
         guard let defaults = sharedDefaults else { return }
@@ -132,6 +270,12 @@ enum WidgetDataProvider {
             Keys.isConnected, Keys.lastUpdate, Keys.workingDirectory,
             Keys.widgetSessions, Keys.widgetTotalCost, Keys.widgetFleetHealth,
             Keys.widgetLastUpdated,
+            // Siri Shortcuts keys
+            Keys.fleetWorkerCount, Keys.fleetTotalCost, Keys.fleetActiveSessionCount,
+            Keys.pendingApprovalId, Keys.pendingApprovalTool, Keys.pendingApprovalDescription,
+            Keys.sessionName, Keys.sessionTokensIn, Keys.sessionTokensOut,
+            Keys.sessionDurationMs, Keys.sessionTurnCount,
+            Keys.pendingPromptText, Keys.pendingGodModeToggle, Keys.currentPermissionMode,
         ]
         keys.forEach { defaults.removeObject(forKey: $0) }
 

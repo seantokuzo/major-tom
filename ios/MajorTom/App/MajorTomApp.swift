@@ -61,6 +61,15 @@ struct MajorTomApp: App {
             .onReceive(NotificationCenter.default.publisher(for: .showCostFromShortcut)) { _ in
                 handleShortcutAction(.showCost)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .sendPromptFromShortcut)) { _ in
+                handleShortcutAction(.sendPrompt)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .quickApproveFromShortcut)) { _ in
+                handleShortcutAction(.quickApprove)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleGodModeFromShortcut)) { _ in
+                handleShortcutAction(.toggleGodMode)
+            }
             // Check for cross-process shortcut actions (Siri / Shortcuts app) on scene phase change
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
@@ -136,6 +145,33 @@ struct MajorTomApp: App {
             selectedTab = .office
         case .showCost:
             selectedTab = .control
+        case .sendPrompt:
+            selectedTab = .control
+            Task {
+                if let text = WidgetDataProvider.consumePendingPrompt() {
+                    try? await relay.sendPrompt(text)
+                }
+            }
+        case .quickApprove:
+            selectedTab = .control
+            Task {
+                if let latest = relay.pendingApprovals.last {
+                    try? await relay.sendApproval(requestId: latest.id, decision: .allow)
+                    HapticService.approve()
+                }
+            }
+        case .toggleGodMode:
+            Task {
+                if WidgetDataProvider.consumeGodModeToggle() {
+                    let newMode: PermissionMode = relay.permissionMode == .god ? .manual : .god
+                    if newMode == .god {
+                        try? await relay.setPermissionMode(.god, godSubMode: .normal)
+                    } else {
+                        try? await relay.setPermissionMode(.manual)
+                    }
+                    HapticService.modeSwitch()
+                }
+            }
         }
     }
 
