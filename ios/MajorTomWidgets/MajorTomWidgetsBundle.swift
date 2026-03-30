@@ -9,5 +9,6 @@ struct MajorTomWidgetsBundle: WidgetBundle {
         SessionCountWidget()
         ActiveSessionsWidget()
         FleetDashboardWidget()
+        MajorTomLiveActivityWidget()
     }
 }

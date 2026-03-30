@@ -39,6 +39,31 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Major Tom uses the microphone for voice input to Claude"
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Major Tom uses speech recognition for voice input"
         INFOPLIST_KEY_NSSupportsLiveActivities: "YES"
+    dependencies:
+      - target: MajorTomWidgets
+
+  MajorTomWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - MajorTomWidgets
+      - path: MajorTom/Features/LiveActivity/MajorTomActivity.swift
+        buildPhase: sources
+    settings:
+      base:
+        INFOPLIST_GENERATION_MODE: GeneratedFile
+        PRODUCT_BUNDLE_IDENTIFIER: com.majortom.app.widgets
+        PRODUCT_NAME: MajorTomWidgets
+        SWIFT_EMIT_LOC_STRINGS: "YES"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        INFOPLIST_KEY_CFBundleDisplayName: Major Tom Widgets
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../../Frameworks @executable_path/Frameworks"
+        TARGETED_DEVICE_FAMILY: "1,2"
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: ActivityKit.framework
 
   MajorTomWidgets:
     type: app-extension

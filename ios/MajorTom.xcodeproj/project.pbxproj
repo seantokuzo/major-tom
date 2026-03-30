@@ -95,7 +95,10 @@
 		D919E02E075F0907DC4F66E0 /* CodeBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E95A53D48D5BEC57C156BCD9 /* CodeBlockView.swift */; };
 		DA36546275A88A7B490C69F1 /* SessionStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4C73E14C8A94C37A496B3FF /* SessionStorageService.swift */; };
 		DAC0C66B42E11C19896C7FC9 /* SessionListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ED47D05EBAEFF05755F1CF6 /* SessionListViewModel.swift */; };
-		DB6BC1F3FED19DAEB7546D03 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D62C422D4BA174DBEF0CA6CB /* LiveActivityService.swift */; };
+		DB6BC1F3FED19DAEB7546D03 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D62C422D4BA174DBEF0CA6CB /* LiveActivityManager.swift */; };
+		LA100001A1B2C3D4E5F60001 /* MajorTomLiveActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LA200001A1B2C3D4E5F60001 /* MajorTomLiveActivityView.swift */; };
+		LA100002A1B2C3D4E5F60002 /* MajorTomDynamicIsland.swift in Sources */ = {isa = PBXBuildFile; fileRef = LA200002A1B2C3D4E5F60002 /* MajorTomDynamicIsland.swift */; };
+		LA100003A1B2C3D4E5F60003 /* MajorTomLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = LA200003A1B2C3D4E5F60003 /* MajorTomLiveActivityWidget.swift */; };
 		DC407F8EB069277EA7035803 /* FleetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E1FD8108BA6273FDD7510EC /* FleetViewModel.swift */; };
 		DCB6D7EDF870D5026A60DD40 /* WidgetDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C930886C2C3C06157C3BEAE /* WidgetDataProvider.swift */; };
 		DEA8B3E46B4340FE99EE44F2 /* FleetWorkerCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2FF778D101BA9D9C0A408F /* FleetWorkerCard.swift */; };
@@ -213,7 +216,10 @@
 		C9D0828739E6805328165EA4 /* ToolActivityViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolActivityViewModel.swift; sourceTree = "<group>"; };
 		CC19E99FB3AAD181F192CD3B /* MessageCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageCodec.swift; sourceTree = "<group>"; };
 		CCDB924E236ABFE12B68C803 /* ActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityManager.swift; sourceTree = "<group>"; };
-		D62C422D4BA174DBEF0CA6CB /* LiveActivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityService.swift; sourceTree = "<group>"; };
+		D62C422D4BA174DBEF0CA6CB /* LiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
+		LA200001A1B2C3D4E5F60001 /* MajorTomLiveActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomLiveActivityView.swift; sourceTree = "<group>"; };
+		LA200002A1B2C3D4E5F60002 /* MajorTomDynamicIsland.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomDynamicIsland.swift; sourceTree = "<group>"; };
+		LA200003A1B2C3D4E5F60003 /* MajorTomLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomLiveActivityWidget.swift; sourceTree = "<group>"; };
 		D7AE4280FD7BB7D618CCA3A8 /* TemplateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateViewModel.swift; sourceTree = "<group>"; };
 		D8F913C8B009238B21ECFCD4 /* CommandPaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteView.swift; sourceTree = "<group>"; };
 		D91A9F673395FFFDE1E3A220 /* MarkdownText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownText.swift; sourceTree = "<group>"; };
@@ -903,8 +909,10 @@
 		D94DB09DC4CD1CEAB6D820D3 /* LiveActivity */ = {
 			isa = PBXGroup;
 			children = (
-				D62C422D4BA174DBEF0CA6CB /* LiveActivityService.swift */,
+				D62C422D4BA174DBEF0CA6CB /* LiveActivityManager.swift */,
 				F4BCC156442BF0A60A71BE43 /* MajorTomActivity.swift */,
+				LA200001A1B2C3D4E5F60001 /* MajorTomLiveActivityView.swift */,
+				LA200002A1B2C3D4E5F60002 /* MajorTomDynamicIsland.swift */,
 			);
 			path = LiveActivity;
 			sourceTree = "<group>";
@@ -1046,6 +1054,7 @@
 			isa = PBXGroup;
 			children = (
 				W2A00001A1B2C3D4E5F60001 /* MajorTomWidgetsBundle.swift */,
+				LA200003A1B2C3D4E5F60003 /* MajorTomLiveActivityWidget.swift */,
 				W3A00002A1B2C3D4E5F60002 /* Widgets */,
 				W3A00003A1B2C3D4E5F60003 /* Views */,
 				W3A00004A1B2C3D4E5F60004 /* Models */,
@@ -1269,8 +1278,10 @@
 				C73A60CB24EFABD14D9C2A2F /* GodModeConfirmation.swift in Sources */,
 				8294293F9EF30CBEED38BFC6 /* HapticService.swift in Sources */,
 				36B33910C927C9BBAC0813A7 /* KeychainService.swift in Sources */,
-				DB6BC1F3FED19DAEB7546D03 /* LiveActivityService.swift in Sources */,
+				DB6BC1F3FED19DAEB7546D03 /* LiveActivityManager.swift in Sources */,
 				ECE7FC357B702CB405A5F331 /* MajorTomActivity.swift in Sources */,
+				LA100001A1B2C3D4E5F60001 /* MajorTomLiveActivityView.swift in Sources */,
+				LA100002A1B2C3D4E5F60002 /* MajorTomDynamicIsland.swift in Sources */,
 				BF6D1C0B63D35D14E62F514B /* MajorTomApp.swift in Sources */,
 				A1E8F12ACDD9CEC2A18F36C5 /* MajorTomShortcuts.swift in Sources */,
 				85574E49192424FB81A91CA9 /* MarkdownText.swift in Sources */,
@@ -1341,6 +1352,7 @@
 				W1A00009A1B2C3D4E5F60009 /* WidgetData.swift in Sources */,
 				W1A0000AA1B2C3D4E5F6000A /* SessionTimelineProvider.swift in Sources */,
 				W1A0000BA1B2C3D4E5F6000B /* WidgetDataService.swift in Sources */,
+				LA100003A1B2C3D4E5F60003 /* MajorTomLiveActivityWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
