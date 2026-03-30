@@ -15,6 +15,7 @@
   import { OFFICE_VIEWS } from './lib/office/layout';
   import { sessionsStore } from './lib/stores/sessions.svelte';
   import NotificationToggle from './lib/components/NotificationToggle.svelte';
+  import NotificationSettings from './lib/components/NotificationSettings.svelte';
   import AuthSettings from './lib/components/AuthSettings.svelte';
   import LoginScreen from './lib/components/LoginScreen.svelte';
   import CharacterGallery from './lib/components/CharacterGallery.svelte';
@@ -261,6 +262,7 @@
         <span class="header-settings">
           <AuthSettings />
           <NotificationToggle />
+          <NotificationSettings />
         </span>
         <FleetIndicator />
         <button

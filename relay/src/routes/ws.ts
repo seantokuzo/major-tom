@@ -9,6 +9,9 @@ import type { SessionManager } from '../sessions/session-manager.js';
 import type { SessionPersistence, PersistedSession } from '../sessions/session-persistence.js';
 import type { FleetManager } from '../fleet/fleet-manager.js';
 import { NotificationBatcher } from '../push/notification-batcher.js';
+import { NotificationDigest } from '../push/notification-digest.js';
+import { scorePriority } from '../push/priority-scorer.js';
+import type { NotificationConfigManager } from '../push/notification-config.js';
 import type { PushManager } from '../push/push-manager.js';
 import type { HealthMonitor } from '../health/health-monitor.js';
 import { eventBus } from '../events/event-bus.js';
@@ -27,6 +30,7 @@ interface WsDeps {
   fleetManager: FleetManager;
   pushManager: PushManager;
   healthMonitor: HealthMonitor;
+  notificationConfigManager: NotificationConfigManager;
   claudeWorkDir: string;
 }
 
@@ -41,10 +45,12 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     fleetManager,
     pushManager,
     healthMonitor,
+    notificationConfigManager,
     claudeWorkDir,
   } = deps;
 
   const notificationBatcher = new NotificationBatcher(pushManager);
+  const notificationDigest = new NotificationDigest(pushManager, notificationConfigManager);
   const eventBuffer = new EventBufferManager();
   const clients = new Set<WebSocket>();
 
@@ -300,15 +306,17 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           adapter: session.adapter,
           startedAt: session.startedAt,
         });
-        // Re-broadcast pending approvals
+        // Re-broadcast pending approvals (with priority)
         const pending = fleetManager.getPendingApprovals();
         for (const req of pending) {
+          const reqPriority = scorePriority(req.tool, req.description, req.details);
           sendToClient(ws, {
             type: 'approval.request',
             requestId: req.requestId,
             tool: req.tool,
             description: req.description,
             details: req.details,
+            priority: reqPriority,
           });
         }
         break;
@@ -400,16 +408,18 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           sendToClient(ws, buffered.message);
         }
 
-        // Re-broadcast pending approvals (they may not be in the event buffer
-        // if the client disconnected before the approval was queued)
+        // Re-broadcast pending approvals (with priority) — they may not be in the
+        // event buffer if the client disconnected before the approval was queued
         const pendingApprovals = fleetManager.getPendingApprovals();
         for (const req of pendingApprovals) {
+          const resumePriority = scorePriority(req.tool, req.description, req.details);
           sendToClient(ws, {
             type: 'approval.request',
             requestId: req.requestId,
             tool: req.tool,
             description: req.description,
             details: req.details,
+            priority: resumePriority,
           });
         }
 
@@ -726,14 +736,25 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     });
 
     fleetManager.on('approval-request', (request) => {
+      const priority = scorePriority(request.tool, request.description, request.details);
       broadcast({
         type: 'approval.request',
         requestId: request.requestId,
         tool: request.tool,
         description: request.description,
         details: request.details,
+        priority,
       });
-      notificationBatcher.addApprovalRequest(request.tool, request.requestId);
+      // Use smart notification digest for priority-aware push notifications
+      const target = (request.details?.['file_path'] as string)
+        ?? (request.details?.['command'] as string)
+        ?? request.description;
+      void notificationDigest.processNotification(
+        request.tool,
+        target.slice(0, 200),
+        priority.level,
+        request.requestId,
+      );
     });
 
     fleetManager.on('auto-allow', (event) => {
@@ -1002,6 +1023,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     fastify.addHook('onClose', () => {
       clearInterval(heartbeatInterval);
       notificationBatcher.dispose();
+      notificationDigest.dispose();
       eventBuffer.dispose();
       eventBus.off('server.message', serverMessageHandler);
       // Clear all session timeouts

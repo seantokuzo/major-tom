@@ -16,6 +16,7 @@ import { authPlugin } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { createHealthRoutes } from './routes/health.js';
 import { createPushRoutes } from './routes/push.js';
+import { createNotificationConfigRoutes } from './routes/notification-config.js';
 import { createWsRoute } from './routes/ws.js';
 
 // Services
@@ -23,6 +24,7 @@ import { SessionManager } from './sessions/session-manager.js';
 import { SessionPersistence } from './sessions/session-persistence.js';
 import { FleetManager } from './fleet/fleet-manager.js';
 import { PushManager } from './push/push-manager.js';
+import { NotificationConfigManager } from './push/notification-config.js';
 import { HealthMonitor } from './health/health-monitor.js';
 import { getSessionSecret } from './auth/session.js';
 
@@ -40,6 +42,7 @@ export async function buildApp(config: AppConfig) {
   const sessionManager = new SessionManager(sessionPersistence);
   const fleetManager = new FleetManager(sessionManager);
   const pushManager = new PushManager();
+  const notificationConfigManager = new NotificationConfigManager();
   const healthMonitor = new HealthMonitor(fleetManager, sessionManager);
 
   // Start health monitoring
@@ -91,6 +94,9 @@ export async function buildApp(config: AppConfig) {
   // Push notifications (mix of public + auth-required)
   await app.register(createPushRoutes({ pushManager }));
 
+  // Notification config (auth-required)
+  await app.register(createNotificationConfigRoutes({ notificationConfigManager }));
+
   // WebSocket (auth via session cookie on upgrade)
   await app.register(createWsRoute({
     sessionManager,
@@ -98,6 +104,7 @@ export async function buildApp(config: AppConfig) {
     fleetManager,
     pushManager,
     healthMonitor,
+    notificationConfigManager,
     claudeWorkDir: config.claudeWorkDir,
   }));
 

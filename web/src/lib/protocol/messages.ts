@@ -139,6 +139,32 @@ export interface ApprovalRequestMessage {
   tool: string;
   description: string;
   details?: Record<string, unknown>;
+  priority?: {
+    level: 'high' | 'medium' | 'low';
+    reason: string;
+  };
+}
+
+// ── Notification config types ────────────────────────────────
+
+export interface NotificationConfig {
+  quietHours: {
+    enabled: boolean;
+    start: string;
+    end: string;
+  };
+  priorityThreshold: 'high' | 'medium' | 'low';
+  digest: {
+    enabled: boolean;
+    intervalMinutes: number;
+  };
+}
+
+export interface DigestNotificationItem {
+  toolName: string;
+  target: string;
+  priority: 'high' | 'medium' | 'low';
+  timestamp: string;
 }
 
 export interface ToolStartMessage {

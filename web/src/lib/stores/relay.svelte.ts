@@ -46,6 +46,10 @@ export interface ApprovalRequest {
   details?: Record<string, unknown>;
   toolUseId?: string;
   receivedAt: Date;
+  priority?: {
+    level: 'high' | 'medium' | 'low';
+    reason: string;
+  };
 }
 
 // ── Agent model ─────────────────────────────────────────────
@@ -1146,6 +1150,7 @@ class RelayStore {
       details: event.details,
       toolUseId,
       receivedAt: new Date(),
+      priority: event.priority,
     });
   }
 

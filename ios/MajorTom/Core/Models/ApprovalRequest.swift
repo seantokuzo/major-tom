@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct ApprovalRequest: Identifiable {
     let id: String
@@ -6,6 +7,8 @@ struct ApprovalRequest: Identifiable {
     let description: String
     let details: [String: AnyCodableValue]?
     let receivedAt: Date
+    /// Server-provided priority scoring (may be nil for backwards compatibility)
+    let priority: ApprovalPriority?
 
     init(from event: ApprovalRequestEvent) {
         self.id = event.requestId
@@ -13,6 +16,49 @@ struct ApprovalRequest: Identifiable {
         self.description = event.description
         self.details = event.details
         self.receivedAt = Date()
+        self.priority = event.priority
+    }
+
+    // MARK: - Priority Level
+
+    /// Server priority level as a typed enum, falling back to client-side danger level
+    var priorityLevel: PriorityLevel {
+        if let level = priority?.level {
+            switch level {
+            case "high": return .high
+            case "medium": return .medium
+            case "low": return .low
+            default: return .medium
+            }
+        }
+        // Fallback: map danger level to priority level
+        switch dangerLevel {
+        case .high: return .high
+        case .medium: return .medium
+        case .normal: return .low
+        }
+    }
+
+    enum PriorityLevel: String, CaseIterable {
+        case high
+        case medium
+        case low
+
+        var color: Color {
+            switch self {
+            case .high: MajorTomTheme.Colors.danger
+            case .medium: MajorTomTheme.Colors.warning
+            case .low: MajorTomTheme.Colors.allow
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .high: "High"
+            case .medium: "Medium"
+            case .low: "Low"
+            }
+        }
     }
 
     // MARK: - Danger Level

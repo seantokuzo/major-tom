@@ -151,6 +151,10 @@ export interface ApprovalRequestMessage {
   tool: string;
   description: string;
   details: Record<string, unknown>;
+  priority?: {
+    level: 'high' | 'medium' | 'low';
+    reason: string;
+  };
 }
 
 export interface ToolStartMessage {
