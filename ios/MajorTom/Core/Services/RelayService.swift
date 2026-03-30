@@ -35,9 +35,11 @@ final class RelayService {
     // Workspace tree
     var workspaceFiles: [FileNode] = []
 
-    /// Monotonic counter bumped on every relay response. Poll loops can snapshot
-    /// this before sending a request and break as soon as the value changes,
-    /// which correctly handles empty-result responses.
+    /// Monotonic counter bumped on selected relay responses that update
+    /// polled state (e.g., session info, session lists, workspace, filesystem).
+    /// Poll loops can snapshot this before sending a request and break as soon
+    /// as the value changes, which correctly handles empty-result responses
+    /// for those message types.
     private(set) var responseCounter: UInt64 = 0
 
     // Context
@@ -452,6 +454,7 @@ final class RelayService {
             if let event = try? MessageCodec.decode(DeviceListResponseEvent.self, from: data) {
                 deviceList = event.devices
                 onDeviceListUpdate?(event.devices)
+                responseCounter &+= 1
             }
 
         case .deviceRevokeResponse:
@@ -462,18 +465,21 @@ final class RelayService {
                 fsEntries = event.entries
                 fsCurrentPath = event.path
                 fsError = nil
+                responseCounter &+= 1
             }
 
         case .fsReadFileResponse:
             if let event = try? MessageCodec.decode(FsReadFileResponseEvent.self, from: data) {
                 fsFileContent = event.content
                 fsError = nil
+                responseCounter &+= 1
             }
 
         case .fsCwdResponse:
             if let event = try? MessageCodec.decode(FsCwdResponseEvent.self, from: data) {
                 fsCurrentPath = event.path
                 fsError = nil
+                responseCounter &+= 1
             }
 
         case .fsError:

@@ -164,29 +164,39 @@ struct ChatView: View {
     // MARK: - Approvals
 
     private var approvalsList: some View {
-        // TimelineView ensures countdown timers re-render every second
-        TimelineView(.periodic(from: .now, by: 1.0)) { context in
-            ScrollView {
-                LazyVStack(spacing: MajorTomTheme.Spacing.md) {
-                    ForEach(viewModel.pendingApprovals) { request in
-                        ApprovalCard(request: request, onDecision: { decision in
-                            Task { await viewModel.handleApproval(requestId: request.id, decision: decision) }
-                        }, countdownRemaining: viewModel.isDelayMode ? viewModel.countdownFor(request: request, at: context.date) : nil)
-                    }
-                    ForEach(viewModel.recentAutoApproved) { autoTool in
-                        ApprovalCard(
-                            request: ApprovalRequest(from: ApprovalRequestEvent(type: "approval.auto", requestId: autoTool.id.uuidString, tool: autoTool.tool, description: autoTool.description, details: nil)),
-                            onDecision: { _ in },
-                            isAutoApproved: true,
-                            autoApprovalReason: autoTool.reason
-                        )
-                    }
+        Group {
+            if viewModel.isDelayMode {
+                // TimelineView drives per-second re-renders for countdown timers
+                TimelineView(.periodic(from: .now, by: 1.0)) { context in
+                    approvalsContent(now: context.date)
                 }
-                .padding(MajorTomTheme.Spacing.md)
+            } else {
+                approvalsContent(now: Date())
             }
         }
         .frame(maxHeight: 400)
         .background(MajorTomTheme.Colors.surface.opacity(0.5))
+    }
+
+    private func approvalsContent(now: Date) -> some View {
+        ScrollView {
+            LazyVStack(spacing: MajorTomTheme.Spacing.md) {
+                ForEach(viewModel.pendingApprovals) { request in
+                    ApprovalCard(request: request, onDecision: { decision in
+                        Task { await viewModel.handleApproval(requestId: request.id, decision: decision) }
+                    }, countdownRemaining: viewModel.isDelayMode ? viewModel.countdownFor(request: request, at: now) : nil)
+                }
+                ForEach(viewModel.recentAutoApproved) { autoTool in
+                    ApprovalCard(
+                        request: ApprovalRequest(from: ApprovalRequestEvent(type: "approval.auto", requestId: autoTool.id.uuidString, tool: autoTool.tool, description: autoTool.description, details: nil)),
+                        onDecision: { _ in },
+                        isAutoApproved: true,
+                        autoApprovalReason: autoTool.reason
+                    )
+                }
+            }
+            .padding(MajorTomTheme.Spacing.md)
+        }
     }
 
     // MARK: - Messages
