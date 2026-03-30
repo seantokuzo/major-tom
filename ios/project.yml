@@ -40,6 +40,25 @@ targets:
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Major Tom uses speech recognition for voice input"
         INFOPLIST_KEY_NSSupportsLiveActivities: "YES"
 
+  MajorTomWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - MajorTomWidgets
+    settings:
+      base:
+        INFOPLIST_GENERATION_MODE: GeneratedFile
+        PRODUCT_BUNDLE_IDENTIFIER: com.majortom.app.widgets
+        PRODUCT_NAME: MajorTomWidgets
+        SWIFT_EMIT_LOC_STRINGS: "YES"
+        GENERATE_INFOPLIST_FILE: "YES"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_ENTITLEMENTS: ""
+        SKIP_INSTALL: "YES"
+        INFOPLIST_KEY_CFBundleDisplayName: MajorTomWidgets
+        INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier: com.apple.widgetkit-extension
+
   MajorTomWatch:
     type: application
     platform: watchOS

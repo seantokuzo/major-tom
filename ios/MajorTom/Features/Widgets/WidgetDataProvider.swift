@@ -1,15 +1,12 @@
 import Foundation
+import WidgetKit
 
 // MARK: - Widget Data Provider
 
 /// Provides shared session data between the main app and widget extension via App Groups.
 ///
-/// To use this with an actual WidgetKit extension:
-/// 1. Enable App Groups capability on both app and widget targets
-/// 2. Create a shared App Group: "group.com.majortom.shared"
-/// 3. Both targets read/write via this provider
-///
-/// The widget extension target needs separate setup in Xcode with WidgetKit framework.
+/// The main app writes data here on every session/fleet update.
+/// The widget extension reads from the same App Group shared UserDefaults.
 enum WidgetDataProvider {
     /// App Group identifier for sharing data between app and widget.
     static let appGroupId = "group.com.majortom.shared"
@@ -31,6 +28,12 @@ enum WidgetDataProvider {
         static let isConnected = "widget_is_connected"
         static let lastUpdate = "widget_last_update"
         static let workingDirectory = "widget_working_directory"
+
+        // Multi-session / fleet keys
+        static let widgetSessions = "widget_sessions"
+        static let widgetTotalCost = "widget_total_cost"
+        static let widgetFleetHealth = "widget_fleet_health"
+        static let widgetLastUpdated = "widget_last_updated"
     }
 
     // MARK: - Write (from main app)
@@ -49,8 +52,31 @@ enum WidgetDataProvider {
         defaults.set(Date().timeIntervalSince1970, forKey: Keys.lastUpdate)
         defaults.set(status.workingDirectory, forKey: Keys.workingDirectory)
 
-        // Trigger widget refresh
-        // WidgetCenter.shared.reloadAllTimelines() — requires WidgetKit import in widget target
+        // Trigger widget timeline refresh
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Write a list of session summaries for the widget.
+    static func updateSessions(_ sessions: [WidgetSessionSummary]) {
+        guard let defaults = sharedDefaults else { return }
+        if let data = try? JSONEncoder().encode(sessions) {
+            defaults.set(data, forKey: Keys.widgetSessions)
+        }
+        defaults.set(ISO8601DateFormatter().string(from: Date()), forKey: Keys.widgetLastUpdated)
+
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Write total cost for today.
+    static func updateTotalCost(_ cost: Double) {
+        guard let defaults = sharedDefaults else { return }
+        defaults.set(cost, forKey: Keys.widgetTotalCost)
+    }
+
+    /// Write fleet health status.
+    static func updateFleetHealth(_ health: String) {
+        guard let defaults = sharedDefaults else { return }
+        defaults.set(health, forKey: Keys.widgetFleetHealth)
     }
 
     // MARK: - Read (from widget extension)
@@ -75,6 +101,33 @@ enum WidgetDataProvider {
         )
     }
 
+    /// Read session list from shared defaults.
+    static func readSessions() -> [WidgetSessionSummary] {
+        guard let defaults = sharedDefaults,
+              let data = defaults.data(forKey: Keys.widgetSessions),
+              let sessions = try? JSONDecoder().decode([WidgetSessionSummary].self, from: data)
+        else {
+            return []
+        }
+        return sessions
+    }
+
+    /// Read total cost for today.
+    static func readTotalCost() -> Double {
+        sharedDefaults?.double(forKey: Keys.widgetTotalCost) ?? 0
+    }
+
+    /// Read fleet health string.
+    static func readFleetHealth() -> String {
+        sharedDefaults?.string(forKey: Keys.widgetFleetHealth) ?? "offline"
+    }
+
+    /// Read last updated ISO8601 string.
+    static func readLastUpdated() -> Date? {
+        guard let str = sharedDefaults?.string(forKey: Keys.widgetLastUpdated) else { return nil }
+        return ISO8601DateFormatter().date(from: str)
+    }
+
     /// Clear all widget data (e.g., on disconnect/unpair).
     static func clear() {
         guard let defaults = sharedDefaults else { return }
@@ -82,8 +135,12 @@ enum WidgetDataProvider {
             Keys.sessionStatus, Keys.activeAgentCount, Keys.totalAgentCount,
             Keys.sessionCost, Keys.currentTool, Keys.sessionStartDate,
             Keys.isConnected, Keys.lastUpdate, Keys.workingDirectory,
+            Keys.widgetSessions, Keys.widgetTotalCost, Keys.widgetFleetHealth,
+            Keys.widgetLastUpdated,
         ]
         keys.forEach { defaults.removeObject(forKey: $0) }
+
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }
 
@@ -135,4 +192,38 @@ struct WidgetSessionStatus {
         }
         return "\(seconds)s"
     }
+}
+
+// MARK: - Widget Session Summary (Codable for cross-process sharing)
+
+/// Lightweight session summary stored in App Groups for widget display.
+struct WidgetSessionSummary: Codable, Identifiable {
+    let id: String
+    let name: String
+    let status: String  // "active", "idle", "error"
+    let costUsd: Double
+    let agentCount: Int
+    let startedAt: String  // ISO8601
+
+    var statusColor: WidgetStatusColor {
+        switch status {
+        case "active": return .green
+        case "idle": return .yellow
+        case "error": return .red
+        default: return .yellow
+        }
+    }
+
+    var formattedCost: String {
+        if costUsd < 0.01 && costUsd > 0 {
+            return "<$0.01"
+        }
+        return String(format: "$%.2f", costUsd)
+    }
+}
+
+enum WidgetStatusColor: String, Codable {
+    case green
+    case yellow
+    case red
 }
