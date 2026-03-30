@@ -85,6 +85,12 @@ struct MajorTomApp: App {
                 }
                 .tag(AppTab.connect)
 
+            AnalyticsDashboardView(auth: auth)
+                .tabItem {
+                    Label("Analytics", systemImage: "chart.bar")
+                }
+                .tag(AppTab.analytics)
+
             SettingsView(auth: auth, relay: relay)
                 .tabItem {
                     Label("Settings", systemImage: "gear")
@@ -144,5 +150,6 @@ enum AppTab: Hashable {
     case control
     case office
     case connect
+    case analytics
     case settings
 }

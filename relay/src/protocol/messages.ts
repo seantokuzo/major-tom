@@ -485,3 +485,49 @@ export type MessageType = ClientMessage['type'] | ServerMessage['type'];
 export function newRequestId(): string {
   return randomUUID();
 }
+
+// ── Analytics types (shared between relay HTTP API and clients) ──
+
+export interface AnalyticsQuery {
+  from?: string;      // ISO 8601
+  to?: string;        // ISO 8601
+  groupBy?: 'hour' | 'day' | 'week' | 'month';
+  sessionId?: string;
+  workerId?: string;
+}
+
+export interface AnalyticsResponse {
+  timeSeries: Array<{
+    period: string;
+    cost: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheTokens: number;
+    turnCount: number;
+  }>;
+  bySession: Array<{
+    sessionId: string;
+    workingDir: string;
+    totalCost: number;
+    totalTokens: number;
+    turnCount: number;
+  }>;
+  byModel: Array<{
+    model: string;
+    cost: number;
+    tokens: number;
+    turnCount: number;
+  }>;
+  byTool: Array<{
+    tool: string;
+    count: number;
+    avgDurationMs: number;
+  }>;
+  totals: {
+    cost: number;
+    inputTokens: number;
+    outputTokens: number;
+    turnCount: number;
+    sessionCount: number;
+  };
+}

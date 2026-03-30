@@ -16,6 +16,7 @@ import { authPlugin } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { createHealthRoutes } from './routes/health.js';
 import { createPushRoutes } from './routes/push.js';
+import { createAnalyticsRoutes } from './routes/analytics.js';
 import { createWsRoute } from './routes/ws.js';
 
 // Services
@@ -24,6 +25,7 @@ import { SessionPersistence } from './sessions/session-persistence.js';
 import { FleetManager } from './fleet/fleet-manager.js';
 import { PushManager } from './push/push-manager.js';
 import { HealthMonitor } from './health/health-monitor.js';
+import { AnalyticsCollector } from './analytics/analytics-collector.js';
 import { getSessionSecret } from './auth/session.js';
 
 export interface AppConfig {
@@ -41,6 +43,7 @@ export async function buildApp(config: AppConfig) {
   const fleetManager = new FleetManager(sessionManager);
   const pushManager = new PushManager();
   const healthMonitor = new HealthMonitor(fleetManager, sessionManager);
+  const analyticsCollector = new AnalyticsCollector();
 
   // Start health monitoring
   healthMonitor.start();
@@ -91,6 +94,9 @@ export async function buildApp(config: AppConfig) {
   // Push notifications (mix of public + auth-required)
   await app.register(createPushRoutes({ pushManager }));
 
+  // Analytics API (auth required)
+  await app.register(createAnalyticsRoutes({ analyticsCollector }));
+
   // WebSocket (auth via session cookie on upgrade)
   await app.register(createWsRoute({
     sessionManager,
@@ -98,6 +104,7 @@ export async function buildApp(config: AppConfig) {
     fleetManager,
     pushManager,
     healthMonitor,
+    analyticsCollector,
     claudeWorkDir: config.claudeWorkDir,
   }));
 
@@ -109,6 +116,7 @@ export async function buildApp(config: AppConfig) {
   app.addHook('onClose', async () => {
     logger.info('Shutting down services...');
     healthMonitor.dispose();
+    await analyticsCollector.flush();
     await fleetManager.dispose();
     await sessionPersistence.saveAllImmediate((id) => {
       const session = sessionManager.tryGet(id);

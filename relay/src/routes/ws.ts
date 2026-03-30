@@ -19,6 +19,7 @@ import { EventBufferManager } from '../sessions/event-buffer.js';
 import { scanWorkspaceTree } from '../workspace/tree-scanner.js';
 import type { ClientMessage, ServerMessage, FileNode } from '../protocol/messages.js';
 import { createFsHandlers, type FsServerMessage } from './fs.js';
+import type { AnalyticsCollector } from '../analytics/analytics-collector.js';
 import { logger } from '../utils/logger.js';
 
 interface WsDeps {
@@ -27,6 +28,7 @@ interface WsDeps {
   fleetManager: FleetManager;
   pushManager: PushManager;
   healthMonitor: HealthMonitor;
+  analyticsCollector: AnalyticsCollector;
   claudeWorkDir: string;
 }
 
@@ -41,6 +43,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     fleetManager,
     pushManager,
     healthMonitor,
+    analyticsCollector,
     claudeWorkDir,
   } = deps;
 
@@ -242,6 +245,11 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         const session = await fleetManager.start(workDir);
         healthMonitor.trackSession(session.id);
         trackClientSession(ws, session.id);
+        // Record session start in analytics
+        analyticsCollector.recordSessionStart({
+          sessionId: session.id,
+          workingDir: workDir,
+        });
         sendToClient(ws, {
           type: 'session.info',
           sessionId: session.id,
@@ -325,6 +333,14 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
         const session = sessionManager.tryGet(message.sessionId);
         if (session) {
+          // Record session end in analytics
+          analyticsCollector.recordSessionEnd({
+            sessionId: session.id,
+            totalCost: session.totalCost,
+            totalTokens: session.inputTokens + session.outputTokens,
+            durationMs: session.totalDuration,
+            turnCount: session.turnCount,
+          });
           triggerPersistence(message.sessionId);
           sessionManager.close(message.sessionId);
         }
@@ -757,6 +773,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         });
         triggerPersistence(info.sessionId);
       }
+      // Track tool usage for analytics
+      analyticsCollector.trackToolUsage(info.sessionId, info.tool);
       broadcast({
         type: 'tool.start',
         sessionId: info.sessionId,
@@ -809,6 +827,14 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         });
         triggerPersistence(result.sessionId);
       }
+      // Record turn in analytics JSONL
+      analyticsCollector.recordTurnComplete({
+        sessionId: result.sessionId,
+        inputTokens: result.inputTokens ?? 0,
+        outputTokens: result.outputTokens ?? 0,
+        cost: result.costUsd,
+        durationMs: result.durationMs,
+      });
       broadcast({
         type: 'session.result',
         sessionId: result.sessionId,
@@ -853,6 +879,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
     // ── Fleet worker lifecycle events ──────────────────────
     fleetManager.on('worker-spawned', (info) => {
+      analyticsCollector.recordWorkerStart({
+        workerId: info.workerId,
+        workingDir: info.workingDir,
+      });
       broadcast({
         type: 'fleet.worker.spawned',
         workerId: info.workerId,
@@ -862,6 +892,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     });
 
     fleetManager.on('worker-crashed', (info) => {
+      analyticsCollector.recordWorkerStop({
+        workerId: info.workerId,
+        reason: `crashed (restart #${info.restartCount})`,
+      });
       broadcast({
         type: 'fleet.worker.crashed',
         workerId: info.workerId,
@@ -872,6 +906,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     });
 
     fleetManager.on('worker-restarted', (info) => {
+      analyticsCollector.recordWorkerStart({
+        workerId: info.workerId,
+        workingDir: info.workingDir,
+      });
       broadcast({
         type: 'fleet.worker.restarted',
         workerId: info.workerId,
