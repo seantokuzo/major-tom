@@ -7,7 +7,7 @@
 
 ## Current Phase
 
-**Phase 7** — NOT YET PLANNED
+**Phase 8: "Fleet Command"** — Wave 1 COMPLETE, Wave 2 next
 
 ## Strategy
 
@@ -150,9 +150,64 @@
 - [x] Sprite bugs fixed — agents go to desks, stay in bounds
 - [x] Chat polish — copy buttons, smart scroll, collapsible tools, timestamps
 
-### Future: Local DB for Chat Persistence
-- Replace localStorage with IndexedDB + TTL purging (see memory: project_local_db_plan.md)
+## Completed — Phase 7: "Multi-Session HQ"
+
+### Track A: IndexedDB Foundation (PR #55)
+- [x] Dexie setup — schema v1+v2 (compound PK migration), 5 stores
+- [x] Migrate chat messages — per-session [sessionId+messageId] compound PK, bulkPut upserts
+- [x] Migrate templates + prompt history + command usage to IndexedDB
+- [x] TTL purging — runs on app load, Promise.allSettled for resilient migration
+- [x] Dynamic App import — stores don't execute before DB migration
+
+### Track B: Terminal Navigator (PR #55)
+- [x] Relay fs handlers — fs.ls, fs.readFile, fs.cwd with path.relative() sandbox + realpath symlink validation
+- [x] Relay session.start with workingDir — validated within canonical sandbox root
+- [x] PWA terminal UI — cd/ls/cat/pwd parser, monospace output
+- [x] "Start Claude Here" button — sandbox-relative path translation
+
+### Track C: Multi-Session UX (PR #55)
+- [x] Session panel — slide-out with session list (name, dir, status, cost, agents)
+- [x] Per-session isolated state — SessionStateManager with snapshot/restore, serialized persistence
+- [x] Session switching — immediate sessionId + localStorage persist, IndexedDB load
+- [x] New Session flow — terminal → pick dir → start → auto-switch
+- [x] Session naming — auto from dir basename, editable
+
+### Track D: Office Per-Session (PR #55)
+- [x] Per-session OfficeEngine + sprite state via OfficeSessionManager
+- [x] Lazy rendering — only active session canvas mounted
+- [x] Session indicator badge, LRU eviction with rotation guard
+
+### Phase 7 Success Criteria — ALL MET
+- [x] IndexedDB replaces localStorage for all persistent data
+- [x] Terminal navigator for filesystem browsing and session creation
+- [x] Multi-session switching with per-session isolated state
+- [x] Office sprites scoped per-session with lazy rendering
+
+## In Progress — Phase 8: "Fleet Command"
+
+### Wave 1: Tech Debt + Error Recovery — COMPLETE
+
+#### Track A: iOS Tech Debt (PR #62, closes #57-61)
+- [x] Chat UX polish — scrollToBottomFab animation, scroll position fix, TimelineView countdown, auto-approval badges
+- [x] Office scene bugs — dead code removal, demo mode guard, station release, sheet consolidation, cycling timer
+- [x] Performance — NSRange bridging, CharacterPreviewScene caching, ToolActivityViewModel dedup
+- [x] Data freshness — responseCounter poll pattern, sleep timers removed, workspace tree consolidated, stale device fix
+- [x] AppIntents — App Groups UserDefaults IPC for cross-process Siri Shortcuts
+
+#### Track B: Error Recovery (PR #63)
+- [x] Health monitor — per-session process watchdog, enhanced /health endpoint
+- [x] Push persistence — subscriptions to ~/.major-tom/push-subscriptions.json, VAPID key persistence
+- [x] Session resume — EventBufferManager (500 events, 10min TTL), session.resume protocol, seq numbers on broadcasts
+
+### Wave 2: Multi-Instance Relay + Fleet Dashboards — NEXT
+- Track C: FleetManager + child process per workingDir (relay)
+- Track D: Fleet dashboard (PWA) — depends on C
+- Track E: Fleet dashboard (iOS) — depends on C
+
+### Wave 3: Analytics + Smart Notifications
+### Wave 4: Office 2.0 + Apple Watch + Widgets + Live Activities
+### Wave 5: Achievements + Siri Shortcuts
 
 ---
 
-_Last updated: 2026-03-26_
+_Last updated: 2026-03-29_
