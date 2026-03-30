@@ -17,6 +17,7 @@ import { authRoutes } from './routes/auth.js';
 import { createHealthRoutes } from './routes/health.js';
 import { createPushRoutes } from './routes/push.js';
 import { createNotificationConfigRoutes } from './routes/notification-config.js';
+import { createAnalyticsRoutes } from './routes/analytics.js';
 import { createWsRoute } from './routes/ws.js';
 
 // Services
@@ -26,6 +27,7 @@ import { FleetManager } from './fleet/fleet-manager.js';
 import { PushManager } from './push/push-manager.js';
 import { NotificationConfigManager } from './push/notification-config.js';
 import { HealthMonitor } from './health/health-monitor.js';
+import { AnalyticsCollector } from './analytics/analytics-collector.js';
 import { getSessionSecret } from './auth/session.js';
 
 export interface AppConfig {
@@ -44,6 +46,7 @@ export async function buildApp(config: AppConfig) {
   const pushManager = new PushManager();
   const notificationConfigManager = new NotificationConfigManager();
   const healthMonitor = new HealthMonitor(fleetManager, sessionManager);
+  const analyticsCollector = new AnalyticsCollector();
 
   // Start health monitoring
   healthMonitor.start();
@@ -96,6 +99,8 @@ export async function buildApp(config: AppConfig) {
 
   // Notification config (auth-required)
   await app.register(createNotificationConfigRoutes({ notificationConfigManager }));
+  // Analytics API (auth required)
+  await app.register(createAnalyticsRoutes({ analyticsCollector }));
 
   // WebSocket (auth via session cookie on upgrade)
   await app.register(createWsRoute({
@@ -105,6 +110,7 @@ export async function buildApp(config: AppConfig) {
     pushManager,
     healthMonitor,
     notificationConfigManager,
+    analyticsCollector,
     claudeWorkDir: config.claudeWorkDir,
   }));
 
@@ -116,6 +122,7 @@ export async function buildApp(config: AppConfig) {
   app.addHook('onClose', async () => {
     logger.info('Shutting down services...');
     healthMonitor.dispose();
+    await analyticsCollector.flush();
     await fleetManager.dispose();
     await sessionPersistence.saveAllImmediate((id) => {
       const session = sessionManager.tryGet(id);

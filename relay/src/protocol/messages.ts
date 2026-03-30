@@ -489,3 +489,59 @@ export type MessageType = ClientMessage['type'] | ServerMessage['type'];
 export function newRequestId(): string {
   return randomUUID();
 }
+
+// ── Analytics types (shared between relay HTTP API and clients) ──
+
+export interface AnalyticsQuery {
+  from?: string;      // ISO 8601
+  to?: string;        // ISO 8601
+  groupBy?: 'hour' | 'day' | 'week' | 'month';
+  sessionId?: string;
+  workerId?: string;
+}
+
+export interface AnalyticsTimeSeriesEntry {
+  period: string;
+  cost: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheTokens: number;
+  turnCount: number;
+}
+
+export interface AnalyticsBySession {
+  sessionId: string;
+  workingDir: string;
+  totalCost: number;
+  totalTokens: number;
+  turnCount: number;
+}
+
+export interface AnalyticsByModel {
+  model: string;
+  cost: number;
+  tokens: number;
+  turnCount: number;
+}
+
+export interface AnalyticsByTool {
+  tool: string;
+  count: number;
+  avgDurationMs: number;
+}
+
+export interface AnalyticsTotals {
+  cost: number;
+  inputTokens: number;
+  outputTokens: number;
+  turnCount: number;
+  sessionCount: number;
+}
+
+export interface AnalyticsResponse {
+  timeSeries: AnalyticsTimeSeriesEntry[];
+  bySession: AnalyticsBySession[];
+  byModel: AnalyticsByModel[];
+  byTool: AnalyticsByTool[];
+  totals: AnalyticsTotals;
+}

@@ -436,6 +436,44 @@ export interface FleetWorkerRestartedMessage {
 }
 
 
+// ── Analytics types (HTTP API, not WebSocket) ──────────────
+
+export interface AnalyticsResponse {
+  timeSeries: Array<{
+    period: string;
+    cost: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheTokens: number;
+    turnCount: number;
+  }>;
+  bySession: Array<{
+    sessionId: string;
+    workingDir: string;
+    totalCost: number;
+    totalTokens: number;
+    turnCount: number;
+  }>;
+  byModel: Array<{
+    model: string;
+    cost: number;
+    tokens: number;
+    turnCount: number;
+  }>;
+  byTool: Array<{
+    tool: string;
+    count: number;
+    avgDurationMs: number;
+  }>;
+  totals: {
+    cost: number;
+    inputTokens: number;
+    outputTokens: number;
+    turnCount: number;
+    sessionCount: number;
+  };
+}
+
 export type ServerMessage =
   | OutputMessage
   | ApprovalRequestMessage

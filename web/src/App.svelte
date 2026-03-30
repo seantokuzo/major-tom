@@ -23,6 +23,8 @@
   import SessionPanel from './lib/components/SessionPanel.svelte';
   import FleetPanel from './lib/components/FleetPanel.svelte';
   import FleetIndicator from './lib/components/FleetIndicator.svelte';
+  import AnalyticsPanel from './lib/components/AnalyticsPanel.svelte';
+  import AnalyticsIndicator from './lib/components/AnalyticsIndicator.svelte';
   import { sessionStateManager } from './lib/stores/session-state.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
@@ -264,6 +266,7 @@
           <NotificationToggle />
           <NotificationSettings />
         </span>
+        <AnalyticsIndicator />
         <FleetIndicator />
         <button
           class="hamburger-btn"
@@ -352,6 +355,7 @@
   <Toast />
   <SessionPanel />
   <FleetPanel />
+  <AnalyticsPanel />
 
   {#if relay.authChecked && !relay.user}
     <LoginScreen />

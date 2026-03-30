@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D26A933571853AF758770801 /* AnalyticsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6D452D347F74BF0000FF9F7 /* AnalyticsViewModel.swift */; };
+		7988FA036C78CB9D30B6A9E4 /* AnalyticsDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 143D59EE9B671AAD918539AD /* AnalyticsDashboardView.swift */; };
+		8330C701B5749A4BBA30FD13 /* CostChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EB34E953C374435320D6ACF /* CostChartView.swift */; };
+		5E06FFA9AA21E55ADBAB1EAE /* TokenBreakdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B4F5B94A7F2D82EAEF4C62A /* TokenBreakdownView.swift */; };
+		F414C0396A8418FA50FB8AB9 /* ModelDistributionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B0B8E56D212B5D62754936A /* ModelDistributionView.swift */; };
+		311F6EC2183766C5134DE6DE /* SessionCostRankingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38E2A91E99E459CCDD30D577 /* SessionCostRankingView.swift */; };
 		01CF88DD53BD425A8BB52F59 /* OfficeLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2A5F6ECD6AEA9681C140DA3 /* OfficeLayout.swift */; };
 		05C0C742F30E2EDFA11347D0 /* FileContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6DBE8EE08D1C4498E7F3D4 /* FileContextView.swift */; };
 		105DA16D4A98B26952BC1756 /* PermissionModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A8199AB9D26A914D6633EF0 /* PermissionModeView.swift */; };
@@ -95,6 +101,12 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		E6D452D347F74BF0000FF9F7 /* AnalyticsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsViewModel.swift; sourceTree = "<group>"; };
+		143D59EE9B671AAD918539AD /* AnalyticsDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsDashboardView.swift; sourceTree = "<group>"; };
+		6EB34E953C374435320D6ACF /* CostChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostChartView.swift; sourceTree = "<group>"; };
+		1B4F5B94A7F2D82EAEF4C62A /* TokenBreakdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenBreakdownView.swift; sourceTree = "<group>"; };
+		1B0B8E56D212B5D62754936A /* ModelDistributionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDistributionView.swift; sourceTree = "<group>"; };
+		38E2A91E99E459CCDD30D577 /* SessionCostRankingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCostRankingView.swift; sourceTree = "<group>"; };
 		01BD6266AD1E8A75F6D43438 /* MajorTomShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomShortcuts.swift; sourceTree = "<group>"; };
 		0A571183D8F82C0A0373A42D /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
 		105C7DF7508529E4C957FEE1 /* PromptTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplate.swift; sourceTree = "<group>"; };
@@ -379,6 +391,7 @@
 		3D3E7D9B1E6A46FE02377CF9 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				524CA165CE9AE87346EC95D2 /* Analytics */,
 				28C5FCC112193F6E8C1391E1 /* Activity */,
 				60B9D8DD0297CB0AD458E6CD /* Commands */,
 				048C5B47DA4169F0F6E6B487 /* Connection */,
@@ -636,6 +649,43 @@
 				6896DF3388E19FBCD444D445 /* View+Haptics.swift */,
 			);
 			path = Extensions;
+			sourceTree = "<group>";
+		};
+		524CA165CE9AE87346EC95D2 /* Analytics */ = {
+			isa = PBXGroup;
+			children = (
+				78D1BC90B880E0C2C32BCBDC /* Components */,
+				FA0A96C2C8B1085B5E638BDF /* ViewModels */,
+				D452E7726BFFE04785680AA4 /* Views */,
+			);
+			path = Analytics;
+			sourceTree = "<group>";
+		};
+		78D1BC90B880E0C2C32BCBDC /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				6EB34E953C374435320D6ACF /* CostChartView.swift */,
+				1B4F5B94A7F2D82EAEF4C62A /* TokenBreakdownView.swift */,
+				1B0B8E56D212B5D62754936A /* ModelDistributionView.swift */,
+				38E2A91E99E459CCDD30D577 /* SessionCostRankingView.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		FA0A96C2C8B1085B5E638BDF /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				E6D452D347F74BF0000FF9F7 /* AnalyticsViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		D452E7726BFFE04785680AA4 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				143D59EE9B671AAD918539AD /* AnalyticsDashboardView.swift */,
+			);
+			path = Views;
 			sourceTree = "<group>";
 		};
 		B785C26F2874B8A4F530FD1D /* Settings */ = {
@@ -907,6 +957,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D26A933571853AF758770801 /* AnalyticsViewModel.swift in Sources */,
+				7988FA036C78CB9D30B6A9E4 /* AnalyticsDashboardView.swift in Sources */,
+				8330C701B5749A4BBA30FD13 /* CostChartView.swift in Sources */,
+				5E06FFA9AA21E55ADBAB1EAE /* TokenBreakdownView.swift in Sources */,
+				F414C0396A8418FA50FB8AB9 /* ModelDistributionView.swift in Sources */,
+				311F6EC2183766C5134DE6DE /* SessionCostRankingView.swift in Sources */,
 				FB9ACD1627AF69650D07975D /* ActivityManager.swift in Sources */,
 				93EFF11D75E2B7730AA50D4E /* ActivityStation.swift in Sources */,
 				8AD9CF79749CD5BE5EF22487 /* AgentInspectorView.swift in Sources */,
