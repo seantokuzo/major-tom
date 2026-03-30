@@ -70,12 +70,17 @@ final class SessionListViewModel {
             // Clear current chat only after successful attach
             relay.chatMessages.removeAll()
 
-            // Poll until session.info arrives (responseCounter changes).
-            // Respects task cancellation so the loop stops when the view disappears.
+            // Poll until the session.info for the target session arrives.
+            // The counter may bump for unrelated responses (device list, workspace
+            // tree, etc.), so after any counter change we verify that currentSession
+            // actually matches the session we attached to.
             let counterBefore = relay.responseCounter
             for _ in 0..<40 {
                 if Task.isCancelled { break }
-                if relay.responseCounter != counterBefore { break }
+                if relay.responseCounter != counterBefore,
+                   relay.currentSession?.id == session.id {
+                    break
+                }
                 try await Task.sleep(for: .milliseconds(50))
             }
 

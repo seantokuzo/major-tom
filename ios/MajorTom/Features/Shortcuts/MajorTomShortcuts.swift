@@ -6,8 +6,12 @@ import SwiftUI
 /// Shared keys for cross-process shortcut communication via App Groups UserDefaults.
 /// NotificationCenter.default.post() does NOT work across processes (Siri/Shortcuts app).
 /// We use a shared UserDefaults suite to pass the action, and the app polls on foreground.
+/// 
+/// NOTE: The App Group entitlement must be configured in Xcode for both the main app target
+/// and any extension targets that use this suite (Signing & Capabilities > App Groups).
 enum ShortcutActionKey {
-    static let suiteName = "group.com.majortom.shortcuts"
+    // Reuses the same App Group as WidgetDataProvider for a single shared suite.
+    static let suiteName = "group.com.majortom.shared"
     static let pendingActionKey = "pendingShortcutAction"
     static let timestampKey = "shortcutActionTimestamp"
 
