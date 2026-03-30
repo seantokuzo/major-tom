@@ -24,6 +24,7 @@ import { SessionPersistence } from './sessions/session-persistence.js';
 import { ClaudeCliAdapter } from './adapters/claude-cli.adapter.js';
 import { ApprovalQueue } from './hooks/approval-queue.js';
 import { PushManager } from './push/push-manager.js';
+import { HealthMonitor } from './health/health-monitor.js';
 import { getSessionSecret } from './auth/session.js';
 
 export interface AppConfig {
@@ -41,10 +42,17 @@ export async function buildApp(config: AppConfig) {
   const approvalQueue = new ApprovalQueue();
   const cliAdapter = new ClaudeCliAdapter(sessionManager, approvalQueue);
   const pushManager = new PushManager();
+  const healthMonitor = new HealthMonitor(cliAdapter, sessionManager);
 
-  // Restore persisted sessions
+  // Start health monitoring
+  healthMonitor.start();
+
+  // Restore persisted data
   await sessionManager.restoreFromDisk().catch((err: unknown) => {
     logger.error({ err }, 'Failed to restore sessions from disk, starting anyway');
+  });
+  await pushManager.restoreFromDisk().catch((err: unknown) => {
+    logger.error({ err }, 'Failed to restore push subscriptions from disk, starting anyway');
   });
 
   // ── Fastify instance ───────────────────────────────────
@@ -80,7 +88,7 @@ export async function buildApp(config: AppConfig) {
   await app.register(authRoutes);
 
   // Health check (public)
-  await app.register(createHealthRoutes({ sessionManager, approvalQueue }));
+  await app.register(createHealthRoutes({ sessionManager, approvalQueue, healthMonitor }));
 
   // Push notifications (mix of public + auth-required)
   await app.register(createPushRoutes({ pushManager }));
@@ -92,6 +100,7 @@ export async function buildApp(config: AppConfig) {
     cliAdapter,
     approvalQueue,
     pushManager,
+    healthMonitor,
     claudeWorkDir: config.claudeWorkDir,
   }));
 
@@ -102,6 +111,7 @@ export async function buildApp(config: AppConfig) {
 
   app.addHook('onClose', async () => {
     logger.info('Shutting down services...');
+    healthMonitor.dispose();
     await cliAdapter.dispose();
     await sessionPersistence.saveAllImmediate((id) => {
       const session = sessionManager.tryGet(id);
@@ -117,6 +127,7 @@ export async function buildApp(config: AppConfig) {
       };
     });
     sessionPersistence.dispose();
+    await pushManager.dispose();
     logger.info('Shutdown complete');
   });
 

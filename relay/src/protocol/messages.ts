@@ -103,6 +103,13 @@ export interface FsCwdMessage {
   type: 'fs.cwd';
 }
 
+export interface SessionResumeMessage {
+  type: 'session.resume';
+  sessionId: string;
+  /** Sequence number of last event the client received. Events after this will be replayed. */
+  lastSeq?: number;
+}
+
 
 export type ClientMessage =
   | PromptMessage
@@ -121,7 +128,8 @@ export type ClientMessage =
   | DeviceRevokeMessage
   | FsLsMessage
   | FsReadFileMessage
-  | FsCwdMessage;
+  | FsCwdMessage
+  | SessionResumeMessage;
 
 // ── Server → Client (Relay → iOS) ──────────────────────────
 
@@ -352,8 +360,20 @@ export interface FsErrorMessage {
   path?: string;
 }
 
+export interface SessionResumeResponseMessage {
+  type: 'session.resume.response';
+  sessionId: string;
+  /** Whether the session was found and resumed */
+  success: boolean;
+  /** Number of events replayed to the client */
+  replayedCount: number;
+  /** Current sequence number (client should track this for next resume) */
+  currentSeq: number;
+}
 
-export type ServerMessage =
+
+/** Base server message union (without envelope fields). */
+type ServerMessageBase =
   | OutputMessage
   | ApprovalRequestMessage
   | ToolStartMessage
@@ -381,7 +401,16 @@ export type ServerMessage =
   | FsLsResponseMessage
   | FsReadFileResponseMessage
   | FsCwdResponseMessage
-  | FsErrorMessage;
+  | FsErrorMessage
+  | SessionResumeResponseMessage;
+
+/**
+ * Every outbound server message may carry an optional `seq` —
+ * a monotonically-increasing sequence number stamped by the relay
+ * for session-scoped events. Clients use `lastSeq` during
+ * `session.resume` to request only events they missed.
+ */
+export type ServerMessage = ServerMessageBase & { seq?: number };
 
 // ── Utilities ───────────────────────────────────────────────
 

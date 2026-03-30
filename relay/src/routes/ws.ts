@@ -11,10 +11,12 @@ import type { ClaudeCliAdapter } from '../adapters/claude-cli.adapter.js';
 import type { ApprovalQueue } from '../hooks/approval-queue.js';
 import { NotificationBatcher } from '../push/notification-batcher.js';
 import type { PushManager } from '../push/push-manager.js';
+import type { HealthMonitor } from '../health/health-monitor.js';
 import { eventBus } from '../events/event-bus.js';
 import { agentTracker } from '../events/agent-tracker.js';
 import { encodeServerMessage, safeDecode } from '../protocol/codec.js';
 import { truncateMetaField } from '../sessions/session-transcript.js';
+import { EventBufferManager } from '../sessions/event-buffer.js';
 import { scanWorkspaceTree } from '../workspace/tree-scanner.js';
 import type { ClientMessage, ServerMessage, FileNode } from '../protocol/messages.js';
 import { createFsHandlers, type FsServerMessage } from './fs.js';
@@ -26,6 +28,7 @@ interface WsDeps {
   cliAdapter: ClaudeCliAdapter;
   approvalQueue: ApprovalQueue;
   pushManager: PushManager;
+  healthMonitor: HealthMonitor;
   claudeWorkDir: string;
 }
 
@@ -40,10 +43,12 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     cliAdapter,
     approvalQueue,
     pushManager,
+    healthMonitor,
     claudeWorkDir,
   } = deps;
 
   const notificationBatcher = new NotificationBatcher(pushManager);
+  const eventBuffer = new EventBufferManager();
   const clients = new Set<WebSocket>();
 
   // ── Filesystem handlers (sandboxed browsing) ──────────────
@@ -117,6 +122,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       logger.info({ sessionId }, 'Session timeout fired — destroying abandoned session');
       cliAdapter.destroySession(sessionId);
+      healthMonitor.untrackSession(sessionId);
+      eventBuffer.removeSession(sessionId);
       sessionManager.close(sessionId);
 
       // Persist before cleanup
@@ -137,12 +144,30 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   }
 
   function broadcast(message: ServerMessage): void {
+    // Record in event buffer for session resume support.
+    // Extract sessionId from the message if present.
+    const sessionId = extractSessionId(message);
+    if (sessionId) {
+      const seq = eventBuffer.record(sessionId, message);
+      // Surface the seq on the outbound message so clients can track lastSeq
+      message.seq = seq;
+    }
+
     const encoded = encodeServerMessage(message);
     for (const client of clients) {
       if (client.readyState === WebSocket.OPEN) {
         client.send(encoded);
       }
     }
+  }
+
+  /** Extract sessionId from a server message, if present */
+  function extractSessionId(message: ServerMessage): string | undefined {
+    // Most message types have sessionId directly
+    if ('sessionId' in message && typeof message.sessionId === 'string') {
+      return message.sessionId;
+    }
+    return undefined;
   }
 
   function buildPersistedSession(sessionId: string): PersistedSession | null {
@@ -218,6 +243,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         }
 
         const session = await cliAdapter.start(workDir);
+        healthMonitor.trackSession(session.id);
         trackClientSession(ws, session.id);
         sendToClient(ws, {
           type: 'session.info',
@@ -309,7 +335,114 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         if (cliAdapter.hasSession(message.sessionId)) {
           cliAdapter.destroySession(message.sessionId);
         }
+        healthMonitor.untrackSession(message.sessionId);
+        // Broadcast BEFORE removing buffer — broadcast() records events by sessionId,
+        // so removing first would recreate a fresh (leaked) buffer for this session.
         broadcast({ type: 'session.ended', sessionId: message.sessionId });
+        eventBuffer.removeSession(message.sessionId);
+        break;
+      }
+
+      case 'session.resume': {
+        const resumeSessionId = message.sessionId;
+        const lastSeq = message.lastSeq ?? 0;
+
+        // Check if session exists (live or persisted)
+        const liveSession = sessionManager.tryGet(resumeSessionId);
+        const isPersistedOnly = sessionManager.isPersistedOnly(resumeSessionId);
+
+        if (!liveSession && !isPersistedOnly) {
+          sendToClient(ws, {
+            type: 'session.resume.response',
+            sessionId: resumeSessionId,
+            success: false,
+            replayedCount: 0,
+            currentSeq: 0,
+          });
+          break;
+        }
+
+        // Track this client for the session
+        trackClientSession(ws, resumeSessionId);
+
+        // Send session info first
+        if (liveSession) {
+          sendToClient(ws, {
+            type: 'session.info',
+            sessionId: liveSession.id,
+            adapter: liveSession.adapter,
+            startedAt: liveSession.startedAt,
+          });
+        } else {
+          const meta = sessionManager.getPersistedMeta(resumeSessionId);
+          if (meta) {
+            sendToClient(ws, {
+              type: 'session.info',
+              sessionId: resumeSessionId,
+              adapter: meta.adapter ?? 'cli',
+              startedAt: meta.startedAt ?? new Date().toISOString(),
+            });
+          }
+        }
+
+        // For persisted-only sessions the event buffer is empty (no live stream).
+        // Send the persisted transcript as session.history so the client has context,
+        // mirroring what session.attach does.
+        if (isPersistedOnly) {
+          const transcript = await sessionManager.getPersistedTranscript(resumeSessionId);
+          sendToClient(ws, {
+            type: 'session.history',
+            sessionId: resumeSessionId,
+            entries: transcript,
+          });
+        }
+
+        // Replay missed events from the event buffer
+        const missedEvents = eventBuffer.getEventsAfter(resumeSessionId, lastSeq);
+        for (const buffered of missedEvents) {
+          sendToClient(ws, buffered.message);
+        }
+
+        // Re-broadcast pending approvals (they may not be in the event buffer
+        // if the client disconnected before the approval was queued)
+        const pendingApprovals = approvalQueue.getPendingDetails();
+        for (const req of pendingApprovals) {
+          sendToClient(ws, {
+            type: 'approval.request',
+            requestId: req.requestId,
+            tool: req.tool,
+            description: req.description,
+            details: req.details,
+          });
+        }
+
+        // Send current permission mode
+        const modeState = cliAdapter.permissionFilter.getMode();
+        sendToClient(ws, {
+          type: 'permission.mode',
+          mode: modeState.mode,
+          delaySeconds: modeState.delaySeconds,
+          godSubMode: modeState.godSubMode,
+        });
+
+        const currentSeq = eventBuffer.getCurrentSeq(resumeSessionId);
+        sendToClient(ws, {
+          type: 'session.resume.response',
+          sessionId: resumeSessionId,
+          success: true,
+          replayedCount: missedEvents.length,
+          currentSeq,
+        });
+
+        logger.info(
+          {
+            sessionId: resumeSessionId,
+            lastSeq,
+            replayedCount: missedEvents.length,
+            currentSeq,
+          },
+          'Session resumed — replayed missed events',
+        );
         break;
       }
 
@@ -786,6 +919,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     fastify.addHook('onClose', () => {
       clearInterval(heartbeatInterval);
       notificationBatcher.dispose();
+      eventBuffer.dispose();
       eventBus.off('server.message', serverMessageHandler);
       // Clear all session timeouts
       for (const timeout of sessionTimeouts.values()) {
