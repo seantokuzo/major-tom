@@ -17,7 +17,6 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import { ApprovalQueue } from '../hooks/approval-queue.js';
 import { PermissionFilter } from '../permissions/permission-filter.js';
-import type { AutoAllowReason } from '../permissions/permission-filter.js';
 import {
   isParentToChildMessage,
   type ParentToChildMessage,
