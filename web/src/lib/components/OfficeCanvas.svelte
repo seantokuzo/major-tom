@@ -14,6 +14,9 @@
     drawToasterFire,
     drawPingPongBall,
   } from '../office/furniture-renderers';
+  import type { ThemeEngine } from '../office/theme-engine';
+  import type { MoodEngine } from '../office/mood-engine';
+  import { MOOD_VISUALS } from '../office/mood-engine';
 
   interface Props {
     engine: OfficeEngine;
@@ -21,9 +24,11 @@
     onAgentClick?: (agentId: string) => void;
     onEmptyClick?: () => void;
     activeView?: OfficeView;
+    themeEngine?: ThemeEngine;
+    moodEngine?: MoodEngine;
   }
 
-  let { engine, desks, onAgentClick, onEmptyClick, activeView = 'office' as OfficeView }: Props = $props();
+  let { engine, desks, onAgentClick, onEmptyClick, activeView = 'office' as OfficeView, themeEngine, moodEngine }: Props = $props();
 
   let canvasEl: HTMLCanvasElement | undefined = $state();
   let containerEl: HTMLDivElement | undefined = $state();
@@ -83,10 +88,12 @@
       };
 
       engine.start();
+      themeEngine?.start();
 
       return () => {
         engine.onRender = null;
         engine.stop();
+        themeEngine?.stop();
       };
     } else {
       if (!canvasEl) return;
@@ -98,10 +105,12 @@
       };
 
       engine.start();
+      themeEngine?.start();
 
       return () => {
         engine.onRender = null;
         engine.stop();
+        themeEngine?.stop();
       };
     }
   });
@@ -245,6 +254,11 @@
 
     ctx.restore();
 
+    // Theme overlay for this room
+    if (themeEngine) {
+      themeEngine.drawOverlay(ctx, b.width, b.height);
+    }
+
     // Draw subtle border around room canvas
     ctx.strokeStyle = 'rgba(100, 100, 120, 0.4)';
     ctx.lineWidth = 1;
@@ -367,6 +381,25 @@
     // Draw ping pong ball on top of agents (only in office view where break room is)
     if (activeView === 'office') {
       drawPingPongBall(ctx, eng, now);
+    }
+
+    // Theme overlay — semi-transparent color filter for time-of-day + season
+    if (themeEngine) {
+      themeEngine.drawOverlay(ctx, SCENE_WIDTH, SCENE_HEIGHT);
+
+      // Desk lamps at night (near each occupied desk in office view)
+      if (activeView === 'office' && themeEngine.state.palette.lampsOn) {
+        for (const d of desks) {
+          if (d.occupantId) {
+            themeEngine.drawDeskLamp(ctx, d.position.x + 15, d.position.y - 5);
+          }
+        }
+      }
+
+      // Holiday decorations along break room top wall
+      if (activeView === 'office' && themeEngine.state.seasonal.holiday) {
+        themeEngine.drawHolidayDecor(ctx, 675, 8, 320);
+      }
     }
 
     // Reset text baseline
@@ -536,6 +569,26 @@
     }
 
     if (agent.alpha <= 0) return;
+
+    // Mood tint overlay on sprite
+    if (moodEngine) {
+      const mood = moodEngine.getMood(agent.id);
+      const visuals = MOOD_VISUALS[mood];
+      if (visuals.tintOpacity > 0) {
+        const size = getCharacterSize(agent.characterType);
+        let opacity = visuals.tintOpacity;
+        if (visuals.pulse) {
+          opacity *= 0.5 + 0.5 * Math.sin(now * visuals.pulseSpeed * 0.001);
+        }
+        ctx.save();
+        ctx.globalAlpha = opacity * agent.alpha;
+        ctx.fillStyle = visuals.tintColor;
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(size.width, size.height) / 2 + 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
 
     const prevAlpha = ctx.globalAlpha;
     ctx.globalAlpha = agent.alpha;

@@ -57,6 +57,14 @@ struct OfficeView: View {
             }
         }
         .onAppear {
+            // Wire theme + mood engines to the scene
+            scene.themeEngine = viewModel.themeEngine
+            scene.moodEngine = viewModel.moodEngine
+
+            // Start engines
+            viewModel.themeEngine.start()
+            viewModel.moodEngine.start()
+
             scene.onAgentTapped = { agentId in
                 if let agent = viewModel.agents.first(where: { $0.id == agentId }) {
                     HapticService.selection()
@@ -81,7 +89,9 @@ struct OfficeView: View {
             }
         }
         .onDisappear {
-            // Stop activity cycling timer when view disappears
+            // Stop engines + activity cycling when view disappears
+            viewModel.themeEngine.stop()
+            viewModel.moodEngine.stop()
             viewModel.activityManager.stopCycling()
         }
         .onChange(of: viewModel.selectedAgentId) { _, newValue in

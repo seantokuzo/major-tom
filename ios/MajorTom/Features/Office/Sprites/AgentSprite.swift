@@ -22,6 +22,18 @@ final class AgentSprite: SKSpriteNode {
     /// Status indicator dot below the sprite.
     private let statusDot: SKShapeNode
 
+    /// Mood tint overlay (colored circle behind the sprite).
+    private let moodTintNode: SKShapeNode
+
+    /// Speech bubble label node for mood quips.
+    private let speechBubble: SKLabelNode
+
+    /// Background for the speech bubble.
+    private let speechBubbleBG: SKShapeNode
+
+    /// Current mood for this agent.
+    private(set) var currentMood: AgentMood = .neutral
+
     /// Dog character types for convenience.
     private static let dogTypes: Set<CharacterType> = [
         .dachshund, .cattleDog, .schnauzerBlack, .schnauzerPepper,
@@ -48,6 +60,27 @@ final class AgentSprite: SKSpriteNode {
         statusDot.fillColor = .gray
         statusDot.strokeColor = .clear
 
+        // Mood tint overlay — larger circle behind sprite
+        moodTintNode = SKShapeNode(circleOfRadius: 20)
+        moodTintNode.fillColor = .clear
+        moodTintNode.strokeColor = .clear
+        moodTintNode.alpha = 0
+        moodTintNode.zPosition = -1
+
+        // Speech bubble
+        speechBubble = SKLabelNode(fontNamed: "Menlo")
+        speechBubble.fontSize = 8
+        speechBubble.fontColor = .white
+        speechBubble.horizontalAlignmentMode = .center
+        speechBubble.verticalAlignmentMode = .center
+        speechBubble.alpha = 0
+
+        speechBubbleBG = SKShapeNode(rectOf: CGSize(width: 100, height: 16), cornerRadius: 4)
+        speechBubbleBG.fillColor = SKColor(white: 0.1, alpha: 0.85)
+        speechBubbleBG.strokeColor = SKColor(white: 0.3, alpha: 0.5)
+        speechBubbleBG.lineWidth = 0.5
+        speechBubbleBG.alpha = 0
+
         // Derive sprite size from pixel art's actual bounds
         let artFrame = pixelArt.calculateAccumulatedFrame()
         let spriteSize = CGSize(
@@ -60,6 +93,9 @@ final class AgentSprite: SKSpriteNode {
         self.name = "agent_\(agentId)"
         self.isUserInteractionEnabled = true
 
+        // Add mood tint behind everything
+        addChild(moodTintNode)
+
         // Add pixel art centered on sprite
         pixelArt.zPosition = 0
         addChild(pixelArt)
@@ -71,6 +107,15 @@ final class AgentSprite: SKSpriteNode {
         // Position status dot below sprite (derived from art frame)
         statusDot.position = CGPoint(x: 0, y: -(spriteSize.height / 2 + 6))
         addChild(statusDot)
+
+        // Speech bubble above name label
+        speechBubbleBG.position = CGPoint(x: 0, y: spriteSize.height / 2 + 20)
+        speechBubbleBG.zPosition = 20
+        addChild(speechBubbleBG)
+
+        speechBubble.position = CGPoint(x: 0, y: spriteSize.height / 2 + 20)
+        speechBubble.zPosition = 21
+        addChild(speechBubble)
     }
 
     @available(*, unavailable)
@@ -238,6 +283,116 @@ final class AgentSprite: SKSpriteNode {
     /// Stop all animations.
     func stopAnimations() {
         removeAllActions()
+    }
+
+    // MARK: - Mood Visuals
+
+    /// Update the mood state and apply visual changes.
+    func updateMood(_ mood: AgentMood) {
+        guard mood != currentMood else { return }
+        currentMood = mood
+
+        let visuals = mood.visuals
+
+        // Update tint node
+        moodTintNode.removeAction(forKey: "moodPulse")
+
+        if visuals.tintOpacity > 0 {
+            moodTintNode.fillColor = visuals.tintColor
+            moodTintNode.alpha = visuals.tintOpacity
+
+            if visuals.pulse {
+                let pulseAction = SKAction.repeatForever(SKAction.sequence([
+                    SKAction.fadeAlpha(to: visuals.tintOpacity * 0.5, duration: Double(.pi / visuals.pulseSpeed)),
+                    SKAction.fadeAlpha(to: visuals.tintOpacity, duration: Double(.pi / visuals.pulseSpeed)),
+                ]))
+                moodTintNode.run(pulseAction, withKey: "moodPulse")
+            }
+        } else {
+            moodTintNode.alpha = 0
+        }
+
+        // Apply mood-specific idle animation override
+        applyMoodIdleAnimation(mood)
+    }
+
+    /// Apply mood-specific idle animation on top of current state.
+    private func applyMoodIdleAnimation(_ mood: AgentMood) {
+        removeAction(forKey: "moodIdle")
+
+        switch mood {
+        case .frustrated:
+            // Quick shake
+            let shake = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 3, y: 0, duration: 0.08),
+                SKAction.moveBy(x: -6, y: 0, duration: 0.08),
+                SKAction.moveBy(x: 3, y: 0, duration: 0.08),
+                SKAction.wait(forDuration: 1.5),
+            ]))
+            run(shake, withKey: "moodIdle")
+
+        case .excited:
+            // Bounce
+            let bounce = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 0, y: 6, duration: 0.15),
+                SKAction.moveBy(x: 0, y: -6, duration: 0.15),
+                SKAction.wait(forDuration: 0.4),
+            ]))
+            run(bounce, withKey: "moodIdle")
+
+        case .bored:
+            // Slow drift side to side
+            let drift = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 4, y: 0, duration: 2.0),
+                SKAction.moveBy(x: -4, y: 0, duration: 2.0),
+            ]))
+            run(drift, withKey: "moodIdle")
+
+        case .focused:
+            // Very slight lean-in (barely moving, intense)
+            let lean = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 0, y: -1, duration: 1.0),
+                SKAction.moveBy(x: 0, y: 1, duration: 1.0),
+            ]))
+            run(lean, withKey: "moodIdle")
+
+        case .happy, .neutral:
+            // No extra animation — default idle is fine
+            break
+        }
+    }
+
+    /// Show a speech bubble with the given text, auto-hiding after duration.
+    func showSpeechBubble(_ text: String, duration: TimeInterval = 3.0) {
+        speechBubble.text = text
+        speechBubbleBG.removeAllActions()
+        speechBubble.removeAllActions()
+
+        // Resize background to fit text
+        let textWidth = CGFloat(text.count) * 5.5 + 12
+        speechBubbleBG.removeFromParent()
+        let newBG = SKShapeNode(rectOf: CGSize(width: max(textWidth, 40), height: 16), cornerRadius: 4)
+        newBG.fillColor = SKColor(white: 0.1, alpha: 0.85)
+        newBG.strokeColor = SKColor(white: 0.3, alpha: 0.5)
+        newBG.lineWidth = 0.5
+        newBG.position = speechBubbleBG.position
+        newBG.zPosition = speechBubbleBG.zPosition
+        // Replace the old BG node
+        addChild(newBG)
+
+        let fadeIn = SKAction.fadeAlpha(to: 1.0, duration: 0.2)
+        let wait = SKAction.wait(forDuration: duration)
+        let fadeOut = SKAction.fadeOut(withDuration: 0.5)
+        let sequence = SKAction.sequence([fadeIn, wait, fadeOut])
+
+        speechBubble.run(sequence)
+        newBG.run(SKAction.sequence([fadeIn, wait, fadeOut, SKAction.removeFromParent()]))
+    }
+
+    /// Trigger a mood-appropriate speech bubble if the mood has quips.
+    func showMoodSpeech() {
+        guard let text = currentMood.pickSpeech() else { return }
+        showSpeechBubble(text)
     }
 
     // MARK: - Touch Handling

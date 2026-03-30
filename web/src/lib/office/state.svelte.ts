@@ -14,6 +14,11 @@ import {
   pickPingPongRally, pickCasualChat,
 } from './speech';
 import { ActivityManager } from './activity-manager';
+import { ThemeEngine } from './theme-engine';
+import { MoodEngine, pickMoodSpeech, MOOD_VISUALS } from './mood-engine';
+import type { AgentMood } from './mood-engine';
+import { pickIdleChatExchange, pickEventReaction } from './interactions';
+import type { OfficeEvent } from './interactions';
 
 // ── Status colors ────────────────────────────────────────────
 
@@ -41,6 +46,10 @@ export interface OfficeState {
   desks: Desk[];
   selectedAgentId: string | null;
   engine: OfficeEngine;
+  /** Theme engine — day/night cycle + seasonal themes */
+  themeEngine: ThemeEngine;
+  /** Mood engine — per-agent mood tracking */
+  moodEngine: MoodEngine;
 
   readonly selectedAgent: OfficeAgent | null;
   /** Demo mode active — fake agents populating the office */
@@ -62,6 +71,10 @@ export interface OfficeState {
   handleIdle(id: string): void;
   handleComplete(id: string, result: string): void;
   handleDismissed(id: string): void;
+  /** Broadcast an office event — triggers reactions from nearby agents */
+  broadcastEvent(event: OfficeEvent, sourceAgentId?: string): void;
+  /** Get the current mood for an agent */
+  getAgentMood(agentId: string): AgentMood;
   reset(): void;
 
   selectAgent(id: string): void;
@@ -78,6 +91,8 @@ export function createOfficeState(): OfficeState {
   let nextCharacterIndex = 0;
 
   const engine = new OfficeEngine();
+  const themeEngine = new ThemeEngine();
+  const moodEngine = new MoodEngine();
 
   // ── Stuck Detection Handler ──────────────────────────────────
   // Wired up after engine creation — reroutes or bails stuck agents.
@@ -1375,6 +1390,67 @@ export function createOfficeState(): OfficeState {
     }, walkDuration + 200);
   }
 
+  // ── Office Event Broadcasting ──────────────────────────────────
+  // When a significant session event happens, nearby agents react.
+
+  function broadcastEvent(event: OfficeEvent, sourceAgentId?: string): void {
+    for (const agent of agents) {
+      if (agent.id === sourceAgentId) continue;
+      if (agent.status !== 'idle') continue;
+      const ea = engine.agents.get(agent.id);
+      if (!ea || ea.speechBubble) continue;
+      // 30% chance for each idle agent to react
+      if (Math.random() > 0.3) continue;
+      const reaction = pickEventReaction(event);
+      engine.setSpeechBubble(agent.id, reaction, 2000);
+    }
+  }
+
+  function getAgentMood(agentId: string): AgentMood {
+    return moodEngine.getMood(agentId);
+  }
+
+  // ── Mood-Driven Speech Integration ────────────────────────────
+  // On mood update ticks, occasionally show mood-based speech bubbles.
+
+  function moodSpeechCheck(): void {
+    for (const agent of agents) {
+      if (agent.status !== 'idle') continue;
+      const ea = engine.agents.get(agent.id);
+      if (!ea || ea.speechBubble) continue;
+
+      const mood = moodEngine.getMood(agent.id);
+      // Only moody agents speak: bored 8%, frustrated 10%, excited 12%
+      let chance = 0;
+      if (mood === 'bored') chance = 0.08;
+      else if (mood === 'frustrated') chance = 0.10;
+      else if (mood === 'excited') chance = 0.12;
+      else continue;
+
+      if (Math.random() > chance) continue;
+      const text = pickMoodSpeech(mood);
+      if (text) engine.setSpeechBubble(agent.id, text, 2500);
+    }
+  }
+
+  // Run mood speech check every 30 seconds alongside mood updates
+  let moodSpeechInterval: ReturnType<typeof setInterval> | null = null;
+
+  function startMoodSpeechScanner(): void {
+    if (moodSpeechInterval) return;
+    moodSpeechInterval = setInterval(() => {
+      moodEngine.updateAllMoods();
+      moodSpeechCheck();
+    }, 30_000);
+  }
+
+  function stopMoodSpeechScanner(): void {
+    if (moodSpeechInterval) {
+      clearInterval(moodSpeechInterval);
+      moodSpeechInterval = null;
+    }
+  }
+
   return {
     get agents() { return agents; },
     get desks() { return desks; },
@@ -1385,6 +1461,8 @@ export function createOfficeState(): OfficeState {
     get sessionMode() { return sessionMode; },
     get canDemo() { return canDemo; },
     engine,
+    themeEngine,
+    moodEngine,
 
     toggleDemo,
     enterSessionMode,
@@ -1392,15 +1470,35 @@ export function createOfficeState(): OfficeState {
     ensureAutoIdle() {
       if (!demoMode && !sessionMode && canDemo) toggleDemo();
     },
-    handleSpawn,
-    handleWorking,
-    handleIdle,
-    handleComplete,
-    handleDismissed,
+    handleSpawn(id: string, role: string, task: string) {
+      handleSpawn(id, role, task);
+      moodEngine.addAgent(id);
+      startMoodSpeechScanner();
+    },
+    handleWorking(id: string, task: string) {
+      handleWorking(id, task);
+      moodEngine.recordActivity(id);
+    },
+    handleIdle(id: string) {
+      handleIdle(id);
+      moodEngine.recordIdle(id);
+    },
+    handleComplete(id: string, result: string) {
+      handleComplete(id, result);
+      moodEngine.recordCompletion(id);
+      broadcastEvent('task_complete', id);
+    },
+    handleDismissed(id: string) {
+      handleDismissed(id);
+      moodEngine.removeAgent(id);
+    },
+    broadcastEvent,
+    getAgentMood,
     reset() {
       for (const id of idleTimers.keys()) clearIdleTimer(id);
       for (const id of pingPongWaitTimers.keys()) clearPingPongTimer(id);
       stopSocialScanner();
+      stopMoodSpeechScanner();
       agents = [];
       desks = DESKS.map((d) => ({ ...d, occupantId: null }));
       selectedAgentId = null;
@@ -1409,6 +1507,7 @@ export function createOfficeState(): OfficeState {
       sessionMode = false;
       sessionCharMap.clear();
       activityManager.reset();
+      moodEngine.reset();
       engine.clear();
     },
 
