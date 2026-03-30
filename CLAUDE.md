@@ -95,7 +95,7 @@ This project uses a **thin orchestrator, fat workers** pattern:
 3. **No nesting** — subagents never spawn sub-subagents
 4. **Atomic tasks** — one task = one commit
 5. **PR review pipeline** — after every PR, run the automated review loop (see `.agents/skills/pr-review-pipeline/SKILL.md`)
-6. **Never merge** — PRs are merged by the user, never by agents
+6. **Auto-merge after clean review** — merge is earned after the review pipeline passes clean
 
 ### PR Review Pipeline
 
@@ -104,7 +104,8 @@ After creating any PR, agents MUST run the review pipeline:
 2. Address ALL comments, push fixes, reply inline
 3. Re-poll for round 2, fix and push
 4. Repeat up to 3 rounds until clean
-5. Report "ready for merge" — never merge yourself
+5. After a clean round (no new comments), merge the PR via `gh pr merge --merge`
+6. Pull merged changes to local main
 
 See `.agents/skills/pr-review-pipeline/SKILL.md` for full workflow.
 

@@ -117,17 +117,27 @@ NEW_COMMENTS=$(gh api repos/{OWNER}/{REPO}/pulls/{PR_NUMBER}/comments \
 
 If still getting comments after round 3, report to user with summary.
 
-### Step 9: Report Ready
+### Step 9: Merge
 
-After a clean round (no new comments):
+After a clean round (no new comments), merge the PR:
+
+```bash
+gh pr merge {PR_NUMBER} --merge --delete-branch
+```
+
+Then pull the merged changes to local main:
+
+```bash
+git checkout main && git pull origin main
+```
+
+Report the result:
 
 ```
-PR #{NUMBER} is review-clean after {N} rounds:
+PR #{NUMBER} merged after {N} review rounds:
 - Round 1: {X} comments addressed
 - Round 2: {Y} comments addressed
-- Round 3: Clean pass
-
-Ready for your review and merge.
+- Round 3: Clean pass → merged
 ```
 
 ## Reply Format

@@ -58,7 +58,8 @@ After each worker creates a PR, the **review pipeline** is mandatory:
 - Address ALL comments, push fixes, reply inline to each comment
 - Re-poll for round 2 comments, fix those too
 - Repeat up to 3 rounds until clean
-- Report "ready for merge" to user — **NEVER merge PRs yourself**
+- After a clean round, **merge the PR** via `gh pr merge --merge --delete-branch`
+- Pull merged changes to local main
 
 ### 6. Verify Results
 After each wave completes:
@@ -106,5 +107,5 @@ After PR creation, run the review pipeline:
 - Poll for Copilot review comments, address all, push, reply inline
 - Re-poll for round 2, fix and push again
 - Report clean or escalate after round 3
-- NEVER merge — that's the user's job
+- After clean review, merge via `gh pr merge --merge --delete-branch` and pull to main
 ```

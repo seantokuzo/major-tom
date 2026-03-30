@@ -7,7 +7,7 @@
 
 ## Current Phase
 
-**Phase 8: "Fleet Command"** — Wave 1 COMPLETE, Wave 2 next
+**Phase 8: "Fleet Command"** — Waves 1-4 COMPLETE, Wave 5 next
 
 ## Strategy
 
@@ -227,9 +227,56 @@
 - [x] FleetSessionRow — status dot, cost, tap-to-switch
 - [x] FleetStatusBadge — compact toolbar pill in ChatView
 
-### Wave 3: Analytics + Smart Notifications — NEXT
-### Wave 4: Office 2.0 + Apple Watch + Widgets + Live Activities
-### Wave 5: Achievements + Siri Shortcuts
+### Wave 3: Analytics + Smart Notifications — COMPLETE
+
+#### Track F: Analytics Engine (PR #68)
+- [x] JSONL analytics log — ~/.major-tom/analytics.jsonl, append per-turn cost/tokens/model/duration/tools
+- [x] Relay: analytics collector service — hooks session events, writes JSONL, fleet IPC aggregation
+- [x] Relay: GET /api/analytics — time range + groupBy queries, per-session/model/tool aggregation
+- [x] PWA: AnalyticsPanel — slide-out with SVG charts (cost bars, token stacked bars, model donut, session ranking, top tools)
+- [x] PWA: AnalyticsIndicator — header badge with today's total cost
+- [x] iOS: Analytics feature — Swift Charts (BarMark cost, stacked tokens, SectorMark models), session ranking
+
+#### Track G: Smart Notifications (PR #69)
+- [x] Relay: priority scorer — high/medium/low based on tool danger, file sensitivity, cost impact
+- [x] Relay: quiet hours config — ~/.major-tom/config.json, GET/PUT /api/config/notifications
+- [x] Relay: notification digest — batches low-priority, sends summary every N minutes
+- [x] PWA: NotificationSettings — quiet hours picker, priority threshold, digest interval
+- [x] PWA: priority badges on approval cards — color-coded dots, sorted by priority
+- [x] iOS: NotificationSettingsView — quiet hours, priority threshold, digest config synced via relay
+- [x] iOS: priority badges on approval cards
+
+### Wave 4: Office 2.0 + Apple Watch + Widgets + Live Activities — COMPLETE
+
+#### Track H: Office 2.0 (PR #70)
+- [x] Theme system — day/night cycle tied to real clock, seasonal themes, color palette transitions
+- [x] Agent mood system — mood derived from session activity (idle→bored, errors→frustrated, shipping→excited)
+- [x] Mood-driven visuals — sprite tinting, speech bubbles, idle behavior preferences
+- [x] Agent interactions — idle chat between nearby agents, react to approvals/errors
+- [x] PWA: extended OfficeEngine + sprite system with themes/moods/interactions
+- [x] iOS: SpriteKit ThemeEngine, MoodEngine, interaction system in OfficeScene
+
+#### Track I: Apple Watch Companion (PR #71)
+- [x] watchOS 10+ companion app — WatchConnectivity bridge to iPhone
+- [x] Session list and detail views with real-time status updates
+- [x] Approve/deny tool requests from watch with haptic feedback
+- [x] WidgetKit complications — session count, cost, pending approvals
+- [x] PhoneWatchConnectivityService on iPhone side forwarding session data
+
+#### Track J: iOS Widgets (PR #72)
+- [x] WidgetKit extension — Small (session count + cost), Medium (top 3 sessions), Large (fleet dashboard)
+- [x] App Groups shared container for widget data
+- [x] WidgetDataProvider writes session/fleet data to shared UserDefaults
+- [x] Timeline refresh on session events via WidgetCenter
+
+#### Track K: Live Activities (PR #73)
+- [x] ActivityKit Live Activity for active Claude sessions
+- [x] Dynamic Island — compact (session + cost), expanded (full status + approvals)
+- [x] Lock Screen — session name, elapsed time, cost, approve/deny buttons via deep links
+- [x] LiveActivityManager with debounced updates (3s normal, immediate for approvals)
+- [x] MajorTomLiveActivityWidget in shared widget extension bundle
+
+### Wave 5: Achievements + Siri Shortcuts — NEXT
 
 ---
 
