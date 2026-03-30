@@ -208,14 +208,29 @@ enum OutputFormat: String, Codable {
     case plain
 }
 
+struct ApprovalPriority: Codable {
+    let level: String // "high" | "medium" | "low"
+    let reason: String
+}
+
 struct ApprovalRequestEvent: Codable, Identifiable {
     let type: String
     let requestId: String
     let tool: String
     let description: String
     let details: [String: AnyCodableValue]?
+    let priority: ApprovalPriority?
 
     var id: String { requestId }
+
+    init(type: String, requestId: String, tool: String, description: String, details: [String: AnyCodableValue]?, priority: ApprovalPriority? = nil) {
+        self.type = type
+        self.requestId = requestId
+        self.tool = tool
+        self.description = description
+        self.details = details
+        self.priority = priority
+    }
 }
 
 struct ApprovalAutoEvent: Codable {

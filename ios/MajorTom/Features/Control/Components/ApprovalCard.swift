@@ -122,6 +122,20 @@ struct ApprovalCard: View {
 
             Spacer()
 
+            // Priority badge (server-provided)
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(request.priorityLevel.color)
+                    .frame(width: 6, height: 6)
+                Text(request.priorityLevel.label)
+                    .font(MajorTomTheme.Typography.caption)
+                    .foregroundStyle(request.priorityLevel.color)
+            }
+            .padding(.horizontal, MajorTomTheme.Spacing.sm)
+            .padding(.vertical, MajorTomTheme.Spacing.xs)
+            .background(request.priorityLevel.color.opacity(0.12))
+            .clipShape(Capsule())
+
             // Danger badge
             Text(request.dangerLevel.label)
                 .font(MajorTomTheme.Typography.caption)

@@ -4,11 +4,21 @@ struct ApprovalView: View {
     let approvals: [ApprovalRequest]
     let onDecision: (String, ApprovalDecision) -> Void
 
+    /// Sort approvals by priority: high first, then medium, then low
+    private var sortedApprovals: [ApprovalRequest] {
+        let priorityOrder: [String: Int] = ["high": 0, "medium": 1, "low": 2]
+        return approvals.sorted { a, b in
+            let pa = priorityOrder[a.priorityLevel.rawValue] ?? 1
+            let pb = priorityOrder[b.priorityLevel.rawValue] ?? 1
+            return pa < pb
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: MajorTomTheme.Spacing.md) {
-                    ForEach(approvals) { request in
+                    ForEach(sortedApprovals) { request in
                         ApprovalCard(request: request) { decision in
                             onDecision(request.id, decision)
                         }

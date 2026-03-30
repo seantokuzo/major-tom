@@ -28,6 +28,9 @@
   let borderColor = $derived(dangerColor(danger));
   let icon = $derived(toolIcon(request.tool));
   let toolLower = $derived(request.tool.toLowerCase());
+
+  // Server-provided priority (may be absent for backwards compatibility)
+  let priorityLevel = $derived(request.priority?.level ?? null);
   let timeStr = $derived(
     request.receivedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   );
@@ -197,6 +200,18 @@
       {:else if danger === 'medium'}
         <span class="danger-badge danger-badge-medium" title="Use caution">&#x26A0;&#xFE0F;</span>
       {/if}
+      {#if priorityLevel}
+        <span
+          class="priority-badge"
+          class:priority-high={priorityLevel === 'high'}
+          class:priority-medium={priorityLevel === 'medium'}
+          class:priority-low={priorityLevel === 'low'}
+          title={request.priority?.reason ?? ''}
+        >
+          <span class="priority-dot-inline"></span>
+          {priorityLevel}
+        </span>
+      {/if}
     </div>
     <span class="timestamp">{timeStr}</span>
   </div>
@@ -360,6 +375,53 @@
     background: rgba(251, 191, 36, 0.15);
     color: #fbbf24;
     border: 1px solid rgba(251, 191, 36, 0.25);
+  }
+
+  .priority-badge {
+    font-size: 0.6rem;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    padding: 1px 5px;
+    border-radius: var(--r-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .priority-dot-inline {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .priority-high {
+    background: rgba(248, 113, 113, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(248, 113, 113, 0.25);
+  }
+  .priority-high .priority-dot-inline {
+    background: #f87171;
+  }
+
+  .priority-medium {
+    background: rgba(251, 191, 36, 0.12);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.2);
+  }
+  .priority-medium .priority-dot-inline {
+    background: #fbbf24;
+  }
+
+  .priority-low {
+    background: rgba(74, 222, 128, 0.12);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.2);
+  }
+  .priority-low .priority-dot-inline {
+    background: #4ade80;
   }
 
   .timestamp {

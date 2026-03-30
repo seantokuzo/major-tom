@@ -14,6 +14,7 @@ struct SettingsView: View {
             List {
                 connectionSection
                 authSection
+                notificationSection
                 sessionSection
                 aboutSection
             }
@@ -111,6 +112,21 @@ struct SettingsView: View {
             }
         } header: {
             Text("Authentication")
+        }
+    }
+
+    // MARK: - Notifications
+
+    private var notificationSection: some View {
+        Section {
+            NavigationLink {
+                NotificationSettingsView(auth: viewModel.authService)
+            } label: {
+                Label("Notification Settings", systemImage: "bell.badge")
+            }
+            .listRowBackground(MajorTomTheme.Colors.surface)
+        } header: {
+            Text("Notifications")
         }
     }
 

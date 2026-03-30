@@ -8,10 +8,12 @@ final class SettingsViewModel {
     var devices: [DeviceInfo] = []
     var isLoadingDevices = false
 
+    let authService: AuthService
     private let auth: AuthService
     private let relay: RelayService
 
     init(auth: AuthService, relay: RelayService) {
+        self.authService = auth
         self.auth = auth
         self.relay = relay
         // Wire up device list updates from relay

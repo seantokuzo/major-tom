@@ -177,9 +177,17 @@
   });
 
   // Filter approvals — in delay mode, hide approvals with active countdown toasts
+  // Sort by priority: high first, then medium, then low
+  const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
   let visibleApprovals = $derived.by(() => {
     const countdownIds = countdownToastRef?.getCountdownIds() ?? new Set<string>();
-    return relay.pendingApprovals.filter(a => !countdownIds.has(a.id));
+    return relay.pendingApprovals
+      .filter(a => !countdownIds.has(a.id))
+      .sort((a, b) => {
+        const pa = PRIORITY_ORDER[a.priority?.level ?? 'medium'] ?? 1;
+        const pb = PRIORITY_ORDER[b.priority?.level ?? 'medium'] ?? 1;
+        return pa - pb;
+      });
   });
 
   /** Disable input when not connected or reconnecting */
