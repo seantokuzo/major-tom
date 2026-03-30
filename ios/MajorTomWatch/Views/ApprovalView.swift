@@ -1,12 +1,9 @@
 import SwiftUI
-import WatchKit
 
 // MARK: - Watch Approval View
 
 struct WatchApprovalView: View {
     @Bindable var viewModel: ApprovalViewModel
-
-    private let accentColor = Color(red: 0.95, green: 0.65, blue: 0.25)
 
     var body: some View {
         if let request = viewModel.currentRequest {

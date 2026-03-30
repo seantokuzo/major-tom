@@ -32,28 +32,31 @@ final class WatchConnectivityService: NSObject {
     // MARK: - Send Approval Decision
 
     func sendApprovalDecision(requestId: String, approved: Bool) {
-        guard let session = wcSession, session.isReachable else {
-            // Fall back to transferUserInfo for background delivery
-            let payload: [String: Any] = [
-                WatchConnectivityKeys.approvalDecision: true,
-                WatchConnectivityKeys.requestId: requestId,
-                WatchConnectivityKeys.decision: approved ? "allow" : "deny",
-            ]
-            wcSession?.transferUserInfo(payload)
-            pendingApprovals.removeAll { $0.id == requestId }
-            return
-        }
-
-        let message: [String: Any] = [
+        let payload: [String: Any] = [
             WatchConnectivityKeys.approvalDecision: true,
             WatchConnectivityKeys.requestId: requestId,
             WatchConnectivityKeys.decision: approved ? "allow" : "deny",
         ]
 
-        session.sendMessage(message, replyHandler: nil) { error in
-            print("Watch: failed to send approval: \(error.localizedDescription)")
+        guard let session = wcSession, session.isReachable else {
+            // Fall back to transferUserInfo for background delivery
+            wcSession?.transferUserInfo(payload)
+            pendingApprovals.removeAll { $0.id == requestId }
+            return
         }
-        pendingApprovals.removeAll { $0.id == requestId }
+
+        session.sendMessage(payload, replyHandler: { [weak self] _ in
+            Task { @MainActor in
+                self?.pendingApprovals.removeAll { $0.id == requestId }
+            }
+        }) { [weak self] error in
+            print("Watch: sendMessage failed, falling back to transferUserInfo: \(error.localizedDescription)")
+            // Fall back to transferUserInfo on failure
+            session.transferUserInfo(payload)
+            Task { @MainActor in
+                self?.pendingApprovals.removeAll { $0.id == requestId }
+            }
+        }
     }
 
     // MARK: - Process Incoming Data

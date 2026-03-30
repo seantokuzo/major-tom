@@ -67,7 +67,8 @@ final class PhoneWatchConnectivityService: NSObject {
             sessions.reduce(0) { $0 + $1.cost },
             forKey: WatchConnectivityKeys.totalCostToday
         )
-        defaults?.set(0, forKey: WatchConnectivityKeys.pendingApprovalCount)
+        // Note: pendingApprovalCount is written by sendApprovalRequests — don't overwrite it here
+        defaults?.set(isRelayConnected, forKey: WatchConnectivityKeys.connectionStatus)
 
         try? session.updateApplicationContext(context)
     }

@@ -2,6 +2,11 @@ import Foundation
 
 // MARK: - Watch Session Data
 
+// NOTE: These models are intentionally duplicated in ios/MajorTomWatch/Models/WatchModels.swift.
+// The iOS app and watchOS app are separate targets with no shared framework. WatchConnectivity
+// serializes via JSON (Codable), so both sides need identical definitions. If you change a model
+// here, you MUST update the watch copy to stay in sync.
+
 /// Lightweight session model for watch display.
 struct WatchSession: Identifiable, Codable {
     let id: String

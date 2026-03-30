@@ -51,9 +51,6 @@ enum WidgetDataProvider {
         defaults.set(status.isConnected, forKey: Keys.isConnected)
         defaults.set(Date().timeIntervalSince1970, forKey: Keys.lastUpdate)
         defaults.set(status.workingDirectory, forKey: Keys.workingDirectory)
-
-        // Trigger widget timeline refresh
-        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// Write a list of session summaries for the widget.
@@ -63,8 +60,6 @@ enum WidgetDataProvider {
             defaults.set(data, forKey: Keys.widgetSessions)
         }
         defaults.set(ISO8601DateFormatter().string(from: Date()), forKey: Keys.widgetLastUpdated)
-
-        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// Write total cost for today.

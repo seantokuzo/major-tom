@@ -1,5 +1,4 @@
 import SwiftUI
-import WatchConnectivity
 
 @main
 struct MajorTomApp: App {

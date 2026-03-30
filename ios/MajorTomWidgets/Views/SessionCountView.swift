@@ -36,7 +36,7 @@ struct SessionCountView: View {
                 Image(systemName: "dollarsign.circle")
                     .font(.caption2)
                 Text(snapshot.formattedTotalCost)
-                    .font(.system(.caption2, design: .monospaced, weight: .semibold))
+                    .font(.system(.caption2, design: .monospaced).weight(.semibold))
             }
             .foregroundStyle(WidgetColors.textTertiary)
         }

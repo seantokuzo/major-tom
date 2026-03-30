@@ -16,6 +16,7 @@ struct MajorTomWatchApp: App {
                 }
             }
             .onAppear {
+                guard viewModel == nil else { return }
                 connectivity.activate()
                 viewModel = WatchViewModel(connectivity: connectivity)
             }

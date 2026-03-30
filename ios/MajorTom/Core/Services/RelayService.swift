@@ -1,4 +1,5 @@
 import Foundation
+import WidgetKit
 
 @Observable
 @MainActor
@@ -119,6 +120,7 @@ final class RelayService {
             costUsd: 0,
             isConnected: false
         ))
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: - Session
@@ -616,13 +618,14 @@ final class RelayService {
         ))
 
         // Write session list for medium/large widgets
+        let currentId = currentSession?.id
         var summaries: [WidgetSessionSummary] = sessionList.map { meta in
             WidgetSessionSummary(
                 id: meta.id,
                 name: meta.workingDirName,
                 status: meta.status,
                 costUsd: meta.totalCost,
-                agentCount: 0,
+                agentCount: meta.id == currentId ? agentCount : 0,
                 startedAt: meta.startedAt
             )
         }
@@ -662,6 +665,9 @@ final class RelayService {
             }
             WidgetDataProvider.updateFleetHealth(health)
         }
+
+        // Single timeline reload after all widget data is written
+        WidgetCenter.shared.reloadAllTimelines()
 
         updateWatchData()
     }
