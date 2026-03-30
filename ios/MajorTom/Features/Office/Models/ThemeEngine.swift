@@ -194,6 +194,10 @@ final class ThemeEngine {
     // MARK: - Lifecycle
 
     func start() {
+        // Guard against multiple timer starts (SwiftUI .onAppear can re-fire)
+        updateTimer?.invalidate()
+        updateTimer = nil
+
         update()
         updateTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.update()

@@ -28,8 +28,8 @@ final class AgentSprite: SKSpriteNode {
     /// Speech bubble label node for mood quips.
     private let speechBubble: SKLabelNode
 
-    /// Background for the speech bubble.
-    private let speechBubbleBG: SKShapeNode
+    /// Background for the speech bubble (mutable — updated on each showSpeechBubble call).
+    private var speechBubbleBG: SKShapeNode
 
     /// Current mood for this agent.
     private(set) var currentMood: AgentMood = .neutral
@@ -370,14 +370,17 @@ final class AgentSprite: SKSpriteNode {
 
         // Resize background to fit text
         let textWidth = CGFloat(text.count) * 5.5 + 12
+        let savedPosition = speechBubbleBG.position
+        let savedZPosition = speechBubbleBG.zPosition
         speechBubbleBG.removeFromParent()
         let newBG = SKShapeNode(rectOf: CGSize(width: max(textWidth, 40), height: 16), cornerRadius: 4)
         newBG.fillColor = SKColor(white: 0.1, alpha: 0.85)
         newBG.strokeColor = SKColor(white: 0.3, alpha: 0.5)
         newBG.lineWidth = 0.5
-        newBG.position = speechBubbleBG.position
-        newBG.zPosition = speechBubbleBG.zPosition
-        // Replace the old BG node
+        newBG.position = savedPosition
+        newBG.zPosition = savedZPosition
+        // Update the mutable reference so subsequent calls manipulate the correct node
+        speechBubbleBG = newBG
         addChild(newBG)
 
         let fadeIn = SKAction.fadeAlpha(to: 1.0, duration: 0.2)

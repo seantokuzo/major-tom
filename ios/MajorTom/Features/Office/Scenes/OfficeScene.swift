@@ -249,7 +249,7 @@ final class OfficeScene: SKScene {
     private func renderThemeOverlay() {
         let overlay = SKSpriteNode(color: .clear, size: size)
         overlay.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        overlay.zPosition = 50  // Above furniture, below agents (agents are at 10, but we want tint on the room)
+        overlay.zPosition = 5  // Above furniture/background (0-4), below agents (10)
         overlay.alpha = 0
         overlay.name = "themeOverlay"
         addChild(overlay)
@@ -279,10 +279,16 @@ final class OfficeScene: SKScene {
             overlay.alpha = theme.palette.overlayAlpha
         }
 
-        // Desk lamps — visible at night when desks are occupied
+        // Desk lamps — visible at night when desks are occupied.
+        // Check occupancy from agentSprites positions near desks (OfficeLayout.desks is static).
         for desk in OfficeLayout.desks {
             guard let lampNode = lampNodes[desk.id] else { continue }
-            if theme.palette.lampsOn && desk.occupantId != nil {
+            let deskOccupied = agentSprites.values.contains { sprite in
+                let dx = sprite.position.x - desk.position.x
+                let dy = sprite.position.y - desk.position.y
+                return sqrt(dx * dx + dy * dy) < 30
+            }
+            if theme.palette.lampsOn && deskOccupied {
                 lampNode.alpha = 0.25
                 // Subtle flicker
                 if lampNode.action(forKey: "flicker") == nil {
@@ -392,8 +398,13 @@ final class OfficeScene: SKScene {
 
     /// Trigger a chat exchange between two idle agents.
     private func triggerIdleChat(between a: AgentSprite, and b: AgentSprite) {
-        chattingAgents.insert(a.agentId)
-        chattingAgents.insert(b.agentId)
+        // Capture agent IDs up-front before closures — avoids stale reference
+        // if the sprite is removed mid-chat.
+        let aId = a.agentId
+        let bId = b.agentId
+
+        chattingAgents.insert(aId)
+        chattingAgents.insert(bId)
 
         let chatTopics = [
             ("Tests are failing again", "It's always the tests"),
@@ -418,8 +429,8 @@ final class OfficeScene: SKScene {
             // Clear chatting state after exchange
             let cleanup = SKAction.wait(forDuration: 3.5)
             b?.run(cleanup) { [weak self] in
-                self?.chattingAgents.remove(a.agentId)
-                self?.chattingAgents.remove(b?.agentId ?? "")
+                self?.chattingAgents.remove(aId)
+                self?.chattingAgents.remove(bId)
             }
         }
     }

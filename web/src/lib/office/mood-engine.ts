@@ -17,7 +17,7 @@ export interface MoodInputs {
   completedAt: number;
   /** Whether agent has been continuously working */
   workStartTime: number | null;
-  /** Total errors in last 5 turns */
+  /** Total errors since last task completion (resets on completion) */
   recentErrors: number;
 }
 
@@ -50,17 +50,17 @@ export function deriveMood(inputs: MoodInputs): AgentMood {
     return 'frustrated';
   }
 
-  // Bored: idle for >3 minutes
-  if (idleMs > 180_000) {
-    return 'bored';
-  }
-
-  // Focused: working continuously for >2 minutes
+  // Focused: working continuously for >2 minutes (prioritized over bored)
   if (inputs.workStartTime !== null && now - inputs.workStartTime > 120_000) {
     return 'focused';
   }
 
-  // Happy: no recent errors (last 5 turns)
+  // Bored: idle for >3 minutes (skipped while workStartTime is non-null)
+  if (idleMs > 180_000) {
+    return 'bored';
+  }
+
+  // Happy: no recent errors and active
   if (inputs.recentErrors === 0 && idleMs < 180_000) {
     return 'happy';
   }
