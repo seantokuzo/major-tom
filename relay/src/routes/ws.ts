@@ -8,7 +8,6 @@ import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
 import type { SessionManager } from '../sessions/session-manager.js';
 import type { SessionPersistence, PersistedSession } from '../sessions/session-persistence.js';
 import type { FleetManager } from '../fleet/fleet-manager.js';
-import { NotificationBatcher } from '../push/notification-batcher.js';
 import { NotificationDigest } from '../push/notification-digest.js';
 import { scorePriority } from '../push/priority-scorer.js';
 import type { NotificationConfigManager } from '../push/notification-config.js';
@@ -49,7 +48,6 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     claudeWorkDir,
   } = deps;
 
-  const notificationBatcher = new NotificationBatcher(pushManager);
   const notificationDigest = new NotificationDigest(pushManager, notificationConfigManager);
   const eventBuffer = new EventBufferManager();
   const clients = new Set<WebSocket>();
@@ -1022,7 +1020,6 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     // Cleanup on server close
     fastify.addHook('onClose', () => {
       clearInterval(heartbeatInterval);
-      notificationBatcher.dispose();
       notificationDigest.dispose();
       eventBuffer.dispose();
       eventBus.off('server.message', serverMessageHandler);

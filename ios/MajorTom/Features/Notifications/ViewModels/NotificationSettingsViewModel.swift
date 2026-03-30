@@ -137,7 +137,7 @@ final class NotificationSettingsViewModel {
 
     private func addAuthCookie(to request: inout URLRequest) {
         if let cookie = auth.sessionCookie {
-            request.setValue("session=\(cookie)", forHTTPHeaderField: "Cookie")
+            request.setValue("mt-session=\(cookie)", forHTTPHeaderField: "Cookie")
         }
     }
 

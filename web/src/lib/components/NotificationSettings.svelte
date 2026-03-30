@@ -57,7 +57,7 @@
 </script>
 
 <div class="notification-settings">
-  <button class="toggle-btn" onclick={handleToggle} title="Notification Settings">
+  <button class="toggle-btn" onclick={handleToggle} title="Notification Settings" aria-label="Notification Settings">
     <span class="gear-icon">&#x2699;</span>
   </button>
 

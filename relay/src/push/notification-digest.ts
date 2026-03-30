@@ -49,10 +49,14 @@ export class NotificationDigest {
     const shouldNotify = await this.configManager.shouldNotify(priority);
 
     if (!shouldNotify) {
-      // Below threshold or in quiet hours (for non-high) — just collect into digest
-      if (config.digest.enabled) {
+      // Distinguish between below-threshold (drop entirely) and quiet-hours-suppressed (digest).
+      // shouldNotify returns false for both cases. Check quiet hours to determine which:
+      const isQuiet = await this.configManager.isQuietHours();
+      if (isQuiet && config.digest.enabled) {
+        // Quiet-hours suppressed — collect into digest for later
         this.addToDigest(tool, target, priority, requestId);
       }
+      // Below-threshold items are dropped entirely (not digested)
       return;
     }
 

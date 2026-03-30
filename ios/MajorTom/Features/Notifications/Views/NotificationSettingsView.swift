@@ -11,10 +11,19 @@ struct NotificationSettingsView: View {
         @Bindable var viewModel = viewModel
 
         List {
-            if let config = Binding($viewModel.config) {
-                quietHoursSection(config: config)
-                prioritySection(config: config)
-                digestSection(config: config)
+            if viewModel.config != nil {
+                quietHoursSection(config: Binding(
+                    get: { viewModel.config! },
+                    set: { viewModel.config = $0 }
+                ))
+                prioritySection(config: Binding(
+                    get: { viewModel.config! },
+                    set: { viewModel.config = $0 }
+                ))
+                digestSection(config: Binding(
+                    get: { viewModel.config! },
+                    set: { viewModel.config = $0 }
+                ))
             } else if viewModel.isLoading {
                 loadingSection
             } else if let error = viewModel.errorMessage {

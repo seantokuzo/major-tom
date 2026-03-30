@@ -198,6 +198,15 @@ export class NotificationConfigManager {
           digest: { ...DEFAULT_CONFIG.digest, ...parsed.notifications.digest },
         };
 
+        // Validate merged config — fall back to defaults if corrupted
+        try {
+          this.validate(config);
+        } catch (validationErr) {
+          logger.warn({ validationErr }, 'Merged config failed validation — using defaults');
+          this.cachedConfig = { ...DEFAULT_CONFIG };
+          return { ...DEFAULT_CONFIG };
+        }
+
         this.cachedConfig = config;
         logger.debug({ config }, 'Notification config loaded from disk');
         return { ...config };
@@ -214,29 +223,25 @@ export class NotificationConfigManager {
   }
 
   private async saveToDisk(config: NotificationConfig): Promise<void> {
+    await mkdir(CONFIG_DIR, { recursive: true });
+
+    // Read existing config file to preserve other fields
+    let existing: ConfigFile = {};
     try {
-      await mkdir(CONFIG_DIR, { recursive: true });
-
-      // Read existing config file to preserve other fields
-      let existing: ConfigFile = {};
-      try {
-        const data = await readFile(CONFIG_FILE, 'utf-8');
-        existing = JSON.parse(data) as ConfigFile;
-      } catch {
-        // File doesn't exist or is malformed — start fresh
-      }
-
-      existing.notifications = config;
-
-      // Atomic write: write to temp file, then rename
-      const tmpFile = join(CONFIG_DIR, `config.${randomUUID().slice(0, 8)}.tmp`);
-      await writeFile(tmpFile, JSON.stringify(existing, null, 2), 'utf-8');
-      await rename(tmpFile, CONFIG_FILE);
-
-      logger.debug('Notification config saved to disk');
-    } catch (err) {
-      logger.error({ err }, 'Failed to save notification config');
+      const data = await readFile(CONFIG_FILE, 'utf-8');
+      existing = JSON.parse(data) as ConfigFile;
+    } catch {
+      // File doesn't exist or is malformed — start fresh
     }
+
+    existing.notifications = config;
+
+    // Atomic write: write to temp file, then rename
+    const tmpFile = join(CONFIG_DIR, `config.${randomUUID().slice(0, 8)}.tmp`);
+    await writeFile(tmpFile, JSON.stringify(existing, null, 2), 'utf-8');
+    await rename(tmpFile, CONFIG_FILE);
+
+    logger.debug('Notification config saved to disk');
   }
 }
 
