@@ -43,6 +43,7 @@ import {
   type ParentToChildMessage,
   type ChildToParentMessage,
 } from './ipc-messages.js';
+import { basename } from 'node:path';
 import { logger } from '../utils/logger.js';
 
 // ── Resolve worker script path ──────────────────────────────
@@ -223,6 +224,13 @@ export class FleetManager {
       }
     });
 
+    // Emit worker-spawned event for real-time fleet dashboard
+    this.emitter.emit('worker-spawned', {
+      workerId,
+      workingDir,
+      dirName: basename(workingDir),
+    });
+
     return entry;
   }
 
@@ -241,6 +249,14 @@ export class FleetManager {
       },
       'Worker crashed — evaluating restart',
     );
+
+    // Emit worker-crashed event for real-time fleet dashboard
+    this.emitter.emit('worker-crashed', {
+      workerId,
+      workingDir: entry.workingDir,
+      dirName: basename(entry.workingDir),
+      restartCount: entry.restartCount,
+    });
 
     // Clear pending approvals for all sessions in the crashed worker
     for (const sessionId of sessionIds) {
@@ -275,6 +291,14 @@ export class FleetManager {
       const newEntry = this.forkWorker(canonicalDir, entry.workingDir);
       newEntry.restartCount = entry.restartCount;
       newEntry.lastRestartAt = entry.lastRestartAt;
+
+      // Emit worker-restarted event for real-time fleet dashboard
+      this.emitter.emit('worker-restarted', {
+        workerId: newEntry.workerId,
+        workingDir: entry.workingDir,
+        dirName: basename(entry.workingDir),
+        restartCount: entry.restartCount,
+      });
 
       // Notify sessions about the crash (they need to be re-established by the client)
       for (const sessionId of sessionIds) {
@@ -691,6 +715,16 @@ export class FleetManager {
     };
   }
 
+  /** Get the session IDs belonging to a specific worker */
+  getWorkerSessionIds(workerId: string): string[] {
+    for (const entry of this.workers.values()) {
+      if (entry.workerId === workerId) {
+        return [...entry.sessionIds];
+      }
+    }
+    return [];
+  }
+
   getWorkerForSessionId(sessionId: string): WorkerStatus | undefined {
     const entry = this.getWorkerForSession(sessionId);
     if (!entry) return undefined;
@@ -722,6 +756,9 @@ export class FleetManager {
   on(event: 'tool-complete', handler: (result: ToolResult) => void): void;
   on(event: 'agent-lifecycle', handler: (event: AgentEvent) => void): void;
   on(event: 'session-result', handler: (result: SessionResult) => void): void;
+  on(event: 'worker-spawned', handler: (info: { workerId: string; workingDir: string; dirName: string }) => void): void;
+  on(event: 'worker-crashed', handler: (info: { workerId: string; workingDir: string; dirName: string; restartCount: number }) => void): void;
+  on(event: 'worker-restarted', handler: (info: { workerId: string; workingDir: string; dirName: string; restartCount: number }) => void): void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   on(event: string, handler: (...args: any[]) => void): void {
     this.emitter.on(event, handler);

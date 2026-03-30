@@ -110,6 +110,10 @@ export interface SessionResumeMessage {
   lastSeq?: number;
 }
 
+export interface FleetStatusMessage {
+  type: 'fleet.status';
+}
+
 
 export type ClientMessage =
   | PromptMessage
@@ -129,7 +133,8 @@ export type ClientMessage =
   | FsLsMessage
   | FsReadFileMessage
   | FsCwdMessage
-  | SessionResumeMessage;
+  | SessionResumeMessage
+  | FleetStatusMessage;
 
 // ── Server → Client (Relay → iOS) ──────────────────────────
 
@@ -371,6 +376,63 @@ export interface SessionResumeResponseMessage {
   currentSeq: number;
 }
 
+// ── Fleet status messages ─────────────────────────────────
+
+export interface FleetSessionInfo {
+  sessionId: string;
+  status: string;
+  totalCost: number;
+  turnCount: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface FleetWorkerInfo {
+  workerId: string;
+  workingDir: string;
+  dirName: string;
+  sessionCount: number;
+  uptimeMs: number;
+  restartCount: number;
+  healthy: boolean;
+  sessions: FleetSessionInfo[];
+}
+
+export interface FleetStatusResponseMessage {
+  type: 'fleet.status.response';
+  totalWorkers: number;
+  totalSessions: number;
+  aggregateCost: number;
+  aggregateTokens: {
+    input: number;
+    output: number;
+  };
+  workers: FleetWorkerInfo[];
+}
+
+export interface FleetWorkerSpawnedMessage {
+  type: 'fleet.worker.spawned';
+  workerId: string;
+  workingDir: string;
+  dirName: string;
+}
+
+export interface FleetWorkerCrashedMessage {
+  type: 'fleet.worker.crashed';
+  workerId: string;
+  workingDir: string;
+  dirName: string;
+  restartCount: number;
+}
+
+export interface FleetWorkerRestartedMessage {
+  type: 'fleet.worker.restarted';
+  workerId: string;
+  workingDir: string;
+  dirName: string;
+  restartCount: number;
+}
+
 
 /** Base server message union (without envelope fields). */
 type ServerMessageBase =
@@ -402,7 +464,11 @@ type ServerMessageBase =
   | FsReadFileResponseMessage
   | FsCwdResponseMessage
   | FsErrorMessage
-  | SessionResumeResponseMessage;
+  | SessionResumeResponseMessage
+  | FleetStatusResponseMessage
+  | FleetWorkerSpawnedMessage
+  | FleetWorkerCrashedMessage
+  | FleetWorkerRestartedMessage;
 
 /**
  * Every outbound server message may carry an optional `seq` —
