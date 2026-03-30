@@ -6,7 +6,7 @@ import SwiftUI
 /// Shared keys for cross-process shortcut communication via App Groups UserDefaults.
 /// NotificationCenter.default.post() does NOT work across processes (Siri/Shortcuts app).
 /// We use a shared UserDefaults suite to pass the action, and the app polls on foreground.
-/// 
+///
 /// NOTE: The App Group entitlement must be configured in Xcode for both the main app target
 /// and any extension targets that use this suite (Signing & Capabilities > App Groups).
 enum ShortcutActionKey {
@@ -19,6 +19,9 @@ enum ShortcutActionKey {
         case startSession
         case navigateToOffice
         case showCost
+        case sendPrompt
+        case quickApprove
+        case toggleGodMode
     }
 
     /// Returns the App Group `UserDefaults` used for cross-process shortcut communication.
@@ -103,6 +106,142 @@ struct ShowCostIntent: AppIntent {
     }
 }
 
+// MARK: - Fleet Status Intent
+
+struct FleetStatusIntent: AppIntent {
+    static var title: LocalizedStringResource = "Fleet Status"
+    static var description: IntentDescription = "Shows fleet status with worker count, total cost, and active sessions"
+    static var openAppWhenRun: Bool = false
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        let snapshot = WidgetDataProvider.readFleetSnapshot()
+        let costStr = String(format: "$%.4f", snapshot.totalCost)
+
+        let summary: String
+        if snapshot.workerCount == 0 {
+            summary = "Fleet offline — no workers connected."
+        } else {
+            summary = "\(snapshot.workerCount) worker\(snapshot.workerCount == 1 ? "" : "s"), \(snapshot.activeSessionCount) active session\(snapshot.activeSessionCount == 1 ? "" : "s"), \(costStr) total cost."
+        }
+
+        return .result(value: summary, dialog: IntentDialog(stringLiteral: summary))
+    }
+}
+
+// MARK: - Send Prompt Intent
+
+struct SendPromptIntent: AppIntent {
+    static var title: LocalizedStringResource = "Send Prompt"
+    static var description: IntentDescription = "Sends a prompt to the active Claude Code session in Major Tom"
+    static var openAppWhenRun: Bool = true
+
+    @Parameter(title: "Prompt", description: "What should I send to Claude?", requestValueDialog: "What should I send?")
+    var promptText: String
+
+    func perform() async throws -> some IntentResult {
+        // Write prompt to shared UserDefaults for the app to consume on foreground
+        WidgetDataProvider.writePendingPrompt(promptText)
+        ShortcutActionKey.postAction(.sendPrompt)
+        NotificationCenter.default.post(name: .sendPromptFromShortcut, object: nil)
+        return .result()
+    }
+}
+
+// MARK: - Quick Approve Intent
+
+struct QuickApproveIntent: AppIntent {
+    static var title: LocalizedStringResource = "Quick Approve"
+    static var description: IntentDescription = "Approves the most recent pending tool request in Major Tom"
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        let pending = WidgetDataProvider.readPendingApproval()
+
+        guard let tool = pending.tool else {
+            return .result(value: "No pending approvals.", dialog: IntentDialog("No pending approvals to approve."))
+        }
+
+        // Post action so app handles the actual approval on foreground (safety)
+        ShortcutActionKey.postAction(.quickApprove)
+        NotificationCenter.default.post(name: .quickApproveFromShortcut, object: nil)
+
+        let message = "Approving \(tool)..."
+        return .result(value: message, dialog: IntentDialog(stringLiteral: message))
+    }
+}
+
+// MARK: - Session Summary Intent
+
+struct SessionSummaryIntent: AppIntent {
+    static var title: LocalizedStringResource = "Session Summary"
+    static var description: IntentDescription = "Shows a summary of the active Claude Code session"
+    static var openAppWhenRun: Bool = false
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        let session = WidgetDataProvider.readSessionSummary()
+
+        guard session.name != "No Session" else {
+            return .result(value: "No active session.", dialog: IntentDialog("No active session in Major Tom."))
+        }
+
+        let costStr = String(format: "$%.4f", session.costUsd)
+        let totalTokens = session.tokensIn + session.tokensOut
+        let tokenStr = formatTokenCount(totalTokens)
+        let durationStr = formatDuration(ms: session.durationMs)
+
+        let summary = "\(session.name): \(costStr), \(tokenStr) tokens, \(session.turnCount) turn\(session.turnCount == 1 ? "" : "s"), \(durationStr)."
+
+        return .result(value: summary, dialog: IntentDialog(stringLiteral: summary))
+    }
+
+    private func formatTokenCount(_ count: Int) -> String {
+        if count >= 1_000_000 {
+            return String(format: "%.1fM", Double(count) / 1_000_000)
+        } else if count >= 1_000 {
+            return String(format: "%.1fK", Double(count) / 1_000)
+        }
+        return "\(count)"
+    }
+
+    private func formatDuration(ms: Int) -> String {
+        let totalSeconds = ms / 1000
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        if minutes > 0 {
+            return "\(minutes)m \(seconds)s"
+        }
+        return "\(seconds)s"
+    }
+}
+
+// MARK: - Toggle God Mode Intent
+
+struct ToggleGodModeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Toggle God Mode"
+    static var description: IntentDescription = "Toggles between Manual and God permission modes in Major Tom"
+    static var openAppWhenRun: Bool = false
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        let currentMode = WidgetDataProvider.readPermissionMode()
+
+        // Only toggle between manual and god — other modes (smart/delay) are left unchanged
+        guard currentMode == "manual" || currentMode == "god" else {
+            let message = "Cannot toggle — currently in \(currentMode) mode. Only Manual and God modes can be toggled."
+            return .result(value: message, dialog: IntentDialog(stringLiteral: message))
+        }
+
+        // Write toggle request for the app to consume
+        WidgetDataProvider.writeGodModeToggle()
+        ShortcutActionKey.postAction(.toggleGodMode)
+        NotificationCenter.default.post(name: .toggleGodModeFromShortcut, object: nil)
+
+        let newMode = currentMode == "god" ? "Manual" : "God"
+        let message = "\(newMode) mode will activate when Major Tom opens."
+
+        return .result(value: message, dialog: IntentDialog(stringLiteral: message))
+    }
+}
+
 // MARK: - App Shortcuts Provider
 
 struct MajorTomShortcutsProvider: AppShortcutsProvider {
@@ -142,6 +281,66 @@ struct MajorTomShortcutsProvider: AppShortcutsProvider {
             shortTitle: "Show Cost",
             systemImageName: "dollarsign.circle"
         )
+
+        AppShortcut(
+            intent: FleetStatusIntent(),
+            phrases: [
+                "How's my fleet in \(.applicationName)",
+                "Fleet status in \(.applicationName)",
+                "\(.applicationName) fleet overview",
+                "Show workers in \(.applicationName)"
+            ],
+            shortTitle: "Fleet Status",
+            systemImageName: "server.rack"
+        )
+
+        AppShortcut(
+            intent: SendPromptIntent(),
+            phrases: [
+                "Send a prompt to \(.applicationName)",
+                "Tell \(.applicationName) something",
+                "Prompt \(.applicationName)",
+                "Send to \(.applicationName)"
+            ],
+            shortTitle: "Send Prompt",
+            systemImageName: "text.bubble"
+        )
+
+        AppShortcut(
+            intent: QuickApproveIntent(),
+            phrases: [
+                "Approve in \(.applicationName)",
+                "Quick approve \(.applicationName)",
+                "Allow in \(.applicationName)",
+                "Approve tool in \(.applicationName)"
+            ],
+            shortTitle: "Quick Approve",
+            systemImageName: "checkmark.circle"
+        )
+
+        AppShortcut(
+            intent: SessionSummaryIntent(),
+            phrases: [
+                "\(.applicationName) session summary",
+                "Session summary in \(.applicationName)",
+                "How's my session in \(.applicationName)",
+                "Session stats in \(.applicationName)"
+            ],
+            shortTitle: "Session Summary",
+            systemImageName: "chart.bar.doc.horizontal"
+        )
+
+        AppShortcut(
+            intent: ToggleGodModeIntent(),
+            phrases: [
+                "Toggle God mode in \(.applicationName)",
+                "Switch God mode in \(.applicationName)",
+                "\(.applicationName) God mode",
+                "Enable God mode in \(.applicationName)"
+            ],
+            shortTitle: "Toggle God Mode",
+            systemImageName: "bolt.circle"
+        )
     }
 }
 
@@ -151,4 +350,7 @@ extension Notification.Name {
     static let startSessionFromShortcut = Notification.Name("com.majortom.shortcut.startSession")
     static let navigateToOfficeFromShortcut = Notification.Name("com.majortom.shortcut.navigateToOffice")
     static let showCostFromShortcut = Notification.Name("com.majortom.shortcut.showCost")
+    static let sendPromptFromShortcut = Notification.Name("com.majortom.shortcut.sendPrompt")
+    static let quickApproveFromShortcut = Notification.Name("com.majortom.shortcut.quickApprove")
+    static let toggleGodModeFromShortcut = Notification.Name("com.majortom.shortcut.toggleGodMode")
 }

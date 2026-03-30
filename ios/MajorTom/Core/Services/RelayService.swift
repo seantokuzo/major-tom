@@ -666,6 +666,51 @@ final class RelayService {
             WidgetDataProvider.updateFleetHealth(health)
         }
 
+        // Siri Shortcuts: fleet snapshot
+        if let fleet = fleetStatus {
+            let activeSessions = fleet.workers.flatMap(\.sessions).filter { $0.status == "active" }.count
+            WidgetDataProvider.updateFleetSnapshot(
+                workerCount: fleet.totalWorkers,
+                totalCost: fleet.aggregateCost,
+                activeSessionCount: activeSessions
+            )
+        } else {
+            WidgetDataProvider.updateFleetSnapshot(
+                workerCount: 0,
+                totalCost: totalCost,
+                activeSessionCount: summaries.filter { $0.status == "active" }.count
+            )
+        }
+
+        // Siri Shortcuts: pending approval (most recent)
+        if let latest = pendingApprovals.last {
+            WidgetDataProvider.updatePendingApproval(
+                id: latest.id,
+                tool: latest.tool,
+                description: latest.description
+            )
+        } else {
+            WidgetDataProvider.updatePendingApproval(id: nil, tool: nil, description: nil)
+        }
+
+        // Siri Shortcuts: active session summary
+        let sessionName: String = {
+            guard let dir = currentSession?.workingDir, !dir.isEmpty else { return "No Session" }
+            let last = URL(fileURLWithPath: dir).lastPathComponent
+            return last.isEmpty ? "No Session" : last
+        }()
+        WidgetDataProvider.updateSessionSummary(
+            name: sessionName,
+            costUsd: sessionCostUsd,
+            tokensIn: sessionInputTokens,
+            tokensOut: sessionOutputTokens,
+            durationMs: sessionDurationMs,
+            turnCount: sessionTurnCount
+        )
+
+        // Siri Shortcuts: current permission mode
+        WidgetDataProvider.updatePermissionMode(permissionMode.rawValue)
+
         // Single timeline reload after all widget data is written
         WidgetCenter.shared.reloadAllTimelines()
 

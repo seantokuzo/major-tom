@@ -61,6 +61,15 @@ struct MajorTomApp: App {
             .onReceive(NotificationCenter.default.publisher(for: .showCostFromShortcut)) { _ in
                 handleShortcutAction(.showCost)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .sendPromptFromShortcut)) { _ in
+                handleShortcutAction(.sendPrompt)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .quickApproveFromShortcut)) { _ in
+                handleShortcutAction(.quickApprove)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleGodModeFromShortcut)) { _ in
+                handleShortcutAction(.toggleGodMode)
+            }
             // Check for cross-process shortcut actions (Siri / Shortcuts app) on scene phase change
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
@@ -136,6 +145,50 @@ struct MajorTomApp: App {
             selectedTab = .office
         case .showCost:
             selectedTab = .control
+        case .sendPrompt:
+            selectedTab = .control
+            Task {
+                if let text = WidgetDataProvider.consumePendingPrompt() {
+                    try? await relay.sendPrompt(text)
+                }
+            }
+        case .quickApprove:
+            selectedTab = .control
+            Task {
+                // Prefer the approval that the widget/intent snapshot showed, with a safe fallback.
+                let snapshotApprovalId = WidgetDataProvider.consumePendingApprovalId()
+
+                let targetApproval: ApprovalRequest? = {
+                    if let id = snapshotApprovalId {
+                        // Use the specific approval from the snapshot if it is still pending.
+                        return relay.pendingApprovals.first(where: { $0.id == id })
+                    }
+                    // Snapshot is missing or stale; fall back to the latest pending approval.
+                    return relay.pendingApprovals.last
+                }()
+
+                if let approval = targetApproval {
+                    try? await relay.sendApproval(requestId: approval.id, decision: .allow)
+                    HapticService.approve()
+                }
+            }
+        case .toggleGodMode:
+            Task {
+                guard WidgetDataProvider.consumeGodModeToggle() else { return }
+                switch relay.permissionMode {
+                case .god:
+                    // Toggle from god mode back to manual
+                    try? await relay.setPermissionMode(.manual)
+                    HapticService.modeSwitch()
+                case .manual:
+                    // Toggle from manual into god mode
+                    try? await relay.setPermissionMode(.god, godSubMode: .normal)
+                    HapticService.modeSwitch()
+                default:
+                    // In other modes (smart / delay), do not change the mode via this shortcut
+                    break
+                }
+            }
         }
     }
 
