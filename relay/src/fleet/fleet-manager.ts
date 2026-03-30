@@ -20,10 +20,9 @@
 import { EventEmitter } from 'node:events';
 import { fork, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
+import { resolve, dirname, join, basename } from 'node:path';
 import { realpathSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 
 import { Session } from '../sessions/session.js';
 import type { SessionManager } from '../sessions/session-manager.js';
@@ -43,7 +42,6 @@ import {
   type ParentToChildMessage,
   type ChildToParentMessage,
 } from './ipc-messages.js';
-import { basename } from 'node:path';
 import { logger } from '../utils/logger.js';
 
 // ── Resolve worker script path ──────────────────────────────
@@ -152,7 +150,7 @@ export class FleetManager {
     return this.forkWorker(canonicalDir, workingDir);
   }
 
-  private forkWorker(canonicalDir: string, workingDir: string): WorkerEntry {
+  private forkWorker(canonicalDir: string, workingDir: string, isRestart = false): WorkerEntry {
     const workerId = randomUUID();
 
     logger.info({ workerId: workerId.slice(0, 8), workingDir, canonicalDir }, 'Forking fleet worker');
@@ -224,12 +222,14 @@ export class FleetManager {
       }
     });
 
-    // Emit worker-spawned event for real-time fleet dashboard
-    this.emitter.emit('worker-spawned', {
-      workerId,
-      workingDir,
-      dirName: basename(workingDir),
-    });
+    // Emit worker-spawned only for genuinely new workers (not restarts)
+    if (!isRestart) {
+      this.emitter.emit('worker-spawned', {
+        workerId,
+        workingDir,
+        dirName: basename(workingDir),
+      });
+    }
 
     return entry;
   }
@@ -287,8 +287,8 @@ export class FleetManager {
     setTimeout(() => {
       if (this.shuttingDown) return;
 
-      // Fork a new worker
-      const newEntry = this.forkWorker(canonicalDir, entry.workingDir);
+      // Fork a new worker (suppress worker-spawned since we emit worker-restarted instead)
+      const newEntry = this.forkWorker(canonicalDir, entry.workingDir, true);
       newEntry.restartCount = entry.restartCount;
       newEntry.lastRestartAt = entry.lastRestartAt;
 

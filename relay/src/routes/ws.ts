@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { WebSocket } from 'ws';
-import { resolve, relative, join, isAbsolute } from 'node:path';
+import { resolve, relative, join, isAbsolute, basename } from 'node:path';
 import { readFileSync, statSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -17,7 +17,6 @@ import { encodeServerMessage, safeDecode } from '../protocol/codec.js';
 import { truncateMetaField } from '../sessions/session-transcript.js';
 import { EventBufferManager } from '../sessions/event-buffer.js';
 import { scanWorkspaceTree } from '../workspace/tree-scanner.js';
-import { basename } from 'node:path';
 import type { ClientMessage, ServerMessage, FileNode } from '../protocol/messages.js';
 import { createFsHandlers, type FsServerMessage } from './fs.js';
 import { logger } from '../utils/logger.js';

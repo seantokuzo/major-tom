@@ -23,7 +23,6 @@
   import FleetPanel from './lib/components/FleetPanel.svelte';
   import FleetIndicator from './lib/components/FleetIndicator.svelte';
   import { sessionStateManager } from './lib/stores/session-state.svelte';
-  import { fleetStore } from './lib/stores/fleet.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
   // ── Toast notifications for connection state ────────────────

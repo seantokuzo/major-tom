@@ -143,7 +143,7 @@
                 <span class="worker-name" title={worker.workingDir}>{worker.dirName}</span>
                 <span class="worker-sessions">{worker.sessionCount} sess</span>
                 {#if worker.restartCount > 0}
-                  <span class="restart-badge" title="{worker.restartCount} restarts">{worker.restartCount}x</span>
+                  <span class="restart-badge" title={`${worker.restartCount} restarts`}>{worker.restartCount}x</span>
                 {/if}
               </button>
               <div class="worker-meta">
