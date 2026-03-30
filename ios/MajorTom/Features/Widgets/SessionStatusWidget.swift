@@ -1,16 +1,10 @@
 import SwiftUI
 
-// MARK: - Session Status Widget Views
+// MARK: - Session Status Widget Views (Main App Previews)
 
-/// Widget views for the session status widget.
-/// These are defined here so the main app can preview them,
-/// but the actual WidgetKit extension target must be created separately.
-///
-/// TODO: Create a Widget Extension target "MajorTomWidget" that:
-/// 1. Imports WidgetKit
-/// 2. Defines a TimelineProvider using WidgetDataProvider.readSessionStatus()
-/// 3. Uses these views for the widget body
-/// 4. Supports .systemSmall, .systemMedium, and .systemLarge families
+/// Legacy widget preview views defined in the main app target.
+/// The actual WidgetKit extension is in `ios/MajorTomWidgets/` with
+/// three widget sizes (Small, Medium, Large) using SessionTimelineProvider.
 
 /// Small widget view — shows connection status and cost.
 struct SessionStatusSmallView: View {

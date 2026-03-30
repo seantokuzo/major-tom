@@ -580,6 +580,54 @@ final class RelayService {
             workingDirectory: currentSession?.workingDir
         ))
 
+        // Write session list for medium/large widgets
+        var summaries: [WidgetSessionSummary] = sessionList.map { meta in
+            WidgetSessionSummary(
+                id: meta.id,
+                name: meta.workingDirName,
+                status: meta.status,
+                costUsd: meta.totalCost,
+                agentCount: 0,
+                startedAt: meta.startedAt
+            )
+        }
+
+        // Include current session if not already in list
+        if let session = currentSession,
+           !summaries.contains(where: { $0.id == session.id })
+        {
+            summaries.insert(WidgetSessionSummary(
+                id: session.id,
+                name: session.workingDir ?? "Session",
+                status: "active",
+                costUsd: sessionCostUsd,
+                agentCount: agentCount,
+                startedAt: ISO8601DateFormatter().string(from: session.startDate ?? Date())
+            ), at: 0)
+        }
+
+        WidgetDataProvider.updateSessions(summaries)
+
+        // Aggregate cost
+        let totalCost = summaries.reduce(0.0) { $0 + $1.costUsd }
+        WidgetDataProvider.updateTotalCost(totalCost)
+
+        // Fleet health
+        if let fleet = fleetStatus {
+            let unhealthy = fleet.workers.filter { !$0.healthy }.count
+            let health: String
+            if fleet.workers.isEmpty {
+                health = "offline"
+            } else if unhealthy == 0 {
+                health = "healthy"
+            } else if unhealthy < fleet.workers.count {
+                health = "degraded"
+            } else {
+                health = "offline"
+            }
+            WidgetDataProvider.updateFleetHealth(health)
+        }
+
         updateWatchData()
     }
 

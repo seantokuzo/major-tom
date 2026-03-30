@@ -114,6 +114,17 @@
 		FFB20C4BF1BD6D83D3404F2B /* StreamingText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D57C1446E7A203616CCE20 /* StreamingText.swift */; };
 		B2C3D4E5F6071829A3B4C5D6 /* ThemeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* ThemeEngine.swift */; };
 		D4E5F60718293AC5D6E7F8A9 /* MoodEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F60718293AB4C5D6E7 /* MoodEngine.swift */; };
+		W1A00001A1B2C3D4E5F60001 /* MajorTomWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A00001A1B2C3D4E5F60001 /* MajorTomWidgetsBundle.swift */; };
+		W1A00002A1B2C3D4E5F60002 /* SessionCountWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A00002A1B2C3D4E5F60002 /* SessionCountWidget.swift */; };
+		W1A00003A1B2C3D4E5F60003 /* ActiveSessionsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A00003A1B2C3D4E5F60003 /* ActiveSessionsWidget.swift */; };
+		W1A00004A1B2C3D4E5F60004 /* FleetDashboardWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A00004A1B2C3D4E5F60004 /* FleetDashboardWidget.swift */; };
+		W1A00005A1B2C3D4E5F60005 /* SessionCountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A00005A1B2C3D4E5F60005 /* SessionCountView.swift */; };
+		W1A00006A1B2C3D4E5F60006 /* ActiveSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A00006A1B2C3D4E5F60006 /* ActiveSessionsView.swift */; };
+		W1A00007A1B2C3D4E5F60007 /* FleetDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A00007A1B2C3D4E5F60007 /* FleetDashboardView.swift */; };
+		W1A00008A1B2C3D4E5F60008 /* WidgetColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A00008A1B2C3D4E5F60008 /* WidgetColors.swift */; };
+		W1A00009A1B2C3D4E5F60009 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A00009A1B2C3D4E5F60009 /* WidgetData.swift */; };
+		W1A0000AA1B2C3D4E5F6000A /* SessionTimelineProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A0000AA1B2C3D4E5F6000A /* SessionTimelineProvider.swift */; };
+		W1A0000BA1B2C3D4E5F6000B /* WidgetDataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A0000BA1B2C3D4E5F6000B /* WidgetDataService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -226,6 +237,18 @@
 		A1B2C3D4E5F60718293A4B5C /* ThemeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeEngine.swift; sourceTree = "<group>"; };
 		C3D4E5F60718293AB4C5D6E7 /* MoodEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoodEngine.swift; sourceTree = "<group>"; };
 		F76F713E8E637E2158BC8635 /* ComplicationProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ComplicationProvider.swift; sourceTree = "<group>"; };
+		W2A00001A1B2C3D4E5F60001 /* MajorTomWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomWidgetsBundle.swift; sourceTree = "<group>"; };
+		W2A00002A1B2C3D4E5F60002 /* SessionCountWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCountWidget.swift; sourceTree = "<group>"; };
+		W2A00003A1B2C3D4E5F60003 /* ActiveSessionsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionsWidget.swift; sourceTree = "<group>"; };
+		W2A00004A1B2C3D4E5F60004 /* FleetDashboardWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDashboardWidget.swift; sourceTree = "<group>"; };
+		W2A00005A1B2C3D4E5F60005 /* SessionCountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCountView.swift; sourceTree = "<group>"; };
+		W2A00006A1B2C3D4E5F60006 /* ActiveSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionsView.swift; sourceTree = "<group>"; };
+		W2A00007A1B2C3D4E5F60007 /* FleetDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDashboardView.swift; sourceTree = "<group>"; };
+		W2A00008A1B2C3D4E5F60008 /* WidgetColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetColors.swift; sourceTree = "<group>"; };
+		W2A00009A1B2C3D4E5F60009 /* WidgetData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetData.swift; sourceTree = "<group>"; };
+		W2A0000AA1B2C3D4E5F6000A /* SessionTimelineProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTimelineProvider.swift; sourceTree = "<group>"; };
+		W2A0000BA1B2C3D4E5F6000B /* WidgetDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataService.swift; sourceTree = "<group>"; };
+		W2A0000CA1B2C3D4E5F6000C /* MajorTomWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MajorTomWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -245,6 +268,7 @@
 			children = (
 				2155A4D6123944C4CDE2BEE8 /* MajorTom.app */,
 				2101628F289E66A47EB4A56E /* MajorTomWatch.app */,
+				W2A0000CA1B2C3D4E5F6000C /* MajorTomWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -661,6 +685,7 @@
 				F1EE4AFCA09AA1B2980F103F /* NotificationSettingsView.swift */,
 				23FE4F50D908FBAF701787CE /* Frameworks */,
 				FB8C12E254A232A5C33A4319 /* MajorTomWatch */,
+				W3A00001A1B2C3D4E5F60001 /* MajorTomWidgets */,
 			);
 			sourceTree = "<group>";
 		};
@@ -1017,6 +1042,65 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		W3A00001A1B2C3D4E5F60001 /* MajorTomWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				W2A00001A1B2C3D4E5F60001 /* MajorTomWidgetsBundle.swift */,
+				W3A00002A1B2C3D4E5F60002 /* Widgets */,
+				W3A00003A1B2C3D4E5F60003 /* Views */,
+				W3A00004A1B2C3D4E5F60004 /* Models */,
+				W3A00005A1B2C3D4E5F60005 /* Providers */,
+				W3A00006A1B2C3D4E5F60006 /* Services */,
+			);
+			name = MajorTomWidgets;
+			path = MajorTomWidgets;
+			sourceTree = "<group>";
+		};
+		W3A00002A1B2C3D4E5F60002 /* Widgets */ = {
+			isa = PBXGroup;
+			children = (
+				W2A00002A1B2C3D4E5F60002 /* SessionCountWidget.swift */,
+				W2A00003A1B2C3D4E5F60003 /* ActiveSessionsWidget.swift */,
+				W2A00004A1B2C3D4E5F60004 /* FleetDashboardWidget.swift */,
+			);
+			path = Widgets;
+			sourceTree = "<group>";
+		};
+		W3A00003A1B2C3D4E5F60003 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				W2A00005A1B2C3D4E5F60005 /* SessionCountView.swift */,
+				W2A00006A1B2C3D4E5F60006 /* ActiveSessionsView.swift */,
+				W2A00007A1B2C3D4E5F60007 /* FleetDashboardView.swift */,
+				W2A00008A1B2C3D4E5F60008 /* WidgetColors.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		W3A00004A1B2C3D4E5F60004 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				W2A00009A1B2C3D4E5F60009 /* WidgetData.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		W3A00005A1B2C3D4E5F60005 /* Providers */ = {
+			isa = PBXGroup;
+			children = (
+				W2A0000AA1B2C3D4E5F6000A /* SessionTimelineProvider.swift */,
+			);
+			path = Providers;
+			sourceTree = "<group>";
+		};
+		W3A00006A1B2C3D4E5F60006 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				W2A0000BA1B2C3D4E5F6000B /* WidgetDataService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -1053,6 +1137,21 @@
 			productReference = 2101628F289E66A47EB4A56E /* MajorTomWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
+		W4A00001A1B2C3D4E5F60001 /* MajorTomWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = W6A00001A1B2C3D4E5F60001 /* Build configuration list for PBXNativeTarget "MajorTomWidgets" */;
+			buildPhases = (
+				W5A00001A1B2C3D4E5F60001 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MajorTomWidgets;
+			productName = MajorTomWidgets;
+			productReference = W2A0000CA1B2C3D4E5F6000C /* MajorTomWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -1084,6 +1183,7 @@
 			targets = (
 				0F467BB7A12BEE96B6C65CF5 /* MajorTom */,
 				A483BDFB13192E8407446D88 /* MajorTomWatch */,
+				W4A00001A1B2C3D4E5F60001 /* MajorTomWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -1223,6 +1323,24 @@
 				D4E5F60718293AC5D6E7F8A9 /* MoodEngine.swift in Sources */,
 				A03049748F7A698107E328F1 /* PhoneWatchConnectivityService.swift in Sources */,
 				5FCCE042243F5B88DC8C7531 /* WatchModels.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		W5A00001A1B2C3D4E5F60001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				W1A00001A1B2C3D4E5F60001 /* MajorTomWidgetsBundle.swift in Sources */,
+				W1A00002A1B2C3D4E5F60002 /* SessionCountWidget.swift in Sources */,
+				W1A00003A1B2C3D4E5F60003 /* ActiveSessionsWidget.swift in Sources */,
+				W1A00004A1B2C3D4E5F60004 /* FleetDashboardWidget.swift in Sources */,
+				W1A00005A1B2C3D4E5F60005 /* SessionCountView.swift in Sources */,
+				W1A00006A1B2C3D4E5F60006 /* ActiveSessionsView.swift in Sources */,
+				W1A00007A1B2C3D4E5F60007 /* FleetDashboardView.swift in Sources */,
+				W1A00008A1B2C3D4E5F60008 /* WidgetColors.swift in Sources */,
+				W1A00009A1B2C3D4E5F60009 /* WidgetData.swift in Sources */,
+				W1A0000AA1B2C3D4E5F6000A /* SessionTimelineProvider.swift in Sources */,
+				W1A0000BA1B2C3D4E5F6000B /* WidgetDataService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1489,6 +1607,75 @@
 			};
 			name = Debug;
 		};
+		W7A00001A1B2C3D4E5F60001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_GENERATION_MODE = GeneratedFile;
+				INFOPLIST_KEY_CFBundleDisplayName = MajorTomWidgets;
+				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.majortom.app.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		W7A00002A1B2C3D4E5F60002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_GENERATION_MODE = GeneratedFile;
+				INFOPLIST_KEY_CFBundleDisplayName = MajorTomWidgets;
+				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.majortom.app.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1518,6 +1705,15 @@
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
+		};
+		W6A00001A1B2C3D4E5F60001 /* Build configuration list for PBXNativeTarget "MajorTomWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				W7A00001A1B2C3D4E5F60001 /* Debug */,
+				W7A00002A1B2C3D4E5F60002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
