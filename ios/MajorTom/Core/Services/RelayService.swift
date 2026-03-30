@@ -694,7 +694,11 @@ final class RelayService {
         }
 
         // Siri Shortcuts: active session summary
-        let sessionName = currentSession?.workingDir?.components(separatedBy: "/").last ?? "No Session"
+        let sessionName: String = {
+            guard let dir = currentSession?.workingDir, !dir.isEmpty else { return "No Session" }
+            let last = URL(fileURLWithPath: dir).lastPathComponent
+            return last.isEmpty ? "No Session" : last
+        }()
         WidgetDataProvider.updateSessionSummary(
             name: sessionName,
             costUsd: sessionCostUsd,

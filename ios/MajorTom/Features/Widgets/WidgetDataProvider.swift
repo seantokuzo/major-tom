@@ -185,6 +185,16 @@ enum WidgetDataProvider {
         )
     }
 
+    /// Read and consume the pending approval ID for targeted quick-approve.
+    /// Returns the snapshot approval ID so the app can validate it is still pending
+    /// before approving, avoiding race conditions with newly arrived approvals.
+    static func consumePendingApprovalId() -> String? {
+        guard let defaults = sharedDefaults else { return nil }
+        let id = defaults.string(forKey: Keys.pendingApprovalId)
+        defaults.removeObject(forKey: Keys.pendingApprovalId)
+        return id
+    }
+
     // MARK: - Siri Shortcuts: Session Summary
 
     /// Write active session summary for Siri inline result.
@@ -221,17 +231,28 @@ enum WidgetDataProvider {
     // MARK: - Siri Shortcuts: Prompt & God Mode
 
     /// Write a pending prompt from Siri for the app to consume on foreground.
+    /// Empty/whitespace-only prompts are rejected and any stale value is cleared.
     static func writePendingPrompt(_ text: String) {
         guard let defaults = sharedDefaults else { return }
-        defaults.set(text, forKey: Keys.pendingPromptText)
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else {
+            // Avoid storing empty/whitespace-only prompts; clear any existing value.
+            defaults.removeObject(forKey: Keys.pendingPromptText)
+            return
+        }
+        defaults.set(trimmedText, forKey: Keys.pendingPromptText)
     }
 
     /// Read and consume a pending Siri prompt. Returns nil if none.
+    /// Always clears the stored value so it cannot get "stuck".
     static func consumePendingPrompt() -> String? {
         guard let defaults = sharedDefaults else { return nil }
-        guard let text = defaults.string(forKey: Keys.pendingPromptText), !text.isEmpty else { return nil }
+        guard let storedText = defaults.string(forKey: Keys.pendingPromptText) else { return nil }
+        // Always clear the stored value once read so it cannot get "stuck".
         defaults.removeObject(forKey: Keys.pendingPromptText)
-        return text
+        let trimmedText = storedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { return nil }
+        return trimmedText
     }
 
     /// Write a god-mode toggle request for the app to consume.

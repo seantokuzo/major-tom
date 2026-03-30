@@ -224,6 +224,12 @@ struct ToggleGodModeIntent: AppIntent {
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
         let currentMode = WidgetDataProvider.readPermissionMode()
 
+        // Only toggle between manual and god — other modes (smart/delay) are left unchanged
+        guard currentMode == "manual" || currentMode == "god" else {
+            let message = "Cannot toggle — currently in \(currentMode) mode. Only Manual and God modes can be toggled."
+            return .result(value: message, dialog: IntentDialog(stringLiteral: message))
+        }
+
         // Write toggle request for the app to consume
         WidgetDataProvider.writeGodModeToggle()
         ShortcutActionKey.postAction(.toggleGodMode)
