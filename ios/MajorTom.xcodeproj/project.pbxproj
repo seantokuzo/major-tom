@@ -84,6 +84,12 @@
 		FB9ACD1627AF69650D07975D /* ActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDB924E236ABFE12B68C803 /* ActivityManager.swift */; };
 		FD27662CD00A7F829ABC6FA4 /* DangerScoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F013B10B2AA2CD96B19588 /* DangerScoring.swift */; };
 		FFB20C4BF1BD6D83D3404F2B /* StreamingText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D57C1446E7A203616CCE20 /* StreamingText.swift */; };
+		160770AE8E885C93BB982C46 /* FleetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C68A867E370EA555FC1DA35A /* FleetModels.swift */; };
+		DC407F8EB069277EA7035803 /* FleetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E1FD8108BA6273FDD7510EC /* FleetViewModel.swift */; };
+		1D13BCB4A38CE1AA0467AB38 /* FleetDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD54C188491EC5D62BBE03C /* FleetDashboardView.swift */; };
+		DEA8B3E46B4340FE99EE44F2 /* FleetWorkerCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2FF778D101BA9D9C0A408F /* FleetWorkerCard.swift */; };
+		D5369633354012F2FB04C4C7 /* FleetSessionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B2E7DD83DF70F90BA8D81EC /* FleetSessionRow.swift */; };
+		CAAEAC519FDE80D250A8E1E4 /* FleetStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA12C496C0A06DA79FB81357 /* FleetStatusBadge.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -165,6 +171,12 @@
 		F2E379544E5140C04B00F724 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
 		F4BCC156442BF0A60A71BE43 /* MajorTomActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomActivity.swift; sourceTree = "<group>"; };
 		F4C73E14C8A94C37A496B3FF /* SessionStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStorageService.swift; sourceTree = "<group>"; };
+		C68A867E370EA555FC1DA35A /* FleetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetModels.swift; sourceTree = "<group>"; };
+		8E1FD8108BA6273FDD7510EC /* FleetViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetViewModel.swift; sourceTree = "<group>"; };
+		6DD54C188491EC5D62BBE03C /* FleetDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDashboardView.swift; sourceTree = "<group>"; };
+		DA2FF778D101BA9D9C0A408F /* FleetWorkerCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetWorkerCard.swift; sourceTree = "<group>"; };
+		1B2E7DD83DF70F90BA8D81EC /* FleetSessionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetSessionRow.swift; sourceTree = "<group>"; };
+		EA12C496C0A06DA79FB81357 /* FleetStatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetStatusBadge.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -352,6 +364,7 @@
 				048C5B47DA4169F0F6E6B487 /* Connection */,
 				9C0A294A8C067158C29CA98E /* Context */,
 				3A2253D14191C88F64B0A16E /* Control */,
+				FE51B343B0D4573C4A3BFEF4 /* Fleet */,
 				16D67653DFF94D2F6CA5D13F /* History */,
 				D94DB09DC4CD1CEAB6D820D3 /* LiveActivity */,
 				47BD24C364656D180660FB12 /* Notifications */,
@@ -772,6 +785,51 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		FE51B343B0D4573C4A3BFEF4 /* Fleet */ = {
+			isa = PBXGroup;
+			children = (
+				877D51AB4BED16EE08D7E589 /* Components */,
+				2E188988E1C62F61423850BF /* Models */,
+				0DAFA4DA64C5D4B580B54EF1 /* ViewModels */,
+				7EA0247FF5ECB69BA141B876 /* Views */,
+			);
+			path = Fleet;
+			sourceTree = "<group>";
+		};
+		2E188988E1C62F61423850BF /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				C68A867E370EA555FC1DA35A /* FleetModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		0DAFA4DA64C5D4B580B54EF1 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				8E1FD8108BA6273FDD7510EC /* FleetViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		7EA0247FF5ECB69BA141B876 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				6DD54C188491EC5D62BBE03C /* FleetDashboardView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		877D51AB4BED16EE08D7E589 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				1B2E7DD83DF70F90BA8D81EC /* FleetSessionRow.swift */,
+				EA12C496C0A06DA79FB81357 /* FleetStatusBadge.swift */,
+				DA2FF778D101BA9D9C0A408F /* FleetWorkerCard.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -868,6 +926,12 @@
 				38E33EB668F17E0408DEBF7C /* DelayCountdownView.swift in Sources */,
 				DEC7A03BAD629CB026FDD77F /* DeviceManagementView.swift in Sources */,
 				05C0C742F30E2EDFA11347D0 /* FileContextView.swift in Sources */,
+				1D13BCB4A38CE1AA0467AB38 /* FleetDashboardView.swift in Sources */,
+				160770AE8E885C93BB982C46 /* FleetModels.swift in Sources */,
+				D5369633354012F2FB04C4C7 /* FleetSessionRow.swift in Sources */,
+				CAAEAC519FDE80D250A8E1E4 /* FleetStatusBadge.swift in Sources */,
+				DC407F8EB069277EA7035803 /* FleetViewModel.swift in Sources */,
+				DEA8B3E46B4340FE99EE44F2 /* FleetWorkerCard.swift in Sources */,
 				C73A60CB24EFABD14D9C2A2F /* GodModeConfirmation.swift in Sources */,
 				8294293F9EF30CBEED38BFC6 /* HapticService.swift in Sources */,
 				36B33910C927C9BBAC0813A7 /* KeychainService.swift in Sources */,
