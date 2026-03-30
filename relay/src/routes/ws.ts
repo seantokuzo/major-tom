@@ -7,8 +7,7 @@ import { homedir } from 'node:os';
 import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
 import type { SessionManager } from '../sessions/session-manager.js';
 import type { SessionPersistence, PersistedSession } from '../sessions/session-persistence.js';
-import type { ClaudeCliAdapter } from '../adapters/claude-cli.adapter.js';
-import type { ApprovalQueue } from '../hooks/approval-queue.js';
+import type { FleetManager } from '../fleet/fleet-manager.js';
 import { NotificationBatcher } from '../push/notification-batcher.js';
 import type { PushManager } from '../push/push-manager.js';
 import type { HealthMonitor } from '../health/health-monitor.js';
@@ -25,8 +24,7 @@ import { logger } from '../utils/logger.js';
 interface WsDeps {
   sessionManager: SessionManager;
   sessionPersistence: SessionPersistence;
-  cliAdapter: ClaudeCliAdapter;
-  approvalQueue: ApprovalQueue;
+  fleetManager: FleetManager;
   pushManager: PushManager;
   healthMonitor: HealthMonitor;
   claudeWorkDir: string;
@@ -40,8 +38,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   const {
     sessionManager,
     sessionPersistence,
-    cliAdapter,
-    approvalQueue,
+    fleetManager,
     pushManager,
     healthMonitor,
     claudeWorkDir,
@@ -110,7 +107,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     // Don't double-set
     if (sessionTimeouts.has(sessionId)) return;
     // Only timeout sessions that actually have an SDK session
-    if (!cliAdapter.hasSession(sessionId)) return;
+    if (!fleetManager.hasSession(sessionId)) return;
 
     logger.info({ sessionId, timeoutMs: SESSION_TIMEOUT_MS }, 'All clients disconnected — starting session timeout');
 
@@ -121,7 +118,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       if (clientSet && clientSet.size > 0) return;
 
       logger.info({ sessionId }, 'Session timeout fired — destroying abandoned session');
-      cliAdapter.destroySession(sessionId);
+      fleetManager.destroySession(sessionId);
       healthMonitor.untrackSession(sessionId);
       eventBuffer.removeSession(sessionId);
       sessionManager.close(sessionId);
@@ -242,7 +239,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           workDir = resolved;
         }
 
-        const session = await cliAdapter.start(workDir);
+        const session = await fleetManager.start(workDir);
         healthMonitor.trackSession(session.id);
         trackClientSession(ws, session.id);
         sendToClient(ws, {
@@ -276,7 +273,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         // Try to attach — distinguish not-found from other failures
         let session;
         try {
-          session = await cliAdapter.attach(message.sessionId);
+          session = await fleetManager.attach(message.sessionId);
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
           const isNotFound = msg.includes('not found') || msg.includes('SESSION_NOT_FOUND');
@@ -304,7 +301,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           startedAt: session.startedAt,
         });
         // Re-broadcast pending approvals
-        const pending = approvalQueue.getPendingDetails();
+        const pending = fleetManager.getPendingApprovals();
         for (const req of pending) {
           sendToClient(ws, {
             type: 'approval.request',
@@ -331,9 +328,9 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           triggerPersistence(message.sessionId);
           sessionManager.close(message.sessionId);
         }
-        // Properly destroy the SDK session (kills Claude process)
-        if (cliAdapter.hasSession(message.sessionId)) {
-          cliAdapter.destroySession(message.sessionId);
+        // Properly destroy the SDK session (kills Claude process in worker)
+        if (fleetManager.hasSession(message.sessionId)) {
+          fleetManager.destroySession(message.sessionId);
         }
         healthMonitor.untrackSession(message.sessionId);
         // Broadcast BEFORE removing buffer — broadcast() records events by sessionId,
@@ -405,7 +402,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
         // Re-broadcast pending approvals (they may not be in the event buffer
         // if the client disconnected before the approval was queued)
-        const pendingApprovals = approvalQueue.getPendingDetails();
+        const pendingApprovals = fleetManager.getPendingApprovals();
         for (const req of pendingApprovals) {
           sendToClient(ws, {
             type: 'approval.request',
@@ -417,7 +414,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         }
 
         // Send current permission mode
-        const modeState = cliAdapter.permissionFilter.getMode();
+        const modeState = fleetManager.permissionFilter.getMode();
         sendToClient(ws, {
           type: 'permission.mode',
           mode: modeState.mode,
@@ -456,22 +453,22 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           });
           triggerPersistence(message.sessionId);
         }
-        await cliAdapter.sendPrompt(message.sessionId, message.text, message.context);
+        await fleetManager.sendPrompt(message.sessionId, message.text, message.context);
         break;
       }
 
       case 'approval': {
-        approvalQueue.resolve(message.requestId, message.decision);
+        fleetManager.resolveApproval(message.requestId, message.decision);
         break;
       }
 
       case 'cancel': {
-        await cliAdapter.cancelOperation(message.sessionId);
+        await fleetManager.cancelOperation(message.sessionId);
         break;
       }
 
       case 'agent.message': {
-        await cliAdapter.sendAgentMessage(message.sessionId, message.agentId, message.text);
+        await fleetManager.sendAgentMessage(message.sessionId, message.agentId, message.text);
         break;
       }
 
@@ -553,6 +550,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           }
           const content = readFileSync(resolved, 'utf-8');
           const result = session.addContextFile(message.path, content);
+          if (result.ok) {
+            // Forward to worker so it can prepend context to prompts
+            fleetManager.addContextFile(message.sessionId, message.path, content);
+          }
           sendToClient(ws, {
             type: 'context.add.response',
             path: message.path,
@@ -585,6 +586,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           break;
         }
         session.removeContextFile(message.path);
+        fleetManager.removeContextFile(message.sessionId, message.path);
         sendToClient(ws, {
           type: 'context.remove.response',
           path: message.path,
@@ -595,26 +597,16 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'settings.approval': {
-        // Map high-level permission modes to queue-level modes
-        const permFilter = cliAdapter.permissionFilter;
-        permFilter.setMode(message.mode, message.delaySeconds, message.godSubMode);
+        // Update parent-side filter + broadcast to all fleet workers
+        // (workers handle their own approval queue flushing via ipc:permission.mode)
+        fleetManager.setPermissionMode(message.mode, message.delaySeconds, message.godSubMode);
+        const permFilter = fleetManager.permissionFilter;
 
-        // When switching modes mid-response, re-evaluate pending approvals:
-        // - God mode: flush ALL pending (auto-allow everything)
-        // - Smart mode: flush pending that the filter would now auto-allow
-        // - Delay mode: ApprovalQueue.setMode('delay') attaches delay timers
-        // - Manual mode: pending stay queued (already in manual queue)
-        if (message.mode === 'god') {
-          approvalQueue.flushPending();
-        } else if (message.mode === 'smart') {
-          approvalQueue.flushMatching((tool, details) => {
-            const input = (details?.['tool_input'] as Record<string, unknown>) ?? {};
-            return permFilter.check(tool, input).allowed;
-          });
+        // Clear parent-side pending approval mirror when workers auto-flush
+        // (god mode auto-allows all; smart mode may auto-allow some)
+        if (message.mode === 'god' || message.mode === 'smart') {
+          fleetManager.clearPendingApprovals();
         }
-
-        const queueMode = message.mode === 'delay' ? 'delay' : 'manual';
-        approvalQueue.setMode(queueMode, message.delaySeconds);
 
         // Broadcast updated mode to all clients
         broadcast({
@@ -659,7 +651,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   };
 
   function wireAdapterEvents(): void {
-    cliAdapter.on('output', (sessionId: string, chunk: string) => {
+    fleetManager.on('output', (sessionId: string, chunk: string) => {
       const session = sessionManager.tryGet(sessionId);
       if (session) {
         session.transcript.append({
@@ -672,7 +664,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       broadcast({ type: 'output', sessionId, chunk, format: 'plain' });
     });
 
-    cliAdapter.on('approval-request', (request) => {
+    fleetManager.on('approval-request', (request) => {
       broadcast({
         type: 'approval.request',
         requestId: request.requestId,
@@ -683,7 +675,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       notificationBatcher.addApprovalRequest(request.tool, request.requestId);
     });
 
-    cliAdapter.on('auto-allow', (event) => {
+    fleetManager.on('auto-allow', (event) => {
       broadcast({
         type: 'approval.auto',
         tool: event.tool,
@@ -693,7 +685,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       });
     });
 
-    cliAdapter.on('tool-start', (info) => {
+    fleetManager.on('tool-start', (info) => {
       const session = sessionManager.tryGet(info.sessionId);
       if (session) {
         session.transcript.append({
@@ -712,7 +704,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       });
     });
 
-    cliAdapter.on('tool-complete', (result) => {
+    fleetManager.on('tool-complete', (result) => {
       const session = sessionManager.tryGet(result.sessionId);
       if (session) {
         session.transcript.append({
@@ -732,7 +724,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       });
     });
 
-    cliAdapter.on('session-result', (result) => {
+    fleetManager.on('session-result', (result) => {
       const session = sessionManager.tryGet(result.sessionId);
       if (session) {
         session.addResult({
@@ -767,7 +759,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       });
     });
 
-    cliAdapter.on('agent-lifecycle', (event) => {
+    fleetManager.on('agent-lifecycle', (event) => {
       switch (event.event) {
         case 'spawn':
           agentTracker.spawn(event.agentId, event.role ?? 'subagent', event.task ?? '', event.parentId);
@@ -848,7 +840,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       });
 
       // Send current permission mode so client can sync
-      const modeState = cliAdapter.permissionFilter.getMode();
+      const modeState = fleetManager.permissionFilter.getMode();
       sendToClient(socket, {
         type: 'permission.mode',
         mode: modeState.mode,

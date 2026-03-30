@@ -7,8 +7,17 @@
  */
 
 import { logger } from '../utils/logger.js';
-import type { ClaudeCliAdapter } from '../adapters/claude-cli.adapter.js';
+import type { ToolInfo, ToolResult, SessionResult } from '../adapters/adapter.interface.js';
 import type { SessionManager } from '../sessions/session-manager.js';
+
+/** Subset of adapter/FleetManager interface needed by HealthMonitor */
+export interface HealthMonitorTarget {
+  isSessionAlive(sessionId: string): boolean;
+  on(event: 'output', handler: (sessionId: string, chunk: string) => void): void;
+  on(event: 'tool-start', handler: (info: ToolInfo) => void): void;
+  on(event: 'tool-complete', handler: (result: ToolResult) => void): void;
+  on(event: 'session-result', handler: (result: SessionResult) => void): void;
+}
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -51,16 +60,16 @@ export class HealthMonitor {
   private entries = new Map<string, SessionHealthEntry>();
   private checkTimer: ReturnType<typeof setInterval> | null = null;
   private config: HealthMonitorConfig;
-  private cliAdapter: ClaudeCliAdapter;
+  private target: HealthMonitorTarget;
   private sessionManager: SessionManager;
   private wired = false;
 
   constructor(
-    cliAdapter: ClaudeCliAdapter,
+    target: HealthMonitorTarget,
     sessionManager: SessionManager,
     config: Partial<HealthMonitorConfig> = {},
   ) {
-    this.cliAdapter = cliAdapter;
+    this.target = target;
     this.sessionManager = sessionManager;
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
@@ -156,7 +165,7 @@ export class HealthMonitor {
   // ── Internal ───────────────────────────────────────────────
 
   private buildStatus(entry: SessionHealthEntry, now: number): SessionHealthStatus {
-    const streamAlive = this.cliAdapter.isSessionAlive(entry.sessionId);
+    const streamAlive = this.target.isSessionAlive(entry.sessionId);
     const lastActivityAgoMs = now - entry.lastActivityAt;
     const uptimeMs = now - entry.startedAt;
 
@@ -238,19 +247,19 @@ export class HealthMonitor {
     if (this.wired) return;
     this.wired = true;
 
-    this.cliAdapter.on('output', (sessionId: string, _chunk: string) => {
+    this.target.on('output', (sessionId: string, _chunk: string) => {
       this.recordActivity(sessionId);
     });
 
-    this.cliAdapter.on('tool-start', (info) => {
+    this.target.on('tool-start', (info) => {
       this.recordActivity(info.sessionId);
     });
 
-    this.cliAdapter.on('tool-complete', (result) => {
+    this.target.on('tool-complete', (result) => {
       this.recordActivity(result.sessionId);
     });
 
-    this.cliAdapter.on('session-result', (result) => {
+    this.target.on('session-result', (result) => {
       this.recordActivity(result.sessionId);
     });
   }

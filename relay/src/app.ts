@@ -21,8 +21,7 @@ import { createWsRoute } from './routes/ws.js';
 // Services
 import { SessionManager } from './sessions/session-manager.js';
 import { SessionPersistence } from './sessions/session-persistence.js';
-import { ClaudeCliAdapter } from './adapters/claude-cli.adapter.js';
-import { ApprovalQueue } from './hooks/approval-queue.js';
+import { FleetManager } from './fleet/fleet-manager.js';
 import { PushManager } from './push/push-manager.js';
 import { HealthMonitor } from './health/health-monitor.js';
 import { getSessionSecret } from './auth/session.js';
@@ -39,10 +38,9 @@ export async function buildApp(config: AppConfig) {
   // ── Core services ──────────────────────────────────────
   const sessionPersistence = new SessionPersistence();
   const sessionManager = new SessionManager(sessionPersistence);
-  const approvalQueue = new ApprovalQueue();
-  const cliAdapter = new ClaudeCliAdapter(sessionManager, approvalQueue);
+  const fleetManager = new FleetManager(sessionManager);
   const pushManager = new PushManager();
-  const healthMonitor = new HealthMonitor(cliAdapter, sessionManager);
+  const healthMonitor = new HealthMonitor(fleetManager, sessionManager);
 
   // Start health monitoring
   healthMonitor.start();
@@ -88,7 +86,7 @@ export async function buildApp(config: AppConfig) {
   await app.register(authRoutes);
 
   // Health check (public)
-  await app.register(createHealthRoutes({ sessionManager, approvalQueue, healthMonitor }));
+  await app.register(createHealthRoutes({ sessionManager, fleetManager, healthMonitor }));
 
   // Push notifications (mix of public + auth-required)
   await app.register(createPushRoutes({ pushManager }));
@@ -97,8 +95,7 @@ export async function buildApp(config: AppConfig) {
   await app.register(createWsRoute({
     sessionManager,
     sessionPersistence,
-    cliAdapter,
-    approvalQueue,
+    fleetManager,
     pushManager,
     healthMonitor,
     claudeWorkDir: config.claudeWorkDir,
@@ -112,7 +109,7 @@ export async function buildApp(config: AppConfig) {
   app.addHook('onClose', async () => {
     logger.info('Shutting down services...');
     healthMonitor.dispose();
-    await cliAdapter.dispose();
+    await fleetManager.dispose();
     await sessionPersistence.saveAllImmediate((id) => {
       const session = sessionManager.tryGet(id);
       if (!session) return null;
