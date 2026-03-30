@@ -379,6 +379,7 @@ final class AgentSprite: SKSpriteNode {
         newBG.lineWidth = 0.5
         newBG.position = savedPosition
         newBG.zPosition = savedZPosition
+        newBG.alpha = 0
         // Update the mutable reference so subsequent calls manipulate the correct node
         speechBubbleBG = newBG
         addChild(newBG)

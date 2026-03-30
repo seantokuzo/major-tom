@@ -170,7 +170,7 @@ func deriveMood(from inputs: MoodInputs) -> AgentMood {
     }
 
     // Bored: idle for >3 minutes (skipped while workStartTime is non-nil)
-    if idleSeconds > 180 {
+    if inputs.workStartTime == nil, idleSeconds > 180 {
         return .bored
     }
 

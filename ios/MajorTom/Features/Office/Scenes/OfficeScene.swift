@@ -286,7 +286,7 @@ final class OfficeScene: SKScene {
             let deskOccupied = agentSprites.values.contains { sprite in
                 let dx = sprite.position.x - desk.position.x
                 let dy = sprite.position.y - desk.position.y
-                return sqrt(dx * dx + dy * dy) < 30
+                return dx * dx + dy * dy < 30 * 30
             }
             if theme.palette.lampsOn && deskOccupied {
                 lampNode.alpha = 0.25

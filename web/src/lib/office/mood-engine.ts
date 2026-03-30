@@ -56,7 +56,7 @@ export function deriveMood(inputs: MoodInputs): AgentMood {
   }
 
   // Bored: idle for >3 minutes (skipped while workStartTime is non-null)
-  if (idleMs > 180_000) {
+  if (inputs.workStartTime === null && idleMs > 180_000) {
     return 'bored';
   }
 

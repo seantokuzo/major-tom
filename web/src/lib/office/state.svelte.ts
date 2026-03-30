@@ -1510,9 +1510,11 @@ export function createOfficeState(): OfficeState {
     handleDismissed(id: string) {
       handleDismissed(id);
       moodEngine.removeAgent(id);
-      // Stop mood speech scanner when all agents leave
-      if (agents.length === 0) {
-        stopMoodSpeechScanner();
+      // Stop mood speech scanner when this is the last agent.
+      // Removal is delayed 600ms (fade-out), so defer scanner stop to match.
+      const remainingAgents = agents.filter((a) => a.id !== id).length;
+      if (remainingAgents === 0) {
+        setTimeout(() => { stopMoodSpeechScanner(); }, 600);
       }
     },
     broadcastEvent,
