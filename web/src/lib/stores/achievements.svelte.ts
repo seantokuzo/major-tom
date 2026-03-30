@@ -46,6 +46,7 @@ class AchievementStore {
 
   // Polling
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private fetchInFlight = false;
 
   // Derived
   filteredAchievements = $derived(
@@ -94,8 +95,6 @@ class AchievementStore {
   closePanel(): void {
     this.panelOpen = false;
     this.stopPolling();
-    // Switch to slow poll for indicator
-    this.startPolling(60_000);
   }
 
   togglePanel(): void {
@@ -113,6 +112,8 @@ class AchievementStore {
   // ── Data fetching (REST API) ──────────────────────────────
 
   async fetchAchievements(): Promise<void> {
+    if (this.fetchInFlight) return;
+    this.fetchInFlight = true;
     this.loading = true;
     this.error = null;
 
@@ -132,6 +133,7 @@ class AchievementStore {
       this.error = err instanceof Error ? err.message : 'Failed to fetch achievements';
     } finally {
       this.loading = false;
+      this.fetchInFlight = false;
     }
   }
 
@@ -152,15 +154,19 @@ class AchievementStore {
   // ── WebSocket event handlers ──────────────────────────────
 
   handleUnlocked(msg: AchievementUnlockedMessage): void {
-    // Update in list
     const existing = this.achievements.find((a) => a.id === msg.achievementId);
     if (existing) {
+      // Guard: only count transition from locked → unlocked
+      const wasLocked = !existing.unlocked;
       existing.unlocked = true;
       existing.unlockedAt = msg.unlockedAt;
       existing.progress = existing.target;
       existing.percentage = 100;
+      if (wasLocked) {
+        this.unlockedCount++;
+      }
     } else {
-      // Not in list yet — add it
+      // Not in list yet — add it and update both counts
       this.achievements.push({
         id: msg.achievementId,
         name: msg.name,
@@ -174,9 +180,10 @@ class AchievementStore {
         percentage: 100,
         secret: false,
       });
+      this.totalCount++;
+      this.unlockedCount++;
     }
 
-    this.unlockedCount++;
     this.triggerRecentUnlock();
 
     // Show toast
@@ -247,6 +254,8 @@ class AchievementStore {
         secret: a.secret,
         syncedAt: now,
       }));
+      // Clear stale rows so removed/renamed achievements don't linger
+      await db.achievements.clear();
       await db.achievements.bulkPut(rows);
     } catch {
       // IndexedDB unavailable — degrade gracefully

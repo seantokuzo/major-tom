@@ -6,9 +6,9 @@
   $effect(() => {
     if (!relay.isConnected) return;
 
-    void achievementStore.fetchIndicatorCount();
-    // Load cached data from IndexedDB for instant display
+    // Load cached data from IndexedDB for instant display, then fetch fresh data
     void achievementStore.loadFromCache();
+    void achievementStore.fetchIndicatorCount();
 
     const timer = setInterval(() => {
       if (relay.isConnected && !achievementStore.panelOpen) {

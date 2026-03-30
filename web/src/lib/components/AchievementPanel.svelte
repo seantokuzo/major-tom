@@ -70,7 +70,7 @@
             <div class="progress-bar-track">
               <div
                 class="progress-bar-fill"
-                style:width="{achievementStore.totalCount > 0 ? (achievementStore.unlockedCount / achievementStore.totalCount) * 100 : 0}%"
+                style:width={achievementStore.totalCount > 0 ? `${(achievementStore.unlockedCount / achievementStore.totalCount) * 100}%` : '0%'}
               ></div>
             </div>
             <span class="progress-label">{Math.round(achievementStore.totalCount > 0 ? (achievementStore.unlockedCount / achievementStore.totalCount) * 100 : 0)}% Complete</span>
@@ -106,7 +106,7 @@
                   {:else if achievement.target != null && achievement.progress != null && !achievement.secret}
                     <div class="achievement-progress">
                       <div class="progress-track">
-                        <div class="progress-fill" style:width="{achievement.percentage ?? 0}%"></div>
+                        <div class="progress-fill" style:width={`${achievement.percentage ?? 0}%`}></div>
                       </div>
                       <span class="progress-text">{achievement.progress}/{achievement.target}</span>
                     </div>
