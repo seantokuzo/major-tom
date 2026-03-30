@@ -73,9 +73,9 @@
       return {
         x,
         width: barWidth,
-        input: { y: chartHeight - inputH, height: inputH },
-        output: { y: chartHeight - inputH - outputH, height: outputH },
-        cache: { y: chartHeight - inputH - outputH - cacheH, height: cacheH },
+        input: { y: chartHeight - inputH, height: inputH, tokens: d.inputTokens },
+        output: { y: chartHeight - inputH - outputH, height: outputH, tokens: d.outputTokens },
+        cache: { y: chartHeight - inputH - outputH - cacheH, height: cacheH, tokens: d.cacheTokens },
         total,
       };
     });
@@ -203,13 +203,13 @@
               <svg viewBox="0 0 {chartWidth} {chartHeight}" class="chart-svg">
                 {#each tokenBars(analyticsStore.data) as bar}
                   <rect x={bar.x} y={bar.input.y} width={bar.width} height={Math.max(bar.input.height, 0)} fill="var(--accent)" rx="1">
-                    <title>Input: {formatTokens(bar.input.height > 0 ? bar.input.height : 0)}</title>
+                    <title>Input: {formatTokens(bar.input.tokens)}</title>
                   </rect>
                   <rect x={bar.x} y={bar.output.y} width={bar.width} height={Math.max(bar.output.height, 0)} fill="#a78bfa" rx="1">
-                    <title>Output</title>
+                    <title>Output: {formatTokens(bar.output.tokens)}</title>
                   </rect>
                   <rect x={bar.x} y={bar.cache.y} width={bar.width} height={Math.max(bar.cache.height, 0)} fill="var(--text-tertiary)" rx="1">
-                    <title>Cache</title>
+                    <title>Cache: {formatTokens(bar.cache.tokens)}</title>
                   </rect>
                 {/each}
               </svg>

@@ -2,24 +2,17 @@
   import { analyticsStore } from '../stores/analytics.svelte';
   import { relay } from '../stores/relay.svelte';
 
-  // Fetch initial analytics when connected (just for the indicator cost)
-  let indicatorTimer: ReturnType<typeof setInterval> | null = null;
-
+  // Fetch 24h indicator cost on connect, poll every 60s
   $effect(() => {
-    if (relay.isConnected && !analyticsStore.panelOpen) {
-      void analyticsStore.fetchAnalytics();
-      indicatorTimer = setInterval(() => {
-        if (relay.isConnected && !analyticsStore.panelOpen) {
-          void analyticsStore.fetchAnalytics();
-        }
-      }, 60_000);
-      return () => {
-        if (indicatorTimer) {
-          clearInterval(indicatorTimer);
-          indicatorTimer = null;
-        }
-      };
-    }
+    if (!relay.isConnected) return;
+
+    void analyticsStore.fetchIndicatorCost();
+    const timer = setInterval(() => {
+      if (relay.isConnected) {
+        void analyticsStore.fetchIndicatorCost();
+      }
+    }, 60_000);
+    return () => clearInterval(timer);
   });
 
   function formatCost(cost: number): string {
@@ -33,11 +26,11 @@
   <button
     class="analytics-indicator"
     onclick={() => analyticsStore.togglePanel()}
-    title="Analytics: {formatCost(analyticsStore.todayCost)} today"
+    title="Analytics: {formatCost(analyticsStore.indicatorCost)} today"
     aria-label="Toggle analytics panel"
   >
     <span class="analytics-icon">$</span>
-    <span class="analytics-cost">{formatCost(analyticsStore.todayCost)}</span>
+    <span class="analytics-cost">{formatCost(analyticsStore.indicatorCost)}</span>
   </button>
 {/if}
 

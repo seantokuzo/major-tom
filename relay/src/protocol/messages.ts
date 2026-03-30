@@ -496,38 +496,48 @@ export interface AnalyticsQuery {
   workerId?: string;
 }
 
+export interface AnalyticsTimeSeriesEntry {
+  period: string;
+  cost: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheTokens: number;
+  turnCount: number;
+}
+
+export interface AnalyticsBySession {
+  sessionId: string;
+  workingDir: string;
+  totalCost: number;
+  totalTokens: number;
+  turnCount: number;
+}
+
+export interface AnalyticsByModel {
+  model: string;
+  cost: number;
+  tokens: number;
+  turnCount: number;
+}
+
+export interface AnalyticsByTool {
+  tool: string;
+  count: number;
+  avgDurationMs: number;
+}
+
+export interface AnalyticsTotals {
+  cost: number;
+  inputTokens: number;
+  outputTokens: number;
+  turnCount: number;
+  sessionCount: number;
+}
+
 export interface AnalyticsResponse {
-  timeSeries: Array<{
-    period: string;
-    cost: number;
-    inputTokens: number;
-    outputTokens: number;
-    cacheTokens: number;
-    turnCount: number;
-  }>;
-  bySession: Array<{
-    sessionId: string;
-    workingDir: string;
-    totalCost: number;
-    totalTokens: number;
-    turnCount: number;
-  }>;
-  byModel: Array<{
-    model: string;
-    cost: number;
-    tokens: number;
-    turnCount: number;
-  }>;
-  byTool: Array<{
-    tool: string;
-    count: number;
-    avgDurationMs: number;
-  }>;
-  totals: {
-    cost: number;
-    inputTokens: number;
-    outputTokens: number;
-    turnCount: number;
-    sessionCount: number;
-  };
+  timeSeries: AnalyticsTimeSeriesEntry[];
+  bySession: AnalyticsBySession[];
+  byModel: AnalyticsByModel[];
+  byTool: AnalyticsByTool[];
+  totals: AnalyticsTotals;
 }

@@ -47,8 +47,11 @@ class AnalyticsStore {
   // Polling
   private pollTimer: ReturnType<typeof setInterval> | null = null;
 
-  // Derived
-  todayCost = $derived(this.data?.totals.cost ?? 0);
+  // Indicator cost — always uses a dedicated 24h fetch, independent of panel timeRange
+  indicatorCost = $state(0);
+
+  // Derived — cost for the currently selected range
+  rangeCost = $derived(this.data?.totals.cost ?? 0);
 
   // ── Panel control ─────────────────────────────────────────
 
@@ -101,6 +104,22 @@ class AnalyticsStore {
       this.error = err instanceof Error ? err.message : 'Failed to fetch analytics';
     } finally {
       this.loading = false;
+    }
+  }
+
+  /** Fetch just the 24h cost for the header indicator (lightweight, fixed range) */
+  async fetchIndicatorCost(): Promise<void> {
+    try {
+      const from = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const to = new Date().toISOString();
+      const params = new URLSearchParams({ from, to, groupBy: 'day' });
+      const res = await fetch(`/api/analytics?${params}`, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json() as AnalyticsResponse;
+        this.indicatorCost = data.totals.cost;
+      }
+    } catch {
+      // Silently fail — indicator is non-critical
     }
   }
 

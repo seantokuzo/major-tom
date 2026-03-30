@@ -11,59 +11,20 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify';
-import { readFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import { existsSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { requireSession } from '../plugins/auth.js';
 import type { AnalyticsCollector, AnalyticsEvent, TurnCompleteEvent } from '../analytics/analytics-collector.js';
+import type {
+  AnalyticsTimeSeriesEntry,
+  AnalyticsBySession,
+  AnalyticsByModel,
+  AnalyticsByTool,
+  AnalyticsTotals,
+  AnalyticsResponse,
+} from '../protocol/messages.js';
 import { logger } from '../utils/logger.js';
-
-// ── Response types ─────────────────────────────────────────
-
-export interface AnalyticsTimeSeriesEntry {
-  period: string;
-  cost: number;
-  inputTokens: number;
-  outputTokens: number;
-  cacheTokens: number;
-  turnCount: number;
-}
-
-export interface AnalyticsBySession {
-  sessionId: string;
-  workingDir: string;
-  totalCost: number;
-  totalTokens: number;
-  turnCount: number;
-}
-
-export interface AnalyticsByModel {
-  model: string;
-  cost: number;
-  tokens: number;
-  turnCount: number;
-}
-
-export interface AnalyticsByTool {
-  tool: string;
-  count: number;
-  avgDurationMs: number;
-}
-
-export interface AnalyticsTotals {
-  cost: number;
-  inputTokens: number;
-  outputTokens: number;
-  turnCount: number;
-  sessionCount: number;
-}
-
-export interface AnalyticsResponse {
-  timeSeries: AnalyticsTimeSeriesEntry[];
-  bySession: AnalyticsBySession[];
-  byModel: AnalyticsByModel[];
-  byTool: AnalyticsByTool[];
-  totals: AnalyticsTotals;
-}
 
 // ── Query types ────────────────────────────────────────────
 
@@ -88,7 +49,7 @@ export function createAnalyticsRoutes(deps: AnalyticsDeps): FastifyPluginAsync {
     fastify.get<{ Querystring: AnalyticsQuery }>(
       '/api/analytics',
       { preHandler: requireSession },
-      async (request) => {
+      async (request, reply) => {
         const {
           from,
           to,
@@ -97,11 +58,28 @@ export function createAnalyticsRoutes(deps: AnalyticsDeps): FastifyPluginAsync {
           workerId,
         } = request.query;
 
+        // Validate groupBy
+        const validGroupBy: readonly string[] = ['hour', 'day', 'week', 'month'];
+        if (!validGroupBy.includes(groupBy)) {
+          return reply.status(400).send({ error: `Invalid groupBy: ${groupBy}. Must be one of: ${validGroupBy.join(', ')}` });
+        }
+
         const now = new Date();
         const fromDate = from ? new Date(from) : new Date(now.getTime() - 24 * 60 * 60 * 1000);
         const toDate = to ? new Date(to) : now;
 
-        // Read and parse JSONL file
+        // Validate date params
+        if (!Number.isFinite(fromDate.getTime())) {
+          return reply.status(400).send({ error: `Invalid 'from' date: ${from}` });
+        }
+        if (!Number.isFinite(toDate.getTime())) {
+          return reply.status(400).send({ error: `Invalid 'to' date: ${to}` });
+        }
+        if (fromDate > toDate) {
+          return reply.status(400).send({ error: "'from' must be before 'to'" });
+        }
+
+        // Read and parse JSONL file (streaming)
         const events = await readAnalyticsFile(deps.analyticsCollector.getFilePath());
 
         // Filter events by time range + optional filters
@@ -139,15 +117,17 @@ async function readAnalyticsFile(filePath: string): Promise<AnalyticsEvent[]> {
   if (!existsSync(filePath)) return [];
 
   try {
-    const raw = await readFile(filePath, 'utf-8');
-    const lines = raw.split('\n').filter((l) => l.trim().length > 0);
     const events: AnalyticsEvent[] = [];
+    const rl = createInterface({
+      input: createReadStream(filePath, { encoding: 'utf-8' }),
+      crlfDelay: Infinity,
+    });
 
-    for (const line of lines) {
+    for await (const line of rl) {
+      if (line.trim().length === 0) continue;
       try {
         events.push(JSON.parse(line) as AnalyticsEvent);
       } catch {
-        // Skip malformed lines
         logger.warn({ line: line.slice(0, 100) }, 'Skipping malformed analytics line');
       }
     }

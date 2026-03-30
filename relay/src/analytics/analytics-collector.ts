@@ -10,7 +10,7 @@
  */
 
 import { appendFile, mkdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { logger } from '../utils/logger.js';
 
@@ -93,7 +93,7 @@ export class AnalyticsCollector {
   private async ensureDir(): Promise<void> {
     if (this.initialized) return;
     try {
-      await mkdir(ANALYTICS_DIR, { recursive: true });
+      await mkdir(dirname(this.filePath), { recursive: true });
       this.initialized = true;
     } catch (err) {
       logger.error({ err }, 'Failed to create analytics directory');
@@ -182,6 +182,9 @@ export class AnalyticsCollector {
       turnCount: data.turnCount,
       timestamp: new Date().toISOString(),
     });
+
+    // Clean up any lingering tool tracking for this session
+    this.turnTools.delete(data.sessionId);
   }
 
   recordWorkerStart(data: {
