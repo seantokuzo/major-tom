@@ -350,6 +350,9 @@ export class AchievementService {
 
     logger.info({ achievementId: definition.id, name: definition.name }, 'Achievement unlocked');
 
+    // Ensure unlock is persisted promptly
+    this.schedulePersist();
+
     for (const listener of this.unlockListeners) {
       try {
         listener(payload);

@@ -77,6 +77,20 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     });
   });
 
+  achievementService.onProgress((payload) => {
+    broadcast({
+      type: 'achievement.progress',
+      achievementId: payload.achievementId,
+      name: payload.name,
+      current: payload.current,
+      target: payload.target,
+      percentage: payload.percentage,
+    });
+  });
+
+  // ── Approval timing tracker for Speed Demon achievement ────
+  const approvalRequestTimes = new Map<string, number>();
+
   // ── Filesystem handlers (sandboxed browsing) ──────────────
   const fsHandlers = createFsHandlers((ws: WebSocket, msg: FsServerMessage) => {
     if (ws.readyState === WebSocket.OPEN) {
@@ -512,14 +526,17 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       case 'approval': {
         fleetManager.resolveApproval(message.requestId, message.decision);
-        // Track achievement: approval decisions
+        // Track achievement: approval decisions with timing for Speed Demon
         if (message.decision === 'allow' || message.decision === 'allow_always') {
-          // Source may come from extended client message (e.g., watch)
-          const approvalRaw = message as unknown as Record<string, unknown>;
+          const sentAt = approvalRequestTimes.get(message.requestId);
+          const approvalDurationMs = sentAt ? Date.now() - sentAt : undefined;
+          approvalRequestTimes.delete(message.requestId);
           achievementService.checkEvent('approval.granted', {
-            source: approvalRaw['source'],
+            source: message.source,
+            durationMs: approvalDurationMs,
           });
         } else if (message.decision === 'deny') {
+          approvalRequestTimes.delete(message.requestId);
           achievementService.checkEvent('approval.denied');
         }
         break;
@@ -807,6 +824,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
     fleetManager.on('approval-request', (request) => {
       const priority = scorePriority(request.tool, request.description, request.details);
+      // Track when approval request was sent for Speed Demon timing
+      approvalRequestTimes.set(request.requestId, Date.now());
       broadcast({
         type: 'approval.request',
         requestId: request.requestId,

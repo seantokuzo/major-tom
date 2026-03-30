@@ -20,6 +20,8 @@ export interface ApprovalMessage {
   requestId: string;
   decision: 'allow' | 'deny' | 'skip' | 'allow_always';
   toolUseId?: string;
+  /** Origin of the approval (e.g., 'watch' for Apple Watch) */
+  source?: string;
 }
 
 export interface CancelMessage {
