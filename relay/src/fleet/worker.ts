@@ -139,6 +139,11 @@ async function sendPrompt(sessionId: string, text: string): Promise<void> {
   const entry = sessions.get(sessionId);
   if (!entry) {
     workerLog.warn({ sessionId }, 'sendPrompt: session not found');
+    sendToParent({
+      type: 'ipc:session.error',
+      sessionId,
+      error: 'Session not found in worker — it may have been cancelled or destroyed',
+    });
     return;
   }
   if (!entry.streamAlive) {

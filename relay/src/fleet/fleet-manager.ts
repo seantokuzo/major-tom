@@ -107,11 +107,16 @@ const RESTART_BACKOFF_WINDOW_MS = 60_000; // Reset restart count after 60s of st
 
 // ── FleetManager ────────────────────────────────────────────
 
+/** Timeout for waiting for ipc:session.started acknowledgement */
+const SESSION_START_TIMEOUT_MS = 30_000;
+
 export class FleetManager {
   private emitter = new EventEmitter();
   private workers = new Map<string, WorkerEntry>(); // canonicalDir → WorkerEntry
   private sessionWorkerMap = new Map<string, string>(); // sessionId → canonicalDir
   private approvalSessionMap = new Map<string, string>(); // requestId → sessionId
+  /** Pending start() calls waiting for ipc:session.started or ipc:session.error */
+  private pendingStarts = new Map<string, { resolve: () => void; reject: (err: Error) => void }>();
   /** Parent-side mirror of pending approvals for re-broadcast on client reconnect */
   private pendingApprovals = new Map<string, { requestId: string; tool: string; description: string; details: Record<string, unknown> }>();
   private sessionManager: SessionManager;
@@ -237,6 +242,11 @@ export class FleetManager {
       'Worker crashed — evaluating restart',
     );
 
+    // Clear pending approvals for all sessions in the crashed worker
+    for (const sessionId of sessionIds) {
+      this.clearApprovalsForSession(sessionId);
+    }
+
     if (entry.restartCount > MAX_RESTART_ATTEMPTS) {
       logger.error(
         { workerId: workerId.slice(0, 8), restartCount: entry.restartCount },
@@ -316,6 +326,16 @@ export class FleetManager {
           { workerId: entry.workerId.slice(0, 8), workingDir: msg.workingDir },
           'Worker ready',
         );
+        // Sync current permission mode to the new worker
+        if (entry.process.connected) {
+          const modeState = this.permissionFilter.getMode();
+          entry.process.send({
+            type: 'ipc:permission.mode',
+            mode: modeState.mode,
+            delaySeconds: modeState.delaySeconds,
+            godSubMode: modeState.godSubMode,
+          } satisfies ParentToChildMessage);
+        }
         // Flush any queued messages
         for (const queued of entry.pendingMessages) {
           if (entry.process.connected) {
@@ -325,14 +345,28 @@ export class FleetManager {
         entry.pendingMessages = [];
         break;
 
-      case 'ipc:session.started':
+      case 'ipc:session.started': {
         logger.info({ sessionId: msg.sessionId, workingDir: msg.workingDir }, 'Session started in worker');
+        const pendingStart = this.pendingStarts.get(msg.sessionId);
+        if (pendingStart) {
+          this.pendingStarts.delete(msg.sessionId);
+          pendingStart.resolve();
+        }
         break;
+      }
 
-      case 'ipc:session.error':
+      case 'ipc:session.error': {
         logger.error({ sessionId: msg.sessionId, error: msg.error }, 'Session error from worker');
-        this.emitter.emit('output', msg.sessionId, `\n[Session error: ${msg.error}]\n`);
+        const pendingStartErr = this.pendingStarts.get(msg.sessionId);
+        if (pendingStartErr) {
+          this.pendingStarts.delete(msg.sessionId);
+          pendingStartErr.reject(new Error(msg.error));
+        } else {
+          // Error for an already-started session — emit to clients
+          this.emitter.emit('output', msg.sessionId, `\n[Session error: ${msg.error}]\n`);
+        }
         break;
+      }
 
       case 'ipc:output':
         this.emitter.emit('output', msg.sessionId, msg.chunk);
@@ -414,13 +448,35 @@ export class FleetManager {
     entry.sessionIds.add(session.id);
     this.sessionWorkerMap.set(session.id, entry.canonicalDir);
 
+    // Wait for worker to acknowledge session creation (or report error)
+    const startPromise = new Promise<void>((resolve, reject) => {
+      this.pendingStarts.set(session.id, { resolve, reject });
+      setTimeout(() => {
+        if (this.pendingStarts.has(session.id)) {
+          this.pendingStarts.delete(session.id);
+          reject(new Error(`Timeout waiting for session ${session.id} to start in worker`));
+        }
+      }, SESSION_START_TIMEOUT_MS);
+    });
+
     this.sendToWorker(entry, {
       type: 'ipc:session.start',
       sessionId: session.id,
       workingDir,
     });
 
-    logger.info({ sessionId: session.id, workingDir, workerId: entry.workerId.slice(0, 8) }, 'Session routed to worker');
+    try {
+      await startPromise;
+    } catch (err) {
+      // Clean up on failure
+      entry.sessionIds.delete(session.id);
+      this.sessionWorkerMap.delete(session.id);
+      this.sessionManager.close(session.id);
+      this.sessionManager.destroy(session.id);
+      throw err;
+    }
+
+    logger.info({ sessionId: session.id, workingDir, workerId: entry.workerId.slice(0, 8) }, 'Session started in worker');
     return session;
   }
 
@@ -506,6 +562,12 @@ export class FleetManager {
       type: 'ipc:cancel',
       sessionId,
     });
+    // Mirror old ClaudeCliAdapter behavior: clean up parent-side state
+    entry.sessionIds.delete(sessionId);
+    this.sessionWorkerMap.delete(sessionId);
+    this.sessionManager.close(sessionId);
+    // Clear any pending approvals for this session
+    this.clearApprovalsForSession(sessionId);
   }
 
   destroySession(sessionId: string): void {
@@ -518,6 +580,7 @@ export class FleetManager {
       entry.sessionIds.delete(sessionId);
     }
     this.sessionWorkerMap.delete(sessionId);
+    this.clearApprovalsForSession(sessionId);
     logger.info({ sessionId }, 'Session destroyed in fleet');
   }
 
@@ -526,10 +589,12 @@ export class FleetManager {
     return this.sessionWorkerMap.has(sessionId);
   }
 
-  /** Check if a session's worker is alive and connected */
+  /** Check if a session is alive within its worker */
   isSessionAlive(sessionId: string): boolean {
     const entry = this.getWorkerForSession(sessionId);
-    return !!entry && entry.process.connected;
+    if (!entry || !entry.process.connected) return false;
+    // Only report alive if the session is still tracked by the worker
+    return entry.sessionIds.has(sessionId);
   }
 
   /** Get pending approval details for re-broadcast on client reconnect */
@@ -540,6 +605,24 @@ export class FleetManager {
   /** Number of pending approvals across all workers */
   get pendingApprovalCount(): number {
     return this.pendingApprovals.size;
+  }
+
+  /** Clear all parent-side pending approval tracking (used when workers auto-flush on mode change) */
+  clearPendingApprovals(): void {
+    this.pendingApprovals.clear();
+    this.approvalSessionMap.clear();
+  }
+
+  /** Clear pending approvals for a specific session */
+  private clearApprovalsForSession(sessionId: string): void {
+    const toDelete: string[] = [];
+    for (const [requestId, sid] of this.approvalSessionMap) {
+      if (sid === sessionId) toDelete.push(requestId);
+    }
+    for (const requestId of toDelete) {
+      this.approvalSessionMap.delete(requestId);
+      this.pendingApprovals.delete(requestId);
+    }
   }
 
   /** Set permission mode on all workers */

@@ -602,10 +602,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         fleetManager.setPermissionMode(message.mode, message.delaySeconds, message.godSubMode);
         const permFilter = fleetManager.permissionFilter;
 
-        // Clear parent-side pending approval tracking for god mode
-        // (workers auto-resolve their own queued approvals)
-        if (message.mode === 'god') {
-          // Workers handle flushing internally; parent just clears its mirror
+        // Clear parent-side pending approval mirror when workers auto-flush
+        // (god mode auto-allows all; smart mode may auto-allow some)
+        if (message.mode === 'god' || message.mode === 'smart') {
+          fleetManager.clearPendingApprovals();
         }
 
         // Broadcast updated mode to all clients
