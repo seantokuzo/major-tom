@@ -17,6 +17,7 @@ import { db } from '../db';
 import { terminalStore } from './terminal.svelte';
 import { sessionStateManager, extractDirName } from './session-state.svelte';
 import { fleetStore } from './fleet.svelte';
+import { achievementStore } from './achievements.svelte';
 import { toasts } from './toast.svelte';
 
 // ── Chat message model ──────────────────────────────────────
@@ -1122,6 +1123,19 @@ class RelayStore {
       case 'fleet.worker.restarted':
         fleetStore.handleWorkerRestarted(message);
         toasts.success(`Worker for ${message.dirName} restarted`);
+        break;
+
+      // ── Achievement messages ──────────────────────────────────
+      case 'achievement.unlocked':
+        achievementStore.handleUnlocked(message);
+        break;
+
+      case 'achievement.progress':
+        achievementStore.handleProgress(message);
+        break;
+
+      case 'achievement.list.response':
+        achievementStore.handleListResponse(message);
         break;
     }
   }
