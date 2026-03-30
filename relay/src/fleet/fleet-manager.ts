@@ -21,7 +21,7 @@ import { EventEmitter } from 'node:events';
 import { fork, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
-import { realpathSync } from 'node:fs';
+import { realpathSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -50,10 +50,21 @@ import { logger } from '../utils/logger.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// In dev (tsx), worker.ts is the source file; in prod (compiled), worker.js.
-// We detect based on whether the current file extension is .ts or .js.
+/**
+ * Worker script resolution:
+ * - Dev (tsx): __filename = .../src/fleet/fleet-manager.ts → worker.ts in same dir
+ * - Prod (tsc, no bundle): __filename = .../dist/fleet/fleet-manager.js → worker.js in same dir
+ * - Prod (esbuild bundle): __filename = .../dist/server.js → worker.js at dist/fleet/worker.js
+ *
+ * We detect the bundled case by checking if the sibling worker file exists.
+ */
 const EXT = __filename.endsWith('.ts') ? '.ts' : '.js';
-const WORKER_SCRIPT = join(__dirname, `worker${EXT}`);
+const WORKER_SCRIPT = (() => {
+  const siblingPath = join(__dirname, `worker${EXT}`);
+  if (existsSync(siblingPath)) return siblingPath;
+  // Bundled mode: __dirname is dist/, worker is at dist/fleet/worker.js
+  return join(__dirname, 'fleet', `worker${EXT}`);
+})();
 
 // ── Worker tracking ─────────────────────────────────────────
 
@@ -100,6 +111,9 @@ export class FleetManager {
   private emitter = new EventEmitter();
   private workers = new Map<string, WorkerEntry>(); // canonicalDir → WorkerEntry
   private sessionWorkerMap = new Map<string, string>(); // sessionId → canonicalDir
+  private approvalSessionMap = new Map<string, string>(); // requestId → sessionId
+  /** Parent-side mirror of pending approvals for re-broadcast on client reconnect */
+  private pendingApprovals = new Map<string, { requestId: string; tool: string; description: string; details: Record<string, unknown> }>();
   private sessionManager: SessionManager;
   readonly permissionFilter: PermissionFilter;
   private shuttingDown = false;
@@ -324,14 +338,18 @@ export class FleetManager {
         this.emitter.emit('output', msg.sessionId, msg.chunk);
         break;
 
-      case 'ipc:approval.request':
-        this.emitter.emit('approval-request', {
+      case 'ipc:approval.request': {
+        this.approvalSessionMap.set(msg.requestId, msg.sessionId);
+        const approvalReq: ApprovalRequest = {
           requestId: msg.requestId,
           tool: msg.tool,
           description: msg.description,
           details: msg.details,
-        } satisfies ApprovalRequest);
+        };
+        this.pendingApprovals.set(msg.requestId, approvalReq);
+        this.emitter.emit('approval-request', approvalReq);
         break;
+      }
 
       case 'ipc:approval.auto':
         this.emitter.emit('auto-allow', {
@@ -445,28 +463,40 @@ export class FleetManager {
     });
   }
 
-  resolveApproval(sessionId: string, requestId: string, decision: ApprovalDecision): void {
-    const entry = this.getWorkerForSession(sessionId);
-    if (!entry) {
-      // Try all workers — approval may not have sessionId association yet
-      for (const worker of this.workers.values()) {
-        if (worker.process.connected) {
-          this.sendToWorker(worker, {
-            type: 'ipc:approval',
-            sessionId,
-            requestId,
-            decision,
-          });
-        }
+  /**
+   * Resolve an approval decision. Routes to the correct worker using the
+   * requestId → sessionId mapping established when the approval was requested.
+   */
+  resolveApproval(requestId: string, decision: ApprovalDecision): void {
+    const sessionId = this.approvalSessionMap.get(requestId);
+    this.approvalSessionMap.delete(requestId);
+    this.pendingApprovals.delete(requestId);
+
+    if (sessionId) {
+      const entry = this.getWorkerForSession(sessionId);
+      if (entry) {
+        this.sendToWorker(entry, {
+          type: 'ipc:approval',
+          sessionId,
+          requestId,
+          decision,
+        });
+        return;
       }
-      return;
     }
-    this.sendToWorker(entry, {
-      type: 'ipc:approval',
-      sessionId,
-      requestId,
-      decision,
-    });
+
+    // Fallback: broadcast to all workers if we can't route
+    logger.warn({ requestId }, 'Could not route approval — broadcasting to all workers');
+    for (const worker of this.workers.values()) {
+      if (worker.process.connected) {
+        this.sendToWorker(worker, {
+          type: 'ipc:approval',
+          sessionId: sessionId ?? '',
+          requestId,
+          decision,
+        });
+      }
+    }
   }
 
   async cancelOperation(sessionId: string): Promise<void> {
@@ -500,6 +530,16 @@ export class FleetManager {
   isSessionAlive(sessionId: string): boolean {
     const entry = this.getWorkerForSession(sessionId);
     return !!entry && entry.process.connected;
+  }
+
+  /** Get pending approval details for re-broadcast on client reconnect */
+  getPendingApprovals(): Array<{ requestId: string; tool: string; description: string; details: Record<string, unknown> }> {
+    return [...this.pendingApprovals.values()];
+  }
+
+  /** Number of pending approvals across all workers */
+  get pendingApprovalCount(): number {
+    return this.pendingApprovals.size;
   }
 
   /** Set permission mode on all workers */
