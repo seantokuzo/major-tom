@@ -131,8 +131,16 @@ export class NotificationDigest {
     const config = await this.configManager.getConfig();
     const intervalMs = config.digest.intervalMinutes * 60 * 1000;
 
-    this.digestTimer = setTimeout(() => {
+    this.digestTimer = setTimeout(async () => {
       this.digestTimer = null;
+      // Don't send digest during quiet hours — reschedule instead
+      if (await this.configManager.isQuietHours()) {
+        logger.debug('Digest deferred — still in quiet hours');
+        if (this.digestItems.length > 0) {
+          void this.startDigestTimer();
+        }
+        return;
+      }
       void this.sendDigestNotification();
     }, intervalMs);
 

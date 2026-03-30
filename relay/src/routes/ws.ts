@@ -744,8 +744,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         priority,
       });
       // Use smart notification digest for priority-aware push notifications
-      const target = (request.details?.['file_path'] as string)
-        ?? (request.details?.['command'] as string)
+      const rawFilePath = request.details?.['file_path'];
+      const rawCommand = request.details?.['command'];
+      const target = (typeof rawFilePath === 'string' ? rawFilePath : undefined)
+        ?? (typeof rawCommand === 'string' ? rawCommand : undefined)
         ?? request.description;
       void notificationDigest.processNotification(
         request.tool,

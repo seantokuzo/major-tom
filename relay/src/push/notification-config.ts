@@ -179,9 +179,16 @@ export class NotificationConfigManager {
       throw new Error(`Invalid priority threshold: ${config.priorityThreshold}`);
     }
 
-    // Validate digest interval
-    if (config.digest.intervalMinutes < 1 || config.digest.intervalMinutes > 60) {
-      throw new Error(`Invalid digest interval: ${config.digest.intervalMinutes} (must be 1-60)`);
+    // Validate digest interval (strict numeric check to prevent NaN/non-integer)
+    const interval = config.digest.intervalMinutes;
+    if (
+      typeof interval !== 'number' ||
+      !Number.isFinite(interval) ||
+      !Number.isInteger(interval) ||
+      interval < 1 ||
+      interval > 60
+    ) {
+      throw new Error(`Invalid digest interval: ${String(interval)} (must be an integer between 1-60 minutes)`);
     }
   }
 

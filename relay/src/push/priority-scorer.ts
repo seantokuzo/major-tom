@@ -115,17 +115,20 @@ function getPrimaryInput(
   const lower = toolName.toLowerCase();
 
   if (lower === 'bash' || lower === 'execute' || lower === 'shell') {
-    return (input['command'] as string) ?? undefined;
+    const command = input['command'];
+    return typeof command === 'string' ? command : undefined;
   }
 
   if (['edit', 'replace', 'write', 'create', 'read'].includes(lower)) {
-    return (input['file_path'] as string)
-      ?? (input['path'] as string)
-      ?? undefined;
+    const filePath = input['file_path'];
+    if (typeof filePath === 'string') return filePath;
+    const path = input['path'];
+    return typeof path === 'string' ? path : undefined;
   }
 
   if (['glob', 'grep', 'search'].includes(lower)) {
-    return (input['pattern'] as string) ?? undefined;
+    const pattern = input['pattern'];
+    return typeof pattern === 'string' ? pattern : undefined;
   }
 
   return undefined;

@@ -61,9 +61,15 @@
     <span class="gear-icon">&#x2699;</span>
   </button>
 
-  {#if open && config}
+  {#if open}
     <div class="dropdown">
       <h4 class="dropdown-title">Notification Settings</h4>
+
+      {#if loading && !config}
+        <div class="dropdown-loading">Loading...</div>
+      {:else if !config}
+        <div class="dropdown-error">Failed to load settings</div>
+      {:else}
 
       <!-- Quiet Hours -->
       <div class="section">
@@ -165,6 +171,8 @@
           <p class="hint">Low-priority approvals are batched into a digest notification.</p>
         {/if}
       </div>
+
+      {/if}
 
       {#if loading}
         <div class="loading-bar">Saving...</div>
@@ -360,5 +368,21 @@
     color: var(--accent);
     text-align: center;
     padding: var(--sp-xs) 0;
+  }
+
+  .dropdown-loading,
+  .dropdown-error {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    text-align: center;
+    padding: var(--sp-md);
+  }
+
+  .dropdown-loading {
+    color: var(--text-tertiary);
+  }
+
+  .dropdown-error {
+    color: var(--danger);
   }
 </style>
