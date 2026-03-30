@@ -161,9 +161,7 @@ export class HealthMonitor {
     const uptimeMs = now - entry.startedAt;
 
     let status: SessionHealthStatus['status'];
-    if (!streamAlive && !this.cliAdapter.hasSession(entry.sessionId)) {
-      status = 'dead';
-    } else if (!streamAlive) {
+    if (!streamAlive) {
       status = 'dead';
     } else if (lastActivityAgoMs > this.config.hangTimeoutMs) {
       // Session is alive but no output for a long time — could be waiting for
