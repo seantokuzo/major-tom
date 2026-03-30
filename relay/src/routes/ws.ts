@@ -17,6 +17,7 @@ import { encodeServerMessage, safeDecode } from '../protocol/codec.js';
 import { truncateMetaField } from '../sessions/session-transcript.js';
 import { EventBufferManager } from '../sessions/event-buffer.js';
 import { scanWorkspaceTree } from '../workspace/tree-scanner.js';
+import { basename } from 'node:path';
 import type { ClientMessage, ServerMessage, FileNode } from '../protocol/messages.js';
 import { createFsHandlers, type FsServerMessage } from './fs.js';
 import { logger } from '../utils/logger.js';
@@ -624,6 +625,67 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         break;
       }
 
+      // ── Fleet status ─────────────────────────────────────
+      case 'fleet.status': {
+        const fleet = fleetManager.getFleetStatus();
+        let aggregateCost = 0;
+        let aggregateInput = 0;
+        let aggregateOutput = 0;
+
+        const enrichedWorkers = fleet.workers.map((w) => {
+          const workerSessionIds = fleetManager.getWorkerSessionIds(w.workerId);
+          const sessions = workerSessionIds.map((sid) => {
+            const session = sessionManager.tryGet(sid);
+            if (session) {
+              const meta = session.toMeta();
+              aggregateCost += meta.totalCost;
+              aggregateInput += meta.inputTokens;
+              aggregateOutput += meta.outputTokens;
+              return {
+                sessionId: sid,
+                status: meta.status,
+                totalCost: meta.totalCost,
+                turnCount: meta.turnCount,
+                inputTokens: meta.inputTokens,
+                outputTokens: meta.outputTokens,
+              };
+            }
+            return {
+              sessionId: sid,
+              status: 'unknown',
+              totalCost: 0,
+              turnCount: 0,
+              inputTokens: 0,
+              outputTokens: 0,
+            };
+          });
+
+          return {
+            workerId: w.workerId,
+            workingDir: w.workingDir,
+            dirName: basename(w.workingDir),
+            sessionCount: w.sessionCount,
+            uptimeMs: w.uptimeMs,
+            restartCount: w.restartCount,
+            healthy: w.healthy,
+            sessions,
+          };
+        });
+
+        sendToClient(ws, {
+          type: 'fleet.status.response',
+          totalWorkers: fleet.totalWorkers,
+          totalSessions: fleet.totalSessions,
+          aggregateCost,
+          aggregateTokens: {
+            input: aggregateInput,
+            output: aggregateOutput,
+          },
+          workers: enrichedWorkers,
+        });
+        break;
+      }
+
       // ── Filesystem browsing ──────────────────────────────
       case 'fs.ls': {
         await fsHandlers.handleFsLs(ws, message);
@@ -788,6 +850,36 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           broadcast({ type: 'agent.dismissed', agentId: event.agentId });
           break;
       }
+    });
+
+    // ── Fleet worker lifecycle events ──────────────────────
+    fleetManager.on('worker-spawned', (info) => {
+      broadcast({
+        type: 'fleet.worker.spawned',
+        workerId: info.workerId,
+        workingDir: info.workingDir,
+        dirName: info.dirName,
+      });
+    });
+
+    fleetManager.on('worker-crashed', (info) => {
+      broadcast({
+        type: 'fleet.worker.crashed',
+        workerId: info.workerId,
+        workingDir: info.workingDir,
+        dirName: info.dirName,
+        restartCount: info.restartCount,
+      });
+    });
+
+    fleetManager.on('worker-restarted', (info) => {
+      broadcast({
+        type: 'fleet.worker.restarted',
+        workerId: info.workerId,
+        workingDir: info.workingDir,
+        dirName: info.dirName,
+        restartCount: info.restartCount,
+      });
     });
 
     eventBus.on('server.message', serverMessageHandler);

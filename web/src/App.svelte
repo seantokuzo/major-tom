@@ -20,7 +20,10 @@
   import CharacterGallery from './lib/components/CharacterGallery.svelte';
   import PermissionModeSwitcher from './lib/components/PermissionModeSwitcher.svelte';
   import SessionPanel from './lib/components/SessionPanel.svelte';
+  import FleetPanel from './lib/components/FleetPanel.svelte';
+  import FleetIndicator from './lib/components/FleetIndicator.svelte';
   import { sessionStateManager } from './lib/stores/session-state.svelte';
+  import { fleetStore } from './lib/stores/fleet.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
   // ── Toast notifications for connection state ────────────────
@@ -260,6 +263,7 @@
           <AuthSettings />
           <NotificationToggle />
         </span>
+        <FleetIndicator />
         <button
           class="hamburger-btn"
           onclick={() => sessionStateManager.togglePanel()}
@@ -346,6 +350,7 @@
   </div>
   <Toast />
   <SessionPanel />
+  <FleetPanel />
 
   {#if relay.authChecked && !relay.user}
     <LoginScreen />
