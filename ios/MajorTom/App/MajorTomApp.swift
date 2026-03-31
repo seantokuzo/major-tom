@@ -41,6 +41,14 @@ struct MajorTomApp: App {
                 setupNotificationHandlers()
                 setupWatchConnectivity()
             }
+            .onChange(of: auth.userId) { _, newId in
+                relay.currentUserId = newId
+            }
+            .onChange(of: auth.userRole) { _, newRole in
+                if let newRole {
+                    relay.currentUserRole = newRole
+                }
+            }
             .onChange(of: auth.isPaired) { _, isPaired in
                 if isPaired {
                     Task {

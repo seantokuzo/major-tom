@@ -98,7 +98,10 @@ export function requireRole(minimumRole: UserRole) {
     if (!request.sessionUser) {
       return reply.code(401).send({ error: 'Authentication required' });
     }
-    const userRole = request.sessionUser.role ?? 'admin'; // legacy tokens default to admin
+    const userRole = request.sessionUser.role;
+    if (!userRole) {
+      return reply.code(403).send({ error: 'Insufficient permissions — role missing' });
+    }
     if (ROLE_HIERARCHY[userRole] < ROLE_HIERARCHY[minimumRole]) {
       return reply.code(403).send({ error: 'Insufficient permissions' });
     }

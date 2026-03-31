@@ -20,14 +20,14 @@
 
   async function handleCredentialResponse(response: google.accounts.id.CredentialResponse) {
     error = null;
-    const result = await relay.login(response.credential, needsInvite ? inviteCode : undefined);
+    const result = await relay.login(response.credential, needsInvite ? inviteCode.trim().toUpperCase() : undefined);
     if (result.success) {
       needsInvite = false;
       pendingCredential = null;
       inviteCode = '';
       toasts.success('Signed in successfully');
       relay.connect();
-    } else if (result.error?.includes('invite code required')) {
+    } else if ((result as Record<string, unknown>).code === 'INVITE_REQUIRED' || (result as Record<string, unknown>).inviteRequired === true || result.error?.includes('invite code required')) {
       needsInvite = true;
       pendingCredential = response.credential;
       error = 'Enter your invite code to join';
@@ -39,7 +39,8 @@
   async function submitWithInvite() {
     if (!pendingCredential || inviteCode.length < 8) return;
     error = null;
-    const result = await relay.login(pendingCredential, inviteCode);
+    const normalizedInvite = inviteCode.trim().toUpperCase();
+    const result = await relay.login(pendingCredential, normalizedInvite);
     if (result.success) {
       needsInvite = false;
       pendingCredential = null;

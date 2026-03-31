@@ -25,6 +25,13 @@
     return () => window.removeEventListener('keydown', onKeydown);
   });
 
+  function handleBackdropKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClose();
+    }
+  }
+
   function formatTime(iso: string): string {
     const date = new Date(iso);
     const now = new Date();
@@ -40,9 +47,14 @@
 </script>
 
 {#if open}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="panel-backdrop" onclick={onClose}>
+  <div
+    class="panel-backdrop"
+    role="button"
+    tabindex="0"
+    aria-label="Close activity feed"
+    onclick={onClose}
+    onkeydown={handleBackdropKeydown}
+  >
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="panel" onclick={(e) => e.stopPropagation()}>

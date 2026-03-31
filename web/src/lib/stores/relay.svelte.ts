@@ -177,8 +177,11 @@ class RelayStore {
   // Activity feed
   activityEntries = $state<ActivityEntry[]>([]);
 
-  // Annotations
-  annotations = $state<AnnotationEntry[]>([]);
+  // Annotations (per-session)
+  annotationsBySession = $state(new Map<string, AnnotationEntry[]>());
+
+  // Track pending handoff initiated by this client
+  private pendingHandoffSessionId: string | null = null;
 
   // Command palette
   inputPrefix = $state('');
@@ -206,6 +209,11 @@ class RelayStore {
   }
   get isAdmin(): boolean {
     return this.user?.role === 'admin';
+  }
+  /** Annotations for the current session */
+  get annotations(): AnnotationEntry[] {
+    if (!this.sessionId) return [];
+    return this.annotationsBySession.get(this.sessionId) ?? [];
   }
 
   /** Display name for the active session (from sessionStateManager) */
@@ -695,6 +703,7 @@ class RelayStore {
 
   handoffSession(sessionId: string, toUserId: string): void {
     if (!this.isConnected) return;
+    this.pendingHandoffSessionId = sessionId;
     this.socket.send({ type: 'session.handoff', sessionId, toUserId });
   }
 
@@ -1243,10 +1252,17 @@ class RelayStore {
         if (message.resolvedBy?.name) {
           const myId = this.user?.userId;
           if (myId !== message.resolvedBy.userId) {
+            const decisionLabels: Record<string, string> = {
+              allow: 'allowed',
+              deny: 'denied',
+              skip: 'skipped',
+              allow_always: 'always allowed',
+            };
+            const label = decisionLabels[message.decision] ?? message.decision;
             this.messages.push({
               id: uid(),
               role: 'system',
-              content: `${message.resolvedBy.name} ${message.decision}ed the request`,
+              content: `${message.resolvedBy.name} ${label} the request`,
               timestamp: new Date(),
             });
           }
@@ -1258,19 +1274,31 @@ class RelayStore {
         this.activityEntries = message.entries;
         break;
 
-      case 'annotation.added':
-        this.annotations = [...this.annotations, message.annotation];
+      case 'annotation.added': {
+        const sid = message.sessionId;
+        const existing = this.annotationsBySession.get(sid) ?? [];
+        const updated = new Map(this.annotationsBySession);
+        updated.set(sid, [...existing, message.annotation]);
+        this.annotationsBySession = updated;
         break;
+      }
 
-      case 'annotation.list.response':
-        this.annotations = message.annotations;
+      case 'annotation.list.response': {
+        const updated = new Map(this.annotationsBySession);
+        updated.set(message.sessionId, message.annotations);
+        this.annotationsBySession = updated;
         break;
+      }
 
       case 'session.handoff.response':
-        if (message.success) {
-          toasts.success('Session handed off');
-        } else {
-          toasts.error(message.error ?? 'Handoff failed');
+        // Only show toast if this client initiated the handoff
+        if (this.pendingHandoffSessionId === message.sessionId) {
+          this.pendingHandoffSessionId = null;
+          if (message.success) {
+            toasts.success('Session handed off');
+          } else {
+            toasts.error(message.error ?? 'Handoff failed');
+          }
         }
         break;
     }

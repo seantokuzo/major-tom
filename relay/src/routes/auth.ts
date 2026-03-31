@@ -241,13 +241,16 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
       try {
         const payload = await verifySessionToken(token);
 
-        // If JWT has userId/role, use them directly
+        // If JWT has userId/role, use them — but enrich with name/picture from registry
         if (payload.userId && payload.role) {
+          const registeredUser = await userRegistry.getUser(payload.userId);
           return {
             email: payload.email,
             sub: payload.sub,
             userId: payload.userId,
             role: payload.role,
+            name: registeredUser?.name,
+            picture: registeredUser?.picture,
           };
         }
 
@@ -294,7 +297,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
         return reply.code(401).send({ error: 'Authentication required' });
       }
 
-      const userRole = request.sessionUser.role ?? 'admin'; // legacy tokens default admin
+      const userRole = request.sessionUser.role;
       if (userRole !== 'admin') {
         return reply.code(403).send({ error: 'Admin access required' });
       }
@@ -322,7 +325,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
         return reply.code(401).send({ error: 'Authentication required' });
       }
 
-      const userRole = request.sessionUser.role ?? 'admin';
+      const userRole = request.sessionUser.role;
       if (userRole !== 'admin') {
         return reply.code(403).send({ error: 'Admin access required' });
       }

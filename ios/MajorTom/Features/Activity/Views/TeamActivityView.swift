@@ -85,23 +85,50 @@ struct ActivityRow: View {
         }
     }
 
+    private enum ActionCategory {
+        case connect, disconnect, session, approve, deny, prompt, handoff, invite, unknown
+    }
+
+    private func categorize(_ action: String) -> ActionCategory {
+        let lower = action.lowercased()
+
+        // Order matters: check "disconnect" before "connect" since "disconnect" contains "connect"
+        if lower.contains("disconnect") { return .disconnect }
+        if lower.contains("connect") { return .connect }
+        if lower.contains("session") { return .session }
+        // Approval: approved, approve, approval, allow
+        if lower.contains("approv") || lower.contains("allow") { return .approve }
+        // Denial: denied, deny
+        if lower.contains("den") { return .deny }
+        if lower.contains("prompt") { return .prompt }
+        // Handoff: handoff, handed off, hand off
+        if lower.contains("handoff") || lower.contains("handed") || lower.contains("hand off") { return .handoff }
+        // Invite: invite, invited
+        if lower.contains("invit") { return .invite }
+        return .unknown
+    }
+
     private func iconForAction(_ action: String) -> String {
-        if action.contains("connect") { return "antenna.radiowaves.left.and.right" }
-        if action.contains("disconnect") { return "antenna.radiowaves.left.and.right.slash" }
-        if action.contains("session") { return "terminal" }
-        if action.contains("approve") { return "checkmark.circle" }
-        if action.contains("deny") { return "xmark.circle" }
-        if action.contains("prompt") { return "text.bubble" }
-        if action.contains("handoff") { return "arrow.triangle.swap" }
-        if action.contains("invite") { return "person.badge.plus" }
-        return "person.circle"
+        switch categorize(action) {
+        case .connect:    return "antenna.radiowaves.left.and.right"
+        case .disconnect: return "antenna.radiowaves.left.and.right.slash"
+        case .session:    return "terminal"
+        case .approve:    return "checkmark.circle"
+        case .deny:       return "xmark.circle"
+        case .prompt:     return "text.bubble"
+        case .handoff:    return "arrow.triangle.swap"
+        case .invite:     return "person.badge.plus"
+        case .unknown:    return "person.circle"
+        }
     }
 
     private func colorForAction(_ action: String) -> Color {
-        if action.contains("approve") { return MajorTomTheme.Colors.allow }
-        if action.contains("deny") { return MajorTomTheme.Colors.deny }
-        if action.contains("disconnect") { return MajorTomTheme.Colors.textTertiary }
-        return MajorTomTheme.Colors.accent
+        switch categorize(action) {
+        case .approve:    return MajorTomTheme.Colors.allow
+        case .deny:       return MajorTomTheme.Colors.deny
+        case .disconnect: return MajorTomTheme.Colors.textTertiary
+        default:          return MajorTomTheme.Colors.accent
+        }
     }
 }
 

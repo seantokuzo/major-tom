@@ -61,7 +61,7 @@ final class RelayService {
     var teamUsers: [TeamUser] = []
     var annotations: [String: [SessionAnnotation]] = [:]  // keyed by sessionId
     var activityEntries: [ActivityEntry] = []
-    var currentUserRole: UserRole = .admin
+    var currentUserRole: UserRole = .viewer
     var currentUserId: String?
 
     // Session-scoped allowlist (tool names auto-approved via "Always")

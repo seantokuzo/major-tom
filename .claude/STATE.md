@@ -7,7 +7,7 @@
 
 ## Current Phase
 
-**Phase 8: "Fleet Command"** — ALL WAVES COMPLETE
+**Phase 9: "The Social Layer"** — ALL WAVES COMPLETE
 
 ## Strategy
 
@@ -320,6 +320,66 @@
 - [x] Wave 3: Analytics engine with charts, smart notifications with priority scoring
 - [x] Wave 4: Office 2.0 themes/moods, Apple Watch companion, iOS Widgets, Live Activities
 - [x] Wave 5: Achievement engine (30 achievements), expanded Siri Shortcuts (9 total), achievement UI on PWA + iOS
+
+## Completed — Phase 9: "The Social Layer"
+
+### Wave 1: Shared Observation — COMPLETE
+
+#### Track A: Relay — Multi-User Auth + Presence (PR #80)
+- [x] User registry — JSON persistence in ~/.major-tom/users/, invite code generation/redemption
+- [x] First-user bootstrap — first Google OAuth login auto-creates admin, zero-config migration
+- [x] Invite flow — admin generates 8-char code, invitee presents during OAuth, registered with role
+- [x] JWT extension — SessionPayload gains userId + role, legacy token fallback via email lookup
+- [x] Auth refactor — factory pattern createAuthRoutes(deps), requireRole() helper with role hierarchy
+- [x] PresenceManager — tracks userId↔WebSocket↔watchingSession, multi-device support
+- [x] Session-scoped broadcast — broadcastToSession() + broadcastToAll() replaces global broadcast()
+- [x] Role guard — VIEWER_ALLOWED and ADMIN_ONLY sets in WS message router
+- [x] User management messages — user.list/invite/revoke/updateRole handlers
+
+#### Track B: PWA — Presence UI + Shared Sessions (PR #80)
+- [x] Presence store — Svelte 5 runes, reactive watcher tracking per session
+- [x] PresenceAvatars — avatar stack with picture/initials/overflow, deterministic colors
+- [x] UserMenu — header dropdown with avatar, role badge, online count, sign-out
+- [x] WatchingIndicator — "X is watching" bar in chat view
+- [x] Login flow — invite code detection on 403, pendingCredential re-submit
+- [x] Viewer mode — disabled input for viewer role
+- [x] Session panel presence — avatar dots on session rows
+- [x] IndexedDB v4 — teamUsers table
+
+### Wave 2: Collaboration Features — COMPLETE
+
+#### Track C: Relay — Annotations + Handoff + Activity (PR #81)
+- [x] AnnotationStore — per-session JSON persistence at ~/.major-tom/annotations/, debounced writes
+- [x] Annotation handlers — annotation.add/list with session-scoped broadcast
+- [x] Session ownership — ownerId field on Session, handoff logic (owner/admin only)
+- [x] ActivityFeed — in-memory ring buffer (200 entries), records key team actions
+- [x] Activity broadcast — session.start, approval resolution events auto-recorded
+
+#### Track D: iOS — Multi-User Experience (PR #81)
+- [x] iOS models — TeamUser, UserRole, UserPresence, SessionAnnotation, ActivityEntry
+- [x] iOS message types — 22 new types (11 client, 11 server) with Codable structs
+- [x] RelayService extension — team state, 7 callbacks, 10 send methods, 11 message handlers
+- [x] AuthService — userId + userRole from login response
+- [x] TeamSettingsView — member list with online indicators, role badges, invite code generation
+- [x] TeamActivityView — chronological feed with action-specific icons, relative timestamps
+- [x] Settings navigation — links to Team and Activity views
+
+#### Track E: PWA — Activity + Notifications (PR #81)
+- [x] ActivityFeed component — slide-out panel with team activity entries
+- [x] ActivityIndicator — header badge toggling feed panel
+- [x] NotificationSettings — per-channel toggles (Approvals, @Mentions, Team Activity)
+- [x] Relay store — activityEntries/annotations state, annotation/handoff/activity methods
+
+### Phase 9 Success Criteria — ALL MET
+
+- [x] Wave 1: Multi-user auth with invite-based signup, real-time presence tracking, shared session observation
+- [x] Wave 1: Role enforcement (admin/operator/viewer), viewer mode with disabled input
+- [x] Wave 1: First-user bootstrap with zero-config migration for existing single-user setups
+- [x] Wave 2: Session annotations with @mention support
+- [x] Wave 2: Session ownership and handoff between users
+- [x] Wave 2: Team activity feed recording key actions
+- [x] Wave 2: iOS multi-user experience with team settings and activity views
+- [x] Wave 2: Per-channel notification settings
 
 ---
 
