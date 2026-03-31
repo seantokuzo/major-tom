@@ -22,6 +22,7 @@ enum ShortcutActionKey {
         case sendPrompt
         case quickApprove
         case toggleGodMode
+        case checkAchievements
     }
 
     /// Returns the App Group `UserDefaults` used for cross-process shortcut communication.
@@ -242,6 +243,20 @@ struct ToggleGodModeIntent: AppIntent {
     }
 }
 
+// MARK: - Check Achievements Intent
+
+struct CheckAchievementsIntent: AppIntent {
+    static var title: LocalizedStringResource = "Check Achievements"
+    static var description: IntentDescription = "Opens Major Tom to the Achievements tab to see your progress"
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        ShortcutActionKey.postAction(.checkAchievements)
+        NotificationCenter.default.post(name: .checkAchievementsFromShortcut, object: nil)
+        return .result()
+    }
+}
+
 // MARK: - App Shortcuts Provider
 
 struct MajorTomShortcutsProvider: AppShortcutsProvider {
@@ -341,6 +356,18 @@ struct MajorTomShortcutsProvider: AppShortcutsProvider {
             shortTitle: "Toggle God Mode",
             systemImageName: "bolt.circle"
         )
+
+        AppShortcut(
+            intent: CheckAchievementsIntent(),
+            phrases: [
+                "Show my \(.applicationName) achievements",
+                "Check achievements in \(.applicationName)",
+                "\(.applicationName) achievements",
+                "Achievement progress in \(.applicationName)"
+            ],
+            shortTitle: "Check Achievements",
+            systemImageName: "trophy"
+        )
     }
 }
 
@@ -353,4 +380,5 @@ extension Notification.Name {
     static let sendPromptFromShortcut = Notification.Name("com.majortom.shortcut.sendPrompt")
     static let quickApproveFromShortcut = Notification.Name("com.majortom.shortcut.quickApprove")
     static let toggleGodModeFromShortcut = Notification.Name("com.majortom.shortcut.toggleGodMode")
+    static let checkAchievementsFromShortcut = Notification.Name("com.majortom.shortcut.checkAchievements")
 }

@@ -304,6 +304,27 @@ final class OfficeViewModel {
         }
     }
 
+    // MARK: - Achievement Celebration
+
+    /// Trigger a celebration on an agent when an achievement is unlocked.
+    func handleAgentCelebration(id: String) {
+        guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
+        let previousStatus = agents[index].status
+        let previousTask = agents[index].currentTask
+        agents[index].status = .celebrating
+        agents[index].currentTask = "Achievement unlocked!"
+
+        // Restore previous state after celebration
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.5))
+            if let idx = agents.firstIndex(where: { $0.id == id }),
+               agents[idx].status == .celebrating {
+                agents[idx].status = previousStatus
+                agents[idx].currentTask = previousTask
+            }
+        }
+    }
+
     // MARK: - Agent Selection
 
     /// Select an agent for the inspector view.

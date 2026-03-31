@@ -55,6 +55,9 @@ enum MessageType: String, Codable {
     case fleetWorkerSpawned = "fleet.worker.spawned"
     case fleetWorkerCrashed = "fleet.worker.crashed"
     case fleetWorkerRestarted = "fleet.worker.restarted"
+    case achievementUnlocked = "achievement.unlocked"
+    case achievementProgress = "achievement.progress"
+    case achievementListResponse = "achievement.list.response"
     case error
 }
 
