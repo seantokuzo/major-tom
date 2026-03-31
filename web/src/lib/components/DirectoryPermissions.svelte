@@ -1,7 +1,7 @@
 <script lang="ts">
   import { relay } from '../stores/relay.svelte';
 
-  let { userId }: { userId: string } = $props();
+  let { userId, userRole }: { userId: string; userRole?: string } = $props();
 
   let newPath = $state('');
   let paths = $derived(relay.userSandboxPaths.get(userId) ?? []);
@@ -41,7 +41,11 @@
   <div class="dir-perms-header">
     <h4 class="dir-perms-title">Directory Access</h4>
     {#if paths.length === 0}
-      <span class="badge badge-unrestricted">Unrestricted</span>
+      {#if userRole && userRole !== 'admin'}
+        <span class="badge badge-no-access">No access</span>
+      {:else}
+        <span class="badge badge-unrestricted">Unrestricted</span>
+      {/if}
     {:else}
       <span class="badge badge-restricted">{paths.length} path{paths.length !== 1 ? 's' : ''}</span>
     {/if}
@@ -80,7 +84,7 @@
 
   {#if paths.length > 0}
     <button class="btn-clear" onclick={clearAll}>
-      Clear Restrictions
+      {userRole && userRole !== 'admin' ? 'Remove All Access' : 'Clear Restrictions'}
     </button>
   {/if}
 </div>
@@ -122,6 +126,11 @@
 
   .badge-unrestricted {
     background: var(--allow);
+    color: #000;
+  }
+
+  .badge-no-access {
+    background: var(--text-tertiary);
     color: #000;
   }
 

@@ -930,19 +930,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       // ── Filesystem browsing ──────────────────────────────
       case 'fs.ls': {
-        // SandboxGuard: check per-user access
-        if (sandboxGuard) {
-          const fsUserId = presenceManager.getUserId(ws);
-          const fsUserRole = presenceManager.getUserRole(ws);
-          if (fsUserId && fsUserRole) {
-            const fsTarget = resolve(fsHandlers.sandboxRoot, message.path || '.');
-            if (!await sandboxGuard.canAccess(fsUserId, fsUserRole, fsTarget)) {
-              sendToClient(ws, { type: 'fs.error' as ServerMessage['type'], message: 'Access denied: you do not have permission to access this directory', path: message.path } as ServerMessage);
-              break;
-            }
-          }
-        }
-        await fsHandlers.handleFsLs(ws, message);
+        // SandboxGuard: for fs.ls, allow listing ancestor directories with filtered results
+        // instead of hard-denying — users need to navigate to allowed subtrees
+        await fsHandlers.handleFsLs(ws, message, sandboxGuard ? {
+          guard: sandboxGuard,
+          userId: presenceManager.getUserId(ws),
+          role: presenceManager.getUserRole(ws),
+        } : undefined);
         break;
       }
 

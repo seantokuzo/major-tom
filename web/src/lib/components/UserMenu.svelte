@@ -102,7 +102,7 @@
                   </button>
                   {#if expandedUserId === user.userId}
                     <div class="dir-perms-wrapper">
-                      <DirectoryPermissions userId={user.userId} />
+                      <DirectoryPermissions userId={user.userId} userRole={user.role} />
                     </div>
                   {/if}
                 </div>

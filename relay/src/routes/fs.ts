@@ -9,6 +9,8 @@ import { readdir, readFile, lstat, realpath } from 'node:fs/promises';
 import { resolve, join, relative, basename, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { WebSocket } from 'ws';
+import type { SandboxGuard } from '../security/sandbox-guard.js';
+import type { UserRole } from '../users/types.js';
 import { logger } from '../utils/logger.js';
 
 // ── Types ────────────────────────────────────────────────────
@@ -19,6 +21,7 @@ export interface FsEntry {
   size: number;
   modified: string; // ISO 8601
   permissions?: string;
+  restricted?: boolean; // Set when directory is a structural ancestor (sandbox filtering)
 }
 
 export interface FsLsMessage {
@@ -160,7 +163,7 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
 
   logger.info({ sandboxRoot }, 'Filesystem sandbox initialized');
 
-  async function handleFsLs(ws: WebSocket, message: FsLsMessage): Promise<void> {
+  async function handleFsLs(ws: WebSocket, message: FsLsMessage, sandboxCtx?: { guard: SandboxGuard; userId?: string; role?: UserRole }): Promise<void> {
     const requestedPath = message.path || '.';
     const resolved = await validatePath(requestedPath, sandboxRoot, canonicalRoot);
 
@@ -222,12 +225,25 @@ export function createFsHandlers(sendToClient: (ws: WebSocket, msg: FsServerMess
         return a.name.localeCompare(b.name);
       });
 
+      // SandboxGuard: filter entries based on per-user directory access
+      let filteredEntries: FsEntry[] = entries;
+      if (sandboxCtx?.guard && sandboxCtx.userId && sandboxCtx.role) {
+        const mapped = entries.map(e => ({ name: e.name, isDirectory: e.type === 'directory' }));
+        const filtered = await sandboxCtx.guard.filterEntries(
+          sandboxCtx.userId, sandboxCtx.role, resolved, mapped,
+        );
+        const allowedNames = new Map(filtered.map(f => [f.name, f.restricted]));
+        filteredEntries = entries
+          .filter(e => allowedNames.has(e.name))
+          .map(e => allowedNames.get(e.name) ? { ...e, restricted: true } : e);
+      }
+
       // Return a display-friendly path relative to sandbox
       const displayPath = relative(sandboxRoot, resolved) || '.';
       sendToClient(ws, {
         type: 'fs.ls.response',
         path: displayPath,
-        entries,
+        entries: filteredEntries,
       });
     } catch (err) {
       logger.warn({ path: resolved, err: err instanceof Error ? err.message : String(err) }, 'fs.ls failed');

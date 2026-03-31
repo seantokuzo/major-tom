@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DirectoryPermissionsView: View {
     let userId: String
+    let userRole: UserRole
     let relay: RelayService
     @State private var newPath = ""
 
@@ -13,9 +14,15 @@ struct DirectoryPermissionsView: View {
         List {
             if paths.isEmpty {
                 Section {
-                    Label("Unrestricted Access", systemImage: "lock.open")
-                        .foregroundStyle(.green)
-                        .font(MajorTomTheme.Typography.body)
+                    if userRole == .admin {
+                        Label("Unrestricted Access", systemImage: "lock.open")
+                            .foregroundStyle(.green)
+                            .font(MajorTomTheme.Typography.body)
+                    } else {
+                        Label("No Access", systemImage: "lock")
+                            .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+                            .font(MajorTomTheme.Typography.body)
+                    }
                 }
                 .listRowBackground(MajorTomTheme.Colors.surface)
             }
@@ -53,7 +60,7 @@ struct DirectoryPermissionsView: View {
 
             if !paths.isEmpty {
                 Section {
-                    Button("Clear All Restrictions", role: .destructive) {
+                    Button(userRole == .admin ? "Clear All Restrictions" : "Remove All Access", role: .destructive) {
                         clearAll()
                     }
                 }
@@ -101,7 +108,7 @@ struct DirectoryPermissionsView: View {
 
 #Preview {
     NavigationStack {
-        DirectoryPermissionsView(userId: "test-user", relay: RelayService())
+        DirectoryPermissionsView(userId: "test-user", userRole: .operator, relay: RelayService())
     }
     .preferredColorScheme(.dark)
 }

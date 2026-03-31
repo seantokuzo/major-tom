@@ -82,7 +82,9 @@ export class SandboxGuard {
         continue; // Skip paths that don't exist
       }
       const rel = relative(realAllowed, realTarget);
-      if (!rel.startsWith('..') && !rel.startsWith(sep)) {
+      const isWithin =
+        rel === '' || (rel !== '..' && !rel.startsWith('..' + sep));
+      if (isWithin) {
         return true;
       }
     }
@@ -138,7 +140,7 @@ export class SandboxGuard {
         continue;
       }
       const rel = relative(realDir, realAllowed);
-      if (!rel.startsWith('..') && !rel.startsWith(sep)) {
+      if (rel === '' || (rel !== '..' && !rel.startsWith('..' + sep))) {
         return true;
       }
     }

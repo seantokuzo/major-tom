@@ -165,7 +165,7 @@ struct TeamUserRow: View {
 
             if isAdmin {
                 NavigationLink {
-                    DirectoryPermissionsView(userId: user.id, relay: relay)
+                    DirectoryPermissionsView(userId: user.id, userRole: user.role, relay: relay)
                 } label: {
                     Image(systemName: "folder.badge.gearshape")
                         .foregroundStyle(MajorTomTheme.Colors.textTertiary)
