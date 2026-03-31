@@ -56,6 +56,9 @@ final class RelayService {
     var fleetStatus: FleetStatus?
     weak var fleetViewModel: FleetViewModel?
 
+    // Auth methods (fetched from relay)
+    var authMethods: AuthMethods?
+
     // Team / multi-user state
     var teamPresence: [UserPresence] = []
     var teamUsers: [TeamUser] = []
@@ -141,6 +144,27 @@ final class RelayService {
             isConnected: false
         ))
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // MARK: - Auth Methods
+
+    /// Fetch available authentication methods from the relay server.
+    /// Call this early (when the relay URL is known) to adapt UI accordingly.
+    func fetchAuthMethods(serverURL: String) async {
+        let scheme = serverURL.contains("://") ? "" : "http://"
+        let baseURL = "\(scheme)\(serverURL)"
+        guard let url = URL(string: "\(baseURL)/auth/methods") else { return }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else { return }
+            let methods = try JSONDecoder().decode(AuthMethods.self, from: data)
+            self.authMethods = methods
+        } catch {
+            // If the endpoint doesn't exist (older relay), default to nil
+            // which means "show everything" for backwards compat
+        }
     }
 
     // MARK: - Session

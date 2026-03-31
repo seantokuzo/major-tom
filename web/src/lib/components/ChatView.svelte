@@ -208,8 +208,10 @@
   <!-- Countdown toasts (delay mode) -->
   <CountdownToast bind:this={countdownToastRef} />
 
-  <!-- Watching indicator — shows who else is viewing this session -->
-  <WatchingIndicator />
+  <!-- Watching indicator — shows who else is viewing this session (multi-user only) -->
+  {#if relay.multiUserEnabled}
+    <WatchingIndicator />
+  {/if}
 
   <!-- Approvals bar — in delay mode, only show approvals that were cancelled from countdown -->
   {#if visibleApprovals.length > 0}

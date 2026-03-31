@@ -138,6 +138,7 @@ class RelayStore {
   // Auth (Google OAuth)
   user = $state<AuthUser | null>(null);
   authChecked = $state(false);
+  authMethods = $state<{ google: boolean; pin: boolean; multiUser: boolean } | null>(null);
 
   // Connection
   connectionState = $state<ConnectionState>('disconnected');
@@ -215,6 +216,9 @@ class RelayStore {
     if (!this.sessionId) return [];
     return this.annotationsBySession.get(this.sessionId) ?? [];
   }
+  get multiUserEnabled(): boolean {
+    return this.authMethods?.multiUser ?? false;
+  }
 
   /** Display name for the active session (from sessionStateManager) */
   get sessionName(): string {
@@ -288,6 +292,17 @@ class RelayStore {
       this.authChecked = true;
       return;
     }
+
+    // Fetch available auth methods first (before WebSocket connection)
+    try {
+      const methodsRes = await fetch('/auth/methods');
+      if (methodsRes.ok) {
+        this.authMethods = await methodsRes.json();
+      }
+    } catch {
+      // Relay not reachable — authMethods stays null (loading state)
+    }
+
     try {
       const res = await fetch('/auth/me', { credentials: 'include' });
       if (res.ok) {

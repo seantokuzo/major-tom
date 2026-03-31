@@ -35,6 +35,8 @@
     return () => window.removeEventListener('keydown', onKeydown);
   });
 
+  const multiUser = $derived(relay.multiUserEnabled);
+
   const roleBadgeColor: Record<string, string> = {
     admin: 'var(--accent)',
     operator: 'var(--allow)',
@@ -52,7 +54,7 @@
           {relay.user.email[0].toUpperCase()}
         </span>
       {/if}
-      {#if presenceStore.onlineCount > 1}
+      {#if multiUser && presenceStore.onlineCount > 1}
         <span class="online-badge">{presenceStore.onlineCount}</span>
       {/if}
     </button>
@@ -70,7 +72,7 @@
         <div class="user-info">
           <span class="user-name">{relay.user.name ?? relay.user.email}</span>
           <span class="user-email">{relay.user.email}</span>
-          {#if relay.user.role}
+          {#if multiUser && relay.user.role}
             <span
               class="role-badge"
               style="background: {roleBadgeColor[relay.user.role] ?? 'var(--text-tertiary)'}"
@@ -79,9 +81,11 @@
             </span>
           {/if}
         </div>
-        <div class="online-section">
-          <span class="online-label">{presenceStore.onlineCount} online</span>
-        </div>
+        {#if multiUser}
+          <div class="online-section">
+            <span class="online-label">{presenceStore.onlineCount} online</span>
+          </div>
+        {/if}
         <button class="menu-item" onclick={handleLogout}>Sign out</button>
       </div>
     {/if}

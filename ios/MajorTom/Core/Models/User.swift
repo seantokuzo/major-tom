@@ -14,6 +14,13 @@ enum UserRole: String, Codable, CaseIterable {
     }
 }
 
+/// Authentication methods available on the relay server.
+struct AuthMethods: Codable {
+    let google: Bool
+    let pin: Bool
+    let multiUser: Bool
+}
+
 struct TeamUser: Identifiable, Codable {
     let id: String
     let email: String

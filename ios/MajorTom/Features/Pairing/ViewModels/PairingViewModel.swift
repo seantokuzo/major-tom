@@ -5,6 +5,8 @@ import Foundation
 final class PairingViewModel {
     var pin: String = ""
     var serverAddress: String = ""
+    var authMethods: AuthMethods?
+    var isFetchingMethods = false
 
     private let auth: AuthService
 
@@ -24,6 +26,40 @@ final class PairingViewModel {
 
     var canSubmit: Bool {
         pin.count == 6 && !isPairing
+    }
+
+    /// Whether PIN auth is available (or auth methods haven't been fetched yet).
+    var isPinEnabled: Bool {
+        authMethods?.pin ?? true
+    }
+
+    /// Whether any auth method is available.
+    var hasAnyAuthMethod: Bool {
+        guard let methods = authMethods else { return true }
+        return methods.pin || methods.google
+    }
+
+    /// Fetch auth methods from the relay to adapt the login UI.
+    func fetchAuthMethods() async {
+        let trimmed = serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        isFetchingMethods = true
+        defer { isFetchingMethods = false }
+
+        let scheme = trimmed.contains("://") ? "" : "http://"
+        let baseURL = "\(scheme)\(trimmed)"
+        guard let url = URL(string: "\(baseURL)/auth/methods") else { return }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else { return }
+            authMethods = try JSONDecoder().decode(AuthMethods.self, from: data)
+        } catch {
+            // Older relays may not have this endpoint — show all methods
+            authMethods = nil
+        }
     }
 
     func submitPIN() async {

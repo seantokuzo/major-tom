@@ -123,23 +123,43 @@ struct SettingsView: View {
 
     // MARK: - Team
 
-    private var teamSection: some View {
-        Section {
-            NavigationLink {
-                TeamSettingsView(relay: relay, auth: auth)
-            } label: {
-                Label("Team Members", systemImage: "person.3")
-            }
-            .listRowBackground(MajorTomTheme.Colors.surface)
+    /// Multi-user is enabled when the relay explicitly reports it, or when
+    /// we haven't fetched auth methods yet (backwards compat with older relays).
+    private var isMultiUserEnabled: Bool {
+        relay.authMethods?.multiUser ?? true
+    }
 
-            NavigationLink {
-                TeamActivityView(relay: relay)
-            } label: {
-                Label("Team Activity", systemImage: "clock.arrow.circlepath")
+    @ViewBuilder
+    private var teamSection: some View {
+        if isMultiUserEnabled {
+            Section {
+                NavigationLink {
+                    TeamSettingsView(relay: relay, auth: auth)
+                } label: {
+                    Label("Team Members", systemImage: "person.3")
+                }
+                .listRowBackground(MajorTomTheme.Colors.surface)
+
+                NavigationLink {
+                    TeamActivityView(relay: relay)
+                } label: {
+                    Label("Team Activity", systemImage: "clock.arrow.circlepath")
+                }
+                .listRowBackground(MajorTomTheme.Colors.surface)
+            } header: {
+                HStack {
+                    Text("Team")
+                    Spacer()
+                    Text("Team Mode")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(MajorTomTheme.Colors.accent.opacity(0.2))
+                        .foregroundStyle(MajorTomTheme.Colors.accent)
+                        .clipShape(Capsule())
+                }
             }
-            .listRowBackground(MajorTomTheme.Colors.surface)
-        } header: {
-            Text("Team")
         }
     }
 

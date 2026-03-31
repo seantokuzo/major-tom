@@ -40,20 +40,26 @@ struct MajorTomApp: App {
                 }
                 setupNotificationHandlers()
                 setupWatchConnectivity()
+                // Fetch auth methods on launch for already-paired devices
+                if auth.isPaired {
+                    Task {
+                        await relay.fetchAuthMethods(serverURL: auth.serverURL)
+                    }
+                }
             }
             .onChange(of: auth.userId) { _, newId in
                 relay.currentUserId = newId
             }
             .onChange(of: auth.userRole) { _, newRole in
-                if let newRole {
-                    relay.currentUserRole = newRole
-                }
+                relay.currentUserRole = newRole ?? .viewer
             }
             .onChange(of: auth.isPaired) { _, isPaired in
                 if isPaired {
                     Task {
                         // Request notification permission after pairing
                         _ = await notificationService.requestPermission()
+                        // Fetch auth methods to adapt UI (team features, etc.)
+                        await relay.fetchAuthMethods(serverURL: auth.serverURL)
                         try? await relay.connect(to: auth.serverURL)
                     }
                 }

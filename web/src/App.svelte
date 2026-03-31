@@ -265,14 +265,19 @@
         <span class="session-label" title={relay.sessionName}>{relay.sessionName}</span>
       {/if}
       <div class="header-actions">
-        <UserMenu />
+        {#if relay.multiUserEnabled}
+          <span class="team-badge">Team</span>
+          <UserMenu />
+        {/if}
         <span class="header-settings">
           <AuthSettings />
           <NotificationToggle />
           <NotificationSettings />
         </span>
         <AchievementIndicator />
-        <ActivityIndicator />
+        {#if relay.multiUserEnabled}
+          <ActivityIndicator />
+        {/if}
         <AnalyticsIndicator />
         <FleetIndicator />
         <button
@@ -502,6 +507,20 @@
     display: flex;
     align-items: center;
     gap: var(--sp-sm);
+    flex-shrink: 0;
+  }
+
+  .team-badge {
+    font-family: var(--font-mono);
+    font-size: 0.5rem;
+    font-weight: 700;
+    color: var(--bg);
+    background: var(--accent-dim);
+    padding: 1px 6px;
+    border-radius: var(--r-full);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    line-height: 1.4;
     flex-shrink: 0;
   }
 
