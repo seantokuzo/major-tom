@@ -66,6 +66,11 @@ export class UserRegistry {
     logger.info({ userCount: this.registry.length, pendingInvites: this.invites.filter(i => !i.redeemedBy).length }, 'User registry loaded');
   }
 
+  /** Get the number of registered users (synchronous) */
+  getUserCount(): number {
+    return this.registry.length;
+  }
+
   /** Get a user by ID */
   async getUser(id: string): Promise<User | null> {
     try {

@@ -8,6 +8,11 @@
   let googleAvailable = $state(false);
   let buttonContainer: HTMLDivElement;
 
+  // Derived from relay auth methods — which login options the server supports
+  const googleEnabled = $derived(relay.authMethods?.google ?? false);
+  const pinEnabled = $derived(relay.authMethods?.pin ?? true); // default true since PIN is always generated
+  const noAuthMethods = $derived(relay.authMethods !== null && !googleEnabled && !pinEnabled);
+
   // PIN state
   let pinDigits = $state<string[]>(['', '', '', '', '', '']);
   let pinInputs = $state<HTMLInputElement[]>([]);
@@ -127,7 +132,8 @@
 
   onMount(async () => {
     try {
-      // Check if Google OAuth is configured
+      // Only attempt Google OAuth if the server reports it as available
+      if (!googleEnabled) throw new Error('Google OAuth not enabled');
       const res = await fetch('/auth/google/client-id', { credentials: 'include' });
       if (res.ok) {
         const { clientId } = await res.json();
@@ -186,44 +192,64 @@
     <div class="login-form">
       {#if loading}
         <p class="status-text">Loading sign-in...</p>
+      {:else if noAuthMethods}
+        <!-- Oops screen — no auth methods configured -->
+        <div class="oops-screen">
+          <div class="oops-scene">
+            <div class="oops-sprite"></div>
+            <div class="oops-wall"></div>
+            <div class="oops-bubble">Hey boss, someone forgot to enable login!</div>
+          </div>
+          <div class="oops-info">
+            <p class="oops-title">No authentication methods enabled</p>
+            <div class="oops-hints">
+              <p class="oops-hint"><span class="oops-var">GOOGLE_CLIENT_ID</span> in .env to enable Google login</p>
+              <p class="oops-hint"><span class="oops-var">AUTH_PIN_ENABLED=true</span> to enable PIN pairing</p>
+            </div>
+          </div>
+        </div>
       {:else}
         {#if error}
           <p class="error-message">{error}</p>
         {/if}
 
-        <div class="google-btn-container" bind:this={buttonContainer} class:hidden={!googleAvailable}></div>
+        {#if googleEnabled}
+          <div class="google-btn-container" bind:this={buttonContainer} class:hidden={!googleAvailable}></div>
+        {/if}
 
-        {#if googleAvailable}
+        {#if googleEnabled && pinEnabled}
           <div class="divider">
             <span class="divider-line"></span>
             <span class="divider-text">or enter PIN</span>
             <span class="divider-line"></span>
           </div>
-        {:else}
+        {:else if pinEnabled && !googleEnabled}
           <p class="status-text">Enter the PIN from server startup</p>
         {/if}
 
-        <!-- PIN input -->
-        <div class="pin-row">
-          {#each pinDigits as digit, i}
-            <input
-              bind:this={pinInputs[i]}
-              class="pin-digit"
-              type="text"
-              inputmode="numeric"
-              maxlength="1"
-              value={digit}
-              oninput={(e) => handlePinInput(i, e)}
-              onkeydown={(e) => handlePinKeydown(i, e)}
-              onpaste={handlePinPaste}
-              disabled={pinSubmitting}
-              aria-label={`PIN digit ${i + 1}`}
-            />
-          {/each}
-        </div>
+        {#if pinEnabled}
+          <!-- PIN input -->
+          <div class="pin-row">
+            {#each pinDigits as digit, i}
+              <input
+                bind:this={pinInputs[i]}
+                class="pin-digit"
+                type="text"
+                inputmode="numeric"
+                maxlength="1"
+                value={digit}
+                oninput={(e) => handlePinInput(i, e)}
+                onkeydown={(e) => handlePinKeydown(i, e)}
+                onpaste={handlePinPaste}
+                disabled={pinSubmitting}
+                aria-label={`PIN digit ${i + 1}`}
+              />
+            {/each}
+          </div>
 
-        {#if pinSubmitting}
-          <p class="status-text">Verifying...</p>
+          {#if pinSubmitting}
+            <p class="status-text">Verifying...</p>
+          {/if}
         {/if}
 
         {#if needsInvite}
@@ -444,5 +470,147 @@
   .invite-submit:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  /* ── Oops screen — no auth methods ── */
+
+  .oops-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-xl);
+    padding: var(--sp-lg) 0;
+  }
+
+  .oops-scene {
+    position: relative;
+    width: 160px;
+    height: 80px;
+  }
+
+  .oops-sprite {
+    position: absolute;
+    bottom: 0;
+    width: 16px;
+    height: 24px;
+    background: var(--accent);
+    border-radius: 3px 3px 0 0;
+    animation: oops-walk 1.6s ease-in-out infinite alternate;
+  }
+
+  .oops-sprite::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    background: var(--accent);
+    border-radius: 50%;
+  }
+
+  .oops-sprite::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 16px;
+    height: 4px;
+    background: var(--accent-dim);
+    border-radius: 0 0 2px 2px;
+    animation: oops-legs 0.4s steps(2) infinite;
+  }
+
+  @keyframes oops-walk {
+    0% { left: 10px; }
+    45% { left: 120px; }
+    55% { left: 120px; }
+    100% { left: 10px; }
+  }
+
+  @keyframes oops-legs {
+    0% { transform: scaleX(1); }
+    50% { transform: scaleX(0.6); }
+  }
+
+  .oops-wall {
+    position: absolute;
+    right: 10px;
+    bottom: 0;
+    width: 8px;
+    height: 40px;
+    background: var(--border);
+    border-radius: 2px;
+  }
+
+  .oops-wall::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -2px;
+    width: 12px;
+    height: 4px;
+    background: var(--text-tertiary);
+    border-radius: 1px;
+  }
+
+  .oops-bubble {
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--text-secondary);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .oops-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid var(--border);
+  }
+
+  .oops-info {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-md);
+  }
+
+  .oops-title {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .oops-hints {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-xs);
+  }
+
+  .oops-hint {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+  }
+
+  .oops-var {
+    color: var(--accent);
+    font-weight: 600;
   }
 </style>

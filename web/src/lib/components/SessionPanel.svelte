@@ -4,6 +4,8 @@
   import { presenceStore } from '../stores/presence.svelte';
   import PresenceAvatars from './PresenceAvatars.svelte';
 
+  const showPresence = $derived(relay.multiUserEnabled);
+
   // Request session list whenever panel opens
   $effect(() => {
     if (sessionStateManager.panelOpen) {
@@ -134,9 +136,11 @@
                 {#if entry.sessionId === relay.sessionId}
                   <span class="current-badge">current</span>
                 {/if}
-                {@const watchers = presenceStore.watchersFor(entry.sessionId)}
-                {#if watchers.length > 0}
-                  <PresenceAvatars users={watchers} maxShow={2} size="sm" />
+                {#if showPresence}
+                  {@const watchers = presenceStore.watchersFor(entry.sessionId)}
+                  {#if watchers.length > 0}
+                    <PresenceAvatars users={watchers} maxShow={2} size="sm" />
+                  {/if}
                 {/if}
               </div>
               <div class="session-row-meta">
