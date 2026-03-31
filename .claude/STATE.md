@@ -7,7 +7,7 @@
 
 ## Current Phase
 
-**Phase 8: "Fleet Command"** — Waves 1-4 COMPLETE, Wave 5 next
+**Phase 8: "Fleet Command"** — ALL WAVES COMPLETE
 
 ## Strategy
 
@@ -183,7 +183,7 @@
 - [x] Multi-session switching with per-session isolated state
 - [x] Office sprites scoped per-session with lazy rendering
 
-## In Progress — Phase 8: "Fleet Command"
+## Completed — Phase 8: "Fleet Command"
 
 ### Wave 1: Tech Debt + Error Recovery — COMPLETE
 
@@ -276,7 +276,50 @@
 - [x] LiveActivityManager with debounced updates (3s normal, immediate for approvals)
 - [x] MajorTomLiveActivityWidget in shared widget extension bundle
 
-### Wave 5: Achievements + Siri Shortcuts — NEXT
+### Wave 5: Achievements + Siri Shortcuts — COMPLETE
+
+#### Track L: Relay Achievement Engine (PR #76)
+- [x] 30 achievements across 7 categories (Sessions, Approvals, Cost, Agents, Tools, Fleet, Meta)
+- [x] AchievementService — atomic writes to ~/.major-tom/achievements.json, debounced 2s persistence
+- [x] Counter, event, duration, and composite condition types
+- [x] Protocol messages — achievement.unlocked, achievement.progress, achievement.list request/response
+- [x] HTTP API — GET /api/achievements, POST /api/achievements/reset
+- [x] Event hooks — approval timing, tool tracking, session lifecycle, fleet events, god mode
+- [x] Analytics integration — achievement_unlocked event type in JSONL
+
+#### Track M: iOS Siri Shortcuts Expansion (PR #77)
+- [x] FleetStatusIntent — inline result with worker count, cost, sessions (no app open)
+- [x] SendPromptIntent — text parameter, writes to shared UserDefaults, app sends on foreground
+- [x] QuickApproveIntent — approves most recent pending request, opens app for safety
+- [x] SessionSummaryIntent — inline result with name, cost, tokens, duration, turns (no app open)
+- [x] ToggleGodModeIntent — toggles Manual/God, confirmation dialog (no app open)
+- [x] WidgetDataProvider expanded — fleet snapshot, pending approvals, session summary for Siri
+- [x] 8 total Siri Shortcuts (3 existing + 5 new)
+
+#### Track N: PWA Achievement UI (PR #78)
+- [x] Achievement store — Svelte 5 runes, REST fetch, WebSocket event handlers, auto-polling
+- [x] Achievement panel — slide-out with category tabs, progress bars, locked/unlocked states
+- [x] Achievement indicator — header badge with trophy icon, pulse on unlock, 60s background poll
+- [x] Unlock celebration — success toast with icon on achievement.unlocked events
+- [x] IndexedDB persistence — Dexie v3 achievements table, cache-first loading
+- [x] Wired into App header and overlay layout
+
+#### Track O: iOS Achievement UI (PR #79)
+- [x] Achievement model — Codable struct with category enum, progress computation
+- [x] AchievementsViewModel — @Observable, REST fetch, WebSocket events, category filtering
+- [x] Achievement views — list with category filter, detail with progress ring, unlock celebration overlay
+- [x] Components — AchievementCard, AchievementBadge, ProgressRing
+- [x] Office integration — celebration animation with random agent on unlock
+- [x] Haptic feedback on unlock (.success pattern)
+- [x] CheckAchievementsIntent Siri Shortcut (9 total)
+
+### Phase 8 Success Criteria — ALL MET
+
+- [x] Wave 1: iOS tech debt resolved, error recovery with health monitor + session resume
+- [x] Wave 2: Fleet mode with multi-worker relay, fleet dashboards on PWA + iOS
+- [x] Wave 3: Analytics engine with charts, smart notifications with priority scoring
+- [x] Wave 4: Office 2.0 themes/moods, Apple Watch companion, iOS Widgets, Live Activities
+- [x] Wave 5: Achievement engine (30 achievements), expanded Siri Shortcuts (9 total), achievement UI on PWA + iOS
 
 ---
 
