@@ -1,9 +1,9 @@
 import fp from 'fastify-plugin';
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { verifySessionToken, SESSION_COOKIE, type SessionPayload } from '../auth/session.js';
-import { logger } from '../utils/logger.js';
+import type { UserRole } from '../users/types.js';
 
-// Extend Fastify types with session user
+// Extend Fastify types with session user and userRegistry
 declare module 'fastify' {
   interface FastifyRequest {
     sessionUser: SessionPayload | null;
@@ -28,6 +28,7 @@ function isPublicPath(url: string): boolean {
 /**
  * Auth plugin — verifies session JWT cookie on every request.
  * Decorates request with `sessionUser`.
+ * For tokens without userId (legacy), looks up user by email in registry.
  * Must be registered with fastify-plugin to share across encapsulation boundaries.
  */
 const authPluginImpl: FastifyPluginAsync = async (fastify) => {
@@ -52,12 +53,13 @@ const authPluginImpl: FastifyPluginAsync = async (fastify) => {
     try {
       const payload = await verifySessionToken(token);
 
-      // Check allowed email
-      const allowedEmail = process.env['ALLOWED_EMAIL'];
-      if (allowedEmail && payload.email.toLowerCase() !== allowedEmail.toLowerCase()) {
-        logger.warn({ email: payload.email }, 'Session token for non-allowed email');
-        request.sessionUser = null;
-        return;
+      // For tokens without userId (legacy), try to look up user by email in registry
+      if (!payload.userId && fastify.userRegistry) {
+        const user = await fastify.userRegistry.getUserByEmail(payload.email);
+        if (user) {
+          payload.userId = user.id;
+          payload.role = user.role;
+        }
       }
 
       request.sessionUser = payload;
@@ -81,4 +83,24 @@ export async function requireSession(request: FastifyRequest, reply: FastifyRepl
   if (!request.sessionUser) {
     return reply.code(401).send({ error: 'Authentication required' });
   }
+}
+
+/**
+ * Role hierarchy for access control.
+ */
+const ROLE_HIERARCHY: Record<UserRole, number> = { viewer: 0, operator: 1, admin: 2 };
+
+/**
+ * Route-level hook factory to require a minimum role.
+ */
+export function requireRole(minimumRole: UserRole) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.sessionUser) {
+      return reply.code(401).send({ error: 'Authentication required' });
+    }
+    const userRole = request.sessionUser.role ?? 'admin'; // legacy tokens default to admin
+    if (ROLE_HIERARCHY[userRole] < ROLE_HIERARCHY[minimumRole]) {
+      return reply.code(403).send({ error: 'Insufficient permissions' });
+    }
+  };
 }

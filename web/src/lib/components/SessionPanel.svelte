@@ -1,6 +1,8 @@
 <script lang="ts">
   import { relay } from '../stores/relay.svelte';
   import { sessionStateManager } from '../stores/session-state.svelte';
+  import { presenceStore } from '../stores/presence.svelte';
+  import PresenceAvatars from './PresenceAvatars.svelte';
 
   // Request session list whenever panel opens
   $effect(() => {
@@ -131,6 +133,10 @@
                 {/if}
                 {#if entry.sessionId === relay.sessionId}
                   <span class="current-badge">current</span>
+                {/if}
+                {@const watchers = presenceStore.watchersFor(entry.sessionId)}
+                {#if watchers.length > 0}
+                  <PresenceAvatars users={watchers} maxShow={2} size="sm" />
                 {/if}
               </div>
               <div class="session-row-meta">

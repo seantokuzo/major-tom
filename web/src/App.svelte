@@ -17,6 +17,7 @@
   import NotificationToggle from './lib/components/NotificationToggle.svelte';
   import NotificationSettings from './lib/components/NotificationSettings.svelte';
   import AuthSettings from './lib/components/AuthSettings.svelte';
+  import UserMenu from './lib/components/UserMenu.svelte';
   import LoginScreen from './lib/components/LoginScreen.svelte';
   import CharacterGallery from './lib/components/CharacterGallery.svelte';
   import PermissionModeSwitcher from './lib/components/PermissionModeSwitcher.svelte';
@@ -263,6 +264,7 @@
         <span class="session-label" title={relay.sessionName}>{relay.sessionName}</span>
       {/if}
       <div class="header-actions">
+        <UserMenu />
         <span class="header-settings">
           <AuthSettings />
           <NotificationToggle />

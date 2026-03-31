@@ -7,10 +7,13 @@ import { randomBytes } from 'node:crypto';
 import { appendFileSync, chmodSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { logger } from '../utils/logger.js';
+import type { UserRole } from '../users/types.js';
 
 export interface SessionPayload extends JWTPayload {
   sub: string;   // Google user ID
   email: string;
+  userId?: string;
+  role?: UserRole;
 }
 
 let sessionSecret: Uint8Array;
@@ -51,10 +54,16 @@ export function getSessionSecret(): Uint8Array {
 export async function createSessionToken(
   googleSub: string,
   email: string,
+  userId?: string,
+  role?: UserRole,
 ): Promise<string> {
   const secret = getSessionSecret();
 
-  return new SignJWT({ sub: googleSub, email })
+  const claims: Record<string, unknown> = { sub: googleSub, email };
+  if (userId) claims.userId = userId;
+  if (role) claims.role = role;
+
+  return new SignJWT(claims)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setIssuer('major-tom')
