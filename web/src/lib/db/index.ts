@@ -56,6 +56,17 @@ export interface DbSetting {
   value: unknown;
 }
 
+export interface DbTeamUser {
+  /** User ID — primary key */
+  id: string;
+  email: string;
+  name?: string;
+  picture?: string;
+  role: string;
+  isOnline: boolean;
+  lastLoginAt: string;
+}
+
 export interface DbAchievement {
   /** Achievement ID — primary key (e.g. "first_contact") */
   id: string;
@@ -82,6 +93,7 @@ class MajorTomDB extends Dexie {
   promptHistory!: EntityTable<DbPromptHistory, 'id'>;
   settings!: EntityTable<DbSetting, 'key'>;
   achievements!: EntityTable<DbAchievement, 'id'>;
+  teamUsers!: EntityTable<DbTeamUser, 'id'>;
 
   constructor() {
     super('MajorTomDB');
@@ -103,6 +115,11 @@ class MajorTomDB extends Dexie {
     // v3: add achievements table for local caching
     this.version(3).stores({
       achievements: 'id, category, unlocked',
+    });
+
+    // v4: add teamUsers table for multi-user presence caching
+    this.version(4).stores({
+      teamUsers: 'id, email, role',
     });
   }
 }

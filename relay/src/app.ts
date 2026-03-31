@@ -13,7 +13,7 @@ import { staticPlugin } from './plugins/static.js';
 import { authPlugin } from './plugins/auth.js';
 
 // Routes
-import { authRoutes } from './routes/auth.js';
+import { createAuthRoutes } from './routes/auth.js';
 import { createHealthRoutes } from './routes/health.js';
 import { createPushRoutes } from './routes/push.js';
 import { createNotificationConfigRoutes } from './routes/notification-config.js';
@@ -30,7 +30,14 @@ import { NotificationConfigManager } from './push/notification-config.js';
 import { HealthMonitor } from './health/health-monitor.js';
 import { AnalyticsCollector } from './analytics/analytics-collector.js';
 import { AchievementService } from './achievements/achievement-service.js';
+import { UserRegistry } from './users/user-registry.js';
 import { getSessionSecret } from './auth/session.js';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    userRegistry: UserRegistry;
+  }
+}
 
 export interface AppConfig {
   port: number;
@@ -50,6 +57,7 @@ export async function buildApp(config: AppConfig) {
   const healthMonitor = new HealthMonitor(fleetManager, sessionManager);
   const analyticsCollector = new AnalyticsCollector();
   const achievementService = new AchievementService();
+  const userRegistry = new UserRegistry();
 
   // Start health monitoring
   healthMonitor.start();
@@ -63,6 +71,9 @@ export async function buildApp(config: AppConfig) {
   });
   await achievementService.load().catch((err: unknown) => {
     logger.error({ err }, 'Failed to load achievement state from disk, starting fresh');
+  });
+  await userRegistry.load().catch((err: unknown) => {
+    logger.error({ err }, 'Failed to load user registry from disk, starting fresh');
   });
 
   // ── Fastify instance ───────────────────────────────────
@@ -92,10 +103,13 @@ export async function buildApp(config: AppConfig) {
   // 5. WebSocket support
   await app.register(websocketPlugin);
 
+  // ── Decorate with shared services ──────────────────────
+  app.decorate('userRegistry', userRegistry);
+
   // ── Register routes ────────────────────────────────────
 
   // Auth routes (public — Google OAuth login/logout/check)
-  await app.register(authRoutes);
+  await app.register(createAuthRoutes({ userRegistry }));
 
   // Health check (public)
   await app.register(createHealthRoutes({ sessionManager, fleetManager, healthMonitor }));
@@ -121,6 +135,7 @@ export async function buildApp(config: AppConfig) {
     notificationConfigManager,
     analyticsCollector,
     achievementService,
+    userRegistry,
     claudeWorkDir: config.claudeWorkDir,
   }));
 
@@ -149,6 +164,8 @@ export async function buildApp(config: AppConfig) {
       };
     });
     sessionPersistence.dispose();
+    await userRegistry.flush();
+    userRegistry.dispose();
     await pushManager.dispose();
     logger.info('Shutdown complete');
   });

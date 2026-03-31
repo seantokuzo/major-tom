@@ -13,14 +13,41 @@
   let pinInputs = $state<HTMLInputElement[]>([]);
   let pinSubmitting = $state(false);
 
+  // Invite code state
+  let inviteCode = $state('');
+  let needsInvite = $state(false);
+  let pendingCredential = $state<string | null>(null);
+
   async function handleCredentialResponse(response: google.accounts.id.CredentialResponse) {
     error = null;
-    const result = await relay.login(response.credential);
+    const result = await relay.login(response.credential, needsInvite ? inviteCode : undefined);
     if (result.success) {
+      needsInvite = false;
+      pendingCredential = null;
+      inviteCode = '';
+      toasts.success('Signed in successfully');
+      relay.connect();
+    } else if (result.error?.includes('invite code required')) {
+      needsInvite = true;
+      pendingCredential = response.credential;
+      error = 'Enter your invite code to join';
+    } else {
+      error = result.error ?? 'Login failed';
+    }
+  }
+
+  async function submitWithInvite() {
+    if (!pendingCredential || inviteCode.length < 8) return;
+    error = null;
+    const result = await relay.login(pendingCredential, inviteCode);
+    if (result.success) {
+      needsInvite = false;
+      pendingCredential = null;
+      inviteCode = '';
       toasts.success('Signed in successfully');
       relay.connect();
     } else {
-      error = result.error ?? 'Login failed';
+      error = result.error ?? 'Invalid invite code';
     }
   }
 
@@ -197,6 +224,32 @@
         {#if pinSubmitting}
           <p class="status-text">Verifying...</p>
         {/if}
+
+        {#if needsInvite}
+          <div class="invite-section">
+            <div class="divider">
+              <span class="divider-line"></span>
+              <span class="divider-text">invite code</span>
+              <span class="divider-line"></span>
+            </div>
+            <p class="status-text">Invite code required to join</p>
+            <input
+              class="invite-input"
+              type="text"
+              placeholder="Enter invite code"
+              bind:value={inviteCode}
+              maxlength="8"
+              onkeydown={(e) => { if (e.key === 'Enter') submitWithInvite(); }}
+            />
+            <button
+              class="invite-submit"
+              onclick={submitWithInvite}
+              disabled={inviteCode.length < 8}
+            >
+              Join
+            </button>
+          </div>
+        {/if}
       {/if}
     </div>
   </div>
@@ -329,5 +382,66 @@
 
   .pin-digit:disabled {
     opacity: 0.5;
+  }
+
+  .invite-section {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-md);
+  }
+
+  .invite-input {
+    width: 100%;
+    max-width: 260px;
+    height: 44px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: center;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .invite-input:focus {
+    border-color: var(--accent);
+  }
+
+  .invite-input::placeholder {
+    color: var(--text-tertiary);
+    letter-spacing: 0.05em;
+    text-transform: none;
+    font-weight: 400;
+  }
+
+  .invite-submit {
+    padding: var(--sp-sm) var(--sp-xl);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--bg);
+    background: var(--accent);
+    border: none;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .invite-submit:hover:not(:disabled) {
+    background: var(--accent-dim);
+  }
+
+  .invite-submit:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 </style>

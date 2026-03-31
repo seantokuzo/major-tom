@@ -16,6 +16,7 @@
   import FileTreeBrowser from './FileTreeBrowser.svelte';
   import ContextChips from './ContextChips.svelte';
   import CountdownToast from './CountdownToast.svelte';
+  import WatchingIndicator from './WatchingIndicator.svelte';
   import type { ApprovalDecision } from '../protocol/messages';
 
   let messagesEnd: HTMLDivElement | undefined;
@@ -190,12 +191,13 @@
       });
   });
 
-  /** Disable input when not connected or reconnecting */
-  let inputDisabled = $derived(!relay.hasSession || !relay.isConnected);
+  /** Disable input when not connected, reconnecting, or viewer mode */
+  let inputDisabled = $derived(!relay.hasSession || !relay.isConnected || relay.isViewer);
 
   let placeholderText = $derived.by(() => {
     if (relay.isReconnecting) return 'Reconnecting to relay...';
     if (relay.isDisconnected) return relay.connectionError ?? 'Disconnected';
+    if (relay.isViewer) return 'Observing this session (view-only)';
     if (relay.inputPrefix) return `${relay.inputPrefix}...`;
     if (relay.hasSession) return 'Send a prompt...';
     return 'Connect and start a session';
@@ -205,6 +207,9 @@
 <div class="chat-view">
   <!-- Countdown toasts (delay mode) -->
   <CountdownToast bind:this={countdownToastRef} />
+
+  <!-- Watching indicator — shows who else is viewing this session -->
+  <WatchingIndicator />
 
   <!-- Approvals bar — in delay mode, only show approvals that were cancelled from countdown -->
   {#if visibleApprovals.length > 0}
@@ -239,6 +244,12 @@
   <ContextChips />
 
   <!-- Input bar -->
+  {#if relay.isViewer}
+  <div class="viewer-bar">
+    <span class="viewer-icon">&#x1F441;</span>
+    <span class="viewer-text">Observing this session</span>
+  </div>
+  {:else}
   <form class="input-bar" class:input-bar-disabled={inputDisabled} onsubmit={handleSubmit}>
     <span class="input-prompt">&gt;</span>
     <button
@@ -290,6 +301,7 @@
       &uarr;
     </button>
   </form>
+  {/if}
 
   <CommandPalette
     bind:open={paletteOpen}
@@ -558,5 +570,29 @@
   }
   .modal-close:hover {
     color: var(--text-primary);
+  }
+
+  .viewer-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-sm);
+    padding: var(--sp-sm) var(--sp-md);
+    padding-bottom: max(var(--sp-sm), env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .viewer-icon {
+    font-size: 0.85rem;
+    opacity: 0.6;
+  }
+
+  .viewer-text {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    letter-spacing: 0.03em;
   }
 </style>

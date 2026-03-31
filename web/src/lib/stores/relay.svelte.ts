@@ -18,6 +18,7 @@ import { terminalStore } from './terminal.svelte';
 import { sessionStateManager, extractDirName } from './session-state.svelte';
 import { fleetStore } from './fleet.svelte';
 import { achievementStore } from './achievements.svelte';
+import { presenceStore } from './presence.svelte';
 import { toasts } from './toast.svelte';
 
 // ── Chat message model ──────────────────────────────────────
@@ -103,6 +104,8 @@ export interface AuthUser {
   email: string;
   name?: string;
   picture?: string;
+  userId?: string;
+  role?: 'admin' | 'operator' | 'viewer';
 }
 
 // ── localStorage keys (only for small synchronous state) ────
@@ -190,6 +193,12 @@ class RelayStore {
   get isAuthenticated(): boolean {
     return this.user !== null;
   }
+  get isViewer(): boolean {
+    return this.user?.role === 'viewer';
+  }
+  get isAdmin(): boolean {
+    return this.user?.role === 'admin';
+  }
 
   /** Display name for the active session (from sessionStateManager) */
   get sessionName(): string {
@@ -267,7 +276,13 @@ class RelayStore {
       const res = await fetch('/auth/me', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
-        this.user = { email: data.email, name: data.name, picture: data.picture };
+        this.user = {
+          email: data.email,
+          name: data.name,
+          picture: data.picture,
+          userId: data.userId,
+          role: data.role,
+        };
       } else {
         this.user = null;
       }
@@ -277,21 +292,29 @@ class RelayStore {
     this.authChecked = true;
   }
 
-  async login(credential: string): Promise<{ success: boolean; error?: string }> {
+  async login(credential: string, inviteCode?: string): Promise<{ success: boolean; error?: string }> {
     try {
+      const body: Record<string, string> = { credential };
+      if (inviteCode) body.inviteCode = inviteCode;
       const res = await fetch('/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ credential }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         const data = await res.json();
-        this.user = { email: data.email, name: data.name, picture: data.picture };
+        this.user = {
+          email: data.email,
+          name: data.name,
+          picture: data.picture,
+          userId: data.userId,
+          role: data.role,
+        };
         return { success: true };
       }
-      const body = await res.json().catch(() => ({ error: 'Login failed' }));
-      return { success: false, error: body.error ?? 'Login failed' };
+      const errBody = await res.json().catch(() => ({ error: 'Login failed' }));
+      return { success: false, error: errBody.error ?? 'Login failed' };
     } catch {
       return { success: false, error: 'Could not reach server' };
     }
@@ -307,11 +330,17 @@ class RelayStore {
       });
       if (res.ok) {
         const data = await res.json();
-        this.user = { email: data.email, name: data.name, picture: data.picture };
+        this.user = {
+          email: data.email,
+          name: data.name,
+          picture: data.picture,
+          userId: data.userId,
+          role: data.role,
+        };
         return { success: true };
       }
-      const body = await res.json().catch(() => ({ error: 'Invalid PIN' }));
-      return { success: false, error: body.error ?? 'Invalid PIN' };
+      const errBody = await res.json().catch(() => ({ error: 'Invalid PIN' }));
+      return { success: false, error: errBody.error ?? 'Invalid PIN' };
     } catch {
       return { success: false, error: 'Could not reach server' };
     }
@@ -426,6 +455,7 @@ class RelayStore {
     this.socket.disconnect();
     this.sessionId = null;
     this.wasConnected = false;
+    presenceStore.clear();
   }
 
   /** Manual retry -- resets error state and reconnect counter, then connects */
@@ -618,6 +648,26 @@ class RelayStore {
   requestFleetStatus(): void {
     if (!this.isConnected) return;
     this.socket.send({ type: 'fleet.status' });
+  }
+
+  requestUserList(): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'user.list' });
+  }
+
+  generateInvite(role: 'admin' | 'operator' | 'viewer'): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'user.invite', role });
+  }
+
+  revokeUser(userId: string): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'user.revoke', userId });
+  }
+
+  updateUserRole(userId: string, role: 'admin' | 'operator' | 'viewer'): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'user.updateRole', userId, role });
   }
 
   requestSessionList(): void {
@@ -1136,6 +1186,43 @@ class RelayStore {
 
       case 'achievement.list.response':
         achievementStore.handleListResponse(message);
+        break;
+
+      // ── Presence & multi-user messages ──────────────────────
+      case 'presence.update':
+        presenceStore.handleUpdate(message);
+        break;
+
+      case 'user.list.response':
+        // Dispatched to TeamPanel via store — consumers read presenceStore
+        break;
+
+      case 'user.invite.response':
+        // Dispatched to InviteDialog via event or store
+        break;
+
+      case 'user.revoke.response':
+        if (message.success) {
+          toasts.success('User revoked');
+        }
+        break;
+
+      case 'user.roleUpdated':
+        toasts.info(`User role updated to ${message.role}`);
+        break;
+
+      case 'approval.resolved':
+        if (message.resolvedBy?.name) {
+          const myId = this.user?.userId;
+          if (myId !== message.resolvedBy.userId) {
+            this.messages.push({
+              id: uid(),
+              role: 'system',
+              content: `${message.resolvedBy.name} ${message.decision}ed the request`,
+              timestamp: new Date(),
+            });
+          }
+        }
         break;
     }
   }

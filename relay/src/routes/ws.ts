@@ -4,7 +4,9 @@ import { resolve, relative, join, isAbsolute, basename } from 'node:path';
 import { readFileSync, statSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
+import { verifySessionToken, SESSION_COOKIE, type SessionPayload } from '../auth/session.js';
+import type { UserRegistry } from '../users/user-registry.js';
+import { PresenceManager } from '../users/presence-manager.js';
 import type { SessionManager } from '../sessions/session-manager.js';
 import type { SessionPersistence, PersistedSession } from '../sessions/session-persistence.js';
 import type { FleetManager } from '../fleet/fleet-manager.js';
@@ -34,6 +36,7 @@ interface WsDeps {
   notificationConfigManager: NotificationConfigManager;
   analyticsCollector: AnalyticsCollector;
   achievementService: AchievementService;
+  userRegistry: UserRegistry;
   claudeWorkDir: string;
 }
 
@@ -51,17 +54,19 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     notificationConfigManager,
     analyticsCollector,
     achievementService,
+    userRegistry,
     claudeWorkDir,
   } = deps;
 
   const notificationDigest = new NotificationDigest(pushManager, notificationConfigManager);
   const eventBuffer = new EventBufferManager();
   const clients = new Set<WebSocket>();
+  const presenceManager = new PresenceManager();
 
   // ── Achievement event wiring ────────────────────────────────
   // When an achievement unlocks, broadcast to all connected clients + record in analytics
   achievementService.onUnlock((payload) => {
-    broadcast({
+    broadcastToAll({
       type: 'achievement.unlocked',
       achievementId: payload.achievementId,
       name: payload.name,
@@ -78,7 +83,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   });
 
   achievementService.onProgress((payload) => {
-    broadcast({
+    broadcastToAll({
       type: 'achievement.progress',
       achievementId: payload.achievementId,
       name: payload.name,
@@ -121,6 +126,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       sessionClients.set(sessionId, clientSet);
     }
     clientSet.add(ws);
+
+    // Update presence — track that this ws is watching this session
+    presenceManager.watchSession(ws, sessionId);
+    broadcastToAll({ type: 'presence.update', users: presenceManager.getAllPresence() });
 
     // Cancel any pending timeout — a client is connected
     const timeout = sessionTimeouts.get(sessionId);
@@ -183,31 +192,29 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     }
   }
 
-  function broadcast(message: ServerMessage): void {
-    // Record in event buffer for session resume support.
-    // Extract sessionId from the message if present.
-    const sessionId = extractSessionId(message);
-    if (sessionId) {
-      const seq = eventBuffer.record(sessionId, message);
-      // Surface the seq on the outbound message so clients can track lastSeq
-      message.seq = seq;
+  /** Broadcast a session-scoped message to clients attached to that session */
+  function broadcastToSession(sessionId: string, message: ServerMessage): void {
+    const seq = eventBuffer.record(sessionId, message);
+    message.seq = seq;
+    const encoded = encodeServerMessage(message);
+    const sessionWs = sessionClients.get(sessionId);
+    if (sessionWs) {
+      for (const client of sessionWs) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(encoded);
+        }
+      }
     }
+  }
 
+  /** Broadcast a global message to ALL connected clients */
+  function broadcastToAll(message: ServerMessage): void {
     const encoded = encodeServerMessage(message);
     for (const client of clients) {
       if (client.readyState === WebSocket.OPEN) {
         client.send(encoded);
       }
     }
-  }
-
-  /** Extract sessionId from a server message, if present */
-  function extractSessionId(message: ServerMessage): string | undefined {
-    // Most message types have sessionId directly
-    if ('sessionId' in message && typeof message.sessionId === 'string') {
-      return message.sessionId;
-    }
-    return undefined;
   }
 
   function buildPersistedSession(sessionId: string): PersistedSession | null {
@@ -231,7 +238,28 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
   // ── Message Router ───────────────────────────────────────
 
+  // ── Role-based message guards ─────────────────────────────
+  const VIEWER_ALLOWED: Set<string> = new Set([
+    'session.attach', 'session.list', 'session.resume', 'achievement.list',
+    'fleet.status', 'workspace.tree', 'fs.ls', 'fs.readFile', 'fs.cwd',
+    'presence.watch', 'presence.unwatch', 'user.list', 'activity.list',
+  ]);
+  const ADMIN_ONLY: Set<string> = new Set([
+    'user.invite', 'user.revoke', 'user.updateRole',
+  ]);
+
   async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promise<void> {
+    // Role-based access control
+    const userRole = presenceManager.getUserRole(ws) ?? 'admin';
+    if (userRole === 'viewer' && !VIEWER_ALLOWED.has(message.type)) {
+      sendToClient(ws, { type: 'error', code: 'FORBIDDEN', message: 'Viewers cannot perform this action' });
+      return;
+    }
+    if (ADMIN_ONLY.has(message.type) && userRole !== 'admin') {
+      sendToClient(ws, { type: 'error', code: 'FORBIDDEN', message: 'Admin access required' });
+      return;
+    }
+
     switch (message.type) {
       case 'session.start': {
         let workDir = message.workingDir ?? claudeWorkDir;
@@ -398,9 +426,9 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           fleetManager.destroySession(message.sessionId);
         }
         healthMonitor.untrackSession(message.sessionId);
-        // Broadcast BEFORE removing buffer — broadcast() records events by sessionId,
+        // Broadcast BEFORE removing buffer — broadcastToSession() records events by sessionId,
         // so removing first would recreate a fresh (leaked) buffer for this session.
-        broadcast({ type: 'session.ended', sessionId: message.sessionId });
+        broadcastToSession(message.sessionId, { type: 'session.ended', sessionId: message.sessionId });
         eventBuffer.removeSession(message.sessionId);
         break;
       }
@@ -526,6 +554,20 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       case 'approval': {
         fleetManager.resolveApproval(message.requestId, message.decision);
+        // Broadcast who resolved the approval
+        const approverUserId = presenceManager.getUserId(ws);
+        if (approverUserId) {
+          const approverUser = await userRegistry.getUser(approverUserId);
+          broadcastToAll({
+            type: 'approval.resolved',
+            requestId: message.requestId,
+            decision: message.decision,
+            resolvedBy: {
+              userId: approverUserId,
+              name: approverUser?.name,
+            },
+          });
+        }
         // Track achievement: approval decisions with timing for Speed Demon
         if (message.decision === 'allow' || message.decision === 'allow_always') {
           const sentAt = approvalRequestTimes.get(message.requestId);
@@ -694,7 +736,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         }
 
         // Broadcast updated mode to all clients
-        broadcast({
+        broadcastToAll({
           type: 'permission.mode',
           mode: message.mode,
           delaySeconds: permFilter.getMode().delaySeconds,
@@ -798,6 +840,86 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         break;
       }
 
+      // ── Presence ──────────────────────────────────────────
+      case 'presence.watch': {
+        presenceManager.watchSession(ws, message.sessionId);
+        broadcastToAll({ type: 'presence.update', users: presenceManager.getAllPresence() });
+        break;
+      }
+
+      case 'presence.unwatch': {
+        presenceManager.unwatchSession(ws);
+        broadcastToAll({ type: 'presence.update', users: presenceManager.getAllPresence() });
+        break;
+      }
+
+      // ── User management ────────────────────────────────────
+      case 'user.list': {
+        const users = await userRegistry.listUsers();
+        sendToClient(ws, {
+          type: 'user.list.response',
+          users: users.map((u) => ({
+            id: u.id,
+            email: u.email,
+            name: u.name,
+            picture: u.picture,
+            role: u.role,
+            isOnline: presenceManager.isOnline(u.id),
+            lastLoginAt: u.lastLoginAt,
+          })),
+        });
+        break;
+      }
+
+      case 'user.invite': {
+        const inviterUserId = presenceManager.getUserId(ws);
+        if (!inviterUserId) break;
+        try {
+          const invite = await userRegistry.generateInviteCode(message.role, inviterUserId);
+          sendToClient(ws, {
+            type: 'user.invite.response',
+            code: invite.code,
+            expiresAt: invite.expiresAt,
+            success: true,
+          });
+        } catch (err) {
+          sendToClient(ws, {
+            type: 'user.invite.response',
+            code: '',
+            expiresAt: '',
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        break;
+      }
+
+      case 'user.revoke': {
+        await userRegistry.deleteUser(message.userId);
+        sendToClient(ws, {
+          type: 'user.revoke.response',
+          userId: message.userId,
+          success: true,
+        });
+        broadcastToAll({ type: 'presence.update', users: presenceManager.getAllPresence() });
+        break;
+      }
+
+      case 'user.updateRole': {
+        await userRegistry.updateUser(message.userId, { role: message.role });
+        broadcastToAll({
+          type: 'user.roleUpdated',
+          userId: message.userId,
+          role: message.role,
+        });
+        break;
+      }
+
+      case 'activity.list': {
+        // Activity feed — placeholder for now, will be enriched in later waves
+        break;
+      }
+
       // Device list/revoke removed — replaced by Google OAuth single-user auth
     }
   }
@@ -805,7 +927,12 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   // ── Adapter → Broadcast Event Wiring ─────────────────────
 
   const serverMessageHandler = (message: ServerMessage) => {
-    broadcast(message);
+    // Route session-scoped messages to session clients, others to all
+    if ('sessionId' in message && typeof message.sessionId === 'string') {
+      broadcastToSession(message.sessionId, message);
+    } else {
+      broadcastToAll(message);
+    }
   };
 
   function wireAdapterEvents(): void {
@@ -819,14 +946,15 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         });
         triggerPersistence(sessionId);
       }
-      broadcast({ type: 'output', sessionId, chunk, format: 'plain' });
+      broadcastToSession(sessionId, { type: 'output', sessionId, chunk, format: 'plain' });
     });
 
     fleetManager.on('approval-request', (request) => {
       const priority = scorePriority(request.tool, request.description, request.details);
       // Track when approval request was sent for Speed Demon timing
       approvalRequestTimes.set(request.requestId, Date.now());
-      broadcast({
+      // Approval requests go to all clients — any user might need to approve
+      broadcastToAll({
         type: 'approval.request',
         requestId: request.requestId,
         tool: request.tool,
@@ -849,7 +977,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     });
 
     fleetManager.on('auto-allow', (event) => {
-      broadcast({
+      broadcastToAll({
         type: 'approval.auto',
         tool: event.tool,
         description: event.description,
@@ -873,7 +1001,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       analyticsCollector.trackToolUsage(info.sessionId, info.tool);
       // Track achievement: tool usage
       achievementService.checkEvent('tool.start', { tool: info.tool });
-      broadcast({
+      broadcastToSession(info.sessionId, {
         type: 'tool.start',
         sessionId: info.sessionId,
         tool: info.tool,
@@ -892,7 +1020,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         });
         triggerPersistence(result.sessionId);
       }
-      broadcast({
+      broadcastToSession(result.sessionId, {
         type: 'tool.complete',
         sessionId: result.sessionId,
         tool: result.tool,
@@ -935,7 +1063,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         cost: result.costUsd,
         durationMs: result.durationMs,
       });
-      broadcast({
+      broadcastToSession(result.sessionId, {
         type: 'session.result',
         sessionId: result.sessionId,
         costUsd: result.costUsd,
@@ -952,7 +1080,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           agentTracker.spawn(event.agentId, event.role ?? 'subagent', event.task ?? '', event.parentId);
           // Track achievement: agent spawned
           achievementService.checkEvent('agent.spawn');
-          broadcast({
+          broadcastToAll({
             type: 'agent.spawn',
             agentId: event.agentId,
             parentId: event.parentId,
@@ -962,19 +1090,19 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           break;
         case 'working':
           agentTracker.working(event.agentId, event.task ?? '');
-          broadcast({ type: 'agent.working', agentId: event.agentId, task: event.task ?? '' });
+          broadcastToAll({ type: 'agent.working', agentId: event.agentId, task: event.task ?? '' });
           break;
         case 'idle':
           agentTracker.idle(event.agentId);
-          broadcast({ type: 'agent.idle', agentId: event.agentId });
+          broadcastToAll({ type: 'agent.idle', agentId: event.agentId });
           break;
         case 'complete':
           agentTracker.complete(event.agentId, event.result ?? '');
-          broadcast({ type: 'agent.complete', agentId: event.agentId, result: event.result ?? '' });
+          broadcastToAll({ type: 'agent.complete', agentId: event.agentId, result: event.result ?? '' });
           break;
         case 'dismissed':
           agentTracker.dismiss(event.agentId);
-          broadcast({ type: 'agent.dismissed', agentId: event.agentId });
+          broadcastToAll({ type: 'agent.dismissed', agentId: event.agentId });
           break;
       }
     });
@@ -987,7 +1115,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       });
       // Track achievement: fleet mode started (worker spawn implies fleet)
       achievementService.checkEvent('fleet.started');
-      broadcast({
+      broadcastToAll({
         type: 'fleet.worker.spawned',
         workerId: info.workerId,
         workingDir: info.workingDir,
@@ -1002,7 +1130,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       });
       // Track achievement: survived a worker crash
       achievementService.checkEvent('worker.crashed');
-      broadcast({
+      broadcastToAll({
         type: 'fleet.worker.crashed',
         workerId: info.workerId,
         workingDir: info.workingDir,
@@ -1016,7 +1144,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         workerId: info.workerId,
         workingDir: info.workingDir,
       });
-      broadcast({
+      broadcastToAll({
         type: 'fleet.worker.restarted',
         workerId: info.workerId,
         workingDir: info.workingDir,
@@ -1035,12 +1163,18 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     wireAdapterEvents();
 
     // Shared socket setup — wires up event handlers after auth succeeds
-    function setupSocket(socket: WebSocket, ip: string): void {
+    function setupSocket(socket: WebSocket, ip: string, sessionPayload?: SessionPayload): void {
       (socket as WebSocket & { isAlive: boolean }).isAlive = true;
       socket.on('pong', () => {
         (socket as WebSocket & { isAlive: boolean }).isAlive = true;
       });
       clients.add(socket);
+
+      // Register presence if we have user identity
+      if (sessionPayload) {
+        presenceManager.connect(socket, sessionPayload);
+        broadcastToAll({ type: 'presence.update', users: presenceManager.getAllPresence() });
+      }
 
       socket.on('error', (err) => {
         logger.error({ err }, 'WebSocket error');
@@ -1048,7 +1182,12 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       socket.on('close', () => {
         clients.delete(socket);
+        // Disconnect from presence before untracking session
+        const disconnectResult = presenceManager.disconnect(socket);
         untrackClientSession(socket);
+        if (disconnectResult) {
+          broadcastToAll({ type: 'presence.update', users: presenceManager.getAllPresence() });
+        }
         logger.info({ ip }, 'Client disconnected');
       });
 
@@ -1108,19 +1247,20 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       verifySessionToken(sessionCookie)
-        .then((payload) => {
-          // PIN-authed sessions (sub === 'pin-user') bypass email check
-          const allowedEmail = process.env['ALLOWED_EMAIL'];
-          if (allowedEmail && payload.sub !== 'pin-user' && payload.email.toLowerCase() !== allowedEmail.toLowerCase()) {
-            logger.warn({ email: payload.email }, 'WS connection from non-allowed email');
-            socket.close(1008, 'Access denied');
-            return;
+        .then(async (payload) => {
+          // For tokens without userId (legacy), look up user by email in registry
+          if (!payload.userId) {
+            const user = await userRegistry.getUserByEmail(payload.email);
+            if (user) {
+              payload.userId = user.id;
+              payload.role = user.role;
+            }
           }
 
           // Authenticated — set up connection
           const ip = request.ip;
-          logger.info({ ip, email: payload.email }, 'Client connected via WebSocket');
-          setupSocket(socket, ip);
+          logger.info({ ip, email: payload.email, userId: payload.userId }, 'Client connected via WebSocket');
+          setupSocket(socket, ip, payload);
         })
         .catch(() => {
           socket.close(1008, 'Invalid session');

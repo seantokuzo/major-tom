@@ -107,6 +107,38 @@ export interface AchievementListMessage {
   type: 'achievement.list';
 }
 
+export interface PresenceWatchMessage {
+  type: 'presence.watch';
+  sessionId: string;
+}
+
+export interface PresenceUnwatchMessage {
+  type: 'presence.unwatch';
+}
+
+export interface UserListMessage {
+  type: 'user.list';
+}
+
+export interface UserInviteMessage {
+  type: 'user.invite';
+  role: 'admin' | 'operator' | 'viewer';
+}
+
+export interface UserRevokeMessage {
+  type: 'user.revoke';
+  userId: string;
+}
+
+export interface UserUpdateRoleMessage {
+  type: 'user.updateRole';
+  userId: string;
+  role: 'admin' | 'operator' | 'viewer';
+}
+
+export interface ActivityListMessage {
+  type: 'activity.list';
+}
 
 export type ClientMessage =
   | PromptMessage
@@ -127,7 +159,14 @@ export type ClientMessage =
   | FsReadFileMessage
   | FsCwdMessage
   | FleetStatusMessage
-  | AchievementListMessage;
+  | AchievementListMessage
+  | PresenceWatchMessage
+  | PresenceUnwatchMessage
+  | UserListMessage
+  | UserInviteMessage
+  | UserRevokeMessage
+  | UserUpdateRoleMessage
+  | ActivityListMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -483,6 +522,64 @@ export interface AchievementListResponseMessage {
   unlockedCount: number;
 }
 
+// ── Presence & multi-user messages ─────────────────────────
+
+export interface PresenceUpdateMessage {
+  type: 'presence.update';
+  users: Array<{
+    userId: string;
+    email: string;
+    name?: string;
+    picture?: string;
+    role: string;
+    connectedAt: string;
+    watchingSessionId?: string;
+  }>;
+}
+
+export interface UserListResponseMessage {
+  type: 'user.list.response';
+  users: Array<{
+    id: string;
+    email: string;
+    name?: string;
+    picture?: string;
+    role: string;
+    isOnline: boolean;
+    lastLoginAt: string;
+  }>;
+}
+
+export interface UserInviteResponseMessage {
+  type: 'user.invite.response';
+  code: string;
+  expiresAt: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface UserRevokeResponseMessage {
+  type: 'user.revoke.response';
+  userId: string;
+  success: boolean;
+}
+
+export interface UserRoleUpdatedMessage {
+  type: 'user.roleUpdated';
+  userId: string;
+  role: string;
+}
+
+export interface ApprovalResolvedMessage {
+  type: 'approval.resolved';
+  requestId: string;
+  decision: string;
+  resolvedBy: {
+    userId: string;
+    name?: string;
+  };
+}
+
 // ── Analytics types (HTTP API, not WebSocket) ──────────────
 
 export interface AnalyticsResponse {
@@ -556,4 +653,10 @@ export type ServerMessage =
   | FleetWorkerRestartedMessage
   | AchievementUnlockedMessage
   | AchievementProgressMessage
-  | AchievementListResponseMessage;
+  | AchievementListResponseMessage
+  | PresenceUpdateMessage
+  | UserListResponseMessage
+  | UserInviteResponseMessage
+  | UserRevokeResponseMessage
+  | UserRoleUpdatedMessage
+  | ApprovalResolvedMessage;
