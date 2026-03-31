@@ -645,6 +645,13 @@ export interface SessionHandoffResponseMessage {
   error?: string;
 }
 
+export interface SessionOwnershipChangedMessage {
+  type: 'session.ownership.changed';
+  sessionId: string;
+  fromUserId: string;
+  toUserId: string;
+}
+
 export interface ActivityFeedMessage {
   type: 'activity.feed';
   entries: Array<{
@@ -705,6 +712,7 @@ type ServerMessageBase =
   | AnnotationAddedMessage
   | AnnotationListResponseMessage
   | SessionHandoffResponseMessage
+  | SessionOwnershipChangedMessage
   | ActivityFeedMessage;
 
 /**
