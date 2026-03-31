@@ -14,6 +14,8 @@
 		MU100005A1B2C3D4E5F60005 /* TeamSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MU200005A1B2C3D4E5F60005 /* TeamSettingsView.swift */; };
 		MU100006A1B2C3D4E5F60006 /* TeamActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MU200006A1B2C3D4E5F60006 /* TeamActivityView.swift */; };
 		MU100007A1B2C3D4E5F60007 /* DirectoryPermissionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MU200007A1B2C3D4E5F60007 /* DirectoryPermissionsView.swift */; };
+		MU100009A1B2C3D4E5F60009 /* AuditLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MU200009A1B2C3D4E5F60009 /* AuditLogView.swift */; };
+		MU100010A1B2C3D4E5F60010 /* RateLimitSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MU200010A1B2C3D4E5F60010 /* RateLimitSettingsView.swift */; };
 		01CF88DD53BD425A8BB52F59 /* OfficeLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2A5F6ECD6AEA9681C140DA3 /* OfficeLayout.swift */; };
 		05C0C742F30E2EDFA11347D0 /* FileContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6DBE8EE08D1C4498E7F3D4 /* FileContextView.swift */; };
 		07651DA663E3245CF21B572D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEFFC79375ADF55AE9AD5AF6 /* ContentView.swift */; };
@@ -153,6 +155,8 @@
 		MU200005A1B2C3D4E5F60005 /* TeamSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamSettingsView.swift; sourceTree = "<group>"; };
 		MU200006A1B2C3D4E5F60006 /* TeamActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamActivityView.swift; sourceTree = "<group>"; };
 		MU200007A1B2C3D4E5F60007 /* DirectoryPermissionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryPermissionsView.swift; sourceTree = "<group>"; };
+		MU200009A1B2C3D4E5F60009 /* AuditLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditLogView.swift; sourceTree = "<group>"; };
+		MU200010A1B2C3D4E5F60010 /* RateLimitSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateLimitSettingsView.swift; sourceTree = "<group>"; };
 		01BD6266AD1E8A75F6D43438 /* MajorTomShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomShortcuts.swift; sourceTree = "<group>"; };
 		0A571183D8F82C0A0373A42D /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
 		105C7DF7508529E4C957FEE1 /* PromptTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplate.swift; sourceTree = "<group>"; };
@@ -952,7 +956,9 @@
 			isa = PBXGroup;
 			children = (
 				5B2D2956D7BBBE520D548CED /* DeviceManagementView.swift */,
+				MU200009A1B2C3D4E5F60009 /* AuditLogView.swift */,
 				MU200007A1B2C3D4E5F60007 /* DirectoryPermissionsView.swift */,
+				MU200010A1B2C3D4E5F60010 /* RateLimitSettingsView.swift */,
 				21F681FC6A3D7B14792DDC15 /* SettingsView.swift */,
 				MU200005A1B2C3D4E5F60005 /* TeamSettingsView.swift */,
 			);
@@ -1322,6 +1328,8 @@
 					MU100005A1B2C3D4E5F60005 /* TeamSettingsView.swift in Sources */,
 					MU100006A1B2C3D4E5F60006 /* TeamActivityView.swift in Sources */,
 					MU100007A1B2C3D4E5F60007 /* DirectoryPermissionsView.swift in Sources */,
+					MU100009A1B2C3D4E5F60009 /* AuditLogView.swift in Sources */,
+					MU100010A1B2C3D4E5F60010 /* RateLimitSettingsView.swift in Sources */,
 					ACH10001A1B2C3D4E5F60001 /* Achievement.swift in Sources */,
 					ACH10002A1B2C3D4E5F60002 /* AchievementsViewModel.swift in Sources */,
 					ACH10003A1B2C3D4E5F60003 /* AchievementsListView.swift in Sources */,

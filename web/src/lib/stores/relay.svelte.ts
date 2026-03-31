@@ -11,6 +11,9 @@ import type {
   ServerMessage,
   ActivityEntry,
   AnnotationEntry,
+  AuditEntry,
+  RateLimitRoleConfig,
+  RateLimitUserOverride,
 } from '../protocol/messages';
 import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
@@ -180,6 +183,15 @@ class RelayStore {
 
   // Annotations (per-session)
   annotationsBySession = $state(new Map<string, AnnotationEntry[]>());
+
+  // Audit log
+  auditEntries = $state<AuditEntry[]>([]);
+
+  // Rate limit config
+  rateLimitConfig = $state<{
+    roles: Record<string, RateLimitRoleConfig>;
+    userOverrides: Record<string, RateLimitUserOverride>;
+  } | null>(null);
 
   // Sandbox directory permissions (per-user paths)
   userSandboxPaths = $state(new Map<string, string[]>());
@@ -723,6 +735,33 @@ class RelayStore {
     if (!this.isConnected) return;
     this.pendingHandoffSessionId = sessionId;
     this.socket.send({ type: 'session.handoff', sessionId, toUserId });
+  }
+
+  // ── Audit & Rate Limits ──────────────────────────────────
+
+  queryAudit(filters?: { startTime?: string; endTime?: string; userId?: string; action?: string; limit?: number }): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'audit.query', ...filters });
+  }
+
+  getRateLimitConfig(): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'rateLimit.getConfig' });
+  }
+
+  setRoleRateLimit(role: string, promptsPerMinute: number, approvalsPerMinute: number): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'rateLimit.setRoleLimit', role, promptsPerMinute, approvalsPerMinute });
+  }
+
+  setUserRateLimitOverride(userId: string, config: { promptsPerMinute?: number; approvalsPerMinute?: number }): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'rateLimit.setUserOverride', userId, ...config });
+  }
+
+  clearUserRateLimitOverride(userId: string): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'rateLimit.clearUserOverride', userId });
   }
 
   // ── Sandbox directory permissions ──────────────────────────
@@ -1332,6 +1371,15 @@ class RelayStore {
         this.annotationsBySession = updated;
         break;
       }
+
+      // ── Audit & Rate Limit responses ──────────────────────────
+      case 'audit.response':
+        this.auditEntries = message.entries;
+        break;
+
+      case 'rateLimit.config':
+        this.rateLimitConfig = { roles: message.roles, userOverrides: message.userOverrides };
+        break;
 
       case 'session.handoff.response':
         // Only show toast if this client initiated the handoff

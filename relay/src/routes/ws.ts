@@ -28,6 +28,9 @@ import type { AchievementService } from '../achievements/achievement-service.js'
 import { AnnotationStore } from '../annotations/annotation-store.js';
 import { ActivityFeed } from '../users/activity-feed.js';
 import type { SandboxGuard } from '../security/sandbox-guard.js';
+import type { AuditLog } from '../security/audit-log.js';
+import type { RateLimiter } from '../security/rate-limiter.js';
+import type { UserRole } from '../users/types.js';
 import { logger } from '../utils/logger.js';
 
 interface WsDeps {
@@ -43,6 +46,8 @@ interface WsDeps {
   annotationStore?: AnnotationStore;
   activityFeed?: ActivityFeed;
   sandboxGuard?: SandboxGuard;
+  auditLog?: AuditLog;
+  rateLimiter?: RateLimiter;
   claudeWorkDir: string;
   multiUserEnabled: boolean;
 }
@@ -65,6 +70,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     annotationStore,
     activityFeed,
     sandboxGuard,
+    auditLog,
+    rateLimiter,
     claudeWorkDir,
     multiUserEnabled,
   } = deps;
@@ -263,6 +270,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   const ADMIN_ONLY: Set<string> = new Set([
     'user.invite', 'user.revoke', 'user.updateRole',
     'sandbox.getUserPaths', 'sandbox.setUserPaths', 'sandbox.clearUserPaths',
+    'rateLimit.getConfig', 'rateLimit.setRoleLimit', 'rateLimit.setUserOverride', 'rateLimit.clearUserOverride',
+    'audit.query',
   ]);
 
   /** Message types that require multi-user mode */
@@ -273,7 +282,18 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     'annotation.add', 'annotation.list',
     'session.handoff',
     'sandbox.getUserPaths', 'sandbox.setUserPaths', 'sandbox.clearUserPaths',
+    'rateLimit.getConfig', 'rateLimit.setRoleLimit', 'rateLimit.setUserOverride', 'rateLimit.clearUserOverride',
+    'audit.query',
   ]);
+
+  /** Helper to record an audit log entry for the current WS user */
+  function recordAudit(ws: WebSocket, action: string, extra?: { sessionId?: string; path?: string; details?: string }): void {
+    if (!auditLog) return;
+    const userId = presenceManager.getUserId(ws) ?? 'unknown';
+    const email = presenceManager.getUserEmail(ws) ?? 'unknown';
+    const role = presenceManager.getUserRole(ws) ?? 'unknown';
+    void auditLog.record({ userId, email, role, action, ...extra });
+  }
 
   async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promise<void> {
     // Multi-user feature guard — reject messages that require multi-user mode when disabled
@@ -367,6 +387,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         const session = await fleetManager.start(workDir);
         healthMonitor.trackSession(session.id);
         trackClientSession(ws, session.id);
+        recordAudit(ws, 'session.start', { sessionId: session.id, path: workDir });
 
         // Set session owner (multi-user only)
         if (userRegistry && activityFeed) {
@@ -459,6 +480,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           break;
         }
         trackClientSession(ws, session.id);
+        recordAudit(ws, 'session.attach', { sessionId: session.id });
         sendToClient(ws, {
           type: 'session.info',
           sessionId: session.id,
@@ -626,6 +648,19 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'prompt': {
+        // Rate limit check
+        if (rateLimiter) {
+          const promptUserId = presenceManager.getUserId(ws);
+          const promptUserRole = presenceManager.getUserRole(ws);
+          if (promptUserId && promptUserRole) {
+            const check = rateLimiter.check(promptUserId, promptUserRole, 'prompt');
+            if (!check.allowed) {
+              sendToClient(ws, { type: 'error', code: 'RATE_LIMITED', message: `Prompt rate limit exceeded — retry in ${check.retryAfter}s`, retryAfter: check.retryAfter });
+              break;
+            }
+          }
+        }
+        recordAudit(ws, 'prompt', { sessionId: message.sessionId, details: message.text.slice(0, 200) });
         const promptSession = sessionManager.tryGet(message.sessionId);
         if (promptSession) {
           promptSession.transcript.append({
@@ -640,6 +675,19 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'approval': {
+        // Rate limit check
+        if (rateLimiter) {
+          const approvalUserId = presenceManager.getUserId(ws);
+          const approvalUserRole = presenceManager.getUserRole(ws);
+          if (approvalUserId && approvalUserRole) {
+            const check = rateLimiter.check(approvalUserId, approvalUserRole, 'approval');
+            if (!check.allowed) {
+              sendToClient(ws, { type: 'error', code: 'RATE_LIMITED', message: `Approval rate limit exceeded — retry in ${check.retryAfter}s`, retryAfter: check.retryAfter });
+              break;
+            }
+          }
+        }
+        recordAudit(ws, `approval.${message.decision}`, { details: `requestId=${message.requestId}` });
         fleetManager.resolveApproval(message.requestId, message.decision);
         // Broadcast who resolved the approval (multi-user enrichment)
         if (userRegistry && activityFeed) {
@@ -849,8 +897,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           if (listUserId && listUserRole) {
             const filtered = [];
             for (const meta of sessions) {
-              const liveSession = sessionManager.tryGet(meta.id);
-              const workDir = liveSession?.workingDir;
+              const workDir = sessionManager.getWorkingDir(meta.id);
               if (workDir) {
                 if (await sandboxGuard.canAccess(listUserId, listUserRole, workDir)) {
                   filtered.push(meta);
@@ -930,6 +977,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       // ── Filesystem browsing ──────────────────────────────
       case 'fs.ls': {
+        recordAudit(ws, 'fs.ls', { path: message.path });
         // SandboxGuard: for fs.ls, allow listing ancestor directories with filtered results
         // instead of hard-denying — users need to navigate to allowed subtrees
         await fsHandlers.handleFsLs(ws, message, sandboxGuard ? {
@@ -941,6 +989,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'fs.readFile': {
+        recordAudit(ws, 'fs.readFile', { path: message.path });
         // SandboxGuard: check per-user access
         if (sandboxGuard) {
           const fsUserId = presenceManager.getUserId(ws);
@@ -1066,6 +1115,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       case 'annotation.add': {
         const annotatorUserId = presenceManager.getUserId(ws);
         if (!annotatorUserId) break;
+        recordAudit(ws, 'annotation.add', { sessionId: message.sessionId, details: message.text.slice(0, 200) });
 
         // Validate session exists (live or persisted)
         if (!sessionManager.tryGet(message.sessionId) && !sessionManager.isPersistedOnly(message.sessionId)) {
@@ -1115,6 +1165,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       case 'session.handoff': {
         const handoffUserId = presenceManager.getUserId(ws);
         if (!handoffUserId) break;
+        recordAudit(ws, 'session.handoff', { sessionId: message.sessionId, details: `toUserId=${message.toUserId}` });
 
         const handoffSession = sessionManager.tryGet(message.sessionId);
         if (!handoffSession) {
@@ -1202,6 +1253,68 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         sandboxGuard?.clearUserPaths(message.userId);
         sendToClient(ws, { type: 'sandbox.userPaths', userId: message.userId, paths: [] });
         logger.info({ userId: message.userId }, 'Sandbox paths cleared');
+        break;
+      }
+
+      // ── Rate limit config (admin-only, guarded above) ──────
+      case 'rateLimit.getConfig': {
+        if (rateLimiter) {
+          const config = rateLimiter.toJSON();
+          sendToClient(ws, { type: 'rateLimit.config', roles: config.roles, userOverrides: config.userOverrides });
+        }
+        break;
+      }
+
+      case 'rateLimit.setRoleLimit': {
+        if (rateLimiter) {
+          const validRoles: UserRole[] = ['admin', 'operator', 'viewer'];
+          if (!validRoles.includes(message.role as UserRole)) {
+            sendToClient(ws, { type: 'error', message: `Invalid role: ${String(message.role)}` } as ServerMessage);
+            break;
+          }
+          rateLimiter.setRoleLimit(message.role as UserRole, {
+            promptsPerMinute: message.promptsPerMinute,
+            approvalsPerMinute: message.approvalsPerMinute,
+          });
+          const config = rateLimiter.toJSON();
+          sendToClient(ws, { type: 'rateLimit.config', roles: config.roles, userOverrides: config.userOverrides });
+        }
+        break;
+      }
+
+      case 'rateLimit.setUserOverride': {
+        if (rateLimiter) {
+          const overrideConfig: Partial<{ promptsPerMinute: number; approvalsPerMinute: number }> = {};
+          if (message.promptsPerMinute !== undefined) overrideConfig.promptsPerMinute = message.promptsPerMinute;
+          if (message.approvalsPerMinute !== undefined) overrideConfig.approvalsPerMinute = message.approvalsPerMinute;
+          rateLimiter.setUserOverride(message.userId, overrideConfig);
+          const config = rateLimiter.toJSON();
+          sendToClient(ws, { type: 'rateLimit.config', roles: config.roles, userOverrides: config.userOverrides });
+        }
+        break;
+      }
+
+      case 'rateLimit.clearUserOverride': {
+        if (rateLimiter) {
+          rateLimiter.clearUserOverride(message.userId);
+          const config = rateLimiter.toJSON();
+          sendToClient(ws, { type: 'rateLimit.config', roles: config.roles, userOverrides: config.userOverrides });
+        }
+        break;
+      }
+
+      // ── Audit query (admin-only, guarded above) ────────────
+      case 'audit.query': {
+        if (auditLog) {
+          const entries = await auditLog.query({
+            startTime: message.startTime,
+            endTime: message.endTime,
+            userId: message.userId,
+            action: message.action,
+            limit: message.limit,
+          });
+          sendToClient(ws, { type: 'audit.response', entries });
+        }
         break;
       }
 

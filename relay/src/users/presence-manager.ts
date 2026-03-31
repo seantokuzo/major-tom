@@ -126,6 +126,13 @@ export class PresenceManager {
     return this.userInfo.get(userId)?.role;
   }
 
+  /** Get user's email */
+  getUserEmail(ws: WebSocket): string | undefined {
+    const userId = this.wsToUser.get(ws);
+    if (!userId) return undefined;
+    return this.userInfo.get(userId)?.email;
+  }
+
   /** Disconnect all sockets for a user (e.g. on revoke) */
   disconnectUser(userId: string): void {
     const connections = this.userConnections.get(userId);

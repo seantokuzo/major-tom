@@ -177,6 +177,38 @@ export interface SandboxClearUserPathsMessage {
   userId: string;
 }
 
+export interface AuditQueryMessage {
+  type: 'audit.query';
+  startTime?: string;
+  endTime?: string;
+  userId?: string;
+  action?: string;
+  limit?: number;
+}
+
+export interface RateLimitGetConfigMessage {
+  type: 'rateLimit.getConfig';
+}
+
+export interface RateLimitSetRoleLimitMessage {
+  type: 'rateLimit.setRoleLimit';
+  role: string;
+  promptsPerMinute: number;
+  approvalsPerMinute: number;
+}
+
+export interface RateLimitSetUserOverrideMessage {
+  type: 'rateLimit.setUserOverride';
+  userId: string;
+  promptsPerMinute?: number;
+  approvalsPerMinute?: number;
+}
+
+export interface RateLimitClearUserOverrideMessage {
+  type: 'rateLimit.clearUserOverride';
+  userId: string;
+}
+
 export type ClientMessage =
   | PromptMessage
   | ApprovalMessage
@@ -209,7 +241,12 @@ export type ClientMessage =
   | SessionHandoffMessage
   | SandboxGetUserPathsMessage
   | SandboxSetUserPathsMessage
-  | SandboxClearUserPathsMessage;
+  | SandboxClearUserPathsMessage
+  | AuditQueryMessage
+  | RateLimitGetConfigMessage
+  | RateLimitSetRoleLimitMessage
+  | RateLimitSetUserOverrideMessage
+  | RateLimitClearUserOverrideMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -684,6 +721,40 @@ export interface ActivityFeedMessage {
   entries: ActivityEntry[];
 }
 
+// ── Audit & Rate Limit responses ────────────────────────────
+
+export interface AuditEntry {
+  timestamp: string;
+  userId: string;
+  email: string;
+  role: string;
+  action: string;
+  sessionId?: string;
+  path?: string;
+  details?: string;
+}
+
+export interface AuditQueryResponseMessage {
+  type: 'audit.response';
+  entries: AuditEntry[];
+}
+
+export interface RateLimitRoleConfig {
+  promptsPerMinute: number;
+  approvalsPerMinute: number;
+}
+
+export interface RateLimitUserOverride {
+  promptsPerMinute?: number;
+  approvalsPerMinute?: number;
+}
+
+export interface RateLimitConfigResponseMessage {
+  type: 'rateLimit.config';
+  roles: Record<string, RateLimitRoleConfig>;
+  userOverrides: Record<string, RateLimitUserOverride>;
+}
+
 // ── Analytics types (HTTP API, not WebSocket) ──────────────
 
 export interface AnalyticsResponse {
@@ -769,4 +840,6 @@ export type ServerMessage =
   | SessionHandoffResponseMessage
   | SessionOwnershipChangedMessage
   | ActivityFeedMessage
-  | SandboxUserPathsResponseMessage;
+  | SandboxUserPathsResponseMessage
+  | AuditQueryResponseMessage
+  | RateLimitConfigResponseMessage;
