@@ -67,6 +67,9 @@ final class RelayService {
     var currentUserRole: UserRole = .viewer
     var currentUserId: String?
 
+    // Sandbox directory permissions (per-user paths)
+    var userSandboxPaths: [String: [String]] = [:]
+
     // Session-scoped allowlist (tool names auto-approved via "Always")
     var sessionAllowlist: Set<String> = []
 
@@ -370,6 +373,23 @@ final class RelayService {
 
     func watchersForSession(_ sessionId: String) -> [UserPresence] {
         teamPresence.filter { $0.watchingSessionId == sessionId }
+    }
+
+    // MARK: - Sandbox Directory Permissions
+
+    func getUserSandboxPaths(userId: String) async throws {
+        let message = SandboxGetUserPathsMessage(userId: userId)
+        try await webSocket.send(message)
+    }
+
+    func setUserSandboxPaths(userId: String, paths: [String]) async throws {
+        let message = SandboxSetUserPathsMessage(userId: userId, paths: paths)
+        try await webSocket.send(message)
+    }
+
+    func clearUserSandboxPaths(userId: String) async throws {
+        let message = SandboxClearUserPathsMessage(userId: userId)
+        try await webSocket.send(message)
     }
 
     // MARK: - Message Routing
@@ -824,6 +844,11 @@ final class RelayService {
                     content: "\(resolverName) \(event.decision) the request"
                 )
                 chatMessages.append(msg)
+            }
+
+        case .sandboxUserPaths:
+            if let event = try? MessageCodec.decode(SandboxUserPathsResponseEvent.self, from: data) {
+                userSandboxPaths[event.userId] = event.paths
             }
 
         case .error:

@@ -68,7 +68,7 @@ struct TeamSettingsView: View {
                     .listRowBackground(MajorTomTheme.Colors.surface)
             } else {
                 ForEach(relay.teamUsers) { user in
-                    TeamUserRow(user: user)
+                    TeamUserRow(user: user, relay: relay, isAdmin: relay.currentUserRole == .admin)
                         .listRowBackground(MajorTomTheme.Colors.surface)
                 }
             }
@@ -141,6 +141,8 @@ struct TeamSettingsView: View {
 
 struct TeamUserRow: View {
     let user: TeamUser
+    let relay: RelayService
+    let isAdmin: Bool
 
     var body: some View {
         HStack(spacing: MajorTomTheme.Spacing.md) {
@@ -160,6 +162,16 @@ struct TeamUserRow: View {
             }
 
             Spacer()
+
+            if isAdmin {
+                NavigationLink {
+                    DirectoryPermissionsView(userId: user.id, relay: relay)
+                } label: {
+                    Image(systemName: "folder.badge.gearshape")
+                        .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+                        .font(.caption)
+                }
+            }
 
             Text(user.role.displayName)
                 .font(.caption)

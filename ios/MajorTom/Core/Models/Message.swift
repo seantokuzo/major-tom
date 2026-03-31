@@ -32,6 +32,9 @@ enum MessageType: String, Codable {
     case annotationList = "annotation.list"
     case sessionHandoff = "session.handoff"
     case activityList = "activity.list"
+    case sandboxGetUserPaths = "sandbox.getUserPaths"
+    case sandboxSetUserPaths = "sandbox.setUserPaths"
+    case sandboxClearUserPaths = "sandbox.clearUserPaths"
 
     // Server → Client
     case output
@@ -78,6 +81,7 @@ enum MessageType: String, Codable {
     case userRevokeResponse = "user.revoke.response"
     case userRoleUpdated = "user.roleUpdated"
     case approvalResolved = "approval.resolved"
+    case sandboxUserPaths = "sandbox.userPaths"
     case error
 }
 
@@ -261,6 +265,30 @@ struct SessionHandoffRequestMessage: Codable {
 
 struct ActivityListRequestMessage: Codable {
     let type: String = "activity.list"
+}
+
+// MARK: - Sandbox Directory Permissions
+
+struct SandboxGetUserPathsMessage: Codable {
+    let type: String = "sandbox.getUserPaths"
+    let userId: String
+}
+
+struct SandboxSetUserPathsMessage: Codable {
+    let type: String = "sandbox.setUserPaths"
+    let userId: String
+    let paths: [String]
+}
+
+struct SandboxClearUserPathsMessage: Codable {
+    let type: String = "sandbox.clearUserPaths"
+    let userId: String
+}
+
+struct SandboxUserPathsResponseEvent: Codable {
+    let type: String
+    let userId: String
+    let paths: [String]
 }
 
 // MARK: - Server → Client Messages
@@ -512,10 +540,12 @@ struct FsEntry: Codable, Identifiable {
     let size: Int
     let modified: String
     var permissions: String?
+    var restricted: Bool?
 
     var id: String { name }
 
     var isDirectory: Bool { type == "directory" }
+    var isRestricted: Bool { restricted ?? false }
 }
 
 struct FsLsResponseEvent: Codable {

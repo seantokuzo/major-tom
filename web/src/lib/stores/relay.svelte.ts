@@ -181,6 +181,9 @@ class RelayStore {
   // Annotations (per-session)
   annotationsBySession = $state(new Map<string, AnnotationEntry[]>());
 
+  // Sandbox directory permissions (per-user paths)
+  userSandboxPaths = $state(new Map<string, string[]>());
+
   // Track pending handoff initiated by this client
   private pendingHandoffSessionId: string | null = null;
 
@@ -722,6 +725,23 @@ class RelayStore {
     this.socket.send({ type: 'session.handoff', sessionId, toUserId });
   }
 
+  // ── Sandbox directory permissions ──────────────────────────
+
+  getUserSandboxPaths(userId: string): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'sandbox.getUserPaths', userId });
+  }
+
+  setUserSandboxPaths(userId: string, paths: string[]): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'sandbox.setUserPaths', userId, paths });
+  }
+
+  clearUserSandboxPaths(userId: string): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'sandbox.clearUserPaths', userId });
+  }
+
   requestSessionList(): void {
     if (!this.isConnected) return;
     sessionsStore.markLoading();
@@ -1204,7 +1224,15 @@ class RelayStore {
       case 'fs.error':
         terminalStore.isLoading = false;
         terminalStore.pendingCdTarget = null; // Clear pending cd on error
-        terminalStore.addError(message.message);
+        {
+          const msg = message.message;
+          const isAccessDenied = /access.denied|permission|restricted|forbidden|EACCES/i.test(msg);
+          if (isAccessDenied) {
+            terminalStore.addError(`Access denied: You don't have permission to access this directory.`);
+          } else {
+            terminalStore.addError(msg);
+          }
+        }
         break;
 
       // ── Fleet status messages ──────────────────────────────
@@ -1316,6 +1344,14 @@ class RelayStore {
           }
         }
         break;
+
+      // ── Sandbox directory permissions ──────────────────────
+      case 'sandbox.userPaths': {
+        const updated = new Map(this.userSandboxPaths);
+        updated.set(message.userId, message.paths);
+        this.userSandboxPaths = updated;
+        break;
+      }
     }
   }
 
