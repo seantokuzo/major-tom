@@ -265,6 +265,18 @@ major-tom/
 | F17 | **Push Notifications** | ⬜ Deferred to v3.0 |
 | F17b | **Reconnection UX** | ✅ Toast notifications, status bar, error handling (PR #23) |
 
+### v5.0 — Lockdown ✅ COMPLETE
+
+| ID | Feature | Status |
+|----|---------|--------|
+| L01 | **Multi-user kill switch** | ✅ MULTI_USER_ENABLED default false (PR #83) |
+| L02 | **Configurable auth methods** | ✅ Google/PIN toggles, adaptive login UI (PR #83) |
+| L03 | **SandboxGuard** | ✅ Per-user directory access control (PR #84) |
+| L04 | **Audit trail** | ✅ Append-only JSONL, daily rotation, 30-day retention (PR #85) |
+| L05 | **Rate limiting** | ✅ Per-role defaults, per-user overrides, fixed-window (PR #85) |
+| L06 | **Admin UI (PWA)** | ✅ AuditViewer, RateLimitConfig, DirectoryPermissions panels (PR #85) |
+| L07 | **Admin UI (iOS)** | ✅ AuditLogView, RateLimitSettingsView, DirectoryPermissionsView (PR #85) |
+
 ### v2.0 — The Office ✅ COMPLETE (PWA)
 
 | ID | Feature | Status |
