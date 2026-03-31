@@ -51,9 +51,7 @@ struct MajorTomApp: App {
                 relay.currentUserId = newId
             }
             .onChange(of: auth.userRole) { _, newRole in
-                if let newRole {
-                    relay.currentUserRole = newRole
-                }
+                relay.currentUserRole = newRole ?? .viewer
             }
             .onChange(of: auth.isPaired) { _, isPaired in
                 if isPaired {

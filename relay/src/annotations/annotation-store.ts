@@ -14,7 +14,7 @@ export interface Annotation {
   createdAt: string;      // ISO 8601
 }
 
-const UUID_PATTERN = /^[a-f0-9\-]{36}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class AnnotationStore {
   private dir: string;

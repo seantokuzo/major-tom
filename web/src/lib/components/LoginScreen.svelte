@@ -42,9 +42,9 @@
   }
 
   async function submitWithInvite() {
-    if (!pendingCredential || inviteCode.length < 8) return;
-    error = null;
     const normalizedInvite = inviteCode.trim().toUpperCase();
+    if (!pendingCredential || normalizedInvite.length < 8) return;
+    error = null;
     const result = await relay.login(pendingCredential, normalizedInvite);
     if (result.success) {
       needsInvite = false;
@@ -271,7 +271,7 @@
             <button
               class="invite-submit"
               onclick={submitWithInvite}
-              disabled={inviteCode.length < 8}
+              disabled={inviteCode.trim().length < 8}
             >
               Join
             </button>

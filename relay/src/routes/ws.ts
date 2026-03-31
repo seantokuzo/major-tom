@@ -614,7 +614,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             });
             // Record in activity feed
             const approverName = approverUser?.name ?? approverUser?.email ?? 'Unknown';
-            const approvalAction = message.decision === 'deny' ? 'denied' : 'approved';
+            const approvalActions: Record<string, string> = { allow: 'approved', deny: 'denied', skip: 'skipped', allow_always: 'always-approved' };
+            const approvalAction = approvalActions[message.decision] ?? message.decision;
             activityFeed.record(approverUserId, approverName, `${approvalAction} approval`);
           }
         }

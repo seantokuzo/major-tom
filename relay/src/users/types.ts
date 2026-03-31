@@ -12,7 +12,7 @@ export interface User {
 }
 
 export interface InviteCode {
-  code: string;         // 8-char base64url (uppercase A-Z, 0-9, -, _)
+  code: string;         // 8-char uppercased base64url (A-Z, 0-9, -, _)
   role: UserRole;
   createdBy: string;    // userId
   createdAt: string;
