@@ -169,8 +169,9 @@ export class UserRegistry {
 
   /** Redeem an invite code — returns the invite if valid, null otherwise */
   async redeemInviteCode(code: string, userDetails: { id: string; email: string; name?: string; picture?: string }): Promise<InviteCode | null> {
+    const normalizedCode = code.trim().toUpperCase();
     const invite = this.invites.find(
-      (i) => i.code === code && !i.redeemedBy && new Date(i.expiresAt) > new Date(),
+      (i) => i.code === normalizedCode && !i.redeemedBy && new Date(i.expiresAt) > new Date(),
     );
     if (!invite) return null;
 

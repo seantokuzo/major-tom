@@ -151,6 +151,9 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     if (!sessionId) return;
     clientSessions.delete(ws);
 
+    // Clear watching state so presence doesn't show stale session
+    presenceManager.unwatchSession(ws);
+
     const clientSet = sessionClients.get(sessionId);
     if (clientSet) {
       clientSet.delete(ws);
@@ -257,8 +260,12 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   ]);
 
   async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promise<void> {
-    // Role-based access control
-    const userRole = presenceManager.getUserRole(ws) ?? 'admin';
+    // Role-based access control — deny if role is missing
+    const userRole = presenceManager.getUserRole(ws);
+    if (!userRole) {
+      sendToClient(ws, { type: 'error', code: 'FORBIDDEN', message: 'Role missing — access denied' });
+      return;
+    }
     if (userRole === 'viewer' && !VIEWER_ALLOWED.has(message.type)) {
       sendToClient(ws, { type: 'error', code: 'FORBIDDEN', message: 'Viewers cannot perform this action' });
       return;
@@ -587,7 +594,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           });
           // Record in activity feed
           const approverName = approverUser?.name ?? approverUser?.email ?? 'Unknown';
-          activityFeed.record(approverUserId, approverName, `${message.decision} approval`);
+          const approvalAction = message.decision === 'deny' ? 'denied' : 'approved';
+          activityFeed.record(approverUserId, approverName, `${approvalAction} approval`);
         }
         // Track achievement: approval decisions with timing for Speed Demon
         if (message.decision === 'allow' || message.decision === 'allow_always') {
@@ -917,6 +925,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       case 'user.revoke': {
         await userRegistry.deleteUser(message.userId);
+        // Disconnect all active WebSocket connections for the revoked user
+        presenceManager.disconnectUser(message.userId);
         sendToClient(ws, {
           type: 'user.revoke.response',
           userId: message.userId,
@@ -928,6 +938,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       case 'user.updateRole': {
         await userRegistry.updateUser(message.userId, { role: message.role });
+        // Update cached role in PresenceManager so connected sockets reflect the change
+        presenceManager.updateUserRole(message.userId, message.role);
         broadcastToAll({
           type: 'user.roleUpdated',
           userId: message.userId,
@@ -949,6 +961,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       case 'annotation.add': {
         const annotatorUserId = presenceManager.getUserId(ws);
         if (!annotatorUserId) break;
+
+        // Validate session exists (live or persisted)
+        if (!sessionManager.tryGet(message.sessionId) && !sessionManager.isPersistedOnly(message.sessionId)) {
+          sendToClient(ws, { type: 'error', code: 'SESSION_NOT_FOUND', message: 'Cannot annotate — session not found' });
+          break;
+        }
+
         const annotatorUser = await userRegistry.getUser(annotatorUserId);
         const annotatorName = annotatorUser?.name ?? annotatorUser?.email ?? 'Unknown';
 
@@ -1005,18 +1024,20 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           break;
         }
 
-        // Only owner or admin can hand off
+        // Only owner or admin can hand off; missing ownerId = non-transferable for non-admins
         const handoffUserRole = presenceManager.getUserRole(ws);
-        if (handoffSession.ownerId && handoffSession.ownerId !== handoffUserId && handoffUserRole !== 'admin') {
-          sendToClient(ws, {
-            type: 'session.handoff.response',
-            sessionId: message.sessionId,
-            fromUserId: handoffUserId,
-            toUserId: message.toUserId,
-            success: false,
-            error: 'Only the session owner or admin can hand off',
-          });
-          break;
+        if (handoffUserRole !== 'admin') {
+          if (!handoffSession.ownerId || handoffSession.ownerId !== handoffUserId) {
+            sendToClient(ws, {
+              type: 'session.handoff.response',
+              sessionId: message.sessionId,
+              fromUserId: handoffUserId,
+              toUserId: message.toUserId,
+              success: false,
+              error: 'Only the session owner or admin can hand off',
+            });
+            break;
+          }
         }
 
         // Verify target user exists
@@ -1039,12 +1060,21 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         const handoffUserName = handoffUser?.name ?? handoffUser?.email ?? 'Unknown';
         activityFeed.record(handoffUserId, handoffUserName, `handed off session to ${targetUser.name ?? targetUser.email}`, message.sessionId);
 
-        broadcastToAll({
+        // Send response only to the requesting client
+        sendToClient(ws, {
           type: 'session.handoff.response',
           sessionId: message.sessionId,
           fromUserId: handoffUserId,
           toUserId: message.toUserId,
           success: true,
+        });
+
+        // Broadcast ownership change to session watchers
+        broadcastToSession(message.sessionId, {
+          type: 'session.ownership.changed',
+          sessionId: message.sessionId,
+          fromUserId: handoffUserId,
+          toUserId: message.toUserId,
         });
         break;
       }
@@ -1383,6 +1413,11 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             if (user) {
               payload.userId = user.id;
               payload.role = user.role;
+            } else if (!userRegistry.isEmpty()) {
+              // Registry has users but this token doesn't map to any — reject
+              logger.warn({ email: payload.email }, 'WS connection rejected — token does not map to a registered user');
+              socket.close(1008, 'User not registered');
+              return;
             }
           }
 

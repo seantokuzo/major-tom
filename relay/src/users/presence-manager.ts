@@ -15,6 +15,9 @@ export class PresenceManager {
   private userInfo = new Map<string, UserPresenceInfo>();
   /** ws → sessionId being watched */
   private wsToSession = new Map<WebSocket, string>();
+  /** ws → monotonic sequence when watch was set (for ordering) */
+  private wsWatchSeq = new Map<WebSocket, number>();
+  private watchSeqCounter = 0;
 
   /** Register a new WebSocket connection with user identity */
   connect(ws: WebSocket, payload: SessionPayload): void {
@@ -31,15 +34,15 @@ export class PresenceManager {
     }
     connections.add(ws);
 
-    // Create or update presence info
-    if (!this.userInfo.has(userId)) {
-      this.userInfo.set(userId, {
-        userId,
-        email,
-        role,
-        connectedAt: new Date().toISOString(),
-      });
-    }
+    // Always update presence info (refresh role/email on reconnect)
+    const existing = this.userInfo.get(userId);
+    this.userInfo.set(userId, {
+      userId,
+      email,
+      role,
+      connectedAt: existing?.connectedAt ?? new Date().toISOString(),
+      watchingSessionId: existing?.watchingSessionId,
+    });
   }
 
   /** Unregister a WebSocket connection */
@@ -49,6 +52,7 @@ export class PresenceManager {
 
     this.wsToUser.delete(ws);
     this.wsToSession.delete(ws);
+    this.wsWatchSeq.delete(ws);
 
     const connections = this.userConnections.get(userId);
     if (connections) {
@@ -69,6 +73,7 @@ export class PresenceManager {
   /** Track that a connection is watching a specific session */
   watchSession(ws: WebSocket, sessionId: string): void {
     this.wsToSession.set(ws, sessionId);
+    this.wsWatchSeq.set(ws, ++this.watchSeqCounter);
     const userId = this.wsToUser.get(ws);
     if (userId) {
       this.recalcWatching(userId);
@@ -78,6 +83,7 @@ export class PresenceManager {
   /** Stop watching any session */
   unwatchSession(ws: WebSocket): void {
     this.wsToSession.delete(ws);
+    this.wsWatchSeq.delete(ws);
     const userId = this.wsToUser.get(ws);
     if (userId) {
       this.recalcWatching(userId);
@@ -120,6 +126,24 @@ export class PresenceManager {
     return this.userInfo.get(userId)?.role;
   }
 
+  /** Disconnect all sockets for a user (e.g. on revoke) */
+  disconnectUser(userId: string): void {
+    const connections = this.userConnections.get(userId);
+    if (!connections) return;
+    // Close all connections — the 'close' handler will clean up maps
+    for (const ws of [...connections]) {
+      ws.close(1008, 'User revoked');
+    }
+  }
+
+  /** Update cached role for a connected user */
+  updateUserRole(userId: string, role: UserRole): void {
+    const info = this.userInfo.get(userId);
+    if (info) {
+      info.role = role;
+    }
+  }
+
   /** Check if user is online */
   isOnline(userId: string): boolean {
     return this.userConnections.has(userId);
@@ -130,7 +154,7 @@ export class PresenceManager {
     return this.wsToSession.get(ws);
   }
 
-  /** Recalculate watching session for a user (most recent ws wins) */
+  /** Recalculate watching session for a user (most recent watch wins by sequence) */
   private recalcWatching(userId: string): void {
     const info = this.userInfo.get(userId);
     if (!info) return;
@@ -141,11 +165,16 @@ export class PresenceManager {
       return;
     }
 
-    // Use the last connection's session (most recently set)
+    // Use the connection with the highest watch sequence (most recently set)
     let lastSession: string | undefined;
+    let highestSeq = -1;
     for (const ws of connections) {
       const sid = this.wsToSession.get(ws);
-      if (sid) lastSession = sid;
+      const seq = this.wsWatchSeq.get(ws) ?? 0;
+      if (sid && seq > highestSeq) {
+        highestSeq = seq;
+        lastSession = sid;
+      }
     }
     info.watchingSessionId = lastSession;
   }

@@ -14,6 +14,8 @@ export interface Annotation {
   createdAt: string;      // ISO 8601
 }
 
+const UUID_PATTERN = /^[a-f0-9\-]{36}$/i;
+
 export class AnnotationStore {
   private dir: string;
   private cache = new Map<string, Annotation[]>();
@@ -24,11 +26,18 @@ export class AnnotationStore {
     this.dir = join(homedir(), '.major-tom', 'annotations');
   }
 
+  private validateSessionId(sessionId: string): void {
+    if (!UUID_PATTERN.test(sessionId)) {
+      throw new Error(`Invalid sessionId: must be a valid UUID`);
+    }
+  }
+
   async ensureDir(): Promise<void> {
     await mkdir(this.dir, { recursive: true });
   }
 
   async addAnnotation(sessionId: string, annotation: Omit<Annotation, 'id' | 'createdAt'>): Promise<Annotation> {
+    this.validateSessionId(sessionId);
     const full: Annotation = {
       ...annotation,
       id: randomUUID(),
@@ -47,6 +56,7 @@ export class AnnotationStore {
   }
 
   async getAnnotations(sessionId: string): Promise<Annotation[]> {
+    this.validateSessionId(sessionId);
     if (this.cache.has(sessionId)) {
       return this.cache.get(sessionId)!;
     }
@@ -75,17 +85,21 @@ export class AnnotationStore {
 
   async flush(): Promise<void> {
     await this.ensureDir();
-    for (const sessionId of this.dirty) {
+    const snapshot = new Set(this.dirty);
+    for (const sessionId of snapshot) {
       const list = this.cache.get(sessionId);
-      if (!list) continue;
+      if (!list) {
+        this.dirty.delete(sessionId);
+        continue;
+      }
       try {
         const filePath = join(this.dir, `${sessionId}.json`);
         await writeFile(filePath, JSON.stringify(list, null, 2));
+        this.dirty.delete(sessionId);
       } catch (err) {
-        logger.error({ err, sessionId }, 'Failed to save annotations');
+        logger.error({ err, sessionId }, 'Failed to save annotations — will retry next flush');
       }
     }
-    this.dirty.clear();
   }
 
   dispose(): void {
