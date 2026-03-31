@@ -13,6 +13,7 @@ export class SessionNotFoundError extends Error {
 export class SessionManager {
   private sessions = new Map<string, Session>();
   private persistedMetas = new Map<string, SessionMeta>();
+  private persistedWorkingDirs = new Map<string, string>();
 
   constructor(private persistence: SessionPersistence) {}
 
@@ -26,6 +27,9 @@ export class SessionManager {
           ...meta.metadata,
           status: 'closed', // Persisted sessions are always closed
         });
+        if (meta.workingDir) {
+          this.persistedWorkingDirs.set(meta.id, meta.workingDir);
+        }
       }
     }
     logger.info({ count: this.persistedMetas.size }, 'Restored persisted session metadata');
@@ -79,6 +83,13 @@ export class SessionManager {
   /** Get persisted metadata for a closed session */
   getPersistedMeta(sessionId: string): SessionMeta | undefined {
     return this.persistedMetas.get(sessionId);
+  }
+
+  /** Get the working directory for any session (live or persisted) */
+  getWorkingDir(sessionId: string): string | undefined {
+    const live = this.sessions.get(sessionId);
+    if (live) return live.workingDir;
+    return this.persistedWorkingDirs.get(sessionId);
   }
 
   async getPersistedTranscript(sessionId: string): Promise<TranscriptEntry[]> {

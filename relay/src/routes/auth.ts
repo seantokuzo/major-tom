@@ -417,12 +417,13 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
         };
       }>('/api/audit', { preHandler: requireRole('admin') }, async (request) => {
         const { startTime, endTime, userId, action, limit } = request.query;
+        const parsedLimit = limit ? parseInt(limit, 10) : undefined;
         const entries = await auditLog.query({
           startTime,
           endTime,
           userId,
           action,
-          limit: limit ? parseInt(limit, 10) : undefined,
+          limit: parsedLimit !== undefined && !isNaN(parsedLimit) ? parsedLimit : undefined,
         });
         return { entries };
       });

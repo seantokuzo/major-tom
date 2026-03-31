@@ -79,10 +79,14 @@
     [...new Set(relay.auditEntries.map(e => e.action))].sort()
   );
 
-  // Unique users for filter dropdown
-  const uniqueUsers = $derived(
-    [...new Set(relay.auditEntries.map(e => e.email))].sort()
-  );
+  // Unique users for filter dropdown — map userId → email for display
+  const uniqueUsers = $derived(() => {
+    const map = new Map<string, string>();
+    for (const e of relay.auditEntries) {
+      if (!map.has(e.userId)) map.set(e.userId, e.email);
+    }
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  });
 </script>
 
 {#if open}
@@ -120,11 +124,18 @@
         <div class="filter-row">
           <select class="filter-select wide" bind:value={userFilter}>
             <option value="">All Users</option>
-            {#each uniqueUsers as email}
-              <option value={email}>{email}</option>
+            {#each uniqueUsers() as [userId, email]}
+              <option value={userId}>{email}</option>
             {/each}
           </select>
-          <button class="refresh-btn" onclick={() => relay.queryAudit({ limit: 200 })} title="Refresh">
+          <button class="refresh-btn" onclick={() => {
+            const now = new Date();
+            let st: string | undefined;
+            if (timeRange === 'hour') st = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+            else if (timeRange === 'day') st = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+            else if (timeRange === 'week') st = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+            relay.queryAudit({ startTime: st, userId: userFilter || undefined, action: actionFilter || undefined, limit: 200 });
+          }} title="Refresh">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M13.65 2.35A8 8 0 1 0 16 8h-2a6 6 0 1 1-1.76-4.24L10 6h6V0l-2.35 2.35z" fill="currentColor"/>
             </svg>

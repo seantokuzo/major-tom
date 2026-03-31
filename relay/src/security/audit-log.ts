@@ -14,9 +14,12 @@ export interface AuditEntry {
   details?: string;
 }
 
+const RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000; // Run cleanup once per day
+
 export class AuditLog {
   private dir: string;
   private retentionDays: number;
+  private retentionTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(retentionDays = 30) {
     this.dir = join(homedir(), '.major-tom', 'audit');
@@ -26,6 +29,16 @@ export class AuditLog {
   async init(): Promise<void> {
     await mkdir(this.dir, { recursive: true });
     await this.rotateOld();
+    // Schedule periodic cleanup for long-running relay instances
+    this.retentionTimer = setInterval(() => void this.rotateOld(), RETENTION_INTERVAL_MS);
+  }
+
+  /** Cancel scheduled cleanup */
+  dispose(): void {
+    if (this.retentionTimer) {
+      clearInterval(this.retentionTimer);
+      this.retentionTimer = null;
+    }
   }
 
   /** Append an audit entry to today's log file */

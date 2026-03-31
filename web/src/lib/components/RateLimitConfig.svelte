@@ -130,7 +130,7 @@
                   <input
                     class="num-input"
                     type="number"
-                    min="1"
+                    min="0"
                     max="1000"
                     bind:value={limits.promptsPerMinute}
                     oninput={handleRoleChange}
@@ -138,7 +138,7 @@
                   <input
                     class="num-input"
                     type="number"
-                    min="1"
+                    min="0"
                     max="1000"
                     bind:value={limits.approvalsPerMinute}
                     oninput={handleRoleChange}
@@ -196,7 +196,7 @@
                   <input
                     class="num-input"
                     type="number"
-                    min="1"
+                    min="0"
                     max="1000"
                     placeholder="--"
                     bind:value={overridePrompts}
@@ -207,7 +207,7 @@
                   <input
                     class="num-input"
                     type="number"
-                    min="1"
+                    min="0"
                     max="1000"
                     placeholder="--"
                     bind:value={overrideApprovals}

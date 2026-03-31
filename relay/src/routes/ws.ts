@@ -897,8 +897,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           if (listUserId && listUserRole) {
             const filtered = [];
             for (const meta of sessions) {
-              const liveSession = sessionManager.tryGet(meta.id);
-              const workDir = liveSession?.workingDir;
+              const workDir = sessionManager.getWorkingDir(meta.id);
               if (workDir) {
                 if (await sandboxGuard.canAccess(listUserId, listUserRole, workDir)) {
                   filtered.push(meta);
@@ -1268,6 +1267,11 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       case 'rateLimit.setRoleLimit': {
         if (rateLimiter) {
+          const validRoles: UserRole[] = ['admin', 'operator', 'viewer'];
+          if (!validRoles.includes(message.role as UserRole)) {
+            sendToClient(ws, { type: 'error', message: `Invalid role: ${String(message.role)}` } as ServerMessage);
+            break;
+          }
           rateLimiter.setRoleLimit(message.role as UserRole, {
             promptsPerMinute: message.promptsPerMinute,
             approvalsPerMinute: message.approvalsPerMinute,

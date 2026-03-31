@@ -277,7 +277,7 @@ struct RoleLimitRow: View {
                     Text("Prompts/min")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(MajorTomTheme.Colors.textTertiary)
-                    Stepper(value: $promptsPerMinute, in: 1...1000) {
+                    Stepper(value: $promptsPerMinute, in: 0...1000) {
                         Text("\(promptsPerMinute)")
                             .font(MajorTomTheme.Typography.codeFont)
                             .foregroundStyle(MajorTomTheme.Colors.accent)
@@ -290,7 +290,7 @@ struct RoleLimitRow: View {
                     Text("Approvals/min")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(MajorTomTheme.Colors.textTertiary)
-                    Stepper(value: $approvalsPerMinute, in: 1...1000) {
+                    Stepper(value: $approvalsPerMinute, in: 0...1000) {
                         Text("\(approvalsPerMinute)")
                             .font(MajorTomTheme.Typography.codeFont)
                             .foregroundStyle(MajorTomTheme.Colors.accent)
