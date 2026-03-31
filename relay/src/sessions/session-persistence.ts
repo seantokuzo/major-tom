@@ -13,6 +13,7 @@ export interface PersistedSession {
   workingDir: string;
   status: string;
   startedAt: string;
+  ownerId?: string;
   metadata: SessionMeta;
   transcript: TranscriptEntry[];
 }

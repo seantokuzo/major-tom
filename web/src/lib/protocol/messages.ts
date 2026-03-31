@@ -140,6 +140,25 @@ export interface ActivityListMessage {
   type: 'activity.list';
 }
 
+export interface AnnotationAddMessage {
+  type: 'annotation.add';
+  sessionId: string;
+  turnIndex?: number;
+  text: string;
+  mentions?: string[];
+}
+
+export interface AnnotationListMessage {
+  type: 'annotation.list';
+  sessionId: string;
+}
+
+export interface SessionHandoffMessage {
+  type: 'session.handoff';
+  sessionId: string;
+  toUserId: string;
+}
+
 export type ClientMessage =
   | PromptMessage
   | ApprovalMessage
@@ -166,7 +185,10 @@ export type ClientMessage =
   | UserInviteMessage
   | UserRevokeMessage
   | UserUpdateRoleMessage
-  | ActivityListMessage;
+  | ActivityListMessage
+  | AnnotationAddMessage
+  | AnnotationListMessage
+  | SessionHandoffMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -580,6 +602,53 @@ export interface ApprovalResolvedMessage {
   };
 }
 
+// ── Annotation & activity messages ──────────────────────────
+
+export interface AnnotationEntry {
+  id: string;
+  userId: string;
+  userName: string;
+  turnIndex?: number;
+  text: string;
+  mentions: string[];
+  createdAt: string;
+}
+
+export interface AnnotationAddedMessage {
+  type: 'annotation.added';
+  sessionId: string;
+  annotation: AnnotationEntry;
+}
+
+export interface AnnotationListResponseMessage {
+  type: 'annotation.list.response';
+  sessionId: string;
+  annotations: AnnotationEntry[];
+}
+
+export interface SessionHandoffResponseMessage {
+  type: 'session.handoff.response';
+  sessionId: string;
+  fromUserId: string;
+  toUserId: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface ActivityEntry {
+  id: string;
+  userId: string;
+  userName: string;
+  action: string;
+  sessionId?: string;
+  timestamp: string;
+}
+
+export interface ActivityFeedMessage {
+  type: 'activity.feed';
+  entries: ActivityEntry[];
+}
+
 // ── Analytics types (HTTP API, not WebSocket) ──────────────
 
 export interface AnalyticsResponse {
@@ -659,4 +728,8 @@ export type ServerMessage =
   | UserInviteResponseMessage
   | UserRevokeResponseMessage
   | UserRoleUpdatedMessage
-  | ApprovalResolvedMessage;
+  | ApprovalResolvedMessage
+  | AnnotationAddedMessage
+  | AnnotationListResponseMessage
+  | SessionHandoffResponseMessage
+  | ActivityFeedMessage;

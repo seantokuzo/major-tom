@@ -6,6 +6,13 @@
   let config = $state<NotificationConfig | null>(null);
   let open = $state(false);
 
+  // Per-channel notification toggles (local state — backend config comes later)
+  let channels = $state({
+    approvals: true,
+    mentions: true,
+    activity: false,
+  });
+
   async function loadConfig(): Promise<void> {
     loading = true;
     try {
@@ -170,6 +177,35 @@
           </div>
           <p class="hint">Low-priority approvals are batched into a digest notification.</p>
         {/if}
+      </div>
+
+      <!-- Notification Channels -->
+      <div class="section">
+        <span class="section-label">Channels</span>
+        <div class="channel-list">
+          <label class="channel-option">
+            <input
+              type="checkbox"
+              bind:checked={channels.approvals}
+            />
+            Approval requests
+          </label>
+          <label class="channel-option">
+            <input
+              type="checkbox"
+              bind:checked={channels.mentions}
+            />
+            @Mentions in annotations
+          </label>
+          <label class="channel-option">
+            <input
+              type="checkbox"
+              bind:checked={channels.activity}
+            />
+            Team activity digest
+          </label>
+        </div>
+        <p class="hint">Choose which events trigger push notifications.</p>
       </div>
 
       {/if}
@@ -360,6 +396,28 @@
     color: var(--text-tertiary);
     margin: var(--sp-xs) 0 0 var(--sp-md);
     line-height: 1.4;
+  }
+
+  .channel-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-xs);
+    padding-left: var(--sp-md);
+    margin-top: var(--sp-xs);
+  }
+
+  .channel-option {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-xs);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .channel-option input[type="checkbox"] {
+    accent-color: var(--accent);
   }
 
   .loading-bar {

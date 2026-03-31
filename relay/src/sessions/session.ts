@@ -50,6 +50,9 @@ export class Session {
   turnCount = 0;
   totalDuration = 0;
 
+  /** userId who owns/controls this session */
+  ownerId?: string;
+
   /** path → file content */
   contextFiles: Map<string, string> = new Map();
   /** total bytes of all context files */
@@ -151,6 +154,10 @@ export class Session {
     return parts.join('\n');
   }
 
+
+  setOwner(userId: string): void {
+    this.ownerId = userId;
+  }
 
   close(): void {
     this.status = 'closed';

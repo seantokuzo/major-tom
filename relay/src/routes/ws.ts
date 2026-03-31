@@ -25,6 +25,8 @@ import type { ClientMessage, ServerMessage, FileNode } from '../protocol/message
 import { createFsHandlers, type FsServerMessage } from './fs.js';
 import type { AnalyticsCollector } from '../analytics/analytics-collector.js';
 import type { AchievementService } from '../achievements/achievement-service.js';
+import { AnnotationStore } from '../annotations/annotation-store.js';
+import { ActivityFeed } from '../users/activity-feed.js';
 import { logger } from '../utils/logger.js';
 
 interface WsDeps {
@@ -37,6 +39,8 @@ interface WsDeps {
   analyticsCollector: AnalyticsCollector;
   achievementService: AchievementService;
   userRegistry: UserRegistry;
+  annotationStore: AnnotationStore;
+  activityFeed: ActivityFeed;
   claudeWorkDir: string;
 }
 
@@ -55,6 +59,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     analyticsCollector,
     achievementService,
     userRegistry,
+    annotationStore,
+    activityFeed,
     claudeWorkDir,
   } = deps;
 
@@ -226,6 +232,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       workingDir: session.workingDir,
       status: session.status,
       startedAt: session.startedAt,
+      ownerId: session.ownerId,
       metadata: session.toMeta(),
       transcript: session.transcript.getAll(),
     };
@@ -243,6 +250,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     'session.attach', 'session.list', 'session.resume', 'achievement.list',
     'fleet.status', 'workspace.tree', 'fs.ls', 'fs.readFile', 'fs.cwd',
     'presence.watch', 'presence.unwatch', 'user.list', 'activity.list',
+    'annotation.list',
   ]);
   const ADMIN_ONLY: Set<string> = new Set([
     'user.invite', 'user.revoke', 'user.updateRole',
@@ -313,6 +321,16 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         const session = await fleetManager.start(workDir);
         healthMonitor.trackSession(session.id);
         trackClientSession(ws, session.id);
+
+        // Set session owner
+        const startUserId = presenceManager.getUserId(ws);
+        if (startUserId) {
+          session.setOwner(startUserId);
+          const startUser = await userRegistry.getUser(startUserId);
+          const startUserName = startUser?.name ?? startUser?.email ?? 'Unknown';
+          activityFeed.record(startUserId, startUserName, 'started session', session.id);
+        }
+
         // Record session start in analytics
         analyticsCollector.recordSessionStart({
           sessionId: session.id,
@@ -567,6 +585,9 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
               name: approverUser?.name,
             },
           });
+          // Record in activity feed
+          const approverName = approverUser?.name ?? approverUser?.email ?? 'Unknown';
+          activityFeed.record(approverUserId, approverName, `${message.decision} approval`);
         }
         // Track achievement: approval decisions with timing for Speed Demon
         if (message.decision === 'allow' || message.decision === 'allow_always') {
@@ -916,7 +937,115 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'activity.list': {
-        // Activity feed — placeholder for now, will be enriched in later waves
+        const entries = activityFeed.getRecent(50);
+        sendToClient(ws, {
+          type: 'activity.feed',
+          entries,
+        });
+        break;
+      }
+
+      // ── Annotations ──────────────────────────────────────────
+      case 'annotation.add': {
+        const annotatorUserId = presenceManager.getUserId(ws);
+        if (!annotatorUserId) break;
+        const annotatorUser = await userRegistry.getUser(annotatorUserId);
+        const annotatorName = annotatorUser?.name ?? annotatorUser?.email ?? 'Unknown';
+
+        const annotation = await annotationStore.addAnnotation(message.sessionId, {
+          userId: annotatorUserId,
+          userName: annotatorName,
+          turnIndex: message.turnIndex,
+          text: message.text,
+          mentions: message.mentions ?? [],
+        });
+
+        broadcastToSession(message.sessionId, {
+          type: 'annotation.added',
+          sessionId: message.sessionId,
+          annotation,
+        });
+
+        // Record activity
+        activityFeed.record(annotatorUserId, annotatorName, 'annotated session', message.sessionId);
+
+        // Send push notifications for @mentions
+        for (const mentionedId of annotation.mentions) {
+          if (presenceManager.isOnline(mentionedId)) continue; // They'll see it live
+          // TODO: Send push notification to mentioned user
+        }
+        break;
+      }
+
+      case 'annotation.list': {
+        const annotations = await annotationStore.getAnnotations(message.sessionId);
+        sendToClient(ws, {
+          type: 'annotation.list.response',
+          sessionId: message.sessionId,
+          annotations,
+        });
+        break;
+      }
+
+      // ── Session handoff ────────────────────────────────────
+      case 'session.handoff': {
+        const handoffUserId = presenceManager.getUserId(ws);
+        if (!handoffUserId) break;
+
+        const handoffSession = sessionManager.tryGet(message.sessionId);
+        if (!handoffSession) {
+          sendToClient(ws, {
+            type: 'session.handoff.response',
+            sessionId: message.sessionId,
+            fromUserId: handoffUserId,
+            toUserId: message.toUserId,
+            success: false,
+            error: 'Session not found',
+          });
+          break;
+        }
+
+        // Only owner or admin can hand off
+        const handoffUserRole = presenceManager.getUserRole(ws);
+        if (handoffSession.ownerId && handoffSession.ownerId !== handoffUserId && handoffUserRole !== 'admin') {
+          sendToClient(ws, {
+            type: 'session.handoff.response',
+            sessionId: message.sessionId,
+            fromUserId: handoffUserId,
+            toUserId: message.toUserId,
+            success: false,
+            error: 'Only the session owner or admin can hand off',
+          });
+          break;
+        }
+
+        // Verify target user exists
+        const targetUser = await userRegistry.getUser(message.toUserId);
+        if (!targetUser) {
+          sendToClient(ws, {
+            type: 'session.handoff.response',
+            sessionId: message.sessionId,
+            fromUserId: handoffUserId,
+            toUserId: message.toUserId,
+            success: false,
+            error: 'Target user not found',
+          });
+          break;
+        }
+
+        handoffSession.setOwner(message.toUserId);
+
+        const handoffUser = await userRegistry.getUser(handoffUserId);
+        const handoffUserName = handoffUser?.name ?? handoffUser?.email ?? 'Unknown';
+        activityFeed.record(handoffUserId, handoffUserName, `handed off session to ${targetUser.name ?? targetUser.email}`, message.sessionId);
+
+        broadcastToAll({
+          type: 'session.handoff.response',
+          sessionId: message.sessionId,
+          fromUserId: handoffUserId,
+          toUserId: message.toUserId,
+          success: true,
+        });
         break;
       }
 

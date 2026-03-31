@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		MU100001A1B2C3D4E5F60001 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = MU200001A1B2C3D4E5F60001 /* User.swift */; };
+		MU100002A1B2C3D4E5F60002 /* Presence.swift in Sources */ = {isa = PBXBuildFile; fileRef = MU200002A1B2C3D4E5F60002 /* Presence.swift */; };
+		MU100003A1B2C3D4E5F60003 /* Annotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = MU200003A1B2C3D4E5F60003 /* Annotation.swift */; };
+		MU100004A1B2C3D4E5F60004 /* ActivityEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = MU200004A1B2C3D4E5F60004 /* ActivityEntry.swift */; };
+		MU100005A1B2C3D4E5F60005 /* TeamSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MU200005A1B2C3D4E5F60005 /* TeamSettingsView.swift */; };
+		MU100006A1B2C3D4E5F60006 /* TeamActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MU200006A1B2C3D4E5F60006 /* TeamActivityView.swift */; };
 		01CF88DD53BD425A8BB52F59 /* OfficeLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2A5F6ECD6AEA9681C140DA3 /* OfficeLayout.swift */; };
 		05C0C742F30E2EDFA11347D0 /* FileContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6DBE8EE08D1C4498E7F3D4 /* FileContextView.swift */; };
 		07651DA663E3245CF21B572D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEFFC79375ADF55AE9AD5AF6 /* ContentView.swift */; };
@@ -139,6 +145,12 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		MU200001A1B2C3D4E5F60001 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		MU200002A1B2C3D4E5F60002 /* Presence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Presence.swift; sourceTree = "<group>"; };
+		MU200003A1B2C3D4E5F60003 /* Annotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Annotation.swift; sourceTree = "<group>"; };
+		MU200004A1B2C3D4E5F60004 /* ActivityEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityEntry.swift; sourceTree = "<group>"; };
+		MU200005A1B2C3D4E5F60005 /* TeamSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamSettingsView.swift; sourceTree = "<group>"; };
+		MU200006A1B2C3D4E5F60006 /* TeamActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamActivityView.swift; sourceTree = "<group>"; };
 		01BD6266AD1E8A75F6D43438 /* MajorTomShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomShortcuts.swift; sourceTree = "<group>"; };
 		0A571183D8F82C0A0373A42D /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
 		105C7DF7508529E4C957FEE1 /* PromptTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptTemplate.swift; sourceTree = "<group>"; };
@@ -939,6 +951,7 @@
 			children = (
 				5B2D2956D7BBBE520D548CED /* DeviceManagementView.swift */,
 				21F681FC6A3D7B14792DDC15 /* SettingsView.swift */,
+				MU200005A1B2C3D4E5F60005 /* TeamSettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -955,9 +968,13 @@
 			isa = PBXGroup;
 			children = (
 					ACH20001A1B2C3D4E5F60001 /* Achievement.swift */,
+				MU200004A1B2C3D4E5F60004 /* ActivityEntry.swift */,
+				MU200003A1B2C3D4E5F60003 /* Annotation.swift */,
 				8CAFA24AC1299FAEA55E2C0B /* ApprovalRequest.swift */,
 				8FEBD49051DFF465363BBE2B /* Message.swift */,
+				MU200002A1B2C3D4E5F60002 /* Presence.swift */,
 				591E0D4455AD31B2BBD8761C /* Session.swift */,
+				MU200001A1B2C3D4E5F60001 /* User.swift */,
 				E5B10C28D7C7874BD1AD5991 /* WatchModels.swift */,
 			);
 			path = Models;
@@ -966,6 +983,7 @@
 		ED9CCB7F79B02F16C1507DE1 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				MU200006A1B2C3D4E5F60006 /* TeamActivityView.swift */,
 				61D2E96EC4746E43CE222912 /* ToolActivityView.swift */,
 			);
 			path = Views;
@@ -1294,6 +1312,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+					MU100001A1B2C3D4E5F60001 /* User.swift in Sources */,
+					MU100002A1B2C3D4E5F60002 /* Presence.swift in Sources */,
+					MU100003A1B2C3D4E5F60003 /* Annotation.swift in Sources */,
+					MU100004A1B2C3D4E5F60004 /* ActivityEntry.swift in Sources */,
+					MU100005A1B2C3D4E5F60005 /* TeamSettingsView.swift in Sources */,
+					MU100006A1B2C3D4E5F60006 /* TeamActivityView.swift in Sources */,
 					ACH10001A1B2C3D4E5F60001 /* Achievement.swift in Sources */,
 					ACH10002A1B2C3D4E5F60002 /* AchievementsViewModel.swift in Sources */,
 					ACH10003A1B2C3D4E5F60003 /* AchievementsListView.swift in Sources */,

@@ -3,7 +3,12 @@ import SwiftUI
 struct SettingsView: View {
     @State private var viewModel: SettingsViewModel
 
+    private let auth: AuthService
+    private let relay: RelayService
+
     init(auth: AuthService, relay: RelayService) {
+        self.auth = auth
+        self.relay = relay
         _viewModel = State(initialValue: SettingsViewModel(auth: auth, relay: relay))
     }
 
@@ -14,6 +19,7 @@ struct SettingsView: View {
             List {
                 connectionSection
                 authSection
+                teamSection
                 notificationSection
                 sessionSection
                 aboutSection
@@ -112,6 +118,28 @@ struct SettingsView: View {
             }
         } header: {
             Text("Authentication")
+        }
+    }
+
+    // MARK: - Team
+
+    private var teamSection: some View {
+        Section {
+            NavigationLink {
+                TeamSettingsView(relay: relay, auth: auth)
+            } label: {
+                Label("Team Members", systemImage: "person.3")
+            }
+            .listRowBackground(MajorTomTheme.Colors.surface)
+
+            NavigationLink {
+                TeamActivityView(relay: relay)
+            } label: {
+                Label("Team Activity", systemImage: "clock.arrow.circlepath")
+            }
+            .listRowBackground(MajorTomTheme.Colors.surface)
+        } header: {
+            Text("Team")
         }
     }
 

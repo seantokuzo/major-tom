@@ -25,6 +25,10 @@ final class AuthService {
     /// Session cookie value obtained from PIN login (used for WebSocket auth).
     var sessionCookie: String?
     var serverURL: String = "localhost:9090"
+    /// User ID from the relay (populated after login).
+    var userId: String?
+    /// User role from the relay (populated after login).
+    var userRole: UserRole?
 
     init() {
         loadSavedCredentials()
@@ -102,8 +106,11 @@ final class AuthService {
                 sessionCookie = cookie
                 authState = .paired(deviceId: deviceId)
 
-                // Also decode the response for display (optional)
-                _ = try? JSONDecoder().decode(PinLoginResponse.self, from: data)
+                // Decode the response for user info
+                if let loginResponse = try? JSONDecoder().decode(PinLoginResponse.self, from: data) {
+                    userId = loginResponse.userId
+                    userRole = loginResponse.role.flatMap { UserRole(rawValue: $0) }
+                }
             } else if httpResponse.statusCode == 401 {
                 authState = .error("Invalid PIN")
             } else if httpResponse.statusCode == 429 {
@@ -134,6 +141,8 @@ final class AuthService {
     func unpair() {
         KeychainService.deleteAll()
         sessionCookie = nil
+        userId = nil
+        userRole = nil
         authState = .unpaired
     }
 }
@@ -142,5 +151,7 @@ final class AuthService {
 
 private struct PinLoginResponse: Codable {
     let email: String
-    let name: String
+    let name: String?
+    let userId: String?
+    let role: String?
 }

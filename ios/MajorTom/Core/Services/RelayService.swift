@@ -56,6 +56,14 @@ final class RelayService {
     var fleetStatus: FleetStatus?
     weak var fleetViewModel: FleetViewModel?
 
+    // Team / multi-user state
+    var teamPresence: [UserPresence] = []
+    var teamUsers: [TeamUser] = []
+    var annotations: [String: [SessionAnnotation]] = [:]  // keyed by sessionId
+    var activityEntries: [ActivityEntry] = []
+    var currentUserRole: UserRole = .admin
+    var currentUserId: String?
+
     // Session-scoped allowlist (tool names auto-approved via "Always")
     var sessionAllowlist: Set<String> = []
 
@@ -82,6 +90,15 @@ final class RelayService {
 
     /// Callbacks for device list updates
     var onDeviceListUpdate: (([DeviceInfo]) -> Void)?
+
+    /// Multi-user callbacks
+    var onPresenceUpdate: (([UserPresence]) -> Void)?
+    var onAnnotationAdded: ((SessionAnnotation) -> Void)?
+    var onActivityUpdate: (([ActivityEntry]) -> Void)?
+    var onTeamUsersUpdate: (([TeamUser]) -> Void)?
+    var onInviteGenerated: ((String, String) -> Void)?  // code, expiresAt
+    var onHandoffResponse: ((Bool, String?) -> Void)?  // success, error
+    var onUserRevoked: ((String, Bool) -> Void)?  // userId, success
 
     private let webSocket = WebSocketClient()
 
@@ -273,6 +290,62 @@ final class RelayService {
     func requestFleetStatus() async throws {
         let message = FleetStatusRequestMessage()
         try await webSocket.send(message)
+    }
+
+    // MARK: - Team / Multi-User
+
+    func requestUserList() async throws {
+        let message = UserListRequestMessage()
+        try await webSocket.send(message)
+    }
+
+    func generateInvite(role: UserRole) async throws {
+        let message = UserInviteRequestMessage(role: role.rawValue)
+        try await webSocket.send(message)
+    }
+
+    func revokeUser(userId: String) async throws {
+        let message = UserRevokeRequestMessage(userId: userId)
+        try await webSocket.send(message)
+    }
+
+    func updateUserRole(userId: String, role: UserRole) async throws {
+        let message = UserUpdateRoleRequestMessage(userId: userId, role: role.rawValue)
+        try await webSocket.send(message)
+    }
+
+    func addAnnotation(sessionId: String, text: String, turnIndex: Int? = nil, mentions: [String]? = nil) async throws {
+        let message = AnnotationAddRequestMessage(sessionId: sessionId, turnIndex: turnIndex, text: text, mentions: mentions)
+        try await webSocket.send(message)
+    }
+
+    func requestAnnotations(sessionId: String) async throws {
+        let message = AnnotationListRequestMessage(sessionId: sessionId)
+        try await webSocket.send(message)
+    }
+
+    func handoffSession(sessionId: String, toUserId: String) async throws {
+        let message = SessionHandoffRequestMessage(sessionId: sessionId, toUserId: toUserId)
+        try await webSocket.send(message)
+    }
+
+    func requestActivityFeed() async throws {
+        let message = ActivityListRequestMessage()
+        try await webSocket.send(message)
+    }
+
+    func watchSession(_ sessionId: String) async throws {
+        let message = PresenceWatchMessage(sessionId: sessionId)
+        try await webSocket.send(message)
+    }
+
+    func unwatchSession() async throws {
+        let message = PresenceUnwatchMessage()
+        try await webSocket.send(message)
+    }
+
+    func watchersForSession(_ sessionId: String) -> [UserPresence] {
+        teamPresence.filter { $0.watchingSessionId == sessionId }
     }
 
     // MARK: - Message Routing
@@ -589,6 +662,146 @@ final class RelayService {
             // Handled via REST API — this WebSocket message is informational
             break
 
+        case .presenceUpdate:
+            if let event = try? MessageCodec.decode(PresenceUpdateEvent.self, from: data) {
+                teamPresence = event.users.map { user in
+                    UserPresence(
+                        userId: user.userId,
+                        email: user.email,
+                        name: user.name,
+                        picture: user.picture,
+                        role: user.role,
+                        connectedAt: user.connectedAt,
+                        watchingSessionId: user.watchingSessionId
+                    )
+                }
+                onPresenceUpdate?(teamPresence)
+            }
+
+        case .annotationAdded:
+            if let event = try? MessageCodec.decode(AnnotationAddedEvent.self, from: data) {
+                let annotation = SessionAnnotation(
+                    id: event.annotation.id,
+                    userId: event.annotation.userId,
+                    userName: event.annotation.userName,
+                    turnIndex: event.annotation.turnIndex,
+                    text: event.annotation.text,
+                    mentions: event.annotation.mentions,
+                    createdAt: event.annotation.createdAt
+                )
+                var sessionAnnotations = annotations[event.sessionId] ?? []
+                sessionAnnotations.append(annotation)
+                annotations[event.sessionId] = sessionAnnotations
+                onAnnotationAdded?(annotation)
+            }
+
+        case .annotationListResponse:
+            if let event = try? MessageCodec.decode(AnnotationListResponseEvent.self, from: data) {
+                annotations[event.sessionId] = event.annotations.map { data in
+                    SessionAnnotation(
+                        id: data.id,
+                        userId: data.userId,
+                        userName: data.userName,
+                        turnIndex: data.turnIndex,
+                        text: data.text,
+                        mentions: data.mentions,
+                        createdAt: data.createdAt
+                    )
+                }
+                responseCounter &+= 1
+            }
+
+        case .sessionHandoffResponse:
+            if let event = try? MessageCodec.decode(SessionHandoffResponseEvent.self, from: data) {
+                onHandoffResponse?(event.success, event.error)
+                if event.success {
+                    HapticService.notification(.success)
+                } else {
+                    HapticService.notification(.error)
+                }
+            }
+
+        case .activityFeed:
+            if let event = try? MessageCodec.decode(ActivityFeedEvent.self, from: data) {
+                activityEntries = event.entries.map { entry in
+                    ActivityEntry(
+                        id: entry.id,
+                        userId: entry.userId,
+                        userName: entry.userName,
+                        action: entry.action,
+                        sessionId: entry.sessionId,
+                        timestamp: entry.timestamp
+                    )
+                }
+                onActivityUpdate?(activityEntries)
+                responseCounter &+= 1
+            }
+
+        case .userListResponse:
+            if let event = try? MessageCodec.decode(UserListResponseEvent.self, from: data) {
+                teamUsers = event.users.map { user in
+                    TeamUser(
+                        id: user.id,
+                        email: user.email,
+                        name: user.name,
+                        picture: user.picture,
+                        role: UserRole(rawValue: user.role) ?? .viewer,
+                        isOnline: user.isOnline,
+                        lastLoginAt: user.lastLoginAt
+                    )
+                }
+                onTeamUsersUpdate?(teamUsers)
+                responseCounter &+= 1
+            }
+
+        case .userInviteResponse:
+            if let event = try? MessageCodec.decode(UserInviteResponseEvent.self, from: data) {
+                if event.success, let code = event.code, let expiresAt = event.expiresAt {
+                    onInviteGenerated?(code, expiresAt)
+                    HapticService.notification(.success)
+                }
+            }
+
+        case .userRevokeResponse:
+            if let event = try? MessageCodec.decode(UserRevokeResponseEvent.self, from: data) {
+                if event.success {
+                    teamUsers.removeAll { $0.id == event.userId }
+                }
+                onUserRevoked?(event.userId, event.success)
+            }
+
+        case .userRoleUpdated:
+            if let event = try? MessageCodec.decode(UserRoleUpdatedEvent.self, from: data) {
+                if let index = teamUsers.firstIndex(where: { $0.id == event.userId }) {
+                    let updated = TeamUser(
+                        id: teamUsers[index].id,
+                        email: teamUsers[index].email,
+                        name: teamUsers[index].name,
+                        picture: teamUsers[index].picture,
+                        role: UserRole(rawValue: event.role) ?? teamUsers[index].role,
+                        isOnline: teamUsers[index].isOnline,
+                        lastLoginAt: teamUsers[index].lastLoginAt
+                    )
+                    teamUsers[index] = updated
+                }
+                // Update our own role if it changed
+                if event.userId == currentUserId {
+                    currentUserRole = UserRole(rawValue: event.role) ?? currentUserRole
+                }
+            }
+
+        case .approvalResolved:
+            if let event = try? MessageCodec.decode(ApprovalResolvedEvent.self, from: data) {
+                // Remove from pending if resolved by another user
+                pendingApprovals.removeAll { $0.id == event.requestId }
+                let resolverName = event.resolvedBy.name ?? "teammate"
+                let msg = ChatMessage(
+                    role: .system,
+                    content: "\(resolverName) \(event.decision) the request"
+                )
+                chatMessages.append(msg)
+            }
+
         case .error:
             if let event = try? MessageCodec.decode(ErrorEvent.self, from: data) {
                 let msg = ChatMessage(role: .system, content: "Error: \(event.message)")
@@ -620,6 +833,9 @@ final class RelayService {
         sessionInputTokens = 0
         sessionOutputTokens = 0
         sessionDurationMs = 0
+        teamPresence = []
+        annotations = [:]
+        activityEntries = []
     }
 
     /// Push latest session state to the widget data store and watch.
