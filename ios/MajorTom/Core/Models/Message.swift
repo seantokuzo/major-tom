@@ -35,6 +35,11 @@ enum MessageType: String, Codable {
     case sandboxGetUserPaths = "sandbox.getUserPaths"
     case sandboxSetUserPaths = "sandbox.setUserPaths"
     case sandboxClearUserPaths = "sandbox.clearUserPaths"
+    case auditQuery = "audit.query"
+    case rateLimitGetConfig = "rateLimit.getConfig"
+    case rateLimitSetRoleLimit = "rateLimit.setRoleLimit"
+    case rateLimitSetUserOverride = "rateLimit.setUserOverride"
+    case rateLimitClearUserOverride = "rateLimit.clearUserOverride"
 
     // Server → Client
     case output
@@ -82,6 +87,8 @@ enum MessageType: String, Codable {
     case userRoleUpdated = "user.roleUpdated"
     case approvalResolved = "approval.resolved"
     case sandboxUserPaths = "sandbox.userPaths"
+    case auditResponse = "audit.response"
+    case rateLimitConfig = "rateLimit.config"
     case error
 }
 
@@ -289,6 +296,40 @@ struct SandboxUserPathsResponseEvent: Codable {
     let type: String
     let userId: String
     let paths: [String]
+}
+
+// MARK: - Audit & Rate Limit Client Messages
+
+struct AuditQueryRequestMessage: Codable {
+    let type: String = "audit.query"
+    var startTime: String?
+    var endTime: String?
+    var userId: String?
+    var action: String?
+    var limit: Int?
+}
+
+struct RateLimitGetConfigRequestMessage: Codable {
+    let type: String = "rateLimit.getConfig"
+}
+
+struct RateLimitSetRoleLimitMessage: Codable {
+    let type: String = "rateLimit.setRoleLimit"
+    let role: String
+    let promptsPerMinute: Int
+    let approvalsPerMinute: Int
+}
+
+struct RateLimitSetUserOverrideMessage: Codable {
+    let type: String = "rateLimit.setUserOverride"
+    let userId: String
+    var promptsPerMinute: Int?
+    var approvalsPerMinute: Int?
+}
+
+struct RateLimitClearUserOverrideMessage: Codable {
+    let type: String = "rateLimit.clearUserOverride"
+    let userId: String
 }
 
 // MARK: - Server → Client Messages
@@ -738,6 +779,42 @@ struct FleetWorkerRestartedEvent: Codable {
     let type: String
     let workerId: String
     let workingDir: String
+}
+
+// MARK: - Audit & Rate Limit Messages
+
+struct AuditEntryData: Codable, Identifiable {
+    let timestamp: String
+    let userId: String
+    let email: String
+    let role: String
+    let action: String
+    var sessionId: String?
+    var path: String?
+    var details: String?
+
+    var id: String { "\(timestamp)-\(userId)-\(action)" }
+}
+
+struct AuditQueryResponseEvent: Codable {
+    let type: String
+    let entries: [AuditEntryData]
+}
+
+struct RateLimitRoleConfigData: Codable {
+    let promptsPerMinute: Int
+    let approvalsPerMinute: Int
+}
+
+struct RateLimitUserOverrideData: Codable {
+    var promptsPerMinute: Int?
+    var approvalsPerMinute: Int?
+}
+
+struct RateLimitConfigResponseEvent: Codable {
+    let type: String
+    let roles: [String: RateLimitRoleConfigData]
+    let userOverrides: [String: RateLimitUserOverrideData]
 }
 
 struct ErrorEvent: Codable {

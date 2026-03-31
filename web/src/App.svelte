@@ -29,6 +29,7 @@
   import AchievementPanel from './lib/components/AchievementPanel.svelte';
   import AchievementIndicator from './lib/components/AchievementIndicator.svelte';
   import ActivityIndicator from './lib/components/ActivityIndicator.svelte';
+  import AdminIndicator from './lib/components/AdminIndicator.svelte';
   import { sessionStateManager } from './lib/stores/session-state.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
@@ -269,6 +270,7 @@
           <span class="team-badge">Team</span>
           <UserMenu />
         {/if}
+        <AdminIndicator />
         <span class="header-settings">
           <AuthSettings />
           <NotificationToggle />

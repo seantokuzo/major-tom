@@ -34,7 +34,12 @@ import { UserRegistry } from './users/user-registry.js';
 import { AnnotationStore } from './annotations/annotation-store.js';
 import { ActivityFeed } from './users/activity-feed.js';
 import { SandboxGuard } from './security/sandbox-guard.js';
+import { AuditLog } from './security/audit-log.js';
+import { RateLimiter } from './security/rate-limiter.js';
 import { getSessionSecret } from './auth/session.js';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -70,6 +75,10 @@ export async function buildApp(config: AppConfig) {
   const activityFeed = config.multiUserEnabled ? new ActivityFeed() : undefined;
   const sandboxGuard = config.multiUserEnabled ? new SandboxGuard() : undefined;
 
+  // Security services — only created when multi-user mode is enabled
+  const auditLog = config.multiUserEnabled ? new AuditLog() : undefined;
+  const rateLimiter = config.multiUserEnabled ? new RateLimiter() : undefined;
+
   // Start health monitoring
   healthMonitor.start();
 
@@ -97,6 +106,25 @@ export async function buildApp(config: AppConfig) {
     await sandboxGuard.load().catch((err: unknown) => {
       logger.error({ err }, 'Failed to load sandbox config from disk, starting fresh');
     });
+  }
+  if (auditLog) {
+    await auditLog.init().catch((err: unknown) => {
+      logger.error({ err }, 'Failed to initialize audit log, starting anyway');
+    });
+  }
+  if (rateLimiter) {
+    // Load rate limit config from ~/.major-tom/config.json if it exists
+    try {
+      const configPath = join(homedir(), '.major-tom', 'config.json');
+      const raw = await readFile(configPath, 'utf-8');
+      const configData = JSON.parse(raw) as Record<string, unknown>;
+      if (configData['rateLimits'] && typeof configData['rateLimits'] === 'object') {
+        rateLimiter.fromJSON(configData['rateLimits'] as { roles?: Record<string, { promptsPerMinute: number; approvalsPerMinute: number }>; userOverrides?: Record<string, Partial<{ promptsPerMinute: number; approvalsPerMinute: number }>> });
+        logger.info('Loaded rate limit config from disk');
+      }
+    } catch {
+      // Config file doesn't exist or is malformed — use defaults
+    }
   }
 
   // ── Fastify instance ───────────────────────────────────
@@ -136,6 +164,7 @@ export async function buildApp(config: AppConfig) {
   // Auth routes (public — Google OAuth login/logout/check)
   await app.register(createAuthRoutes({
     userRegistry,
+    auditLog,
     multiUserEnabled: config.multiUserEnabled,
     authGoogleEnabled: config.authGoogleEnabled,
     authPinEnabled: config.authPinEnabled,
@@ -169,6 +198,8 @@ export async function buildApp(config: AppConfig) {
     annotationStore,
     activityFeed,
     sandboxGuard,
+    auditLog,
+    rateLimiter,
     claudeWorkDir: config.claudeWorkDir,
     multiUserEnabled: config.multiUserEnabled,
   }));

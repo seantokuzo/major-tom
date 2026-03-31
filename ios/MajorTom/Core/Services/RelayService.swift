@@ -67,6 +67,13 @@ final class RelayService {
     var currentUserRole: UserRole = .viewer
     var currentUserId: String?
 
+    // Audit log
+    var auditEntries: [AuditEntryData] = []
+
+    // Rate limit config
+    var rateLimitRoles: [String: RateLimitRoleConfigData] = [:]
+    var rateLimitUserOverrides: [String: RateLimitUserOverrideData] = [:]
+
     // Sandbox directory permissions (per-user paths)
     var userSandboxPaths: [String: [String]] = [:]
 
@@ -358,6 +365,40 @@ final class RelayService {
 
     func requestActivityFeed() async throws {
         let message = ActivityListRequestMessage()
+        try await webSocket.send(message)
+    }
+
+    // MARK: - Audit & Rate Limits
+
+    func queryAudit(startTime: String? = nil, endTime: String? = nil, userId: String? = nil, action: String? = nil, limit: Int? = nil) async throws {
+        var message = AuditQueryRequestMessage()
+        message.startTime = startTime
+        message.endTime = endTime
+        message.userId = userId
+        message.action = action
+        message.limit = limit
+        try await webSocket.send(message)
+    }
+
+    func getRateLimitConfig() async throws {
+        let message = RateLimitGetConfigRequestMessage()
+        try await webSocket.send(message)
+    }
+
+    func setRoleRateLimit(role: String, promptsPerMinute: Int, approvalsPerMinute: Int) async throws {
+        let message = RateLimitSetRoleLimitMessage(role: role, promptsPerMinute: promptsPerMinute, approvalsPerMinute: approvalsPerMinute)
+        try await webSocket.send(message)
+    }
+
+    func setUserRateLimitOverride(userId: String, promptsPerMinute: Int? = nil, approvalsPerMinute: Int? = nil) async throws {
+        var message = RateLimitSetUserOverrideMessage(userId: userId)
+        message.promptsPerMinute = promptsPerMinute
+        message.approvalsPerMinute = approvalsPerMinute
+        try await webSocket.send(message)
+    }
+
+    func clearUserRateLimitOverride(userId: String) async throws {
+        let message = RateLimitClearUserOverrideMessage(userId: userId)
         try await webSocket.send(message)
     }
 
@@ -851,6 +892,19 @@ final class RelayService {
                 userSandboxPaths[event.userId] = event.paths
             }
 
+        case .auditResponse:
+            if let event = try? MessageCodec.decode(AuditQueryResponseEvent.self, from: data) {
+                auditEntries = event.entries
+                responseCounter &+= 1
+            }
+
+        case .rateLimitConfig:
+            if let event = try? MessageCodec.decode(RateLimitConfigResponseEvent.self, from: data) {
+                rateLimitRoles = event.roles
+                rateLimitUserOverrides = event.userOverrides
+                responseCounter &+= 1
+            }
+
         case .error:
             if let event = try? MessageCodec.decode(ErrorEvent.self, from: data) {
                 let msg = ChatMessage(role: .system, content: "Error: \(event.message)")
@@ -885,6 +939,9 @@ final class RelayService {
         teamPresence = []
         annotations = [:]
         activityEntries = []
+        auditEntries = []
+        rateLimitRoles = [:]
+        rateLimitUserOverrides = [:]
     }
 
     /// Push latest session state to the widget data store and watch.

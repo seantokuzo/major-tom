@@ -172,6 +172,40 @@ export interface SessionHandoffMessage {
   toUserId: string;
 }
 
+// ── Rate Limit + Audit client messages ────────────────────
+
+export interface RateLimitGetConfigMessage {
+  type: 'rateLimit.getConfig';
+}
+
+export interface RateLimitSetRoleLimitMessage {
+  type: 'rateLimit.setRoleLimit';
+  role: string;
+  promptsPerMinute: number;
+  approvalsPerMinute: number;
+}
+
+export interface RateLimitSetUserOverrideMessage {
+  type: 'rateLimit.setUserOverride';
+  userId: string;
+  promptsPerMinute?: number;
+  approvalsPerMinute?: number;
+}
+
+export interface RateLimitClearUserOverrideMessage {
+  type: 'rateLimit.clearUserOverride';
+  userId: string;
+}
+
+export interface AuditQueryMessage {
+  type: 'audit.query';
+  startTime?: string;
+  endTime?: string;
+  userId?: string;
+  action?: string;
+  limit?: number;
+}
+
 // ── Sandbox management (admin-only, multi-user only) ────────
 
 export interface SandboxGetUserPathsMessage {
@@ -224,7 +258,12 @@ export type ClientMessage =
   | SessionHandoffMessage
   | SandboxGetUserPathsMessage
   | SandboxSetUserPathsMessage
-  | SandboxClearUserPathsMessage;
+  | SandboxClearUserPathsMessage
+  | RateLimitGetConfigMessage
+  | RateLimitSetRoleLimitMessage
+  | RateLimitSetUserOverrideMessage
+  | RateLimitClearUserOverrideMessage
+  | AuditQueryMessage;
 
 // ── Server → Client (Relay → iOS) ──────────────────────────
 
@@ -394,6 +433,7 @@ export interface ErrorMessage {
   type: 'error';
   code: string;
   message: string;
+  retryAfter?: number;
 }
 
 export interface SessionMetaMessage {
@@ -693,6 +733,27 @@ export interface SandboxUserPathsResponseMessage {
   paths: string[];
 }
 
+// ── Rate Limit + Audit response messages ────────────────────
+
+export interface RateLimitConfigResponseMessage {
+  type: 'rateLimit.config';
+  roles: Record<string, { promptsPerMinute: number; approvalsPerMinute: number }>;
+  userOverrides: Record<string, { promptsPerMinute?: number; approvalsPerMinute?: number }>;
+}
+
+export interface AuditQueryResponseMessage {
+  type: 'audit.response';
+  entries: Array<{
+    timestamp: string;
+    userId: string;
+    email: string;
+    role: string;
+    action: string;
+    sessionId?: string;
+    path?: string;
+    details?: string;
+  }>;
+}
 
 /** Base server message union (without envelope fields). */
 type ServerMessageBase =
@@ -743,7 +804,9 @@ type ServerMessageBase =
   | SessionHandoffResponseMessage
   | SessionOwnershipChangedMessage
   | ActivityFeedMessage
-  | SandboxUserPathsResponseMessage;
+  | SandboxUserPathsResponseMessage
+  | RateLimitConfigResponseMessage
+  | AuditQueryResponseMessage;
 
 /**
  * Every outbound server message may carry an optional `seq` —

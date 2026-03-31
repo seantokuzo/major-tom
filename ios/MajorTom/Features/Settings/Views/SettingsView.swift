@@ -129,6 +129,10 @@ struct SettingsView: View {
         relay.authMethods?.multiUser ?? true
     }
 
+    private var isAdmin: Bool {
+        relay.currentUserRole == .admin
+    }
+
     @ViewBuilder
     private var teamSection: some View {
         if isMultiUserEnabled {
@@ -146,6 +150,22 @@ struct SettingsView: View {
                     Label("Team Activity", systemImage: "clock.arrow.circlepath")
                 }
                 .listRowBackground(MajorTomTheme.Colors.surface)
+
+                if isAdmin {
+                    NavigationLink {
+                        AuditLogView(relay: relay)
+                    } label: {
+                        Label("Audit Log", systemImage: "doc.text.magnifyingglass")
+                    }
+                    .listRowBackground(MajorTomTheme.Colors.surface)
+
+                    NavigationLink {
+                        RateLimitSettingsView(relay: relay)
+                    } label: {
+                        Label("Rate Limits", systemImage: "gauge.with.dots.needle.33percent")
+                    }
+                    .listRowBackground(MajorTomTheme.Colors.surface)
+                }
             } header: {
                 HStack {
                     Text("Team")

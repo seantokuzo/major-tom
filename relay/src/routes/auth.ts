@@ -9,10 +9,13 @@ import {
 } from '../auth/session.js';
 import type { UserRegistry } from '../users/user-registry.js';
 import type { UserRole } from '../users/types.js';
+import type { AuditLog } from '../security/audit-log.js';
+import { requireRole } from '../plugins/auth.js';
 import { logger } from '../utils/logger.js';
 
 interface AuthRouteDeps {
   userRegistry?: UserRegistry;
+  auditLog?: AuditLog;
   multiUserEnabled: boolean;
   authGoogleEnabled: boolean;
   authPinEnabled: boolean;
@@ -22,7 +25,7 @@ interface AuthRouteDeps {
  * Auth routes factory — Google OAuth login, PIN login, invite codes, session check, logout.
  */
 export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
-  const { userRegistry, multiUserEnabled, authGoogleEnabled, authPinEnabled } = deps;
+  const { userRegistry, auditLog, multiUserEnabled, authGoogleEnabled, authPinEnabled } = deps;
 
   return async (fastify) => {
     const GOOGLE_CLIENT_ID = process.env['GOOGLE_CLIENT_ID'];
@@ -399,6 +402,29 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
       });
       fastify.get('/auth/invites', async (_request, reply) => {
         return reply.code(404).send({ error: 'Multi-user features are disabled' });
+      });
+    }
+
+    // ── Audit log HTTP endpoint (admin-only, multi-user only) ──
+    if (multiUserEnabled && auditLog) {
+      fastify.get<{
+        Querystring: {
+          startTime?: string;
+          endTime?: string;
+          userId?: string;
+          action?: string;
+          limit?: string;
+        };
+      }>('/api/audit', { preHandler: requireRole('admin') }, async (request) => {
+        const { startTime, endTime, userId, action, limit } = request.query;
+        const entries = await auditLog.query({
+          startTime,
+          endTime,
+          userId,
+          action,
+          limit: limit ? parseInt(limit, 10) : undefined,
+        });
+        return { entries };
       });
     }
   };
