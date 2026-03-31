@@ -77,6 +77,9 @@ final class RelayService {
     /// Watch Connectivity service — forwards data to Apple Watch.
     var watchConnectivityService: PhoneWatchConnectivityService?
 
+    /// Achievements view model — receives achievement events.
+    var achievementsViewModel: AchievementsViewModel?
+
     /// Callbacks for device list updates
     var onDeviceListUpdate: (([DeviceInfo]) -> Void)?
 
@@ -567,6 +570,24 @@ final class RelayService {
                 fleetViewModel?.handleWorkerRestarted(newWorkerId: event.workerId, workingDir: event.workingDir)
                 HapticService.notification(.warning)
             }
+
+        case .achievementUnlocked:
+            if let event = try? MessageCodec.decode(AchievementUnlockedEvent.self, from: data) {
+                achievementsViewModel?.handleAchievementUnlocked(event)
+                // Trigger office celebration for a random agent
+                if let agentId = officeViewModel?.agents.filter({ $0.status == .working || $0.status == .idle }).randomElement()?.id {
+                    officeViewModel?.handleAgentCelebration(id: agentId)
+                }
+            }
+
+        case .achievementProgress:
+            if let event = try? MessageCodec.decode(AchievementProgressEvent.self, from: data) {
+                achievementsViewModel?.handleAchievementProgress(event)
+            }
+
+        case .achievementListResponse:
+            // Handled via REST API — this WebSocket message is informational
+            break
 
         case .error:
             if let event = try? MessageCodec.decode(ErrorEvent.self, from: data) {

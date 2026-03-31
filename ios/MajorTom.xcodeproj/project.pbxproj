@@ -128,6 +128,14 @@
 		W1A00009A1B2C3D4E5F60009 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A00009A1B2C3D4E5F60009 /* WidgetData.swift */; };
 		W1A0000AA1B2C3D4E5F6000A /* SessionTimelineProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A0000AA1B2C3D4E5F6000A /* SessionTimelineProvider.swift */; };
 		W1A0000BA1B2C3D4E5F6000B /* WidgetDataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = W2A0000BA1B2C3D4E5F6000B /* WidgetDataService.swift */; };
+			ACH10001A1B2C3D4E5F60001 /* Achievement.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACH20001A1B2C3D4E5F60001 /* Achievement.swift */; };
+			ACH10002A1B2C3D4E5F60002 /* AchievementsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACH20002A1B2C3D4E5F60002 /* AchievementsViewModel.swift */; };
+			ACH10003A1B2C3D4E5F60003 /* AchievementsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACH20003A1B2C3D4E5F60003 /* AchievementsListView.swift */; };
+			ACH10004A1B2C3D4E5F60004 /* AchievementDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACH20004A1B2C3D4E5F60004 /* AchievementDetailView.swift */; };
+			ACH10005A1B2C3D4E5F60005 /* AchievementUnlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACH20005A1B2C3D4E5F60005 /* AchievementUnlockView.swift */; };
+			ACH10006A1B2C3D4E5F60006 /* AchievementCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACH20006A1B2C3D4E5F60006 /* AchievementCard.swift */; };
+			ACH10007A1B2C3D4E5F60007 /* AchievementBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACH20007A1B2C3D4E5F60007 /* AchievementBadge.swift */; };
+			ACH10008A1B2C3D4E5F60008 /* ProgressRing.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACH20008A1B2C3D4E5F60008 /* ProgressRing.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -255,6 +263,14 @@
 		W2A0000AA1B2C3D4E5F6000A /* SessionTimelineProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTimelineProvider.swift; sourceTree = "<group>"; };
 		W2A0000BA1B2C3D4E5F6000B /* WidgetDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataService.swift; sourceTree = "<group>"; };
 		W2A0000CA1B2C3D4E5F6000C /* MajorTomWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MajorTomWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+			ACH20001A1B2C3D4E5F60001 /* Achievement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Achievement.swift; sourceTree = "<group>"; };
+			ACH20002A1B2C3D4E5F60002 /* AchievementsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementsViewModel.swift; sourceTree = "<group>"; };
+			ACH20003A1B2C3D4E5F60003 /* AchievementsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementsListView.swift; sourceTree = "<group>"; };
+			ACH20004A1B2C3D4E5F60004 /* AchievementDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementDetailView.swift; sourceTree = "<group>"; };
+			ACH20005A1B2C3D4E5F60005 /* AchievementUnlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementUnlockView.swift; sourceTree = "<group>"; };
+			ACH20006A1B2C3D4E5F60006 /* AchievementCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementCard.swift; sourceTree = "<group>"; };
+			ACH20007A1B2C3D4E5F60007 /* AchievementBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementBadge.swift; sourceTree = "<group>"; };
+			ACH20008A1B2C3D4E5F60008 /* ProgressRing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressRing.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -482,6 +498,7 @@
 		3D3E7D9B1E6A46FE02377CF9 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+					ACH30001A1B2C3D4E5F60001 /* Achievements */,
 				524CA165CE9AE87346EC95D2 /* Analytics */,
 				28C5FCC112193F6E8C1391E1 /* Activity */,
 				60B9D8DD0297CB0AD458E6CD /* Commands */,
@@ -937,6 +954,7 @@
 		E5B5E7A789A6033C62B122B8 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+					ACH20001A1B2C3D4E5F60001 /* Achievement.swift */,
 				8CAFA24AC1299FAEA55E2C0B /* ApprovalRequest.swift */,
 				8FEBD49051DFF465363BBE2B /* Message.swift */,
 				591E0D4455AD31B2BBD8761C /* Session.swift */,
@@ -1110,6 +1128,44 @@
 			path = Services;
 			sourceTree = "<group>";
 		};
+			ACH30001A1B2C3D4E5F60001 /* Achievements */ = {
+				isa = PBXGroup;
+				children = (
+					ACH30002A1B2C3D4E5F60002 /* Views */,
+					ACH30003A1B2C3D4E5F60003 /* ViewModels */,
+					ACH30004A1B2C3D4E5F60004 /* Components */,
+				);
+				path = Achievements;
+				sourceTree = "<group>";
+			};
+			ACH30002A1B2C3D4E5F60002 /* Views */ = {
+				isa = PBXGroup;
+				children = (
+					ACH20003A1B2C3D4E5F60003 /* AchievementsListView.swift */,
+					ACH20004A1B2C3D4E5F60004 /* AchievementDetailView.swift */,
+					ACH20005A1B2C3D4E5F60005 /* AchievementUnlockView.swift */,
+				);
+				path = Views;
+				sourceTree = "<group>";
+			};
+			ACH30003A1B2C3D4E5F60003 /* ViewModels */ = {
+				isa = PBXGroup;
+				children = (
+					ACH20002A1B2C3D4E5F60002 /* AchievementsViewModel.swift */,
+				);
+				path = ViewModels;
+				sourceTree = "<group>";
+			};
+			ACH30004A1B2C3D4E5F60004 /* Components */ = {
+				isa = PBXGroup;
+				children = (
+					ACH20006A1B2C3D4E5F60006 /* AchievementCard.swift */,
+					ACH20007A1B2C3D4E5F60007 /* AchievementBadge.swift */,
+					ACH20008A1B2C3D4E5F60008 /* ProgressRing.swift */,
+				);
+				path = Components;
+				sourceTree = "<group>";
+			};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -1238,6 +1294,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+					ACH10001A1B2C3D4E5F60001 /* Achievement.swift in Sources */,
+					ACH10002A1B2C3D4E5F60002 /* AchievementsViewModel.swift in Sources */,
+					ACH10003A1B2C3D4E5F60003 /* AchievementsListView.swift in Sources */,
+					ACH10004A1B2C3D4E5F60004 /* AchievementDetailView.swift in Sources */,
+					ACH10005A1B2C3D4E5F60005 /* AchievementUnlockView.swift in Sources */,
+					ACH10006A1B2C3D4E5F60006 /* AchievementCard.swift in Sources */,
+					ACH10007A1B2C3D4E5F60007 /* AchievementBadge.swift in Sources */,
+					ACH10008A1B2C3D4E5F60008 /* ProgressRing.swift in Sources */,
 				D26A933571853AF758770801 /* AnalyticsViewModel.swift in Sources */,
 				7988FA036C78CB9D30B6A9E4 /* AnalyticsDashboardView.swift in Sources */,
 				8330C701B5749A4BBA30FD13 /* CostChartView.swift in Sources */,

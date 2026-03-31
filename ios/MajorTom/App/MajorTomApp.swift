@@ -9,6 +9,7 @@ struct MajorTomApp: App {
     @State private var notificationService = NotificationService()
     @State private var liveActivityManager = LiveActivityManager()
     @State private var watchConnectivity = PhoneWatchConnectivityService()
+    @State private var achievementsViewModel: AchievementsViewModel?
     @State private var selectedTab: AppTab = .control
     @Environment(\.scenePhase) private var scenePhase
 
@@ -24,11 +25,14 @@ struct MajorTomApp: App {
             .tint(MajorTomTheme.Colors.accent)
             .preferredColorScheme(.dark)
             .onAppear {
+                let achievementsVM = AchievementsViewModel(auth: auth)
+                achievementsViewModel = achievementsVM
                 relay.officeViewModel = officeViewModel
                 relay.authService = auth
                 relay.notificationService = notificationService
                 relay.liveActivityManager = liveActivityManager
                 relay.watchConnectivityService = watchConnectivity
+                relay.achievementsViewModel = achievementsVM
                 setupNotificationHandlers()
                 setupWatchConnectivity()
             }
@@ -70,6 +74,9 @@ struct MajorTomApp: App {
             .onReceive(NotificationCenter.default.publisher(for: .toggleGodModeFromShortcut)) { _ in
                 handleShortcutAction(.toggleGodMode)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .checkAchievementsFromShortcut)) { _ in
+                handleShortcutAction(.checkAchievements)
+            }
             // Check for cross-process shortcut actions (Siri / Shortcuts app) on scene phase change
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
@@ -106,6 +113,19 @@ struct MajorTomApp: App {
                     Label("Analytics", systemImage: "chart.bar")
                 }
                 .tag(AppTab.analytics)
+
+            Group {
+                if let vm = achievementsViewModel {
+                    AchievementsListView(viewModel: vm)
+                } else {
+                    ProgressView()
+                        .tint(MajorTomTheme.Colors.accent)
+                }
+            }
+                .tabItem {
+                    Label("Achievements", systemImage: "trophy")
+                }
+                .tag(AppTab.achievements)
 
             SettingsView(auth: auth, relay: relay)
                 .tabItem {
@@ -189,6 +209,8 @@ struct MajorTomApp: App {
                     break
                 }
             }
+        case .checkAchievements:
+            selectedTab = .achievements
         }
     }
 
@@ -293,5 +315,6 @@ enum AppTab: Hashable {
     case office
     case connect
     case analytics
+    case achievements
     case settings
 }
