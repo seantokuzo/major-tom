@@ -45,6 +45,9 @@ struct TeamSettingsView: View {
                 codeExpiry = expiresAt
             }
         }
+        .onDisappear {
+            relay.onInviteGenerated = nil
+        }
     }
 
     // MARK: - Team Members
