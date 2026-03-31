@@ -2,16 +2,38 @@
   import { relay } from '../stores/relay.svelte';
   import { presenceStore } from '../stores/presence.svelte';
 
+  import { onMount } from 'svelte';
+
   let open = $state(false);
 
   function toggleMenu() {
     open = !open;
   }
 
+  function closeMenu() {
+    open = false;
+  }
+
   function handleLogout() {
     open = false;
     relay.logout();
   }
+
+  function handleBackdropKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      closeMenu();
+    }
+  }
+
+  // Close on Escape
+  onMount(() => {
+    function onKeydown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && open) closeMenu();
+    }
+    window.addEventListener('keydown', onKeydown);
+    return () => window.removeEventListener('keydown', onKeydown);
+  });
 
   const roleBadgeColor: Record<string, string> = {
     admin: 'var(--accent)',
@@ -22,7 +44,7 @@
 
 {#if relay.user}
   <div class="user-menu-wrapper">
-    <button class="user-trigger" onclick={toggleMenu} title={relay.user.email}>
+    <button class="user-trigger" onclick={toggleMenu} title={relay.user.email} aria-expanded={open} aria-haspopup="true">
       {#if relay.user.picture}
         <img class="user-avatar" src={relay.user.picture} alt="" />
       {:else}
@@ -36,9 +58,14 @@
     </button>
 
     {#if open}
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="backdrop" onclick={() => (open = false)}></div>
+      <div
+        class="backdrop"
+        role="button"
+        tabindex="0"
+        aria-label="Close menu"
+        onclick={closeMenu}
+        onkeydown={handleBackdropKeydown}
+      ></div>
       <div class="user-dropdown">
         <div class="user-info">
           <span class="user-name">{relay.user.name ?? relay.user.email}</span>
