@@ -108,6 +108,8 @@ final class AchievementsViewModel {
         // Update in-memory list
         if let index = achievements.firstIndex(where: { $0.id == event.achievementId }) {
             let existing = achievements[index]
+            // Only celebrate if transitioning from locked to unlocked
+            guard !existing.isUnlocked else { return }
             achievements[index] = Achievement(
                 id: existing.id,
                 name: event.name,
@@ -139,9 +141,12 @@ final class AchievementsViewModel {
                 secret: false
             )
             achievements.append(newAchievement)
+            totalCount = achievements.count
             recentlyUnlocked = newAchievement
         }
-        unlockedCount += 1
+
+        // Recompute counts from actual data to avoid drift
+        unlockedCount = achievements.filter(\.isUnlocked).count
 
         // Haptic celebration
         HapticService.celebrate()

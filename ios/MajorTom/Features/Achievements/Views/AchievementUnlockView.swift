@@ -9,6 +9,7 @@ struct AchievementUnlockView: View {
 
     @State private var showContent = false
     @State private var iconScale: CGFloat = 0.3
+    @State private var didDismiss = false
 
     var body: some View {
         ZStack {
@@ -77,11 +78,13 @@ struct AchievementUnlockView: View {
     }
 
     private func dismiss() {
+        guard !didDismiss else { return }
+        didDismiss = true
         withAnimation(.easeOut(duration: 0.2)) {
             showContent = false
         }
         // Brief delay for animation to complete before calling dismiss
-        Task {
+        Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(200))
             onDismiss()
         }

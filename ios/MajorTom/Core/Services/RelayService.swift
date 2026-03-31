@@ -575,7 +575,7 @@ final class RelayService {
             if let event = try? MessageCodec.decode(AchievementUnlockedEvent.self, from: data) {
                 achievementsViewModel?.handleAchievementUnlocked(event)
                 // Trigger office celebration for a random agent
-                if let agentId = officeViewModel?.agents.first(where: { $0.status == .working || $0.status == .idle })?.id {
+                if let agentId = officeViewModel?.agents.filter({ $0.status == .working || $0.status == .idle }).randomElement()?.id {
                     officeViewModel?.handleAgentCelebration(id: agentId)
                 }
             }

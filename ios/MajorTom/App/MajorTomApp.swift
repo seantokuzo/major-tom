@@ -118,7 +118,8 @@ struct MajorTomApp: App {
                 if let vm = achievementsViewModel {
                     AchievementsListView(viewModel: vm)
                 } else {
-                    AchievementsListView(auth: auth)
+                    ProgressView()
+                        .tint(MajorTomTheme.Colors.accent)
                 }
             }
                 .tabItem {
