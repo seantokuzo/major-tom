@@ -37,13 +37,16 @@ import { getSessionSecret } from './auth/session.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
-    userRegistry: UserRegistry;
+    userRegistry?: UserRegistry;
   }
 }
 
 export interface AppConfig {
   port: number;
   claudeWorkDir: string;
+  multiUserEnabled: boolean;
+  authGoogleEnabled: boolean;
+  authPinEnabled: boolean;
 }
 
 export async function buildApp(config: AppConfig) {
@@ -59,9 +62,11 @@ export async function buildApp(config: AppConfig) {
   const healthMonitor = new HealthMonitor(fleetManager, sessionManager);
   const analyticsCollector = new AnalyticsCollector();
   const achievementService = new AchievementService();
-  const userRegistry = new UserRegistry();
-  const annotationStore = new AnnotationStore();
-  const activityFeed = new ActivityFeed();
+
+  // Multi-user services — only created when multi-user mode is enabled
+  const userRegistry = config.multiUserEnabled ? new UserRegistry() : undefined;
+  const annotationStore = config.multiUserEnabled ? new AnnotationStore() : undefined;
+  const activityFeed = config.multiUserEnabled ? new ActivityFeed() : undefined;
 
   // Start health monitoring
   healthMonitor.start();
@@ -76,12 +81,16 @@ export async function buildApp(config: AppConfig) {
   await achievementService.load().catch((err: unknown) => {
     logger.error({ err }, 'Failed to load achievement state from disk, starting fresh');
   });
-  await userRegistry.load().catch((err: unknown) => {
-    logger.error({ err }, 'Failed to load user registry from disk, starting fresh');
-  });
-  await annotationStore.ensureDir().catch((err: unknown) => {
-    logger.error({ err }, 'Failed to create annotations directory, starting anyway');
-  });
+  if (userRegistry) {
+    await userRegistry.load().catch((err: unknown) => {
+      logger.error({ err }, 'Failed to load user registry from disk, starting fresh');
+    });
+  }
+  if (annotationStore) {
+    await annotationStore.ensureDir().catch((err: unknown) => {
+      logger.error({ err }, 'Failed to create annotations directory, starting anyway');
+    });
+  }
 
   // ── Fastify instance ───────────────────────────────────
   const app = Fastify({
@@ -111,12 +120,19 @@ export async function buildApp(config: AppConfig) {
   await app.register(websocketPlugin);
 
   // ── Decorate with shared services ──────────────────────
-  app.decorate('userRegistry', userRegistry);
+  if (userRegistry) {
+    app.decorate('userRegistry', userRegistry);
+  }
 
   // ── Register routes ────────────────────────────────────
 
   // Auth routes (public — Google OAuth login/logout/check)
-  await app.register(createAuthRoutes({ userRegistry }));
+  await app.register(createAuthRoutes({
+    userRegistry,
+    multiUserEnabled: config.multiUserEnabled,
+    authGoogleEnabled: config.authGoogleEnabled,
+    authPinEnabled: config.authPinEnabled,
+  }));
 
   // Health check (public)
   await app.register(createHealthRoutes({ sessionManager, fleetManager, healthMonitor }));
@@ -146,6 +162,7 @@ export async function buildApp(config: AppConfig) {
     annotationStore,
     activityFeed,
     claudeWorkDir: config.claudeWorkDir,
+    multiUserEnabled: config.multiUserEnabled,
   }));
 
   // 6. Static file serving + SPA fallback (must be LAST — catches unmatched routes)
@@ -174,10 +191,14 @@ export async function buildApp(config: AppConfig) {
       };
     });
     sessionPersistence.dispose();
-    await annotationStore.flush();
-    annotationStore.dispose();
-    await userRegistry.flush();
-    userRegistry.dispose();
+    if (annotationStore) {
+      await annotationStore.flush();
+      annotationStore.dispose();
+    }
+    if (userRegistry) {
+      await userRegistry.flush();
+      userRegistry.dispose();
+    }
     await pushManager.dispose();
     logger.info('Shutdown complete');
   });

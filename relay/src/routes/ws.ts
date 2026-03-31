@@ -38,10 +38,11 @@ interface WsDeps {
   notificationConfigManager: NotificationConfigManager;
   analyticsCollector: AnalyticsCollector;
   achievementService: AchievementService;
-  userRegistry: UserRegistry;
-  annotationStore: AnnotationStore;
-  activityFeed: ActivityFeed;
+  userRegistry?: UserRegistry;
+  annotationStore?: AnnotationStore;
+  activityFeed?: ActivityFeed;
   claudeWorkDir: string;
+  multiUserEnabled: boolean;
 }
 
 /**
@@ -62,6 +63,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     annotationStore,
     activityFeed,
     claudeWorkDir,
+    multiUserEnabled,
   } = deps;
 
   const notificationDigest = new NotificationDigest(pushManager, notificationConfigManager);
@@ -259,10 +261,25 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     'user.invite', 'user.revoke', 'user.updateRole',
   ]);
 
+  /** Message types that require multi-user mode */
+  const MULTI_USER_ONLY: Set<string> = new Set([
+    'presence.watch', 'presence.unwatch',
+    'user.list', 'user.invite', 'user.revoke', 'user.updateRole',
+    'activity.list',
+    'annotation.add', 'annotation.list',
+    'session.handoff',
+  ]);
+
   async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promise<void> {
-    // Role-based access control — deny if role is missing
-    const userRole = presenceManager.getUserRole(ws);
-    if (!userRole) {
+    // Multi-user feature guard — reject messages that require multi-user mode when disabled
+    if (!multiUserEnabled && MULTI_USER_ONLY.has(message.type)) {
+      sendToClient(ws, { type: 'error', code: 'MULTI_USER_DISABLED', message: 'Multi-user features are disabled' });
+      return;
+    }
+
+    // Role-based access control — deny if role is missing (multi-user mode)
+    const userRole = multiUserEnabled ? presenceManager.getUserRole(ws) : 'admin';
+    if (multiUserEnabled && !userRole) {
       sendToClient(ws, { type: 'error', code: 'FORBIDDEN', message: 'Role missing — access denied' });
       return;
     }
@@ -329,13 +346,15 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         healthMonitor.trackSession(session.id);
         trackClientSession(ws, session.id);
 
-        // Set session owner
-        const startUserId = presenceManager.getUserId(ws);
-        if (startUserId) {
-          session.setOwner(startUserId);
-          const startUser = await userRegistry.getUser(startUserId);
-          const startUserName = startUser?.name ?? startUser?.email ?? 'Unknown';
-          activityFeed.record(startUserId, startUserName, 'started session', session.id);
+        // Set session owner (multi-user only)
+        if (userRegistry && activityFeed) {
+          const startUserId = presenceManager.getUserId(ws);
+          if (startUserId) {
+            session.setOwner(startUserId);
+            const startUser = await userRegistry.getUser(startUserId);
+            const startUserName = startUser?.name ?? startUser?.email ?? 'Unknown';
+            activityFeed.record(startUserId, startUserName, 'started session', session.id);
+          }
         }
 
         // Record session start in analytics
@@ -579,23 +598,25 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       case 'approval': {
         fleetManager.resolveApproval(message.requestId, message.decision);
-        // Broadcast who resolved the approval
-        const approverUserId = presenceManager.getUserId(ws);
-        if (approverUserId) {
-          const approverUser = await userRegistry.getUser(approverUserId);
-          broadcastToAll({
-            type: 'approval.resolved',
-            requestId: message.requestId,
-            decision: message.decision,
-            resolvedBy: {
-              userId: approverUserId,
-              name: approverUser?.name,
-            },
-          });
-          // Record in activity feed
-          const approverName = approverUser?.name ?? approverUser?.email ?? 'Unknown';
-          const approvalAction = message.decision === 'deny' ? 'denied' : 'approved';
-          activityFeed.record(approverUserId, approverName, `${approvalAction} approval`);
+        // Broadcast who resolved the approval (multi-user enrichment)
+        if (userRegistry && activityFeed) {
+          const approverUserId = presenceManager.getUserId(ws);
+          if (approverUserId) {
+            const approverUser = await userRegistry.getUser(approverUserId);
+            broadcastToAll({
+              type: 'approval.resolved',
+              requestId: message.requestId,
+              decision: message.decision,
+              resolvedBy: {
+                userId: approverUserId,
+                name: approverUser?.name,
+              },
+            });
+            // Record in activity feed
+            const approverName = approverUser?.name ?? approverUser?.email ?? 'Unknown';
+            const approvalAction = message.decision === 'deny' ? 'denied' : 'approved';
+            activityFeed.record(approverUserId, approverName, `${approvalAction} approval`);
+          }
         }
         // Track achievement: approval decisions with timing for Speed Demon
         if (message.decision === 'allow' || message.decision === 'allow_always') {
@@ -882,9 +903,9 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         break;
       }
 
-      // ── User management ────────────────────────────────────
+      // ── User management (guarded by MULTI_USER_ONLY check above) ──
       case 'user.list': {
-        const users = await userRegistry.listUsers();
+        const users = await userRegistry!.listUsers();
         sendToClient(ws, {
           type: 'user.list.response',
           users: users.map((u) => ({
@@ -904,7 +925,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         const inviterUserId = presenceManager.getUserId(ws);
         if (!inviterUserId) break;
         try {
-          const invite = await userRegistry.generateInviteCode(message.role, inviterUserId);
+          const invite = await userRegistry!.generateInviteCode(message.role, inviterUserId);
           sendToClient(ws, {
             type: 'user.invite.response',
             code: invite.code,
@@ -924,7 +945,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'user.revoke': {
-        await userRegistry.deleteUser(message.userId);
+        await userRegistry!.deleteUser(message.userId);
         // Disconnect all active WebSocket connections for the revoked user
         presenceManager.disconnectUser(message.userId);
         sendToClient(ws, {
@@ -937,7 +958,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'user.updateRole': {
-        await userRegistry.updateUser(message.userId, { role: message.role });
+        await userRegistry!.updateUser(message.userId, { role: message.role });
         // Update cached role in PresenceManager so connected sockets reflect the change
         presenceManager.updateUserRole(message.userId, message.role);
         broadcastToAll({
@@ -949,7 +970,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'activity.list': {
-        const entries = activityFeed.getRecent(50);
+        const entries = activityFeed!.getRecent(50);
         sendToClient(ws, {
           type: 'activity.feed',
           entries,
@@ -957,7 +978,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         break;
       }
 
-      // ── Annotations ──────────────────────────────────────────
+      // ── Annotations (guarded by MULTI_USER_ONLY check above) ──
       case 'annotation.add': {
         const annotatorUserId = presenceManager.getUserId(ws);
         if (!annotatorUserId) break;
@@ -968,10 +989,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           break;
         }
 
-        const annotatorUser = await userRegistry.getUser(annotatorUserId);
+        const annotatorUser = await userRegistry!.getUser(annotatorUserId);
         const annotatorName = annotatorUser?.name ?? annotatorUser?.email ?? 'Unknown';
 
-        const annotation = await annotationStore.addAnnotation(message.sessionId, {
+        const annotation = await annotationStore!.addAnnotation(message.sessionId, {
           userId: annotatorUserId,
           userName: annotatorName,
           turnIndex: message.turnIndex,
@@ -986,7 +1007,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         });
 
         // Record activity
-        activityFeed.record(annotatorUserId, annotatorName, 'annotated session', message.sessionId);
+        activityFeed!.record(annotatorUserId, annotatorName, 'annotated session', message.sessionId);
 
         // Send push notifications for @mentions
         for (const mentionedId of annotation.mentions) {
@@ -997,7 +1018,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'annotation.list': {
-        const annotations = await annotationStore.getAnnotations(message.sessionId);
+        const annotations = await annotationStore!.getAnnotations(message.sessionId);
         sendToClient(ws, {
           type: 'annotation.list.response',
           sessionId: message.sessionId,
@@ -1006,7 +1027,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         break;
       }
 
-      // ── Session handoff ────────────────────────────────────
+      // ── Session handoff (guarded by MULTI_USER_ONLY check above) ──
       case 'session.handoff': {
         const handoffUserId = presenceManager.getUserId(ws);
         if (!handoffUserId) break;
@@ -1041,7 +1062,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         }
 
         // Verify target user exists
-        const targetUser = await userRegistry.getUser(message.toUserId);
+        const targetUser = await userRegistry!.getUser(message.toUserId);
         if (!targetUser) {
           sendToClient(ws, {
             type: 'session.handoff.response',
@@ -1056,9 +1077,9 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
         handoffSession.setOwner(message.toUserId);
 
-        const handoffUser = await userRegistry.getUser(handoffUserId);
+        const handoffUser = await userRegistry!.getUser(handoffUserId);
         const handoffUserName = handoffUser?.name ?? handoffUser?.email ?? 'Unknown';
-        activityFeed.record(handoffUserId, handoffUserName, `handed off session to ${targetUser.name ?? targetUser.email}`, message.sessionId);
+        activityFeed!.record(handoffUserId, handoffUserName, `handed off session to ${targetUser.name ?? targetUser.email}`, message.sessionId);
 
         // Send response only to the requesting client
         sendToClient(ws, {
@@ -1407,8 +1428,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       verifySessionToken(sessionCookie)
         .then(async (payload) => {
-          // For tokens without userId (legacy), look up user by email in registry
-          if (!payload.userId) {
+          // For tokens without userId (legacy), look up user by email in registry (multi-user only)
+          if (!payload.userId && userRegistry) {
             const user = await userRegistry.getUserByEmail(payload.email);
             if (user) {
               payload.userId = user.id;

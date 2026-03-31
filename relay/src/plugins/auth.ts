@@ -16,6 +16,8 @@ const PUBLIC_PATHS = new Set([
   '/auth/google',
   '/auth/google/client-id',
   '/auth/me', // returns 401 if no session — frontend uses this to check auth state
+  '/auth/methods', // public — clients need this to determine available auth methods
+  '/auth/pin/login', // public — PIN auth handles its own rate limiting
 ]);
 
 /** Path prefixes that are always public (static files handled by @fastify/static) */
