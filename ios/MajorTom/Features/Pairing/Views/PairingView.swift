@@ -23,7 +23,7 @@ struct PairingView: View {
                     .font(.system(.largeTitle, design: .monospaced, weight: .bold))
                     .foregroundStyle(MajorTomTheme.Colors.textPrimary)
 
-                Text("Enter the 6-digit PIN from your relay server")
+                Text(headerSubtitle)
                     .font(MajorTomTheme.Typography.body)
                     .foregroundStyle(MajorTomTheme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -46,11 +46,22 @@ struct PairingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.small))
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
+                    .onSubmit {
+                        Task { await viewModel.fetchAuthMethods() }
+                    }
             }
             .padding(.horizontal, MajorTomTheme.Spacing.xxl)
 
-            // PIN display
-            pinDisplay
+            if viewModel.isFetchingMethods {
+                ProgressView()
+                    .tint(MajorTomTheme.Colors.accent)
+            } else if !viewModel.hasAnyAuthMethod {
+                // No auth methods enabled on the relay
+                noAuthMethodsView
+            } else if viewModel.isPinEnabled {
+                // PIN auth available — show PIN entry
+                pinDisplay
+            }
 
             // Error message
             if let error = viewModel.errorMessage {
@@ -63,36 +74,79 @@ struct PairingView: View {
                     .hapticOnAppear(.heavy)
             }
 
-            // PIN keypad
-            pinKeypad
+            if viewModel.isPinEnabled && viewModel.hasAnyAuthMethod {
+                // PIN keypad
+                pinKeypad
 
-            // Submit button
-            Button {
-                HapticService.impact(.medium)
-                Task { await viewModel.submitPIN() }
-            } label: {
-                Group {
-                    if viewModel.isPairing {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Text("Connect")
-                            .font(MajorTomTheme.Typography.headline)
+                // Submit button
+                Button {
+                    HapticService.impact(.medium)
+                    Task { await viewModel.submitPIN() }
+                } label: {
+                    Group {
+                        if viewModel.isPairing {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Text("Connect")
+                                .font(MajorTomTheme.Typography.headline)
+                        }
                     }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, MajorTomTheme.Spacing.md)
+                    .background(viewModel.canSubmit ? MajorTomTheme.Colors.accent : MajorTomTheme.Colors.textTertiary)
+                    .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.medium))
                 }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, MajorTomTheme.Spacing.md)
-                .background(viewModel.canSubmit ? MajorTomTheme.Colors.accent : MajorTomTheme.Colors.textTertiary)
-                .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.medium))
+                .disabled(!viewModel.canSubmit)
+                .padding(.horizontal, MajorTomTheme.Spacing.xxl)
             }
-            .disabled(!viewModel.canSubmit)
-            .padding(.horizontal, MajorTomTheme.Spacing.xxl)
 
             Spacer()
         }
         .background(MajorTomTheme.Colors.background)
         .animation(.easeInOut(duration: 0.2), value: viewModel.authState)
+        .task {
+            await viewModel.fetchAuthMethods()
+        }
+    }
+
+    private var headerSubtitle: String {
+        if !viewModel.hasAnyAuthMethod {
+            return "No authentication methods are enabled on the relay server"
+        }
+        if viewModel.isPinEnabled {
+            return "Enter the 6-digit PIN from your relay server"
+        }
+        return "Connect to your relay server"
+    }
+
+    private var noAuthMethodsView: some View {
+        VStack(spacing: MajorTomTheme.Spacing.md) {
+            Image(systemName: "lock.slash")
+                .font(.system(size: 36))
+                .foregroundStyle(MajorTomTheme.Colors.deny)
+
+            Text("No authentication methods enabled")
+                .font(MajorTomTheme.Typography.headline)
+                .foregroundStyle(MajorTomTheme.Colors.textPrimary)
+
+            Text("Contact your relay administrator to enable PIN or Google authentication.")
+                .font(MajorTomTheme.Typography.body)
+                .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, MajorTomTheme.Spacing.xxl)
+
+            Button {
+                Task { await viewModel.fetchAuthMethods() }
+            } label: {
+                Label("Retry", systemImage: "arrow.clockwise")
+                    .font(MajorTomTheme.Typography.body)
+                    .foregroundStyle(MajorTomTheme.Colors.accent)
+            }
+            .padding(.top, MajorTomTheme.Spacing.sm)
+        }
+        .padding(.horizontal, MajorTomTheme.Spacing.xl)
     }
 
     // MARK: - PIN Display
