@@ -9,8 +9,9 @@
   let buttonContainer: HTMLDivElement;
 
   // Derived from relay auth methods — which login options the server supports
-  const googleEnabled = $derived(relay.authMethods?.google ?? false);
-  const pinEnabled = $derived(relay.authMethods?.pin ?? true); // default true since PIN is always generated
+  const authLoading = $derived(relay.authMethods === null);
+  const googleEnabled = $derived(relay.authMethods?.google ?? (relay.authMethods === null));
+  const pinEnabled = $derived(relay.authMethods?.pin ?? (relay.authMethods === null));
   const noAuthMethods = $derived(relay.authMethods !== null && !googleEnabled && !pinEnabled);
 
   // PIN state
