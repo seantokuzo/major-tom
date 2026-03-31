@@ -188,9 +188,9 @@ class TerminalStore {
       // Simple listing: columns of names
       return entries
         .map((e) => {
-          if (e.type === 'directory') return `${e.name}/`;
-          if (e.type === 'symlink') return `${e.name}@`;
-          return e.name;
+          const suffix = e.type === 'directory' ? '/' : e.type === 'symlink' ? '@' : '';
+          const prefix = e.restricted ? '\u{1F512} ' : '';
+          return `${prefix}${e.name}${suffix}`;
         })
         .join('  ');
     }
@@ -204,7 +204,8 @@ class TerminalStore {
       const size = formatSize(entry.size);
       const date = formatDate(entry.modified);
       const name = entry.type === 'directory' ? `${entry.name}/` : entry.name;
-      lines.push(`${typeChar}${perms}  ${size.padStart(8)}  ${date}  ${name}`);
+      const lock = entry.restricted ? ' [restricted]' : '';
+      lines.push(`${typeChar}${perms}  ${size.padStart(8)}  ${date}  ${name}${lock}`);
     }
     return lines.join('\n');
   }

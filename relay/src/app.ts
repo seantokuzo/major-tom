@@ -33,6 +33,7 @@ import { AchievementService } from './achievements/achievement-service.js';
 import { UserRegistry } from './users/user-registry.js';
 import { AnnotationStore } from './annotations/annotation-store.js';
 import { ActivityFeed } from './users/activity-feed.js';
+import { SandboxGuard } from './security/sandbox-guard.js';
 import { getSessionSecret } from './auth/session.js';
 
 declare module 'fastify' {
@@ -67,6 +68,7 @@ export async function buildApp(config: AppConfig) {
   const userRegistry = config.multiUserEnabled ? new UserRegistry() : undefined;
   const annotationStore = config.multiUserEnabled ? new AnnotationStore() : undefined;
   const activityFeed = config.multiUserEnabled ? new ActivityFeed() : undefined;
+  const sandboxGuard = config.multiUserEnabled ? new SandboxGuard() : undefined;
 
   // Start health monitoring
   healthMonitor.start();
@@ -89,6 +91,11 @@ export async function buildApp(config: AppConfig) {
   if (annotationStore) {
     await annotationStore.ensureDir().catch((err: unknown) => {
       logger.error({ err }, 'Failed to create annotations directory, starting anyway');
+    });
+  }
+  if (sandboxGuard) {
+    await sandboxGuard.load().catch((err: unknown) => {
+      logger.error({ err }, 'Failed to load sandbox config from disk, starting fresh');
     });
   }
 
@@ -161,6 +168,7 @@ export async function buildApp(config: AppConfig) {
     userRegistry,
     annotationStore,
     activityFeed,
+    sandboxGuard,
     claudeWorkDir: config.claudeWorkDir,
     multiUserEnabled: config.multiUserEnabled,
   }));
@@ -198,6 +206,10 @@ export async function buildApp(config: AppConfig) {
     if (userRegistry) {
       await userRegistry.flush();
       userRegistry.dispose();
+    }
+    if (sandboxGuard) {
+      await sandboxGuard.flush();
+      sandboxGuard.dispose();
     }
     await pushManager.dispose();
     logger.info('Shutdown complete');

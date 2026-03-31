@@ -9,6 +9,7 @@ export interface User {
   createdAt: string;    // ISO 8601
   lastLoginAt: string;  // ISO 8601
   invitedBy?: string;   // userId of who invited them
+  allowedPaths?: string[]; // Per-user directory access restrictions (SandboxGuard)
 }
 
 export interface InviteCode {

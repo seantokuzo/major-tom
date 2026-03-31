@@ -1,10 +1,12 @@
 <script lang="ts">
   import { relay } from '../stores/relay.svelte';
   import { presenceStore } from '../stores/presence.svelte';
+  import DirectoryPermissions from './DirectoryPermissions.svelte';
 
   import { onMount } from 'svelte';
 
   let open = $state(false);
+  let expandedUserId = $state<string | null>(null);
 
   function toggleMenu() {
     open = !open;
@@ -85,6 +87,28 @@
           <div class="online-section">
             <span class="online-label">{presenceStore.onlineCount} online</span>
           </div>
+          {#if relay.isAdmin && presenceStore.onlineCount > 0}
+            <div class="team-section">
+              <span class="team-label">Directory Access</span>
+              {#each presenceStore.onlineUsers as user (user.userId)}
+                <div class="team-user-entry">
+                  <button
+                    class="team-user-row"
+                    onclick={() => expandedUserId = expandedUserId === user.userId ? null : user.userId}
+                  >
+                    <span class="team-user-name">{user.name ?? user.email}</span>
+                    <span class="team-user-role" style="color: {roleBadgeColor[user.role] ?? 'var(--text-tertiary)'}">{user.role}</span>
+                    <span class="expand-arrow">{expandedUserId === user.userId ? '▴' : '▾'}</span>
+                  </button>
+                  {#if expandedUserId === user.userId}
+                    <div class="dir-perms-wrapper">
+                      <DirectoryPermissions userId={user.userId} userRole={user.role} />
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
         {/if}
         <button class="menu-item" onclick={handleLogout}>Sign out</button>
       </div>
@@ -169,7 +193,7 @@
     right: 0;
     z-index: 51;
     min-width: 180px;
-    max-width: 220px;
+    max-width: 340px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
@@ -246,5 +270,69 @@
   .menu-item:hover {
     background: var(--surface-hover);
     color: var(--text-primary);
+  }
+
+  .team-section {
+    border-bottom: 1px solid var(--border);
+    padding: var(--sp-sm) 0;
+  }
+
+  .team-label {
+    display: block;
+    padding: 0 var(--sp-md) var(--sp-xs);
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .team-user-entry {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .team-user-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-xs);
+    width: 100%;
+    padding: var(--sp-xs) var(--sp-md);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .team-user-row:hover {
+    background: var(--surface-hover);
+  }
+
+  .team-user-name {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-primary);
+    flex: 1;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .team-user-role {
+    font-family: var(--font-mono);
+    font-size: 0.5rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .expand-arrow {
+    font-size: 0.6rem;
+    color: var(--text-tertiary);
+  }
+
+  .dir-perms-wrapper {
+    padding: 0 var(--sp-xs) var(--sp-xs);
   }
 </style>

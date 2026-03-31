@@ -159,6 +159,24 @@ export interface SessionHandoffMessage {
   toUserId: string;
 }
 
+// ── Sandbox directory permissions ───────────────────────────
+
+export interface SandboxGetUserPathsMessage {
+  type: 'sandbox.getUserPaths';
+  userId: string;
+}
+
+export interface SandboxSetUserPathsMessage {
+  type: 'sandbox.setUserPaths';
+  userId: string;
+  paths: string[];
+}
+
+export interface SandboxClearUserPathsMessage {
+  type: 'sandbox.clearUserPaths';
+  userId: string;
+}
+
 export type ClientMessage =
   | PromptMessage
   | ApprovalMessage
@@ -188,7 +206,10 @@ export type ClientMessage =
   | ActivityListMessage
   | AnnotationAddMessage
   | AnnotationListMessage
-  | SessionHandoffMessage;
+  | SessionHandoffMessage
+  | SandboxGetUserPathsMessage
+  | SandboxSetUserPathsMessage
+  | SandboxClearUserPathsMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -418,6 +439,7 @@ export interface FsEntry {
   size: number;
   modified: string;
   permissions?: string;
+  restricted?: boolean;
 }
 
 export interface FsLsResponseMessage {
@@ -642,6 +664,12 @@ export interface SessionOwnershipChangedMessage {
   toUserId: string;
 }
 
+export interface SandboxUserPathsResponseMessage {
+  type: 'sandbox.userPaths';
+  userId: string;
+  paths: string[];
+}
+
 export interface ActivityEntry {
   id: string;
   userId: string;
@@ -740,4 +768,5 @@ export type ServerMessage =
   | AnnotationListResponseMessage
   | SessionHandoffResponseMessage
   | SessionOwnershipChangedMessage
-  | ActivityFeedMessage;
+  | ActivityFeedMessage
+  | SandboxUserPathsResponseMessage;

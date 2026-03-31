@@ -27,6 +27,7 @@ import type { AnalyticsCollector } from '../analytics/analytics-collector.js';
 import type { AchievementService } from '../achievements/achievement-service.js';
 import { AnnotationStore } from '../annotations/annotation-store.js';
 import { ActivityFeed } from '../users/activity-feed.js';
+import type { SandboxGuard } from '../security/sandbox-guard.js';
 import { logger } from '../utils/logger.js';
 
 interface WsDeps {
@@ -41,6 +42,7 @@ interface WsDeps {
   userRegistry?: UserRegistry;
   annotationStore?: AnnotationStore;
   activityFeed?: ActivityFeed;
+  sandboxGuard?: SandboxGuard;
   claudeWorkDir: string;
   multiUserEnabled: boolean;
 }
@@ -62,6 +64,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     userRegistry,
     annotationStore,
     activityFeed,
+    sandboxGuard,
     claudeWorkDir,
     multiUserEnabled,
   } = deps;
@@ -259,6 +262,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   ]);
   const ADMIN_ONLY: Set<string> = new Set([
     'user.invite', 'user.revoke', 'user.updateRole',
+    'sandbox.getUserPaths', 'sandbox.setUserPaths', 'sandbox.clearUserPaths',
   ]);
 
   /** Message types that require multi-user mode */
@@ -268,6 +272,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     'activity.list',
     'annotation.add', 'annotation.list',
     'session.handoff',
+    'sandbox.getUserPaths', 'sandbox.setUserPaths', 'sandbox.clearUserPaths',
   ]);
 
   async function handleClientMessage(message: ClientMessage, ws: WebSocket): Promise<void> {
@@ -342,6 +347,23 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           workDir = resolved;
         }
 
+        // SandboxGuard: check per-user directory access
+        if (sandboxGuard) {
+          const startUserId = presenceManager.getUserId(ws);
+          const startUserRole = presenceManager.getUserRole(ws);
+          if (startUserId && startUserRole) {
+            const canAccess = await sandboxGuard.canAccess(startUserId, startUserRole, workDir);
+            if (!canAccess) {
+              sendToClient(ws, {
+                type: 'error',
+                code: 'SANDBOX_DENIED',
+                message: 'Access denied: you do not have permission to access this directory',
+              });
+              break;
+            }
+          }
+        }
+
         const session = await fleetManager.start(workDir);
         healthMonitor.trackSession(session.id);
         trackClientSession(ws, session.id);
@@ -374,6 +396,27 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'session.attach': {
+        // SandboxGuard: check per-user access to session's workingDir
+        if (sandboxGuard) {
+          const attachUserId = presenceManager.getUserId(ws);
+          const attachUserRole = presenceManager.getUserRole(ws);
+          if (attachUserId && attachUserRole) {
+            const attachSession = sessionManager.tryGet(message.sessionId);
+            const attachWorkDir = attachSession?.workingDir;
+            if (attachWorkDir) {
+              const canAccess = await sandboxGuard.canAccess(attachUserId, attachUserRole, attachWorkDir);
+              if (!canAccess) {
+                sendToClient(ws, {
+                  type: 'error',
+                  code: 'SANDBOX_DENIED',
+                  message: 'Access denied: you do not have permission to access this session',
+                });
+                break;
+              }
+            }
+          }
+        }
+
         if (sessionManager.isPersistedOnly(message.sessionId)) {
           const meta = sessionManager.getPersistedMeta(message.sessionId);
           if (meta) {
@@ -797,7 +840,29 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
 
       case 'session.list': {
-        const sessions = sessionManager.listMeta();
+        let sessions = sessionManager.listMeta();
+
+        // SandboxGuard: filter sessions by user's allowed paths
+        if (sandboxGuard) {
+          const listUserId = presenceManager.getUserId(ws);
+          const listUserRole = presenceManager.getUserRole(ws);
+          if (listUserId && listUserRole) {
+            const filtered = [];
+            for (const meta of sessions) {
+              const liveSession = sessionManager.tryGet(meta.id);
+              const workDir = liveSession?.workingDir;
+              if (workDir) {
+                if (await sandboxGuard.canAccess(listUserId, listUserRole, workDir)) {
+                  filtered.push(meta);
+                }
+              } else if (listUserRole === 'admin') {
+                filtered.push(meta);
+              }
+            }
+            sessions = filtered;
+          }
+        }
+
         sendToClient(ws, { type: 'session.list.response', sessions });
         break;
       }
@@ -865,11 +930,29 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       // ── Filesystem browsing ──────────────────────────────
       case 'fs.ls': {
-        await fsHandlers.handleFsLs(ws, message);
+        // SandboxGuard: for fs.ls, allow listing ancestor directories with filtered results
+        // instead of hard-denying — users need to navigate to allowed subtrees
+        await fsHandlers.handleFsLs(ws, message, sandboxGuard ? {
+          guard: sandboxGuard,
+          userId: presenceManager.getUserId(ws),
+          role: presenceManager.getUserRole(ws),
+        } : undefined);
         break;
       }
 
       case 'fs.readFile': {
+        // SandboxGuard: check per-user access
+        if (sandboxGuard) {
+          const fsUserId = presenceManager.getUserId(ws);
+          const fsUserRole = presenceManager.getUserRole(ws);
+          if (fsUserId && fsUserRole) {
+            const fsTarget = resolve(fsHandlers.sandboxRoot, message.path);
+            if (!await sandboxGuard.canAccess(fsUserId, fsUserRole, fsTarget)) {
+              sendToClient(ws, { type: 'fs.error' as ServerMessage['type'], message: 'Access denied: you do not have permission to access this file', path: message.path } as ServerMessage);
+              break;
+            }
+          }
+        }
         await fsHandlers.handleFsReadFile(ws, message);
         break;
       }
@@ -1098,6 +1181,27 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           fromUserId: handoffUserId,
           toUserId: message.toUserId,
         });
+        break;
+      }
+
+      // ── Sandbox management (admin-only) ──────────────────
+      case 'sandbox.getUserPaths': {
+        const paths = sandboxGuard?.getUserPaths(message.userId) ?? [];
+        sendToClient(ws, { type: 'sandbox.userPaths', userId: message.userId, paths });
+        break;
+      }
+
+      case 'sandbox.setUserPaths': {
+        sandboxGuard?.setUserPaths(message.userId, message.paths);
+        sendToClient(ws, { type: 'sandbox.userPaths', userId: message.userId, paths: message.paths });
+        logger.info({ userId: message.userId, paths: message.paths }, 'Sandbox paths updated');
+        break;
+      }
+
+      case 'sandbox.clearUserPaths': {
+        sandboxGuard?.clearUserPaths(message.userId);
+        sendToClient(ws, { type: 'sandbox.userPaths', userId: message.userId, paths: [] });
+        logger.info({ userId: message.userId }, 'Sandbox paths cleared');
         break;
       }
 
