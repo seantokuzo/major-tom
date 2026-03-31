@@ -172,6 +172,24 @@ export interface SessionHandoffMessage {
   toUserId: string;
 }
 
+// ── Sandbox management (admin-only, multi-user only) ────────
+
+export interface SandboxGetUserPathsMessage {
+  type: 'sandbox.getUserPaths';
+  userId: string;
+}
+
+export interface SandboxSetUserPathsMessage {
+  type: 'sandbox.setUserPaths';
+  userId: string;
+  paths: string[];
+}
+
+export interface SandboxClearUserPathsMessage {
+  type: 'sandbox.clearUserPaths';
+  userId: string;
+}
+
 
 export type ClientMessage =
   | PromptMessage
@@ -203,7 +221,10 @@ export type ClientMessage =
   | ActivityListMessage
   | AnnotationAddMessage
   | AnnotationListMessage
-  | SessionHandoffMessage;
+  | SessionHandoffMessage
+  | SandboxGetUserPathsMessage
+  | SandboxSetUserPathsMessage
+  | SandboxClearUserPathsMessage;
 
 // ── Server → Client (Relay → iOS) ──────────────────────────
 
@@ -664,6 +685,14 @@ export interface ActivityFeedMessage {
   }>;
 }
 
+// ── Sandbox response messages ─────────────────────────────────
+
+export interface SandboxUserPathsResponseMessage {
+  type: 'sandbox.userPaths';
+  userId: string;
+  paths: string[];
+}
+
 
 /** Base server message union (without envelope fields). */
 type ServerMessageBase =
@@ -713,7 +742,8 @@ type ServerMessageBase =
   | AnnotationListResponseMessage
   | SessionHandoffResponseMessage
   | SessionOwnershipChangedMessage
-  | ActivityFeedMessage;
+  | ActivityFeedMessage
+  | SandboxUserPathsResponseMessage;
 
 /**
  * Every outbound server message may carry an optional `seq` —
