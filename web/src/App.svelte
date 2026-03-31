@@ -28,6 +28,7 @@
   import AnalyticsIndicator from './lib/components/AnalyticsIndicator.svelte';
   import AchievementPanel from './lib/components/AchievementPanel.svelte';
   import AchievementIndicator from './lib/components/AchievementIndicator.svelte';
+  import ActivityIndicator from './lib/components/ActivityIndicator.svelte';
   import { sessionStateManager } from './lib/stores/session-state.svelte';
   import { resendPushSubscription } from './lib/push/push-manager';
 
@@ -271,6 +272,7 @@
           <NotificationSettings />
         </span>
         <AchievementIndicator />
+        <ActivityIndicator />
         <AnalyticsIndicator />
         <FleetIndicator />
         <button

@@ -33,6 +33,11 @@ struct MajorTomApp: App {
                 relay.liveActivityManager = liveActivityManager
                 relay.watchConnectivityService = watchConnectivity
                 relay.achievementsViewModel = achievementsVM
+                // Propagate user identity to relay for multi-user features
+                relay.currentUserId = auth.userId
+                if let role = auth.userRole {
+                    relay.currentUserRole = role
+                }
                 setupNotificationHandlers()
                 setupWatchConnectivity()
             }

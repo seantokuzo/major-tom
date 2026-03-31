@@ -31,6 +31,8 @@ import { HealthMonitor } from './health/health-monitor.js';
 import { AnalyticsCollector } from './analytics/analytics-collector.js';
 import { AchievementService } from './achievements/achievement-service.js';
 import { UserRegistry } from './users/user-registry.js';
+import { AnnotationStore } from './annotations/annotation-store.js';
+import { ActivityFeed } from './users/activity-feed.js';
 import { getSessionSecret } from './auth/session.js';
 
 declare module 'fastify' {
@@ -58,6 +60,8 @@ export async function buildApp(config: AppConfig) {
   const analyticsCollector = new AnalyticsCollector();
   const achievementService = new AchievementService();
   const userRegistry = new UserRegistry();
+  const annotationStore = new AnnotationStore();
+  const activityFeed = new ActivityFeed();
 
   // Start health monitoring
   healthMonitor.start();
@@ -74,6 +78,9 @@ export async function buildApp(config: AppConfig) {
   });
   await userRegistry.load().catch((err: unknown) => {
     logger.error({ err }, 'Failed to load user registry from disk, starting fresh');
+  });
+  await annotationStore.ensureDir().catch((err: unknown) => {
+    logger.error({ err }, 'Failed to create annotations directory, starting anyway');
   });
 
   // ── Fastify instance ───────────────────────────────────
@@ -136,6 +143,8 @@ export async function buildApp(config: AppConfig) {
     analyticsCollector,
     achievementService,
     userRegistry,
+    annotationStore,
+    activityFeed,
     claudeWorkDir: config.claudeWorkDir,
   }));
 
@@ -159,11 +168,14 @@ export async function buildApp(config: AppConfig) {
         workingDir: session.workingDir,
         status: session.status,
         startedAt: session.startedAt,
+        ownerId: session.ownerId,
         metadata: session.toMeta(),
         transcript: session.transcript.getAll(),
       };
     });
     sessionPersistence.dispose();
+    await annotationStore.flush();
+    annotationStore.dispose();
     await userRegistry.flush();
     userRegistry.dispose();
     await pushManager.dispose();

@@ -22,6 +22,16 @@ enum MessageType: String, Codable {
     case fsReadFile = "fs.readFile"
     case fsCwd = "fs.cwd"
     case fleetStatus = "fleet.status"
+    case presenceWatch = "presence.watch"
+    case presenceUnwatch = "presence.unwatch"
+    case userList = "user.list"
+    case userInvite = "user.invite"
+    case userRevoke = "user.revoke"
+    case userUpdateRole = "user.updateRole"
+    case annotationAdd = "annotation.add"
+    case annotationList = "annotation.list"
+    case sessionHandoff = "session.handoff"
+    case activityList = "activity.list"
 
     // Server → Client
     case output
@@ -58,6 +68,16 @@ enum MessageType: String, Codable {
     case achievementUnlocked = "achievement.unlocked"
     case achievementProgress = "achievement.progress"
     case achievementListResponse = "achievement.list.response"
+    case presenceUpdate = "presence.update"
+    case annotationAdded = "annotation.added"
+    case annotationListResponse = "annotation.list.response"
+    case sessionHandoffResponse = "session.handoff.response"
+    case activityFeed = "activity.feed"
+    case userListResponse = "user.list.response"
+    case userInviteResponse = "user.invite.response"
+    case userRevokeResponse = "user.revoke.response"
+    case userRoleUpdated = "user.roleUpdated"
+    case approvalResolved = "approval.resolved"
     case error
 }
 
@@ -189,6 +209,58 @@ struct FsCwdRequestMessage: Codable {
 
 struct FleetStatusRequestMessage: Codable {
     let type: String = "fleet.status"
+}
+
+struct PresenceWatchMessage: Codable {
+    let type: String = "presence.watch"
+    let sessionId: String
+}
+
+struct PresenceUnwatchMessage: Codable {
+    let type: String = "presence.unwatch"
+}
+
+struct UserListRequestMessage: Codable {
+    let type: String = "user.list"
+}
+
+struct UserInviteRequestMessage: Codable {
+    let type: String = "user.invite"
+    let role: String
+}
+
+struct UserRevokeRequestMessage: Codable {
+    let type: String = "user.revoke"
+    let userId: String
+}
+
+struct UserUpdateRoleRequestMessage: Codable {
+    let type: String = "user.updateRole"
+    let userId: String
+    let role: String
+}
+
+struct AnnotationAddRequestMessage: Codable {
+    let type: String = "annotation.add"
+    let sessionId: String
+    let turnIndex: Int?
+    let text: String
+    let mentions: [String]?
+}
+
+struct AnnotationListRequestMessage: Codable {
+    let type: String = "annotation.list"
+    let sessionId: String
+}
+
+struct SessionHandoffRequestMessage: Codable {
+    let type: String = "session.handoff"
+    let sessionId: String
+    let toUserId: String
+}
+
+struct ActivityListRequestMessage: Codable {
+    let type: String = "activity.list"
 }
 
 // MARK: - Server → Client Messages
@@ -468,6 +540,115 @@ struct FsErrorEvent: Codable {
     let type: String
     let message: String
     var path: String?
+}
+
+// MARK: - Multi-User / Presence Messages
+
+struct PresenceUpdateEvent: Codable {
+    let type: String
+    let users: [PresenceUser]
+
+    struct PresenceUser: Codable {
+        let userId: String
+        let email: String
+        let name: String?
+        let picture: String?
+        let role: String
+        let connectedAt: String
+        let watchingSessionId: String?
+    }
+}
+
+struct AnnotationAddedEvent: Codable {
+    let type: String
+    let sessionId: String
+    let annotation: AnnotationData
+
+    struct AnnotationData: Codable {
+        let id: String
+        let userId: String
+        let userName: String
+        let turnIndex: Int?
+        let text: String
+        let mentions: [String]
+        let createdAt: String
+    }
+}
+
+struct AnnotationListResponseEvent: Codable {
+    let type: String
+    let sessionId: String
+    let annotations: [AnnotationAddedEvent.AnnotationData]
+}
+
+struct SessionHandoffResponseEvent: Codable {
+    let type: String
+    let sessionId: String
+    let fromUserId: String
+    let toUserId: String
+    let success: Bool
+    let error: String?
+}
+
+struct ActivityFeedEvent: Codable {
+    let type: String
+    let entries: [ActivityEntryData]
+
+    struct ActivityEntryData: Codable {
+        let id: String
+        let userId: String
+        let userName: String
+        let action: String
+        let sessionId: String?
+        let timestamp: String
+    }
+}
+
+struct UserListResponseEvent: Codable {
+    let type: String
+    let users: [UserData]
+
+    struct UserData: Codable {
+        let id: String
+        let email: String
+        let name: String?
+        let picture: String?
+        let role: String
+        let isOnline: Bool
+        let lastLoginAt: String?
+    }
+}
+
+struct UserInviteResponseEvent: Codable {
+    let type: String
+    let code: String?
+    let expiresAt: String?
+    let success: Bool
+    let error: String?
+}
+
+struct UserRevokeResponseEvent: Codable {
+    let type: String
+    let userId: String
+    let success: Bool
+}
+
+struct UserRoleUpdatedEvent: Codable {
+    let type: String
+    let userId: String
+    let role: String
+}
+
+struct ApprovalResolvedEvent: Codable {
+    let type: String
+    let requestId: String
+    let decision: String
+    let resolvedBy: ResolvedByInfo
+
+    struct ResolvedByInfo: Codable {
+        let userId: String
+        let name: String?
+    }
 }
 
 // MARK: - Fleet Messages

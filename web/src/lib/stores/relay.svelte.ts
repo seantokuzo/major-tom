@@ -9,6 +9,8 @@ import type {
   DeviceInfo,
   SessionResultMessage,
   ServerMessage,
+  ActivityEntry,
+  AnnotationEntry,
 } from '../protocol/messages';
 import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
@@ -171,6 +173,12 @@ class RelayStore {
 
   // Devices
   devices = $state<DeviceInfo[]>([]);
+
+  // Activity feed
+  activityEntries = $state<ActivityEntry[]>([]);
+
+  // Annotations
+  annotations = $state<AnnotationEntry[]>([]);
 
   // Command palette
   inputPrefix = $state('');
@@ -668,6 +676,26 @@ class RelayStore {
   updateUserRole(userId: string, role: 'admin' | 'operator' | 'viewer'): void {
     if (!this.isConnected) return;
     this.socket.send({ type: 'user.updateRole', userId, role });
+  }
+
+  requestActivityFeed(): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'activity.list' });
+  }
+
+  addAnnotation(sessionId: string, text: string, turnIndex?: number, mentions?: string[]): void {
+    if (!this.isConnected || !sessionId) return;
+    this.socket.send({ type: 'annotation.add', sessionId, turnIndex, text, mentions });
+  }
+
+  requestAnnotations(sessionId: string): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'annotation.list', sessionId });
+  }
+
+  handoffSession(sessionId: string, toUserId: string): void {
+    if (!this.isConnected) return;
+    this.socket.send({ type: 'session.handoff', sessionId, toUserId });
   }
 
   requestSessionList(): void {
@@ -1222,6 +1250,27 @@ class RelayStore {
               timestamp: new Date(),
             });
           }
+        }
+        break;
+
+      // ── Activity & annotation messages ──────────────────────
+      case 'activity.feed':
+        this.activityEntries = message.entries;
+        break;
+
+      case 'annotation.added':
+        this.annotations = [...this.annotations, message.annotation];
+        break;
+
+      case 'annotation.list.response':
+        this.annotations = message.annotations;
+        break;
+
+      case 'session.handoff.response':
+        if (message.success) {
+          toasts.success('Session handed off');
+        } else {
+          toasts.error(message.error ?? 'Handoff failed');
         }
         break;
     }
