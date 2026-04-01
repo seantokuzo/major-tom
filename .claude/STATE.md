@@ -7,7 +7,7 @@
 
 ## Current Phase
 
-**Phase 9: "The Social Layer"** — ALL WAVES COMPLETE
+**Phase 11: "The Pipeline"** — ALL WAVES COMPLETE
 
 ## Strategy
 
@@ -381,6 +381,42 @@
 - [x] Wave 2: iOS multi-user experience with team settings and activity views
 - [x] Wave 2: Per-channel notification settings
 
+## Completed — Phase 10: "Lockdown"
+
+- [x] Wave 1: Audit trail — AuditLogger, per-session JSON logs, admin viewer (PR #82)
+- [x] Wave 2: Per-role rate limiting — sliding window, configurable limits (PR #83)
+- [x] Wave 3: Directory sandboxing — SandboxGuard, per-user chroot, fs/git path validation (PR #84-85)
+
+## Completed — Phase 11: "The Pipeline"
+
+### Wave 1: Git Viewer (PR #86)
+- [x] Relay: git.ts handler factory — status, diff, log, branches, show via execFile
+- [x] PWA: GitPanel slide-out with Status/Log/Branches tabs, inline diff viewer
+- [x] iOS: GitPanelView sheet with matching tabs and diff renderer
+
+### Wave 2: GitHub Integration (PR #87)
+- [x] Relay: github.ts handler using gh CLI proxy — PRs, Issues, PR detail, Issue detail
+- [x] PWA: GitHubPanel with expandable detail (checks, reviews, comments), state filters
+- [x] iOS: GitHubPanelView with PR/Issues views, tap-to-expand detail
+
+### Wave 3: CI Dashboard (PR #88)
+- [x] Relay: ci.ts handler — run list, run detail with jobs via gh CLI
+- [x] PWA: CIDashboardPanel with auto-refresh (30s), branch filter, job status/duration
+- [x] iOS: CIPanelView with auto-refresh timer, status icons, conclusion badges
+
+### Phase 11 Architecture
+- All ops proxy through gh/git CLI via execFile (no shell, no tokens exposed)
+- Handler factory pattern (closure-based) — git.ts, github.ts, ci.ts
+- VIEWER_ALLOWED role access — read-only by default
+- Session-scoped working directory for all operations
+
+### Phase 11 Success Criteria — ALL MET
+- [x] Git status, diff, log, branches, show from mobile
+- [x] GitHub PRs with checks/reviews/comments
+- [x] GitHub issues with labels/assignees/detail
+- [x] CI run monitoring with auto-refresh and job detail
+- [x] All operations sandboxed to session working directory
+
 ---
 
-_Last updated: 2026-03-30_
+_Last updated: 2026-03-31_
