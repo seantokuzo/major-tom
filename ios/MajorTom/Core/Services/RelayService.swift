@@ -95,6 +95,11 @@ final class RelayService {
     var githubIssueDetail: GitHubIssueDetail?
     var githubError: String?
 
+    // CI viewer state
+    var ciRuns: [CIRunEntry] = []
+    var ciRunDetail: CIRunDetailEntry?
+    var ciError: String?
+
     // Session-scoped allowlist (tool names auto-approved via "Always")
     var sessionAllowlist: Set<String> = []
 
@@ -521,6 +526,23 @@ final class RelayService {
         githubError = nil
         githubIssueDetail = nil
         let msg = GitHubIssueDetailRequestMessage(sessionId: sessionId, number: number)
+        try await webSocket.send(msg)
+    }
+
+    // MARK: - CI
+
+    func requestCIRuns(branch: String? = nil) async throws {
+        guard let sessionId = currentSession?.id else { return }
+        ciError = nil
+        let msg = CIRunsRequestMessage(sessionId: sessionId, branch: branch)
+        try await webSocket.send(msg)
+    }
+
+    func requestCIRunDetail(runId: Int) async throws {
+        guard let sessionId = currentSession?.id else { return }
+        ciError = nil
+        ciRunDetail = nil
+        let msg = CIRunDetailRequestMessage(sessionId: sessionId, runId: runId)
         try await webSocket.send(msg)
     }
 
@@ -1065,6 +1087,24 @@ final class RelayService {
                 responseCounter &+= 1
             }
 
+        case .ciRunsResponse:
+            if let event = try? MessageCodec.decode(CIRunsResponseEvent.self, from: data) {
+                ciRuns = event.runs
+                responseCounter &+= 1
+            }
+
+        case .ciRunDetailResponse:
+            if let event = try? MessageCodec.decode(CIRunDetailResponseEvent.self, from: data) {
+                ciRunDetail = event.run
+                responseCounter &+= 1
+            }
+
+        case .ciError:
+            if let event = try? MessageCodec.decode(CIErrorEvent.self, from: data) {
+                ciError = event.message
+                responseCounter &+= 1
+            }
+
         case .error:
             if let event = try? MessageCodec.decode(ErrorEvent.self, from: data) {
                 let msg = ChatMessage(role: .system, content: "Error: \(event.message)")
@@ -1116,6 +1156,9 @@ final class RelayService {
         githubPullRequestDetail = nil
         githubIssueDetail = nil
         githubError = nil
+        ciRuns = []
+        ciRunDetail = nil
+        ciError = nil
     }
 
     /// Push latest session state to the widget data store and watch.
