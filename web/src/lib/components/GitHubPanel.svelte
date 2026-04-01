@@ -13,10 +13,19 @@
   function close() {
     relay.githubPanelOpen = false;
     activeTab = 'prs';
+    prFilter = 'open';
+    issueFilter = 'open';
     expandedPR = null;
     expandedIssue = null;
     relay.githubError = null;
   }
+
+  // Fetch data when panel opens, using current filter state
+  $effect(() => {
+    if (!relay.githubPanelOpen || !relay.sessionId) return;
+    relay.requestGitHubPullRequests(prFilter);
+    relay.requestGitHubIssues(issueFilter);
+  });
 
   $effect(() => {
     if (!relay.githubPanelOpen) return;
@@ -120,7 +129,7 @@
 </script>
 
 {#if relay.githubPanelOpen}
-  <div class="panel-backdrop" role="button" tabindex="-1" onclick={close} onkeydown={(e) => { if (e.key === 'Escape') close(); }}>
+  <div class="panel-backdrop" role="button" tabindex="0" aria-label="Close GitHub panel" onclick={close} onkeydown={(e) => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); close(); } }}>
     <div class="panel" role="dialog" aria-label="GitHub panel" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
       <div class="panel-header">
         <span class="panel-title">

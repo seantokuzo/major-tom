@@ -883,10 +883,8 @@ class RelayStore {
 
   toggleGitHubPanel(): void {
     this.githubPanelOpen = !this.githubPanelOpen;
-    if (this.githubPanelOpen && this.sessionId) {
-      this.requestGitHubPullRequests('open');
-      this.requestGitHubIssues('open');
-    }
+    // Data fetching is triggered by the GitHub panel itself based on the
+    // currently-selected filters to avoid UI/data mismatches here.
   }
 
   requestSessionList(): void {
