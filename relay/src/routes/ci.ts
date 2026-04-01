@@ -85,19 +85,24 @@ export function createCIHandlers(
       const raw = await runGh(args, workingDir);
       const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
 
-      const runs: CIRunEntry[] = parsed.map((run) => ({
-        id: run.databaseId as number,
-        name: (run.name as string) ?? '',
-        displayTitle: (run.displayTitle as string) ?? '',
-        status: (run.status as string) ?? '',
-        conclusion: (run.conclusion as string) ?? '',
-        headBranch: (run.headBranch as string) ?? '',
-        event: (run.event as string) ?? '',
-        url: (run.url as string) ?? '',
-        createdAt: (run.createdAt as string) ?? '',
-        updatedAt: (run.updatedAt as string) ?? '',
-        actor: (run.actor as Record<string, unknown>)?.login as string ?? '',
-      }));
+      const runs: CIRunEntry[] = [];
+      for (const run of parsed) {
+        const databaseId = run.databaseId;
+        if (typeof databaseId !== 'number') continue;
+        runs.push({
+          id: databaseId,
+          name: (run.name as string) ?? '',
+          displayTitle: (run.displayTitle as string) ?? '',
+          status: (run.status as string) ?? '',
+          conclusion: (run.conclusion as string) ?? '',
+          headBranch: (run.headBranch as string) ?? '',
+          event: (run.event as string) ?? '',
+          url: (run.url as string) ?? '',
+          createdAt: (run.createdAt as string) ?? '',
+          updatedAt: (run.updatedAt as string) ?? '',
+          actor: (run.actor as Record<string, unknown>)?.login as string ?? '',
+        });
+      }
 
       sendToClient(ws, {
         type: 'ci.runs.response',
@@ -124,14 +129,16 @@ export function createCIHandlers(
       const data = JSON.parse(raw) as Record<string, unknown>;
 
       const jobs: CIJobEntry[] = Array.isArray(data.jobs)
-        ? (data.jobs as Array<Record<string, unknown>>).map((j) => ({
-            id: (j.databaseId as number) ?? 0,
-            name: (j.name as string) ?? '',
-            status: (j.status as string) ?? '',
-            conclusion: (j.conclusion as string) ?? '',
-            startedAt: (j.startedAt as string) ?? null,
-            completedAt: (j.completedAt as string) ?? null,
-          }))
+        ? (data.jobs as Array<Record<string, unknown>>)
+            .filter((j) => typeof j.databaseId === 'number')
+            .map((j) => ({
+              id: j.databaseId as number,
+              name: (j.name as string) ?? '',
+              status: (j.status as string) ?? '',
+              conclusion: (j.conclusion as string) ?? '',
+              startedAt: (j.startedAt as string) ?? null,
+              completedAt: (j.completedAt as string) ?? null,
+            }))
         : [];
 
       const run: CIRunDetailEntry = {

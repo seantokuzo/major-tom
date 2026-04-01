@@ -2,7 +2,7 @@ import SwiftUI
 
 struct CIPanelView: View {
     let relay: RelayService
-    @State private var autoRefresh = false
+    @State private var autoRefresh = true
     @State private var refreshTimer: Timer?
 
     var body: some View {

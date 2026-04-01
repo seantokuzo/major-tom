@@ -3,13 +3,15 @@
   import type { CIRunEntry } from '../protocol/messages';
 
   let expandedRun = $state<number | null>(null);
-  let branchFilter = $state('');
+  let branchFilterInput = $state('');
+  let appliedBranchFilter = $state('');
   let autoRefresh = $state(true);
 
   function close() {
     relay.ciPanelOpen = false;
     expandedRun = null;
-    branchFilter = '';
+    branchFilterInput = '';
+    appliedBranchFilter = '';
     relay.ciError = null;
     autoRefresh = true;
   }
@@ -17,7 +19,7 @@
   // Fetch data when panel opens
   $effect(() => {
     if (!relay.ciPanelOpen || !relay.sessionId) return;
-    relay.requestCIRuns(branchFilter || undefined);
+    relay.requestCIRuns(appliedBranchFilter || undefined);
   });
 
   // Escape key close
@@ -33,19 +35,21 @@
   // Auto-refresh every 30s when enabled and panel open
   $effect(() => {
     if (!relay.ciPanelOpen || !autoRefresh || !relay.sessionId) return;
+    const filter = appliedBranchFilter;
     const interval = setInterval(() => {
-      relay.requestCIRuns(branchFilter || undefined);
+      relay.requestCIRuns(filter || undefined);
     }, 30_000);
     return () => clearInterval(interval);
   });
 
   function refresh() {
-    relay.requestCIRuns(branchFilter || undefined);
+    relay.requestCIRuns(appliedBranchFilter || undefined);
   }
 
   function applyBranchFilter() {
     expandedRun = null;
-    relay.requestCIRuns(branchFilter || undefined);
+    appliedBranchFilter = branchFilterInput;
+    relay.requestCIRuns(appliedBranchFilter || undefined);
   }
 
   function selectRun(run: CIRunEntry) {
@@ -137,7 +141,7 @@
           class="branch-input"
           type="text"
           placeholder="Filter by branch..."
-          bind:value={branchFilter}
+          bind:value={branchFilterInput}
           onkeydown={(e) => { if (e.key === 'Enter') applyBranchFilter(); }}
         />
         <button class="filter-apply-btn" onclick={applyBranchFilter}>Filter</button>

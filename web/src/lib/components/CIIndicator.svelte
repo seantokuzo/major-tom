@@ -6,17 +6,24 @@
   }
 
   let badgeCount = $derived(
-    relay.ciRuns.filter(r => r.status === 'in_progress' || r.conclusion === 'failure').length
+    relay.ciRuns.filter(
+      (r) =>
+        r.status === 'in_progress' ||
+        r.status === 'queued' ||
+        (r.conclusion !== '' && r.conclusion !== 'success')
+    ).length
   );
 
   let badgeColor = $derived.by(() => {
     const runs = relay.ciRuns;
     if (runs.length === 0) return 'none';
-    const hasFailed = runs.some(r => r.conclusion === 'failure');
+    const hasFailed = runs.some(r => r.conclusion !== '' && r.conclusion !== 'success');
     if (hasFailed) return 'failure';
-    const hasInProgress = runs.some(r => r.status === 'in_progress');
+    const hasInProgress = runs.some(r => r.status === 'in_progress' || r.status === 'queued');
     if (hasInProgress) return 'in-progress';
-    return 'success';
+    const allSucceeded = runs.every(r => r.conclusion === 'success');
+    if (allSucceeded) return 'success';
+    return 'none';
   });
 </script>
 
