@@ -26,6 +26,8 @@
   import FleetIndicator from './lib/components/FleetIndicator.svelte';
   import AnalyticsPanel from './lib/components/AnalyticsPanel.svelte';
   import AnalyticsIndicator from './lib/components/AnalyticsIndicator.svelte';
+  import GitIndicator from './lib/components/GitIndicator.svelte';
+  import GitPanel from './lib/components/GitPanel.svelte';
   import AchievementPanel from './lib/components/AchievementPanel.svelte';
   import AchievementIndicator from './lib/components/AchievementIndicator.svelte';
   import ActivityIndicator from './lib/components/ActivityIndicator.svelte';
@@ -280,6 +282,7 @@
         {#if relay.multiUserEnabled}
           <ActivityIndicator />
         {/if}
+        <GitIndicator />
         <AnalyticsIndicator />
         <FleetIndicator />
         <button
@@ -370,6 +373,7 @@
   </div>
   <Toast />
   <SessionPanel />
+  <GitPanel />
   <FleetPanel />
   <AnalyticsPanel />
   <AchievementPanel />

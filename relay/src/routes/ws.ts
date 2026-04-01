@@ -23,6 +23,7 @@ import { EventBufferManager } from '../sessions/event-buffer.js';
 import { scanWorkspaceTree } from '../workspace/tree-scanner.js';
 import type { ClientMessage, ServerMessage, FileNode } from '../protocol/messages.js';
 import { createFsHandlers, type FsServerMessage } from './fs.js';
+import { createGitHandlers, type GitServerMessage } from './git.js';
 import type { AnalyticsCollector } from '../analytics/analytics-collector.js';
 import type { AchievementService } from '../achievements/achievement-service.js';
 import { AnnotationStore } from '../annotations/annotation-store.js';
@@ -116,6 +117,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
   // ── Filesystem handlers (sandboxed browsing) ──────────────
   const fsHandlers = createFsHandlers((ws: WebSocket, msg: FsServerMessage) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(encodeServerMessage(msg as ServerMessage));
+    }
+  });
+
+  // ── Git handlers (scoped to session workingDir) ───────────
+  const gitHandlers = createGitHandlers((ws: WebSocket, msg: GitServerMessage) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(encodeServerMessage(msg as ServerMessage));
     }
@@ -266,6 +274,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     'fleet.status', 'workspace.tree', 'fs.ls', 'fs.readFile', 'fs.cwd',
     'presence.watch', 'presence.unwatch', 'user.list', 'activity.list',
     'annotation.list',
+    'git.status', 'git.diff', 'git.log', 'git.branches', 'git.show',
   ]);
   const ADMIN_ONLY: Set<string> = new Set([
     'user.invite', 'user.revoke', 'user.updateRole',
@@ -1299,6 +1308,51 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           rateLimiter.clearUserOverride(message.userId);
           const config = rateLimiter.toJSON();
           sendToClient(ws, { type: 'rateLimit.config', roles: config.roles, userOverrides: config.userOverrides });
+        }
+        break;
+      }
+
+      // ── Git operations (scoped to session workingDir) ──────
+      case 'git.status':
+      case 'git.diff':
+      case 'git.log':
+      case 'git.branches':
+      case 'git.show': {
+        const gitSessionId = message.sessionId;
+        const gitWorkDir = sessionManager.getWorkingDir(gitSessionId);
+        if (!gitWorkDir) {
+          sendToClient(ws, { type: 'git.error', sessionId: gitSessionId, message: 'Session not found or has no working directory' } as ServerMessage);
+          break;
+        }
+
+        // SandboxGuard check
+        if (sandboxGuard) {
+          const gitUserId = presenceManager.getUserId(ws);
+          const gitUserRole = presenceManager.getUserRole(ws);
+          if (gitUserId && gitUserRole) {
+            if (!await sandboxGuard.canAccess(gitUserId, gitUserRole, gitWorkDir)) {
+              sendToClient(ws, { type: 'git.error', sessionId: gitSessionId, message: 'Access denied' } as ServerMessage);
+              break;
+            }
+          }
+        }
+
+        switch (message.type) {
+          case 'git.status':
+            await gitHandlers.handleGitStatus(ws, message, gitWorkDir);
+            break;
+          case 'git.diff':
+            await gitHandlers.handleGitDiff(ws, message, gitWorkDir);
+            break;
+          case 'git.log':
+            await gitHandlers.handleGitLog(ws, message, gitWorkDir);
+            break;
+          case 'git.branches':
+            await gitHandlers.handleGitBranches(ws, message, gitWorkDir);
+            break;
+          case 'git.show':
+            await gitHandlers.handleGitShow(ws, message, gitWorkDir);
+            break;
         }
         break;
       }

@@ -209,6 +209,37 @@ export interface RateLimitClearUserOverrideMessage {
   userId: string;
 }
 
+// ── Git operations ──────────────────────────────────────────
+
+export interface GitStatusMessage {
+  type: 'git.status';
+  sessionId: string;
+}
+
+export interface GitDiffMessage {
+  type: 'git.diff';
+  sessionId: string;
+  path?: string;
+  staged?: boolean;
+}
+
+export interface GitLogMessage {
+  type: 'git.log';
+  sessionId: string;
+  count?: number;
+}
+
+export interface GitBranchesMessage {
+  type: 'git.branches';
+  sessionId: string;
+}
+
+export interface GitShowMessage {
+  type: 'git.show';
+  sessionId: string;
+  commitHash: string;
+}
+
 export type ClientMessage =
   | PromptMessage
   | ApprovalMessage
@@ -246,7 +277,12 @@ export type ClientMessage =
   | RateLimitGetConfigMessage
   | RateLimitSetRoleLimitMessage
   | RateLimitSetUserOverrideMessage
-  | RateLimitClearUserOverrideMessage;
+  | RateLimitClearUserOverrideMessage
+  | GitStatusMessage
+  | GitDiffMessage
+  | GitLogMessage
+  | GitBranchesMessage
+  | GitShowMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -755,6 +791,78 @@ export interface RateLimitConfigResponseMessage {
   userOverrides: Record<string, RateLimitUserOverride>;
 }
 
+// ── Git response messages ────────────────────────────────────
+
+export interface GitStatusEntry {
+  path: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'untracked';
+  staged: boolean;
+  oldPath?: string;
+}
+
+export interface GitStatusResponseMessage {
+  type: 'git.status.response';
+  sessionId: string;
+  branch: string;
+  entries: GitStatusEntry[];
+}
+
+export interface GitDiffResponseMessage {
+  type: 'git.diff.response';
+  sessionId: string;
+  diff: string;
+  path?: string;
+  staged: boolean;
+}
+
+export interface GitLogEntry {
+  hash: string;
+  shortHash: string;
+  author: string;
+  authorEmail: string;
+  date: string;
+  message: string;
+}
+
+export interface GitLogResponseMessage {
+  type: 'git.log.response';
+  sessionId: string;
+  entries: GitLogEntry[];
+}
+
+export interface GitBranchEntry {
+  name: string;
+  current: boolean;
+  remote: boolean;
+  upstream?: string;
+  ahead?: number;
+  behind?: number;
+}
+
+export interface GitBranchesResponseMessage {
+  type: 'git.branches.response';
+  sessionId: string;
+  branches: GitBranchEntry[];
+}
+
+export interface GitShowResponseMessage {
+  type: 'git.show.response';
+  sessionId: string;
+  hash: string;
+  shortHash: string;
+  author: string;
+  authorEmail: string;
+  date: string;
+  message: string;
+  diff: string;
+}
+
+export interface GitErrorResponseMessage {
+  type: 'git.error';
+  sessionId: string;
+  message: string;
+}
+
 // ── Analytics types (HTTP API, not WebSocket) ──────────────
 
 export interface AnalyticsResponse {
@@ -842,4 +950,10 @@ export type ServerMessage =
   | ActivityFeedMessage
   | SandboxUserPathsResponseMessage
   | AuditQueryResponseMessage
-  | RateLimitConfigResponseMessage;
+  | RateLimitConfigResponseMessage
+  | GitStatusResponseMessage
+  | GitDiffResponseMessage
+  | GitLogResponseMessage
+  | GitBranchesResponseMessage
+  | GitShowResponseMessage
+  | GitErrorResponseMessage;
