@@ -45,6 +45,10 @@ enum MessageType: String, Codable {
     case gitLog = "git.log"
     case gitBranches = "git.branches"
     case gitShow = "git.show"
+    case githubPullRequests = "github.pullRequests"
+    case githubPullRequestDetail = "github.pullRequest.detail"
+    case githubIssues = "github.issues"
+    case githubIssueDetail = "github.issue.detail"
 
     // Server → Client
     case output
@@ -100,6 +104,11 @@ enum MessageType: String, Codable {
     case gitBranchesResponse = "git.branches.response"
     case gitShowResponse = "git.show.response"
     case gitError = "git.error"
+    case githubPullRequestsResponse = "github.pullRequests.response"
+    case githubPullRequestDetailResponse = "github.pullRequest.detail.response"
+    case githubIssuesResponse = "github.issues.response"
+    case githubIssueDetailResponse = "github.issue.detail.response"
+    case githubError = "github.error"
     case error
 }
 
@@ -444,6 +453,153 @@ struct GitShowResponseEvent: Decodable {
 }
 
 struct GitErrorEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let message: String
+}
+
+// MARK: - GitHub Client Messages
+
+struct GitHubPullRequestsRequestMessage: Encodable {
+    let type = "github.pullRequests"
+    let sessionId: String
+    var state: String?
+}
+
+struct GitHubPullRequestDetailRequestMessage: Encodable {
+    let type = "github.pullRequest.detail"
+    let sessionId: String
+    let number: Int
+}
+
+struct GitHubIssuesRequestMessage: Encodable {
+    let type = "github.issues"
+    let sessionId: String
+    var state: String?
+}
+
+struct GitHubIssueDetailRequestMessage: Encodable {
+    let type = "github.issue.detail"
+    let sessionId: String
+    let number: Int
+}
+
+// MARK: - GitHub Server Response Events
+
+struct GitHubPullRequestEntry: Codable, Identifiable {
+    var id: Int { number }
+    let number: Int
+    let title: String
+    let state: String
+    let author: String
+    let createdAt: String
+    let updatedAt: String
+    let url: String
+    let draft: Bool
+    let headBranch: String
+    let baseBranch: String
+    let additions: Int
+    let deletions: Int
+    let reviewDecision: String
+}
+
+struct GitHubIssueEntry: Codable, Identifiable {
+    var id: Int { number }
+    let number: Int
+    let title: String
+    let state: String
+    let author: String
+    let createdAt: String
+    let updatedAt: String
+    let url: String
+    let labels: [String]
+    let assignees: [String]
+    let commentCount: Int
+}
+
+struct GitHubCheckEntry: Codable, Identifiable {
+    var id: String { name }
+    let name: String
+    let status: String
+    let conclusion: String
+}
+
+struct GitHubReviewEntry: Codable, Identifiable {
+    var id: String { "\(author):\(submittedAt)" }
+    let author: String
+    let state: String
+    let body: String
+    let submittedAt: String
+}
+
+struct GitHubCommentEntry: Codable, Identifiable {
+    var id: String { "\(author):\(createdAt)" }
+    let author: String
+    let body: String
+    let createdAt: String
+}
+
+struct GitHubPullRequestDetail: Codable {
+    let number: Int
+    let title: String
+    let body: String
+    let state: String
+    let author: String
+    let createdAt: String
+    let updatedAt: String
+    let mergedAt: String?
+    let url: String
+    let draft: Bool
+    let headBranch: String
+    let baseBranch: String
+    let additions: Int
+    let deletions: Int
+    let changedFiles: Int
+    let reviewDecision: String
+    let checks: [GitHubCheckEntry]
+    let reviews: [GitHubReviewEntry]
+    let comments: [GitHubCommentEntry]
+}
+
+struct GitHubIssueDetail: Codable {
+    let number: Int
+    let title: String
+    let body: String
+    let state: String
+    let author: String
+    let createdAt: String
+    let updatedAt: String
+    let url: String
+    let labels: [String]
+    let assignees: [String]
+    let comments: [GitHubCommentEntry]
+}
+
+struct GitHubPullRequestsResponseEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let pullRequests: [GitHubPullRequestEntry]
+}
+
+struct GitHubPullRequestDetailResponseEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let detail: GitHubPullRequestDetail
+}
+
+struct GitHubIssuesResponseEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let issues: [GitHubIssueEntry]
+}
+
+struct GitHubIssueDetailResponseEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let detail: GitHubIssueDetail
+}
+
+struct GitHubErrorEvent: Decodable {
     let type: String
     let sessionId: String
     let message: String

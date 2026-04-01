@@ -28,6 +28,8 @@
   import AnalyticsIndicator from './lib/components/AnalyticsIndicator.svelte';
   import GitIndicator from './lib/components/GitIndicator.svelte';
   import GitPanel from './lib/components/GitPanel.svelte';
+  import GitHubIndicator from './lib/components/GitHubIndicator.svelte';
+  import GitHubPanel from './lib/components/GitHubPanel.svelte';
   import AchievementPanel from './lib/components/AchievementPanel.svelte';
   import AchievementIndicator from './lib/components/AchievementIndicator.svelte';
   import ActivityIndicator from './lib/components/ActivityIndicator.svelte';
@@ -283,6 +285,7 @@
           <ActivityIndicator />
         {/if}
         <GitIndicator />
+        <GitHubIndicator />
         <AnalyticsIndicator />
         <FleetIndicator />
         <button
@@ -374,6 +377,7 @@
   <Toast />
   <SessionPanel />
   <GitPanel />
+  <GitHubPanel />
   <FleetPanel />
   <AnalyticsPanel />
   <AchievementPanel />
