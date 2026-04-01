@@ -40,6 +40,11 @@ enum MessageType: String, Codable {
     case rateLimitSetRoleLimit = "rateLimit.setRoleLimit"
     case rateLimitSetUserOverride = "rateLimit.setUserOverride"
     case rateLimitClearUserOverride = "rateLimit.clearUserOverride"
+    case gitStatus = "git.status"
+    case gitDiff = "git.diff"
+    case gitLog = "git.log"
+    case gitBranches = "git.branches"
+    case gitShow = "git.show"
 
     // Server → Client
     case output
@@ -89,6 +94,12 @@ enum MessageType: String, Codable {
     case sandboxUserPaths = "sandbox.userPaths"
     case auditResponse = "audit.response"
     case rateLimitConfig = "rateLimit.config"
+    case gitStatusResponse = "git.status.response"
+    case gitDiffResponse = "git.diff.response"
+    case gitLogResponse = "git.log.response"
+    case gitBranchesResponse = "git.branches.response"
+    case gitShowResponse = "git.show.response"
+    case gitError = "git.error"
     case error
 }
 
@@ -330,6 +341,112 @@ struct RateLimitSetUserOverrideMessage: Codable {
 struct RateLimitClearUserOverrideMessage: Codable {
     let type: String = "rateLimit.clearUserOverride"
     let userId: String
+}
+
+// MARK: - Git Client Messages
+
+struct GitStatusRequestMessage: Encodable {
+    let type = "git.status"
+    let sessionId: String
+}
+
+struct GitDiffRequestMessage: Encodable {
+    let type = "git.diff"
+    let sessionId: String
+    var path: String?
+    var staged: Bool?
+}
+
+struct GitLogRequestMessage: Encodable {
+    let type = "git.log"
+    let sessionId: String
+    var count: Int?
+}
+
+struct GitBranchesRequestMessage: Encodable {
+    let type = "git.branches"
+    let sessionId: String
+}
+
+struct GitShowRequestMessage: Encodable {
+    let type = "git.show"
+    let sessionId: String
+    let commitHash: String
+}
+
+// MARK: - Git Server Response Events
+
+struct GitStatusEntry: Codable, Identifiable {
+    var id: String { "\(path):\(staged)" }
+    let path: String
+    let status: String // "added", "modified", "deleted", "renamed", "copied", "untracked"
+    let staged: Bool
+    let oldPath: String?
+}
+
+struct GitStatusResponseEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let branch: String
+    let entries: [GitStatusEntry]
+}
+
+struct GitDiffResponseEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let diff: String
+    let path: String?
+    let staged: Bool
+}
+
+struct GitLogEntry: Codable, Identifiable {
+    var id: String { hash }
+    let hash: String
+    let shortHash: String
+    let author: String
+    let authorEmail: String
+    let date: String
+    let message: String
+}
+
+struct GitLogResponseEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let entries: [GitLogEntry]
+}
+
+struct GitBranchEntry: Codable, Identifiable {
+    var id: String { name }
+    let name: String
+    let current: Bool
+    let remote: Bool
+    let upstream: String?
+    let ahead: Int?
+    let behind: Int?
+}
+
+struct GitBranchesResponseEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let branches: [GitBranchEntry]
+}
+
+struct GitShowResponseEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let hash: String
+    let shortHash: String
+    let author: String
+    let authorEmail: String
+    let date: String
+    let message: String
+    let diff: String
+}
+
+struct GitErrorEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let message: String
 }
 
 // MARK: - Server → Client Messages
@@ -801,7 +918,7 @@ struct AuditQueryResponseEvent: Codable {
     let entries: [AuditEntryData]
 }
 
-struct RateLimitRoleConfigData: Codable {
+struct RateLimitRoleConfigData: Codable, Equatable {
     let promptsPerMinute: Int
     let approvalsPerMinute: Int
 }

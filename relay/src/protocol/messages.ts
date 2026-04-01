@@ -206,6 +206,37 @@ export interface AuditQueryMessage {
   limit?: number;
 }
 
+// ── Git operations ──────────────────────────────────────────
+
+export interface GitStatusMessage {
+  type: 'git.status';
+  sessionId: string;
+}
+
+export interface GitDiffMessage {
+  type: 'git.diff';
+  sessionId: string;
+  path?: string;
+  staged?: boolean;
+}
+
+export interface GitLogMessage {
+  type: 'git.log';
+  sessionId: string;
+  count?: number;
+}
+
+export interface GitBranchesMessage {
+  type: 'git.branches';
+  sessionId: string;
+}
+
+export interface GitShowMessage {
+  type: 'git.show';
+  sessionId: string;
+  commitHash: string;
+}
+
 // ── Sandbox management (admin-only, multi-user only) ────────
 
 export interface SandboxGetUserPathsMessage {
@@ -263,7 +294,12 @@ export type ClientMessage =
   | RateLimitSetRoleLimitMessage
   | RateLimitSetUserOverrideMessage
   | RateLimitClearUserOverrideMessage
-  | AuditQueryMessage;
+  | AuditQueryMessage
+  | GitStatusMessage
+  | GitDiffMessage
+  | GitLogMessage
+  | GitBranchesMessage
+  | GitShowMessage;
 
 // ── Server → Client (Relay → iOS) ──────────────────────────
 
@@ -755,6 +791,78 @@ export interface AuditQueryResponseMessage {
   }>;
 }
 
+// ── Git response messages ────────────────────────────────────
+
+export interface GitStatusEntry {
+  path: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'untracked';
+  staged: boolean;
+  oldPath?: string;
+}
+
+export interface GitStatusResponseMessage {
+  type: 'git.status.response';
+  sessionId: string;
+  branch: string;
+  entries: GitStatusEntry[];
+}
+
+export interface GitDiffResponseMessage {
+  type: 'git.diff.response';
+  sessionId: string;
+  diff: string;
+  path?: string;
+  staged: boolean;
+}
+
+export interface GitLogEntry {
+  hash: string;
+  shortHash: string;
+  author: string;
+  authorEmail: string;
+  date: string;
+  message: string;
+}
+
+export interface GitLogResponseMessage {
+  type: 'git.log.response';
+  sessionId: string;
+  entries: GitLogEntry[];
+}
+
+export interface GitBranchEntry {
+  name: string;
+  current: boolean;
+  remote: boolean;
+  upstream?: string;
+  ahead?: number;
+  behind?: number;
+}
+
+export interface GitBranchesResponseMessage {
+  type: 'git.branches.response';
+  sessionId: string;
+  branches: GitBranchEntry[];
+}
+
+export interface GitShowResponseMessage {
+  type: 'git.show.response';
+  sessionId: string;
+  hash: string;
+  shortHash: string;
+  author: string;
+  authorEmail: string;
+  date: string;
+  message: string;
+  diff: string;
+}
+
+export interface GitErrorResponseMessage {
+  type: 'git.error';
+  sessionId: string;
+  message: string;
+}
+
 /** Base server message union (without envelope fields). */
 type ServerMessageBase =
   | OutputMessage
@@ -806,7 +914,13 @@ type ServerMessageBase =
   | ActivityFeedMessage
   | SandboxUserPathsResponseMessage
   | RateLimitConfigResponseMessage
-  | AuditQueryResponseMessage;
+  | AuditQueryResponseMessage
+  | GitStatusResponseMessage
+  | GitDiffResponseMessage
+  | GitLogResponseMessage
+  | GitBranchesResponseMessage
+  | GitShowResponseMessage
+  | GitErrorResponseMessage;
 
 /**
  * Every outbound server message may carry an optional `seq` —

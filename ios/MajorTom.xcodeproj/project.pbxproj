@@ -145,6 +145,11 @@
 			ACH10006A1B2C3D4E5F60006 /* AchievementCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACH20006A1B2C3D4E5F60006 /* AchievementCard.swift */; };
 			ACH10007A1B2C3D4E5F60007 /* AchievementBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACH20007A1B2C3D4E5F60007 /* AchievementBadge.swift */; };
 			ACH10008A1B2C3D4E5F60008 /* ProgressRing.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACH20008A1B2C3D4E5F60008 /* ProgressRing.swift */; };
+		GIT20001A1B2C3D4E5F60001 /* GitPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GIT10001A1B2C3D4E5F60001 /* GitPanelView.swift */; };
+		GIT20002A1B2C3D4E5F60002 /* GitStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GIT10002A1B2C3D4E5F60002 /* GitStatusView.swift */; };
+		GIT20003A1B2C3D4E5F60003 /* GitLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GIT10003A1B2C3D4E5F60003 /* GitLogView.swift */; };
+		GIT20004A1B2C3D4E5F60004 /* GitBranchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GIT10004A1B2C3D4E5F60004 /* GitBranchesView.swift */; };
+		GIT20005A1B2C3D4E5F60005 /* GitDiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GIT10005A1B2C3D4E5F60005 /* GitDiffView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -289,6 +294,11 @@
 			ACH20006A1B2C3D4E5F60006 /* AchievementCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementCard.swift; sourceTree = "<group>"; };
 			ACH20007A1B2C3D4E5F60007 /* AchievementBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementBadge.swift; sourceTree = "<group>"; };
 			ACH20008A1B2C3D4E5F60008 /* ProgressRing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressRing.swift; sourceTree = "<group>"; };
+		GIT10001A1B2C3D4E5F60001 /* GitPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitPanelView.swift; sourceTree = "<group>"; };
+		GIT10002A1B2C3D4E5F60002 /* GitStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitStatusView.swift; sourceTree = "<group>"; };
+		GIT10003A1B2C3D4E5F60003 /* GitLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitLogView.swift; sourceTree = "<group>"; };
+		GIT10004A1B2C3D4E5F60004 /* GitBranchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitBranchesView.swift; sourceTree = "<group>"; };
+		GIT10005A1B2C3D4E5F60005 /* GitDiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitDiffView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -524,6 +534,7 @@
 				9C0A294A8C067158C29CA98E /* Context */,
 				3A2253D14191C88F64B0A16E /* Control */,
 				FE51B343B0D4573C4A3BFEF4 /* Fleet */,
+				GIT30001A1B2C3D4E5F60001 /* Git */,
 				16D67653DFF94D2F6CA5D13F /* History */,
 				D94DB09DC4CD1CEAB6D820D3 /* LiveActivity */,
 				47BD24C364656D180660FB12 /* Notifications */,
@@ -1193,6 +1204,34 @@
 				path = Components;
 				sourceTree = "<group>";
 			};
+		GIT30001A1B2C3D4E5F60001 /* Git */ = {
+			isa = PBXGroup;
+			children = (
+				GIT30002A1B2C3D4E5F60002 /* Views */,
+				GIT30003A1B2C3D4E5F60003 /* Components */,
+			);
+			path = Git;
+			sourceTree = "<group>";
+		};
+		GIT30002A1B2C3D4E5F60002 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				GIT10001A1B2C3D4E5F60001 /* GitPanelView.swift */,
+				GIT10002A1B2C3D4E5F60002 /* GitStatusView.swift */,
+				GIT10003A1B2C3D4E5F60003 /* GitLogView.swift */,
+				GIT10004A1B2C3D4E5F60004 /* GitBranchesView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		GIT30003A1B2C3D4E5F60003 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				GIT10005A1B2C3D4E5F60005 /* GitDiffView.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -1328,7 +1367,12 @@
 					MU100005A1B2C3D4E5F60005 /* TeamSettingsView.swift in Sources */,
 					MU100006A1B2C3D4E5F60006 /* TeamActivityView.swift in Sources */,
 					MU100007A1B2C3D4E5F60007 /* DirectoryPermissionsView.swift in Sources */,
-					MU100009A1B2C3D4E5F60009 /* AuditLogView.swift in Sources */,
+					GIT20001A1B2C3D4E5F60001 /* GitPanelView.swift in Sources */,
+				GIT20002A1B2C3D4E5F60002 /* GitStatusView.swift in Sources */,
+				GIT20003A1B2C3D4E5F60003 /* GitLogView.swift in Sources */,
+				GIT20004A1B2C3D4E5F60004 /* GitBranchesView.swift in Sources */,
+				GIT20005A1B2C3D4E5F60005 /* GitDiffView.swift in Sources */,
+				MU100009A1B2C3D4E5F60009 /* AuditLogView.swift in Sources */,
 					MU100010A1B2C3D4E5F60010 /* RateLimitSettingsView.swift in Sources */,
 					ACH10001A1B2C3D4E5F60001 /* Achievement.swift in Sources */,
 					ACH10002A1B2C3D4E5F60002 /* AchievementsViewModel.swift in Sources */,

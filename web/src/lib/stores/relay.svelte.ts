@@ -14,6 +14,9 @@ import type {
   AuditEntry,
   RateLimitRoleConfig,
   RateLimitUserOverride,
+  GitStatusEntry,
+  GitLogEntry,
+  GitBranchEntry,
 } from '../protocol/messages';
 import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
@@ -195,6 +198,18 @@ class RelayStore {
 
   // Sandbox directory permissions (per-user paths)
   userSandboxPaths = $state(new Map<string, string[]>());
+
+  // Git state
+  gitBranch = $state<string>('');
+  gitStatus = $state<GitStatusEntry[]>([]);
+  gitLog = $state<GitLogEntry[]>([]);
+  gitBranches = $state<GitBranchEntry[]>([]);
+  gitDiff = $state<string>('');
+  gitDiffPath = $state<string | undefined>(undefined);
+  gitDiffStaged = $state(false);
+  gitShowCommit = $state<{ hash: string; shortHash: string; author: string; authorEmail: string; date: string; message: string; diff: string } | null>(null);
+  gitError = $state<string | null>(null);
+  gitPanelOpen = $state(false);
 
   // Track pending handoff initiated by this client
   private pendingHandoffSessionId: string | null = null;
@@ -779,6 +794,51 @@ class RelayStore {
   clearUserSandboxPaths(userId: string): void {
     if (!this.isConnected) return;
     this.socket.send({ type: 'sandbox.clearUserPaths', userId });
+  }
+
+  // ── Git operations ────────────────────────────────────────
+
+  requestGitStatus(): void {
+    if (!this.isConnected || !this.sessionId) return;
+    this.gitError = null;
+    this.socket.send({ type: 'git.status', sessionId: this.sessionId });
+  }
+
+  requestGitDiff(path?: string, staged?: boolean): void {
+    if (!this.isConnected || !this.sessionId) return;
+    this.gitError = null;
+    this.gitDiff = '';
+    this.gitDiffPath = path;
+    this.gitDiffStaged = staged ?? false;
+    this.socket.send({ type: 'git.diff', sessionId: this.sessionId, path, staged });
+  }
+
+  requestGitLog(count?: number): void {
+    if (!this.isConnected || !this.sessionId) return;
+    this.gitError = null;
+    this.socket.send({ type: 'git.log', sessionId: this.sessionId, count });
+  }
+
+  requestGitBranches(): void {
+    if (!this.isConnected || !this.sessionId) return;
+    this.gitError = null;
+    this.socket.send({ type: 'git.branches', sessionId: this.sessionId });
+  }
+
+  requestGitShow(commitHash: string): void {
+    if (!this.isConnected || !this.sessionId) return;
+    this.gitError = null;
+    this.gitShowCommit = null;
+    this.socket.send({ type: 'git.show', sessionId: this.sessionId, commitHash });
+  }
+
+  toggleGitPanel(): void {
+    this.gitPanelOpen = !this.gitPanelOpen;
+    if (this.gitPanelOpen && this.sessionId) {
+      this.requestGitStatus();
+      this.requestGitLog();
+      this.requestGitBranches();
+    }
   }
 
   requestSessionList(): void {
@@ -1400,6 +1460,42 @@ class RelayStore {
         this.userSandboxPaths = updated;
         break;
       }
+
+      // ── Git responses ──────────────────────────────────────────
+      case 'git.status.response':
+        this.gitBranch = message.branch;
+        this.gitStatus = message.entries;
+        break;
+
+      case 'git.diff.response':
+        this.gitDiff = message.diff;
+        this.gitDiffPath = message.path;
+        this.gitDiffStaged = message.staged;
+        break;
+
+      case 'git.log.response':
+        this.gitLog = message.entries;
+        break;
+
+      case 'git.branches.response':
+        this.gitBranches = message.branches;
+        break;
+
+      case 'git.show.response':
+        this.gitShowCommit = {
+          hash: message.hash,
+          shortHash: message.shortHash,
+          author: message.author,
+          authorEmail: message.authorEmail,
+          date: message.date,
+          message: message.message,
+          diff: message.diff,
+        };
+        break;
+
+      case 'git.error':
+        this.gitError = message.message;
+        break;
     }
   }
 

@@ -77,6 +77,17 @@ final class RelayService {
     // Sandbox directory permissions (per-user paths)
     var userSandboxPaths: [String: [String]] = [:]
 
+    // Git viewer state
+    var gitBranch: String = ""
+    var gitStatus: [GitStatusEntry] = []
+    var gitLog: [GitLogEntry] = []
+    var gitBranches: [GitBranchEntry] = []
+    var gitDiff: String = ""
+    var gitDiffPath: String?
+    var gitDiffStaged: Bool = false
+    var gitShowCommit: GitShowResponseEvent?
+    var gitError: String?
+
     // Session-scoped allowlist (tool names auto-approved via "Always")
     var sessionAllowlist: Set<String> = []
 
@@ -431,6 +442,47 @@ final class RelayService {
     func clearUserSandboxPaths(userId: String) async throws {
         let message = SandboxClearUserPathsMessage(userId: userId)
         try await webSocket.send(message)
+    }
+
+    // MARK: - Git
+
+    func requestGitStatus() async throws {
+        guard let sessionId = currentSession?.id else { return }
+        gitError = nil
+        let msg = GitStatusRequestMessage(sessionId: sessionId)
+        try await webSocket.send(msg)
+    }
+
+    func requestGitDiff(path: String? = nil, staged: Bool? = nil) async throws {
+        guard let sessionId = currentSession?.id else { return }
+        gitError = nil
+        gitDiff = ""
+        gitDiffPath = path
+        gitDiffStaged = staged ?? false
+        let msg = GitDiffRequestMessage(sessionId: sessionId, path: path, staged: staged)
+        try await webSocket.send(msg)
+    }
+
+    func requestGitLog(count: Int? = nil) async throws {
+        guard let sessionId = currentSession?.id else { return }
+        gitError = nil
+        let msg = GitLogRequestMessage(sessionId: sessionId, count: count)
+        try await webSocket.send(msg)
+    }
+
+    func requestGitBranches() async throws {
+        guard let sessionId = currentSession?.id else { return }
+        gitError = nil
+        let msg = GitBranchesRequestMessage(sessionId: sessionId)
+        try await webSocket.send(msg)
+    }
+
+    func requestGitShow(commitHash: String) async throws {
+        guard let sessionId = currentSession?.id else { return }
+        gitError = nil
+        gitShowCommit = nil
+        let msg = GitShowRequestMessage(sessionId: sessionId, commitHash: commitHash)
+        try await webSocket.send(msg)
     }
 
     // MARK: - Message Routing
@@ -905,6 +957,45 @@ final class RelayService {
                 responseCounter &+= 1
             }
 
+        case .gitStatusResponse:
+            if let event = try? MessageCodec.decode(GitStatusResponseEvent.self, from: data) {
+                gitBranch = event.branch
+                gitStatus = event.entries
+                responseCounter &+= 1
+            }
+
+        case .gitDiffResponse:
+            if let event = try? MessageCodec.decode(GitDiffResponseEvent.self, from: data) {
+                gitDiff = event.diff
+                gitDiffPath = event.path
+                gitDiffStaged = event.staged
+                responseCounter &+= 1
+            }
+
+        case .gitLogResponse:
+            if let event = try? MessageCodec.decode(GitLogResponseEvent.self, from: data) {
+                gitLog = event.entries
+                responseCounter &+= 1
+            }
+
+        case .gitBranchesResponse:
+            if let event = try? MessageCodec.decode(GitBranchesResponseEvent.self, from: data) {
+                gitBranches = event.branches
+                responseCounter &+= 1
+            }
+
+        case .gitShowResponse:
+            if let event = try? MessageCodec.decode(GitShowResponseEvent.self, from: data) {
+                gitShowCommit = event
+                responseCounter &+= 1
+            }
+
+        case .gitError:
+            if let event = try? MessageCodec.decode(GitErrorEvent.self, from: data) {
+                gitError = event.message
+                responseCounter &+= 1
+            }
+
         case .error:
             if let event = try? MessageCodec.decode(ErrorEvent.self, from: data) {
                 let msg = ChatMessage(role: .system, content: "Error: \(event.message)")
@@ -942,6 +1033,15 @@ final class RelayService {
         auditEntries = []
         rateLimitRoles = [:]
         rateLimitUserOverrides = [:]
+        gitBranch = ""
+        gitStatus = []
+        gitLog = []
+        gitBranches = []
+        gitDiff = ""
+        gitDiffPath = nil
+        gitDiffStaged = false
+        gitShowCommit = nil
+        gitError = nil
     }
 
     /// Push latest session state to the widget data store and watch.
