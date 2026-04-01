@@ -24,6 +24,7 @@ import { scanWorkspaceTree } from '../workspace/tree-scanner.js';
 import type { ClientMessage, ServerMessage, FileNode } from '../protocol/messages.js';
 import { createFsHandlers, type FsServerMessage } from './fs.js';
 import { createGitHandlers, type GitServerMessage } from './git.js';
+import { createGitHubHandlers, type GitHubServerMessage } from './github.js';
 import type { AnalyticsCollector } from '../analytics/analytics-collector.js';
 import type { AchievementService } from '../achievements/achievement-service.js';
 import { AnnotationStore } from '../annotations/annotation-store.js';
@@ -124,6 +125,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
   // ── Git handlers (scoped to session workingDir) ───────────
   const gitHandlers = createGitHandlers((ws: WebSocket, msg: GitServerMessage) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(encodeServerMessage(msg as ServerMessage));
+    }
+  });
+
+  // ── GitHub handlers (scoped to session workingDir) ────────
+  const githubHandlers = createGitHubHandlers((ws: WebSocket, msg: GitHubServerMessage) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(encodeServerMessage(msg as ServerMessage));
     }
@@ -275,6 +283,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     'presence.watch', 'presence.unwatch', 'user.list', 'activity.list',
     'annotation.list',
     'git.status', 'git.diff', 'git.log', 'git.branches', 'git.show',
+    'github.pullRequests', 'github.pullRequest.detail', 'github.issues', 'github.issue.detail',
   ]);
   const ADMIN_ONLY: Set<string> = new Set([
     'user.invite', 'user.revoke', 'user.updateRole',
@@ -1352,6 +1361,47 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             break;
           case 'git.show':
             await gitHandlers.handleGitShow(ws, message, gitWorkDir);
+            break;
+        }
+        break;
+      }
+
+      // ── GitHub operations (scoped to session workingDir) ────
+      case 'github.pullRequests':
+      case 'github.pullRequest.detail':
+      case 'github.issues':
+      case 'github.issue.detail': {
+        const ghSessionId = message.sessionId;
+        const ghWorkDir = sessionManager.getWorkingDir(ghSessionId);
+        if (!ghWorkDir) {
+          sendToClient(ws, { type: 'github.error', sessionId: ghSessionId, message: 'No working directory for session' } as ServerMessage);
+          break;
+        }
+
+        // SandboxGuard check
+        if (sandboxGuard) {
+          const ghUserId = presenceManager.getUserId(ws);
+          const ghUserRole = presenceManager.getUserRole(ws);
+          if (ghUserId && ghUserRole) {
+            if (!await sandboxGuard.canAccess(ghUserId, ghUserRole, ghWorkDir)) {
+              sendToClient(ws, { type: 'github.error', sessionId: ghSessionId, message: 'Access denied' } as ServerMessage);
+              break;
+            }
+          }
+        }
+
+        switch (message.type) {
+          case 'github.pullRequests':
+            await githubHandlers.handleGitHubPullRequests(ws, message, ghWorkDir);
+            break;
+          case 'github.pullRequest.detail':
+            await githubHandlers.handleGitHubPullRequestDetail(ws, message, ghWorkDir);
+            break;
+          case 'github.issues':
+            await githubHandlers.handleGitHubIssues(ws, message, ghWorkDir);
+            break;
+          case 'github.issue.detail':
+            await githubHandlers.handleGitHubIssueDetail(ws, message, ghWorkDir);
             break;
         }
         break;

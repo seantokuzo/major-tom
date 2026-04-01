@@ -209,6 +209,116 @@ export interface RateLimitClearUserOverrideMessage {
   userId: string;
 }
 
+// ── GitHub operations ───────────────────────────────────────
+
+export interface GitHubPullRequestEntry {
+  number: number;
+  title: string;
+  state: 'open' | 'closed' | 'merged';
+  author: string;
+  createdAt: string;
+  updatedAt: string;
+  url: string;
+  draft: boolean;
+  headBranch: string;
+  baseBranch: string;
+  additions: number;
+  deletions: number;
+  reviewDecision: string;
+}
+
+export interface GitHubIssueEntry {
+  number: number;
+  title: string;
+  state: 'open' | 'closed';
+  author: string;
+  createdAt: string;
+  updatedAt: string;
+  url: string;
+  labels: string[];
+  assignees: string[];
+  commentCount: number;
+}
+
+export interface GitHubCheckEntry {
+  name: string;
+  status: string;
+  conclusion: string;
+}
+
+export interface GitHubReviewEntry {
+  author: string;
+  state: string;
+  body: string;
+  submittedAt: string;
+}
+
+export interface GitHubCommentEntry {
+  author: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface GitHubPullRequestDetail {
+  number: number;
+  title: string;
+  body: string;
+  state: 'open' | 'closed' | 'merged';
+  author: string;
+  createdAt: string;
+  updatedAt: string;
+  mergedAt: string | null;
+  url: string;
+  draft: boolean;
+  headBranch: string;
+  baseBranch: string;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  reviewDecision: string;
+  checks: GitHubCheckEntry[];
+  reviews: GitHubReviewEntry[];
+  comments: GitHubCommentEntry[];
+}
+
+export interface GitHubIssueDetail {
+  number: number;
+  title: string;
+  body: string;
+  state: 'open' | 'closed';
+  author: string;
+  createdAt: string;
+  updatedAt: string;
+  url: string;
+  labels: string[];
+  assignees: string[];
+  comments: GitHubCommentEntry[];
+}
+
+export interface GitHubPullRequestsMessage {
+  type: 'github.pullRequests';
+  sessionId: string;
+  state?: 'open' | 'closed' | 'all';
+}
+
+export interface GitHubPullRequestDetailMessage {
+  type: 'github.pullRequest.detail';
+  sessionId: string;
+  number: number;
+}
+
+export interface GitHubIssuesMessage {
+  type: 'github.issues';
+  sessionId: string;
+  state?: 'open' | 'closed' | 'all';
+}
+
+export interface GitHubIssueDetailMessage {
+  type: 'github.issue.detail';
+  sessionId: string;
+  number: number;
+}
+
 // ── Git operations ──────────────────────────────────────────
 
 export interface GitStatusMessage {
@@ -282,7 +392,11 @@ export type ClientMessage =
   | GitDiffMessage
   | GitLogMessage
   | GitBranchesMessage
-  | GitShowMessage;
+  | GitShowMessage
+  | GitHubPullRequestsMessage
+  | GitHubPullRequestDetailMessage
+  | GitHubIssuesMessage
+  | GitHubIssueDetailMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -863,6 +977,38 @@ export interface GitErrorResponseMessage {
   message: string;
 }
 
+// ── GitHub response messages ────────────────────────────────
+
+export interface GitHubPullRequestsResponseMessage {
+  type: 'github.pullRequests.response';
+  sessionId: string;
+  pullRequests: GitHubPullRequestEntry[];
+}
+
+export interface GitHubPullRequestDetailResponseMessage {
+  type: 'github.pullRequest.detail.response';
+  sessionId: string;
+  detail: GitHubPullRequestDetail;
+}
+
+export interface GitHubIssuesResponseMessage {
+  type: 'github.issues.response';
+  sessionId: string;
+  issues: GitHubIssueEntry[];
+}
+
+export interface GitHubIssueDetailResponseMessage {
+  type: 'github.issue.detail.response';
+  sessionId: string;
+  detail: GitHubIssueDetail;
+}
+
+export interface GitHubErrorResponseMessage {
+  type: 'github.error';
+  sessionId: string;
+  message: string;
+}
+
 // ── Analytics types (HTTP API, not WebSocket) ──────────────
 
 export interface AnalyticsResponse {
@@ -956,4 +1102,9 @@ export type ServerMessage =
   | GitLogResponseMessage
   | GitBranchesResponseMessage
   | GitShowResponseMessage
-  | GitErrorResponseMessage;
+  | GitErrorResponseMessage
+  | GitHubPullRequestsResponseMessage
+  | GitHubPullRequestDetailResponseMessage
+  | GitHubIssuesResponseMessage
+  | GitHubIssueDetailResponseMessage
+  | GitHubErrorResponseMessage;

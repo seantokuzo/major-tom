@@ -88,6 +88,13 @@ final class RelayService {
     var gitShowCommit: GitShowResponseEvent?
     var gitError: String?
 
+    // GitHub viewer state
+    var githubPullRequests: [GitHubPullRequestEntry] = []
+    var githubIssues: [GitHubIssueEntry] = []
+    var githubPullRequestDetail: GitHubPullRequestDetail?
+    var githubIssueDetail: GitHubIssueDetail?
+    var githubError: String?
+
     // Session-scoped allowlist (tool names auto-approved via "Always")
     var sessionAllowlist: Set<String> = []
 
@@ -482,6 +489,38 @@ final class RelayService {
         gitError = nil
         gitShowCommit = nil
         let msg = GitShowRequestMessage(sessionId: sessionId, commitHash: commitHash)
+        try await webSocket.send(msg)
+    }
+
+    // MARK: - GitHub
+
+    func requestGitHubPullRequests(state: String = "open") async throws {
+        guard let sessionId = currentSession?.id else { return }
+        githubError = nil
+        let msg = GitHubPullRequestsRequestMessage(sessionId: sessionId, state: state)
+        try await webSocket.send(msg)
+    }
+
+    func requestGitHubPullRequestDetail(number: Int) async throws {
+        guard let sessionId = currentSession?.id else { return }
+        githubError = nil
+        githubPullRequestDetail = nil
+        let msg = GitHubPullRequestDetailRequestMessage(sessionId: sessionId, number: number)
+        try await webSocket.send(msg)
+    }
+
+    func requestGitHubIssues(state: String = "open") async throws {
+        guard let sessionId = currentSession?.id else { return }
+        githubError = nil
+        let msg = GitHubIssuesRequestMessage(sessionId: sessionId, state: state)
+        try await webSocket.send(msg)
+    }
+
+    func requestGitHubIssueDetail(number: Int) async throws {
+        guard let sessionId = currentSession?.id else { return }
+        githubError = nil
+        githubIssueDetail = nil
+        let msg = GitHubIssueDetailRequestMessage(sessionId: sessionId, number: number)
         try await webSocket.send(msg)
     }
 
@@ -996,6 +1035,36 @@ final class RelayService {
                 responseCounter &+= 1
             }
 
+        case .githubPullRequestsResponse:
+            if let event = try? MessageCodec.decode(GitHubPullRequestsResponseEvent.self, from: data) {
+                githubPullRequests = event.pullRequests
+                responseCounter &+= 1
+            }
+
+        case .githubPullRequestDetailResponse:
+            if let event = try? MessageCodec.decode(GitHubPullRequestDetailResponseEvent.self, from: data) {
+                githubPullRequestDetail = event.detail
+                responseCounter &+= 1
+            }
+
+        case .githubIssuesResponse:
+            if let event = try? MessageCodec.decode(GitHubIssuesResponseEvent.self, from: data) {
+                githubIssues = event.issues
+                responseCounter &+= 1
+            }
+
+        case .githubIssueDetailResponse:
+            if let event = try? MessageCodec.decode(GitHubIssueDetailResponseEvent.self, from: data) {
+                githubIssueDetail = event.detail
+                responseCounter &+= 1
+            }
+
+        case .githubError:
+            if let event = try? MessageCodec.decode(GitHubErrorEvent.self, from: data) {
+                githubError = event.message
+                responseCounter &+= 1
+            }
+
         case .error:
             if let event = try? MessageCodec.decode(ErrorEvent.self, from: data) {
                 let msg = ChatMessage(role: .system, content: "Error: \(event.message)")
@@ -1042,6 +1111,11 @@ final class RelayService {
         gitDiffStaged = false
         gitShowCommit = nil
         gitError = nil
+        githubPullRequests = []
+        githubIssues = []
+        githubPullRequestDetail = nil
+        githubIssueDetail = nil
+        githubError = nil
     }
 
     /// Push latest session state to the widget data store and watch.

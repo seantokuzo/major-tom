@@ -8,6 +8,7 @@ struct ChatView: View {
     @State private var showActivitySheet = false
     @State private var showFleetDashboard = false
     @State private var showGitPanel = false
+    @State private var showGitHubPanel = false
     @Environment(\.scenePhase) private var scenePhase
     private let relay: RelayService
     private let storage: SessionStorageService
@@ -107,6 +108,9 @@ struct ChatView: View {
         .sheet(isPresented: $showGitPanel) {
             GitPanelView(relay: relay)
         }
+        .sheet(isPresented: $showGitHubPanel) {
+            GitHubPanelView(relay: relay)
+        }
         .sheet(isPresented: $showActivitySheet) {
             ToolActivityView(relay: relay)
                 .presentationDetents([.medium, .large])
@@ -171,6 +175,15 @@ struct ChatView: View {
                 showGitPanel = true
             } label: {
                 Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(MajorTomTheme.Colors.accent)
+            }
+
+            Button {
+                HapticService.buttonTap()
+                showGitHubPanel = true
+            } label: {
+                Image(systemName: "arrow.triangle.pull")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(MajorTomTheme.Colors.accent)
             }

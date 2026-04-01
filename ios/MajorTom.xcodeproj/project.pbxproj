@@ -150,6 +150,9 @@
 		GIT20003A1B2C3D4E5F60003 /* GitLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GIT10003A1B2C3D4E5F60003 /* GitLogView.swift */; };
 		GIT20004A1B2C3D4E5F60004 /* GitBranchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GIT10004A1B2C3D4E5F60004 /* GitBranchesView.swift */; };
 		GIT20005A1B2C3D4E5F60005 /* GitDiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GIT10005A1B2C3D4E5F60005 /* GitDiffView.swift */; };
+		GH020001A1B2C3D4E5F60001 /* GitHubPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GH010001A1B2C3D4E5F60001 /* GitHubPanelView.swift */; };
+		GH020002A1B2C3D4E5F60002 /* GitHubPullRequestsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GH010002A1B2C3D4E5F60002 /* GitHubPullRequestsView.swift */; };
+		GH020003A1B2C3D4E5F60003 /* GitHubIssuesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GH010003A1B2C3D4E5F60003 /* GitHubIssuesView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -299,6 +302,9 @@
 		GIT10003A1B2C3D4E5F60003 /* GitLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitLogView.swift; sourceTree = "<group>"; };
 		GIT10004A1B2C3D4E5F60004 /* GitBranchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitBranchesView.swift; sourceTree = "<group>"; };
 		GIT10005A1B2C3D4E5F60005 /* GitDiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitDiffView.swift; sourceTree = "<group>"; };
+		GH010001A1B2C3D4E5F60001 /* GitHubPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubPanelView.swift; sourceTree = "<group>"; };
+		GH010002A1B2C3D4E5F60002 /* GitHubPullRequestsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubPullRequestsView.swift; sourceTree = "<group>"; };
+		GH010003A1B2C3D4E5F60003 /* GitHubIssuesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubIssuesView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -535,6 +541,7 @@
 				3A2253D14191C88F64B0A16E /* Control */,
 				FE51B343B0D4573C4A3BFEF4 /* Fleet */,
 				GIT30001A1B2C3D4E5F60001 /* Git */,
+				GH030001A1B2C3D4E5F60001 /* GitHub */,
 				16D67653DFF94D2F6CA5D13F /* History */,
 				D94DB09DC4CD1CEAB6D820D3 /* LiveActivity */,
 				47BD24C364656D180660FB12 /* Notifications */,
@@ -1232,6 +1239,24 @@
 			path = Components;
 			sourceTree = "<group>";
 		};
+		GH030001A1B2C3D4E5F60001 /* GitHub */ = {
+			isa = PBXGroup;
+			children = (
+				GH030002A1B2C3D4E5F60002 /* Views */,
+			);
+			path = GitHub;
+			sourceTree = "<group>";
+		};
+		GH030002A1B2C3D4E5F60002 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				GH010001A1B2C3D4E5F60001 /* GitHubPanelView.swift */,
+				GH010002A1B2C3D4E5F60002 /* GitHubPullRequestsView.swift */,
+				GH010003A1B2C3D4E5F60003 /* GitHubIssuesView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -1372,6 +1397,9 @@
 				GIT20003A1B2C3D4E5F60003 /* GitLogView.swift in Sources */,
 				GIT20004A1B2C3D4E5F60004 /* GitBranchesView.swift in Sources */,
 				GIT20005A1B2C3D4E5F60005 /* GitDiffView.swift in Sources */,
+				GH020001A1B2C3D4E5F60001 /* GitHubPanelView.swift in Sources */,
+				GH020002A1B2C3D4E5F60002 /* GitHubPullRequestsView.swift in Sources */,
+				GH020003A1B2C3D4E5F60003 /* GitHubIssuesView.swift in Sources */,
 				MU100009A1B2C3D4E5F60009 /* AuditLogView.swift in Sources */,
 					MU100010A1B2C3D4E5F60010 /* RateLimitSettingsView.swift in Sources */,
 					ACH10001A1B2C3D4E5F60001 /* Achievement.swift in Sources */,

@@ -17,6 +17,10 @@ import type {
   GitStatusEntry,
   GitLogEntry,
   GitBranchEntry,
+  GitHubPullRequestEntry,
+  GitHubPullRequestDetail,
+  GitHubIssueEntry,
+  GitHubIssueDetail,
 } from '../protocol/messages';
 import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
@@ -210,6 +214,14 @@ class RelayStore {
   gitShowCommit = $state<{ hash: string; shortHash: string; author: string; authorEmail: string; date: string; message: string; diff: string } | null>(null);
   gitError = $state<string | null>(null);
   gitPanelOpen = $state(false);
+
+  // GitHub state
+  githubPullRequests = $state<GitHubPullRequestEntry[]>([]);
+  githubIssues = $state<GitHubIssueEntry[]>([]);
+  githubPullRequestDetail = $state<GitHubPullRequestDetail | null>(null);
+  githubIssueDetail = $state<GitHubIssueDetail | null>(null);
+  githubError = $state<string | null>(null);
+  githubPanelOpen = $state(false);
 
   // Track pending handoff initiated by this client
   private pendingHandoffSessionId: string | null = null;
@@ -839,6 +851,40 @@ class RelayStore {
       this.requestGitLog();
       this.requestGitBranches();
     }
+  }
+
+  // ── GitHub operations ─────────────────────────────────────
+
+  requestGitHubPullRequests(state?: 'open' | 'closed' | 'all'): void {
+    if (!this.isConnected || !this.sessionId) return;
+    this.githubError = null;
+    this.socket.send({ type: 'github.pullRequests', sessionId: this.sessionId, state });
+  }
+
+  requestGitHubPullRequestDetail(number: number): void {
+    if (!this.isConnected || !this.sessionId) return;
+    this.githubError = null;
+    this.githubPullRequestDetail = null;
+    this.socket.send({ type: 'github.pullRequest.detail', sessionId: this.sessionId, number });
+  }
+
+  requestGitHubIssues(state?: 'open' | 'closed' | 'all'): void {
+    if (!this.isConnected || !this.sessionId) return;
+    this.githubError = null;
+    this.socket.send({ type: 'github.issues', sessionId: this.sessionId, state });
+  }
+
+  requestGitHubIssueDetail(number: number): void {
+    if (!this.isConnected || !this.sessionId) return;
+    this.githubError = null;
+    this.githubIssueDetail = null;
+    this.socket.send({ type: 'github.issue.detail', sessionId: this.sessionId, number });
+  }
+
+  toggleGitHubPanel(): void {
+    this.githubPanelOpen = !this.githubPanelOpen;
+    // Data fetching is triggered by the GitHub panel itself based on the
+    // currently-selected filters to avoid UI/data mismatches here.
   }
 
   requestSessionList(): void {
@@ -1495,6 +1541,27 @@ class RelayStore {
 
       case 'git.error':
         this.gitError = message.message;
+        break;
+
+      // ── GitHub responses ──────────────────────────────────────
+      case 'github.pullRequests.response':
+        this.githubPullRequests = message.pullRequests;
+        break;
+
+      case 'github.pullRequest.detail.response':
+        this.githubPullRequestDetail = message.detail;
+        break;
+
+      case 'github.issues.response':
+        this.githubIssues = message.issues;
+        break;
+
+      case 'github.issue.detail.response':
+        this.githubIssueDetail = message.detail;
+        break;
+
+      case 'github.error':
+        this.githubError = message.message;
         break;
     }
   }
