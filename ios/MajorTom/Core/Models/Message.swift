@@ -49,6 +49,8 @@ enum MessageType: String, Codable {
     case githubPullRequestDetail = "github.pullRequest.detail"
     case githubIssues = "github.issues"
     case githubIssueDetail = "github.issue.detail"
+    case ciRuns = "ci.runs"
+    case ciRunDetail = "ci.run.detail"
 
     // Server → Client
     case output
@@ -109,6 +111,9 @@ enum MessageType: String, Codable {
     case githubIssuesResponse = "github.issues.response"
     case githubIssueDetailResponse = "github.issue.detail.response"
     case githubError = "github.error"
+    case ciRunsResponse = "ci.runs.response"
+    case ciRunDetailResponse = "ci.run.detail.response"
+    case ciError = "ci.error"
     case error
 }
 
@@ -482,6 +487,79 @@ struct GitHubIssueDetailRequestMessage: Encodable {
     let type = "github.issue.detail"
     let sessionId: String
     let number: Int
+}
+
+// MARK: - CI Client Messages
+
+struct CIRunsRequestMessage: Encodable {
+    let type = "ci.runs"
+    let sessionId: String
+    var branch: String?
+}
+
+struct CIRunDetailRequestMessage: Encodable {
+    let type = "ci.run.detail"
+    let sessionId: String
+    let runId: Int
+}
+
+// MARK: - CI Server Response Events
+
+struct CIRunEntry: Codable, Identifiable {
+    let id: Int
+    let name: String
+    let displayTitle: String
+    let status: String
+    let conclusion: String
+    let headBranch: String
+    let event: String
+    let url: String
+    let createdAt: String
+    let updatedAt: String
+    let actor: String
+}
+
+struct CIJobEntry: Codable, Identifiable {
+    let id: Int
+    let name: String
+    let status: String
+    let conclusion: String
+    let startedAt: String?
+    let completedAt: String?
+}
+
+struct CIRunDetailEntry: Codable {
+    let id: Int
+    let name: String
+    let displayTitle: String
+    let status: String
+    let conclusion: String
+    let headBranch: String
+    let headSha: String
+    let event: String
+    let url: String
+    let createdAt: String
+    let updatedAt: String
+    let actor: String
+    let jobs: [CIJobEntry]
+}
+
+struct CIRunsResponseEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let runs: [CIRunEntry]
+}
+
+struct CIRunDetailResponseEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let run: CIRunDetailEntry
+}
+
+struct CIErrorEvent: Decodable {
+    let type: String
+    let sessionId: String
+    let message: String
 }
 
 // MARK: - GitHub Server Response Events

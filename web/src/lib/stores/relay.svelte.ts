@@ -21,6 +21,8 @@ import type {
   GitHubPullRequestDetail,
   GitHubIssueEntry,
   GitHubIssueDetail,
+  CIRunEntry,
+  CIRunDetailEntry,
 } from '../protocol/messages';
 import { promptHistory } from './prompt-history.svelte';
 import { sessionsStore } from './sessions.svelte';
@@ -222,6 +224,12 @@ class RelayStore {
   githubIssueDetail = $state<GitHubIssueDetail | null>(null);
   githubError = $state<string | null>(null);
   githubPanelOpen = $state(false);
+
+  // CI state
+  ciRuns = $state<CIRunEntry[]>([]);
+  ciRunDetail = $state<CIRunDetailEntry | null>(null);
+  ciError = $state<string | null>(null);
+  ciPanelOpen = $state(false);
 
   // Track pending handoff initiated by this client
   private pendingHandoffSessionId: string | null = null;
@@ -885,6 +893,26 @@ class RelayStore {
     this.githubPanelOpen = !this.githubPanelOpen;
     // Data fetching is triggered by the GitHub panel itself based on the
     // currently-selected filters to avoid UI/data mismatches here.
+  }
+
+  // ── CI operations ───────────────────────────────────────────
+
+  requestCIRuns(branch?: string): void {
+    if (!this.isConnected || !this.sessionId) return;
+    this.ciError = null;
+    this.socket.send({ type: 'ci.runs', sessionId: this.sessionId, branch });
+  }
+
+  requestCIRunDetail(runId: number): void {
+    if (!this.isConnected || !this.sessionId) return;
+    this.ciError = null;
+    this.ciRunDetail = null;
+    this.socket.send({ type: 'ci.run.detail', sessionId: this.sessionId, runId });
+  }
+
+  toggleCIPanel(): void {
+    this.ciPanelOpen = !this.ciPanelOpen;
+    // Data fetching triggered by panel $effect
   }
 
   requestSessionList(): void {
@@ -1562,6 +1590,19 @@ class RelayStore {
 
       case 'github.error':
         this.githubError = message.message;
+        break;
+
+      // ── CI responses ────────────────────────────────────────────
+      case 'ci.runs.response':
+        this.ciRuns = message.runs;
+        break;
+
+      case 'ci.run.detail.response':
+        this.ciRunDetail = message.run;
+        break;
+
+      case 'ci.error':
+        this.ciError = message.message;
         break;
     }
   }

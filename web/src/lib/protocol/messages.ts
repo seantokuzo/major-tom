@@ -396,7 +396,9 @@ export type ClientMessage =
   | GitHubPullRequestsMessage
   | GitHubPullRequestDetailMessage
   | GitHubIssuesMessage
-  | GitHubIssueDetailMessage;
+  | GitHubIssueDetailMessage
+  | CIRunsMessage
+  | CIRunDetailMessage;
 
 // ── Server → Client ─────────────────────────────────────────
 
@@ -1009,6 +1011,79 @@ export interface GitHubErrorResponseMessage {
   message: string;
 }
 
+// ── CI operations ──────────────────────────────────────────
+
+export interface CIRunEntry {
+  id: number;
+  name: string;
+  displayTitle: string;
+  status: string;
+  conclusion: string;
+  headBranch: string;
+  event: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+  actor: string;
+}
+
+export interface CIJobEntry {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface CIRunDetailEntry {
+  id: number;
+  name: string;
+  displayTitle: string;
+  status: string;
+  conclusion: string;
+  headBranch: string;
+  headSha: string;
+  event: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+  actor: string;
+  jobs: CIJobEntry[];
+}
+
+export interface CIRunsMessage {
+  type: 'ci.runs';
+  sessionId: string;
+  branch?: string;
+}
+
+export interface CIRunDetailMessage {
+  type: 'ci.run.detail';
+  sessionId: string;
+  runId: number;
+}
+
+// ── CI response messages ────────────────────────────────────
+
+export interface CIRunsResponseMessage {
+  type: 'ci.runs.response';
+  sessionId: string;
+  runs: CIRunEntry[];
+}
+
+export interface CIRunDetailResponseMessage {
+  type: 'ci.run.detail.response';
+  sessionId: string;
+  run: CIRunDetailEntry;
+}
+
+export interface CIErrorResponseMessage {
+  type: 'ci.error';
+  sessionId: string;
+  message: string;
+}
+
 // ── Analytics types (HTTP API, not WebSocket) ──────────────
 
 export interface AnalyticsResponse {
@@ -1107,4 +1182,7 @@ export type ServerMessage =
   | GitHubPullRequestDetailResponseMessage
   | GitHubIssuesResponseMessage
   | GitHubIssueDetailResponseMessage
-  | GitHubErrorResponseMessage;
+  | GitHubErrorResponseMessage
+  | CIRunsResponseMessage
+  | CIRunDetailResponseMessage
+  | CIErrorResponseMessage;

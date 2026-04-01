@@ -25,6 +25,7 @@ import type { ClientMessage, ServerMessage, FileNode } from '../protocol/message
 import { createFsHandlers, type FsServerMessage } from './fs.js';
 import { createGitHandlers, type GitServerMessage } from './git.js';
 import { createGitHubHandlers, type GitHubServerMessage } from './github.js';
+import { createCIHandlers, type CIServerMessage } from './ci.js';
 import type { AnalyticsCollector } from '../analytics/analytics-collector.js';
 import type { AchievementService } from '../achievements/achievement-service.js';
 import { AnnotationStore } from '../annotations/annotation-store.js';
@@ -132,6 +133,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
   // ── GitHub handlers (scoped to session workingDir) ────────
   const githubHandlers = createGitHubHandlers((ws: WebSocket, msg: GitHubServerMessage) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(encodeServerMessage(msg as ServerMessage));
+    }
+  });
+
+  // ── CI handlers (scoped to session workingDir) ─────────────
+  const ciHandlers = createCIHandlers((ws: WebSocket, msg: CIServerMessage) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(encodeServerMessage(msg as ServerMessage));
     }
@@ -284,6 +292,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     'annotation.list',
     'git.status', 'git.diff', 'git.log', 'git.branches', 'git.show',
     'github.pullRequests', 'github.pullRequest.detail', 'github.issues', 'github.issue.detail',
+    'ci.runs', 'ci.run.detail',
   ]);
   const ADMIN_ONLY: Set<string> = new Set([
     'user.invite', 'user.revoke', 'user.updateRole',
@@ -1402,6 +1411,39 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             break;
           case 'github.issue.detail':
             await githubHandlers.handleGitHubIssueDetail(ws, message, ghWorkDir);
+            break;
+        }
+        break;
+      }
+
+      // ── CI operations (scoped to session workingDir) ─────────
+      case 'ci.runs':
+      case 'ci.run.detail': {
+        const ciSessionId = message.sessionId;
+        const ciWorkDir = sessionManager.getWorkingDir(ciSessionId);
+        if (!ciWorkDir) {
+          sendToClient(ws, { type: 'ci.error', sessionId: ciSessionId, message: 'No working directory for session' } as ServerMessage);
+          break;
+        }
+
+        // SandboxGuard check
+        if (sandboxGuard) {
+          const ciUserId = presenceManager.getUserId(ws);
+          const ciUserRole = presenceManager.getUserRole(ws);
+          if (ciUserId && ciUserRole) {
+            if (!await sandboxGuard.canAccess(ciUserId, ciUserRole, ciWorkDir)) {
+              sendToClient(ws, { type: 'ci.error', sessionId: ciSessionId, message: 'Access denied' } as ServerMessage);
+              break;
+            }
+          }
+        }
+
+        switch (message.type) {
+          case 'ci.runs':
+            await ciHandlers.handleCIRuns(ws, message, ciWorkDir);
+            break;
+          case 'ci.run.detail':
+            await ciHandlers.handleCIRunDetail(ws, message, ciWorkDir);
             break;
         }
         break;
