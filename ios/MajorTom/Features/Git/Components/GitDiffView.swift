@@ -47,7 +47,7 @@ struct GitDiffView: View {
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundStyle(lineColor(line.type))
                                 .padding(.horizontal, MajorTomTheme.Spacing.xs)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .fixedSize(horizontal: true, vertical: false)
                                 .background(lineBackground(line.type))
                         }
                         if lines.count > 200 {

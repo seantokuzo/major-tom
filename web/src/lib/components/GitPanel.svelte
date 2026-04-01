@@ -9,6 +9,10 @@
 
   function close() {
     relay.gitPanelOpen = false;
+    activeTab = 'status';
+    expandedFile = null;
+    expandedCommit = null;
+    relay.gitError = null;
   }
 
   $effect(() => {
@@ -90,12 +94,8 @@
 </script>
 
 {#if relay.gitPanelOpen}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="panel-backdrop" onclick={close}>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="panel" onclick={(e) => e.stopPropagation()}>
+  <div class="panel-backdrop" role="button" tabindex="-1" onclick={close} onkeydown={(e) => { if (e.key === 'Escape') close(); }}>
+    <div class="panel" role="dialog" aria-label="Git panel" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
       <div class="panel-header">
         <span class="panel-title">
           Git
@@ -137,7 +137,7 @@
                   <span class="file-path" title={entry.path}>{entry.path}</span>
                   <span class="expand-icon">{expandedFile === `${entry.path}:true` ? '\u25BE' : '\u25B8'}</span>
                 </button>
-                {#if expandedFile === `${entry.path}:true` && relay.gitDiff}
+                {#if expandedFile === `${entry.path}:true` && relay.gitDiff && relay.gitDiffPath === entry.path && relay.gitDiffStaged}
                   <div class="diff-block">
                     {#each parseDiffLines(relay.gitDiff) as line}
                       <div class="diff-line {line.type}">{line.text}</div>
@@ -155,7 +155,7 @@
                   <span class="file-path" title={entry.path}>{entry.path}</span>
                   <span class="expand-icon">{expandedFile === `${entry.path}:false` ? '\u25BE' : '\u25B8'}</span>
                 </button>
-                {#if expandedFile === `${entry.path}:false` && relay.gitDiff}
+                {#if expandedFile === `${entry.path}:false` && relay.gitDiff && relay.gitDiffPath === entry.path && !relay.gitDiffStaged}
                   <div class="diff-block">
                     {#each parseDiffLines(relay.gitDiff) as line}
                       <div class="diff-line {line.type}">{line.text}</div>
@@ -189,7 +189,7 @@
                 <div class="commit-message">{entry.message}</div>
                 <div class="commit-author">{entry.author}</div>
               </button>
-              {#if expandedCommit === entry.hash && relay.gitShowCommit}
+              {#if expandedCommit === entry.hash && relay.gitShowCommit && relay.gitShowCommit.hash === entry.hash}
                 <div class="diff-block">
                   <div class="commit-detail-header">
                     <div><strong>{relay.gitShowCommit.message}</strong></div>

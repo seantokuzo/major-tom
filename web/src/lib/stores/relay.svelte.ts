@@ -800,26 +800,35 @@ class RelayStore {
 
   requestGitStatus(): void {
     if (!this.isConnected || !this.sessionId) return;
+    this.gitError = null;
     this.socket.send({ type: 'git.status', sessionId: this.sessionId });
   }
 
   requestGitDiff(path?: string, staged?: boolean): void {
     if (!this.isConnected || !this.sessionId) return;
+    this.gitError = null;
+    this.gitDiff = '';
+    this.gitDiffPath = path;
+    this.gitDiffStaged = staged ?? false;
     this.socket.send({ type: 'git.diff', sessionId: this.sessionId, path, staged });
   }
 
   requestGitLog(count?: number): void {
     if (!this.isConnected || !this.sessionId) return;
+    this.gitError = null;
     this.socket.send({ type: 'git.log', sessionId: this.sessionId, count });
   }
 
   requestGitBranches(): void {
     if (!this.isConnected || !this.sessionId) return;
+    this.gitError = null;
     this.socket.send({ type: 'git.branches', sessionId: this.sessionId });
   }
 
   requestGitShow(commitHash: string): void {
     if (!this.isConnected || !this.sessionId) return;
+    this.gitError = null;
+    this.gitShowCommit = null;
     this.socket.send({ type: 'git.show', sessionId: this.sessionId, commitHash });
   }
 

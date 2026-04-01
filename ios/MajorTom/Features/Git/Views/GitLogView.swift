@@ -41,7 +41,7 @@ struct GitLogView: View {
                         }
                         .buttonStyle(.plain)
 
-                        if expandedHash == entry.hash, let show = relay.gitShowCommit {
+                        if expandedHash == entry.hash, let show = relay.gitShowCommit, show.hash == entry.hash {
                             VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.xs) {
                                 Text(show.message)
                                     .font(MajorTomTheme.Typography.caption)
@@ -63,10 +63,15 @@ struct GitLogView: View {
         }
     }
 
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoFormatterBasic = ISO8601DateFormatter()
+
     private func timeAgo(_ dateStr: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = formatter.date(from: dateStr) ?? ISO8601DateFormatter().date(from: dateStr) else {
+        guard let date = Self.isoFormatter.date(from: dateStr) ?? Self.isoFormatterBasic.date(from: dateStr) else {
             return dateStr
         }
         let diff = Date().timeIntervalSince(date)

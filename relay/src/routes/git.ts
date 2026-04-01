@@ -8,120 +8,27 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { WebSocket } from 'ws';
 import { logger } from '../utils/logger.js';
+import type {
+  GitStatusEntry,
+  GitLogEntry,
+  GitBranchEntry,
+  GitStatusMessage,
+  GitDiffMessage,
+  GitLogMessage,
+  GitBranchesMessage,
+  GitShowMessage,
+  GitStatusResponseMessage,
+  GitDiffResponseMessage,
+  GitLogResponseMessage,
+  GitBranchesResponseMessage,
+  GitShowResponseMessage,
+  GitErrorResponseMessage,
+} from '../protocol/messages.js';
 
 const execFileAsync = promisify(execFile);
 
-// ── Types ────────────────────────────────────────────────────
-
-export interface GitStatusEntry {
-  path: string;
-  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'untracked';
-  staged: boolean;
-  oldPath?: string; // for renames
-}
-
-export interface GitLogEntry {
-  hash: string;
-  shortHash: string;
-  author: string;
-  authorEmail: string;
-  date: string; // ISO 8601
-  message: string;
-}
-
-export interface GitBranchEntry {
-  name: string;
-  current: boolean;
-  remote: boolean;
-  upstream?: string;
-  ahead?: number;
-  behind?: number;
-}
-
-// ── Client messages ──────────────────────────────────────────
-
-export interface GitStatusMessage {
-  type: 'git.status';
-  sessionId: string;
-}
-
-export interface GitDiffMessage {
-  type: 'git.diff';
-  sessionId: string;
-  path?: string;    // specific file, or all if omitted
-  staged?: boolean;  // staged diff vs unstaged (default: unstaged)
-}
-
-export interface GitLogMessage {
-  type: 'git.log';
-  sessionId: string;
-  count?: number; // default 20
-}
-
-export interface GitBranchesMessage {
-  type: 'git.branches';
-  sessionId: string;
-}
-
-export interface GitShowMessage {
-  type: 'git.show';
-  sessionId: string;
-  commitHash: string;
-}
-
-export type GitClientMessage =
-  | GitStatusMessage
-  | GitDiffMessage
-  | GitLogMessage
-  | GitBranchesMessage
-  | GitShowMessage;
-
-// ── Server response messages ─────────────────────────────────
-
-export interface GitStatusResponseMessage {
-  type: 'git.status.response';
-  sessionId: string;
-  branch: string;
-  entries: GitStatusEntry[];
-}
-
-export interface GitDiffResponseMessage {
-  type: 'git.diff.response';
-  sessionId: string;
-  diff: string;
-  path?: string;
-  staged: boolean;
-}
-
-export interface GitLogResponseMessage {
-  type: 'git.log.response';
-  sessionId: string;
-  entries: GitLogEntry[];
-}
-
-export interface GitBranchesResponseMessage {
-  type: 'git.branches.response';
-  sessionId: string;
-  branches: GitBranchEntry[];
-}
-
-export interface GitShowResponseMessage {
-  type: 'git.show.response';
-  sessionId: string;
-  hash: string;
-  shortHash: string;
-  author: string;
-  authorEmail: string;
-  date: string;
-  message: string;
-  diff: string;
-}
-
-export interface GitErrorResponseMessage {
-  type: 'git.error';
-  sessionId: string;
-  message: string;
-}
+// Re-export protocol types for consumers
+export type { GitStatusEntry, GitLogEntry, GitBranchEntry } from '../protocol/messages.js';
 
 export type GitServerMessage =
   | GitStatusResponseMessage
@@ -134,7 +41,10 @@ export type GitServerMessage =
 // ── Constants ────────────────────────────────────────────────
 
 const MAX_DIFF_SIZE = 512 * 1024; // 512 KB
+const MAX_BUFFER = 5 * 1024 * 1024; // 5 MB — large enough to capture output before truncation
 const GIT_TIMEOUT = 10_000; // 10s
+// Unambiguous delimiter for git show format parsing (ASCII record separator)
+const SHOW_DELIMITER = '\x1e';
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -142,7 +52,7 @@ async function runGit(args: string[], cwd: string): Promise<string> {
   const { stdout } = await execFileAsync('git', args, {
     cwd,
     timeout: GIT_TIMEOUT,
-    maxBuffer: MAX_DIFF_SIZE * 2,
+    maxBuffer: MAX_BUFFER,
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
   });
   return stdout;
@@ -342,38 +252,25 @@ export function createGitHandlers(
         return;
       }
 
-      const format = '%H%n%h%n%an%n%ae%n%aI%n%B';
+      // Use ASCII record separator as delimiter between format fields and body
+      const d = SHOW_DELIMITER;
+      const format = `%H${d}%h${d}%an${d}%ae${d}%aI${d}%B${d}`;
       const raw = await runGit(['show', `--format=${format}`, '--stat', '--patch', message.commitHash], workingDir);
 
-      // The format output ends before the diff starts — split on the first empty line after the format fields
-      const lines = raw.split('\n');
-      const hash = lines[0]!;
-      const shortHash = lines[1]!;
-      const author = lines[2]!;
-      const authorEmail = lines[3]!;
-      const date = lines[4]!;
+      // Split on delimiter — last field (%B) is followed by delimiter then the stat/diff output
+      const parts = raw.split(d);
+      const hash = parts[0]?.trim() ?? '';
+      const shortHash = parts[1]?.trim() ?? '';
+      const author = parts[2]?.trim() ?? '';
+      const authorEmail = parts[3]?.trim() ?? '';
+      const date = parts[4]?.trim() ?? '';
+      const commitMessage = parts[5]?.trim() ?? '';
+      // Everything after the last delimiter is the stat + diff portion
+      const remainder = parts.slice(6).join(d);
 
-      // Commit body: everything from line 5 until we hit the diff separator (starts with "diff --git")
-      let bodyEnd = 5;
-      while (bodyEnd < lines.length && !lines[bodyEnd]!.startsWith('diff --git') && !lines[bodyEnd]!.match(/^ \S/)) {
-        bodyEnd++;
-      }
-      const commitMessage = lines.slice(5, bodyEnd).join('\n').trim();
-
-      // Diff: everything from first "diff --git" onwards
-      const diffStart = lines.findIndex((l, i) => i >= 5 && l.startsWith('diff --git'));
-      let diff = '';
-      if (diffStart >= 0) {
-        diff = lines.slice(diffStart).join('\n');
-        if (diff.length > MAX_DIFF_SIZE) {
-          diff = diff.slice(0, MAX_DIFF_SIZE) + '\n... (truncated)';
-        }
-      }
-
-      // Stat section: between body and diff
-      const statLines: string[] = [];
-      for (let i = bodyEnd; i < lines.length && (diffStart < 0 || i < diffStart); i++) {
-        if (lines[i]!.trim()) statLines.push(lines[i]!);
+      let diff = remainder.trim();
+      if (diff.length > MAX_DIFF_SIZE) {
+        diff = diff.slice(0, MAX_DIFF_SIZE) + '\n... (truncated)';
       }
 
       sendToClient(ws, {
@@ -385,7 +282,7 @@ export function createGitHandlers(
         authorEmail,
         date,
         message: commitMessage,
-        diff: (statLines.length ? statLines.join('\n') + '\n\n' : '') + diff,
+        diff,
       });
     } catch (err) {
       logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'git.show failed');

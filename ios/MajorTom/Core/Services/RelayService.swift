@@ -448,30 +448,39 @@ final class RelayService {
 
     func requestGitStatus() async throws {
         guard let sessionId = currentSession?.id else { return }
+        gitError = nil
         let msg = GitStatusRequestMessage(sessionId: sessionId)
         try await webSocket.send(msg)
     }
 
     func requestGitDiff(path: String? = nil, staged: Bool? = nil) async throws {
         guard let sessionId = currentSession?.id else { return }
+        gitError = nil
+        gitDiff = ""
+        gitDiffPath = path
+        gitDiffStaged = staged ?? false
         let msg = GitDiffRequestMessage(sessionId: sessionId, path: path, staged: staged)
         try await webSocket.send(msg)
     }
 
     func requestGitLog(count: Int? = nil) async throws {
         guard let sessionId = currentSession?.id else { return }
+        gitError = nil
         let msg = GitLogRequestMessage(sessionId: sessionId, count: count)
         try await webSocket.send(msg)
     }
 
     func requestGitBranches() async throws {
         guard let sessionId = currentSession?.id else { return }
+        gitError = nil
         let msg = GitBranchesRequestMessage(sessionId: sessionId)
         try await webSocket.send(msg)
     }
 
     func requestGitShow(commitHash: String) async throws {
         guard let sessionId = currentSession?.id else { return }
+        gitError = nil
+        gitShowCommit = nil
         let msg = GitShowRequestMessage(sessionId: sessionId, commitHash: commitHash)
         try await webSocket.send(msg)
     }

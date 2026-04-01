@@ -88,7 +88,10 @@ struct GitStatusView: View {
             }
             .buttonStyle(.plain)
 
-            if expandedFile == key && !relay.gitDiff.isEmpty {
+            if expandedFile == key &&
+                relay.gitDiffPath == entry.path &&
+                relay.gitDiffStaged == entry.staged &&
+                !relay.gitDiff.isEmpty {
                 GitDiffView(diff: relay.gitDiff)
             }
         }
