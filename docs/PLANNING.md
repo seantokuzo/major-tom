@@ -864,6 +864,45 @@ When the dachshund goes idle indoors, it looks for a blanket in Dog Corner. If n
 
 ---
 
+### Phase 6–10: Shipped (Summary)
+
+| Phase | Theme | Status | PRs |
+|-------|-------|--------|-----|
+| 6 | ClaudeGod + Sprite Fixes + Chat Polish | ✅ COMPLETE | #44 |
+| 7 | iOS Feature Parity | ✅ COMPLETE | #57–61 |
+| 8 | Fleet Command | ✅ COMPLETE | #62–79 |
+| 9 | The Social Layer | ✅ COMPLETE | #80–81 |
+| 10 | Lockdown (Audit, Rate Limits, Sandboxing) | ✅ COMPLETE | #82–85 |
+
+---
+
+### Phase 11: "The Pipeline" — Git Ops from Mobile ✅ COMPLETE
+
+**Goal:** Full Git, GitHub, and CI/CD visibility from mobile — no terminal needed.
+
+**Delivers:** Git viewer, GitHub PR/Issue browser, live CI dashboard across PWA + iOS.
+
+| Wave | Key Deliverables | PR |
+|------|------------------|----|
+| Wave 1: Git Viewer | Relay git handler (status, diff, log, branches, show), PWA GitPanel slide-out, iOS Git views | #86 |
+| Wave 2: GitHub Integration | `gh` CLI proxy for PRs + Issues, PWA GitHubPanel with detail/checks/reviews, iOS GitHub views | #87 |
+| Wave 3: CI Dashboard | CI run list + job detail via `gh run`, auto-refresh (30s), branch filter, status indicators | #88 |
+
+**Architecture:**
+- All operations proxy through `gh` / `git` CLI via `execFile` (no shell, no tokens exposed to clients)
+- Handler factory pattern (closure-based) — `git.ts`, `github.ts`, `ci.ts`
+- VIEWER_ALLOWED role access — read-only by default
+- Session-scoped working directory for all operations
+
+**Success Criteria:**
+- [x] Can view git status, diff, log, branches from mobile
+- [x] Can browse PRs with checks, reviews, comments
+- [x] Can browse issues with labels, assignees, detail
+- [x] Can monitor CI runs with auto-refresh and job detail
+- [x] All operations sandboxed to session working directory
+
+---
+
 ### Version Summary
 
 | Version | Phase | Theme | Key Deliverable |
@@ -874,6 +913,8 @@ When the dachshund goes idle indoors, it looks for a blanket in Dog Corner. If n
 | **v2.0** | 3 | The Office | Gamified agent visualization with 9 characters |
 | **v2.1** | 4 | Delight | Voice, templates, desk customization, haptics |
 | **v3.0** | 5 | Everywhere | Watch, widgets, stable tunnel |
+| **v3.1** | 6–10 ✅ | ClaudeGod → Lockdown | Permission control, iOS parity, fleet, social, security |
+| **v4.0** | 11 ✅ | The Pipeline | Git viewer, GitHub PR/Issues, CI dashboard |
 
 > **Reality check:** v1.0 is done. v1.1 makes this actually usable as a daily workflow tool. The Office is the fun part — but Mission Control MVP comes first because you need the tool to actually work before you make it pretty.
 
