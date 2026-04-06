@@ -396,12 +396,15 @@
     display: flex;
     align-items: flex-end;
     gap: var(--sp-xs);
-    padding: var(--sp-sm) var(--sp-sm);
+    padding: var(--sp-sm);
     padding-bottom: max(var(--sp-sm), env(safe-area-inset-bottom));
     background: var(--surface);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
     transition: opacity 0.2s;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
   .input-bar-disabled {
@@ -426,7 +429,7 @@
     outline: none;
     color: var(--text-primary);
     font-family: var(--font-mono);
-    font-size: 0.9rem;
+    font-size: 16px; /* >= 16px prevents iOS Safari auto-zoom on focus */
     resize: none;
     line-height: 1.5;
     max-height: 120px;
@@ -596,5 +599,14 @@
     font-size: 0.75rem;
     color: var(--text-tertiary);
     letter-spacing: 0.03em;
+  }
+
+  /* Mobile: hide non-essential input bar buttons to prevent overflow */
+  @media (max-width: 600px) {
+    .file-btn,
+    .template-btn,
+    .history-btn {
+      display: none;
+    }
   }
 </style>

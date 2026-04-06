@@ -903,6 +903,35 @@ When the dachshund goes idle indoors, it looks for a blanket in Dog Corner. If n
 
 ---
 
+### Phase 12: "Glow Up" — Sprite Makeover + QA
+
+**Goal:** Transform the office from functional prototype to visually stunning game. Replace programmatic pixel art with real sprite sheets, decouple sprites from hardcoded roles, and burn down accumulated tech debt.
+
+| Wave | Key Deliverables |
+|------|------------------|
+| Wave 1: Sprite Architecture | Generic sprite pool (no hardcoded roles), dynamic agent-to-sprite mapping, kill demo mode |
+| Wave 2: Asset Pipeline | Image-based sprite sheet system, AI-generated 32×32 characters, more animation frames |
+| Wave 3: Visual Overhaul | New office maps/environments, furniture art, lighting effects, particle systems, ambient animations |
+| Wave 4: QA Bug Bash | Interactive testing via Chrome DevTools MCP, burn down open GitHub issues (#5–#61) |
+
+**Architecture Changes:**
+- Sprites become generic visual characters — no hardcoded role assignments
+- On agent spawn: assign random unoccupied sprite from pool, inherit agent's role name as display label
+- On agent dismiss: sprite returns to pool, resumes idle activities
+- Demo mode removed — idle activities serve the same visual purpose
+- Programmatic pixel art (ASCII grids, SKColor pixels) replaced with PNG sprite sheets
+- Consistent art style across iOS + Web
+
+**Success Criteria:**
+- [ ] Sprites are generic — any agent maps to any character
+- [ ] Real sprite sheet assets replace all programmatic art
+- [ ] Office environment has professional-quality pixel art
+- [ ] More animation frames (walk, work, idle, celebrate, error)
+- [ ] All HIGH/MED GitHub issues resolved
+- [ ] Interactive QA session completed with no critical bugs remaining
+
+---
+
 ### Version Summary
 
 | Version | Phase | Theme | Key Deliverable |
@@ -915,6 +944,7 @@ When the dachshund goes idle indoors, it looks for a blanket in Dog Corner. If n
 | **v3.0** | 5 | Everywhere | Watch, widgets, stable tunnel |
 | **v3.1** | 6–10 ✅ | ClaudeGod → Lockdown | Permission control, iOS parity, fleet, social, security |
 | **v4.0** | 11 ✅ | The Pipeline | Git viewer, GitHub PR/Issues, CI dashboard |
+| **v5.0** | 12 | Glow Up | Sprite makeover, dynamic agent mapping, visual overhaul, QA |
 
 > **Reality check:** v1.0 is done. v1.1 makes this actually usable as a daily workflow tool. The Office is the fun part — but Mission Control MVP comes first because you need the tool to actually work before you make it pretty.
 

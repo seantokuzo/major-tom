@@ -372,6 +372,9 @@
     background: var(--surface);
     border-top: 1px solid var(--border);
     flex-shrink: 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
   .prompt {
@@ -391,7 +394,7 @@
     outline: none;
     color: var(--text-primary);
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: 16px; /* >= 16px prevents iOS Safari auto-zoom on focus */
     line-height: 1.5;
     caret-color: var(--accent);
   }

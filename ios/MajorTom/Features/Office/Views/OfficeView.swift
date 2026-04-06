@@ -49,11 +49,6 @@ struct OfficeView: View {
             VStack {
                 topBar
                 Spacer()
-
-                // Demo mode indicator
-                if viewModel.isDemoMode {
-                    demoModeBanner
-                }
             }
         }
         .onAppear {
@@ -79,13 +74,9 @@ struct OfficeView: View {
                 }
             }
 
-            // Auto-detect demo mode if no active agents and not connected
+            // Populate idle sprites if no agents present
             if viewModel.agents.isEmpty {
-                if let relay, relay.connectionState == .disconnected {
-                    viewModel.startDemoMode()
-                } else if relay == nil {
-                    viewModel.startDemoMode()
-                }
+                viewModel.populateIdleSprites()
             }
         }
         .onDisappear {
@@ -182,43 +173,10 @@ struct OfficeView: View {
                     .glassBackground()
             }
 
-            // Demo mode toggle
-            Button {
-                viewModel.toggleDemoMode()
-            } label: {
-                Image(systemName: viewModel.isDemoMode ? "play.slash.fill" : "play.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(
-                        viewModel.isDemoMode
-                            ? MajorTomTheme.Colors.accent
-                            : MajorTomTheme.Colors.textSecondary
-                    )
-                    .padding(MajorTomTheme.Spacing.sm)
-                    .glassBackground()
-            }
-
             // Mini-map placeholder
             miniMapPlaceholder
         }
         .padding(MajorTomTheme.Spacing.md)
-    }
-
-    /// Demo mode banner at bottom of screen.
-    private var demoModeBanner: some View {
-        HStack(spacing: MajorTomTheme.Spacing.sm) {
-            Image(systemName: "theatermasks.fill")
-                .font(.system(size: 12))
-            Text("DEMO MODE")
-                .font(.system(.caption2, design: .monospaced, weight: .bold))
-            Text("Tap play to stop")
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(MajorTomTheme.Colors.textTertiary)
-        }
-        .foregroundStyle(MajorTomTheme.Colors.accent)
-        .padding(.horizontal, MajorTomTheme.Spacing.md)
-        .padding(.vertical, MajorTomTheme.Spacing.sm)
-        .glassBackground()
-        .padding(.bottom, MajorTomTheme.Spacing.md)
     }
 
     /// Placeholder for the mini-map concept.
