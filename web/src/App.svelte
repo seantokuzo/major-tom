@@ -97,19 +97,27 @@
   // because iOS Safari blocks `javascript:` paste in the address bar, so
   // there's no way to flip localStorage from a phone without devtools.
   function readShellFlag(): boolean {
-    if (typeof localStorage === 'undefined') return false;
-    if (typeof location !== 'undefined') {
-      const params = new URLSearchParams(location.search);
-      if (params.get('shell') === '1') {
-        localStorage.setItem('mt-shell-enabled', '1');
-        return true;
+    // Wrap localStorage access in try/catch — privacy mode and quota
+    // errors can throw on getItem/setItem/removeItem, and an unhandled
+    // throw here would prevent the app from booting. Other stores like
+    // relay.svelte.ts already do this. Caught by Copilot review on PR #90.
+    try {
+      if (typeof localStorage === 'undefined') return false;
+      if (typeof location !== 'undefined') {
+        const params = new URLSearchParams(location.search);
+        if (params.get('shell') === '1') {
+          localStorage.setItem('mt-shell-enabled', '1');
+          return true;
+        }
+        if (params.get('shell') === '0') {
+          localStorage.removeItem('mt-shell-enabled');
+          return false;
+        }
       }
-      if (params.get('shell') === '0') {
-        localStorage.removeItem('mt-shell-enabled');
-        return false;
-      }
+      return localStorage.getItem('mt-shell-enabled') === '1';
+    } catch {
+      return false;
     }
-    return localStorage.getItem('mt-shell-enabled') === '1';
   }
   const shellEnabled = $state(readShellFlag());
 

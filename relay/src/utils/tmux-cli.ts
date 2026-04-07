@@ -31,8 +31,12 @@ export const MAJOR_TOM_SESSION = 'major-tom';
  * Single `/` is preserved.
  */
 function getShellCwd(): string {
-  const raw = (process.env['CLAUDE_WORK_DIR'] && process.env['CLAUDE_WORK_DIR']!.trim())
-    ? process.env['CLAUDE_WORK_DIR']!
+  // Trim CLAUDE_WORK_DIR before USING it (not just before checking it),
+  // so leading/trailing whitespace from copy/paste doesn't poison the
+  // tmux `-c` argument. Caught by Copilot review on PR #90.
+  const trimmedClaudeWorkDir = process.env['CLAUDE_WORK_DIR']?.trim();
+  const raw = trimmedClaudeWorkDir
+    ? trimmedClaudeWorkDir
     : (process.env['HOME'] ?? homedir());
   return raw.length > 1 ? raw.replace(/\/+$/, '') : raw;
 }
@@ -51,9 +55,12 @@ function getShellCwd(): string {
  * be safe under sh-quoting rules.
  */
 function getLoginShellCommand(): string {
-  const shell = process.env['SHELL'] && process.env['SHELL']!.trim()
-    ? process.env['SHELL']!
-    : '/bin/bash';
+  // Trim before USING (not just before checking) — same reason as
+  // getShellCwd. A trailing newline from a misconfigured env would
+  // otherwise sneak into the quoted shell-command and tmux would fail
+  // to spawn the pane. Caught by Copilot review on PR #90.
+  const trimmedShell = process.env['SHELL']?.trim();
+  const shell = trimmedShell ? trimmedShell : '/bin/bash';
   const escaped = shell.replace(/'/g, `'\\''`);
   return `'${escaped}' -l`;
 }
