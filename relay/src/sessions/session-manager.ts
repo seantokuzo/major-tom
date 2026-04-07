@@ -42,10 +42,24 @@ export class SessionManager {
     logger.info({ tabId: handle.tabId, pid: handle.pid }, 'PTY tab registered');
   }
 
-  unregisterTab(tabId: string): void {
-    if (this.tabs.delete(tabId)) {
-      logger.info({ tabId }, 'PTY tab unregistered');
+  /**
+   * Unregister a tab keyed by both `tabId` AND the registering pid, so a
+   * stale cleanup callback from an older socket cannot evict the handle of
+   * a newer attach against the same `tabId`. Multi-device attaches and
+   * fast reconnects can both reuse the same tab id; without the pid check
+   * the older socket's `close` handler would silently delete the live
+   * registration. Caught by Copilot review on PR #89.
+   */
+  unregisterTab(tabId: string, pid?: number): void {
+    const current = this.tabs.get(tabId);
+    if (!current) return;
+    if (pid !== undefined && current.pid !== pid) {
+      // A newer attach has already taken over this tabId — leave it alone.
+      logger.debug({ tabId, stalePid: pid, currentPid: current.pid }, 'Stale unregisterTab ignored');
+      return;
     }
+    this.tabs.delete(tabId);
+    logger.info({ tabId, pid: current.pid }, 'PTY tab unregistered');
   }
 
   getTab(tabId: string): TabHandle | undefined {

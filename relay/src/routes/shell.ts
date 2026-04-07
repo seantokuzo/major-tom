@@ -109,14 +109,17 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
 
           // Register the tab on the session manager so future waves can
           // coordinate (approvals, hybrid keystroke injection, tab UI).
+          // Pass the pid to cleanup so a stale close from an older socket
+          // cannot evict the handle of a newer attach against the same id.
+          const ourPid = handle.pty.pid;
           sessionManager.registerTab({
             tabId,
-            pid: handle.pty.pid,
+            pid: ourPid,
             attachedAt: handle.createdAt,
           });
 
           const cleanup = () => {
-            sessionManager.unregisterTab(tabId);
+            sessionManager.unregisterTab(tabId, ourPid);
           };
           socket.on('close', cleanup);
           socket.on('error', cleanup);

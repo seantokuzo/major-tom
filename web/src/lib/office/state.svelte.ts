@@ -628,6 +628,9 @@ export function createOfficeState(): OfficeState {
     socialNegotiating.delete(id);
     activityManager.release(id);
     releaseDesk(id);
+    // Drop mood-engine state too — without this, completed agents kept
+    // their mood records indefinitely (Copilot review on PR #89).
+    moodEngine.removeAgent(id);
     engine.removeAgent(id);
     agents = agents.filter((a) => a.id !== id);
     if (selectedAgentId === id) selectedAgentId = null;
@@ -987,13 +990,12 @@ export function createOfficeState(): OfficeState {
     // `isTerminal = agent.status === 'leaving'` check never fires.
     agent.status = 'leaving';
     agents = [...agents];
-    moodEngine.removeAgent(id);
 
     // Fade out animation, then delegate the rest of the cleanup to
     // removeAgent() so all per-agent bookkeeping (socialNegotiating,
-    // pairings, activity manager, desks, timers) is cleared in exactly
-    // one place. Skipping that path previously left stale ids in
-    // `socialNegotiating` (Copilot review).
+    // pairings, activity manager, desks, timers, moodEngine) is cleared
+    // in exactly one place. Skipping that path previously left stale ids
+    // in `socialNegotiating` (Copilot review).
     engine.setAnimation(id, 'fade-out');
     setTimeout(() => {
       removeAgent(id);
