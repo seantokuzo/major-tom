@@ -21,7 +21,7 @@
   import { shellStore } from '../stores/shell.svelte';
   import { relay } from '../stores/relay.svelte';
 
-  let keyboardVisible = $state(false);
+  let iosKeyboardVisible = $state(false);
   // Visual-viewport tracking for the prompt-line lock.
   // - vvHeight: the height of the area the user can actually see (shrinks
   //   when the iOS keyboard opens). We size .shell to this so the xterm
@@ -34,6 +34,36 @@
   let vvHeight = $state(0);
   let vvOffsetTop = $state(0);
   let cleanupVv: (() => void) | null = null;
+
+  // Wave 1 Termius-style keybar integration: the specialty keyboard mode
+  // replaces the iOS keyboard with our own grid. When the user toggles it
+  // on we blur the iOS kbd away, which also cancels any iOS-triggered
+  // body scroll — so there's no offsetTop correction to apply. The shell
+  // pins to the full innerHeight and the specialty grid (a child of
+  // .shell → .mobile-keybar) naturally sits at the bottom via flex flow,
+  // with the xterm pane in the middle expanding to fill the remainder.
+  //
+  // `specialtyHeight` is still tracked for debugging + future reactive
+  // layout tweaks but it is NOT subtracted from lockedHeight — doing so
+  // would double-count the grid inside a container that already reserves
+  // its natural space via `flex-shrink: 0`.
+  let keyboardMode = $state<'main' | 'specialty'>('main');
+  let specialtyHeight = $state(0);
+
+  // Derived: true when either iOS kbd is up OR we're in specialty mode.
+  // This is what the CSS class + the var(--vv-h) lock react to.
+  const keyboardVisible = $derived(iosKeyboardVisible || keyboardMode === 'specialty');
+
+  // Derived: effective viewport height for the prompt-line lock.
+  //   - specialty mode: full innerHeight (specialty sits inside via flex)
+  //   - iOS kbd mode:   whatever visualViewport reports (tracked in vvHeight)
+  //   - neither:        0 (no lock applied)
+  const lockedHeight = $derived.by(() => {
+    if (typeof window === 'undefined') return 0;
+    if (keyboardMode === 'specialty') return window.innerHeight;
+    return vvHeight;
+  });
+  const lockedOffsetTop = $derived(keyboardMode === 'specialty' ? 0 : vvOffsetTop);
 
   // Ensure at least one tab on mount.
   onMount(() => {
@@ -57,7 +87,7 @@
         if (raf) cancelAnimationFrame(raf);
         raf = requestAnimationFrame(() => {
           const delta = window.innerHeight - vv.height;
-          keyboardVisible = delta > 100;
+          iosKeyboardVisible = delta > 100;
           vvHeight = vv.height;
           vvOffsetTop = vv.offsetTop;
         });
@@ -92,13 +122,21 @@
   function injectFromKeybar(data: string): void {
     shellStore.injectIntoActive(data);
   }
+
+  function handleModeChange(mode: 'main' | 'specialty'): void {
+    keyboardMode = mode;
+  }
+
+  function handleSpecialtyHeight(h: number): void {
+    specialtyHeight = h;
+  }
 </script>
 
 <div
   class="shell"
   class:keyboard-on={keyboardVisible}
   style={keyboardVisible
-    ? `--vv-h:${vvHeight}px;--vv-top:${vvOffsetTop}px`
+    ? `--vv-h:${lockedHeight}px;--vv-top:${lockedOffsetTop}px`
     : undefined}
 >
   <ShellTabs onNew={handleNewTab} onClose={handleCloseTab} />
@@ -112,7 +150,12 @@
       <div class="empty">No shell session. Tap + above to start one.</div>
     {/if}
   </div>
-  <MobileKeybar inject={injectFromKeybar} {keyboardVisible} />
+  <MobileKeybar
+    inject={injectFromKeybar}
+    keyboardVisible={iosKeyboardVisible}
+    onModeChange={handleModeChange}
+    onSpecialtyHeightChange={handleSpecialtyHeight}
+  />
 </div>
 
 <style>

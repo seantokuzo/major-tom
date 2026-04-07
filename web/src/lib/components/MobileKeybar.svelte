@@ -1,164 +1,189 @@
 <script lang="ts">
   /**
-   * Mobile keybar — sits above the iOS keyboard with sticky modifiers
-   * (Ctrl, Alt) and one-shot keys (Esc, Tab, arrows, |, ~, /). All keys
-   * inject through `inject()` (a passed-in callback that calls
-   * `term.input(data, true)` on the underlying xterm) so input flows
-   * through xterm.onData like real keystrokes — no raw byte bypass.
+   * MobileKeybar — orchestrator for the Termius-style soft-keyboard system.
+   *
+   * Three layers:
+   *   1. KeybarAccessory — row above the iOS native keyboard
+   *   2. KeybarSpecialty — full-replacement grid that takes over the iOS
+   *      keyboard area (includes F1–F12 at the bottom)
+   *   3. KeybarCustomizeSheet — modal for editing which keys appear
+   *
+   * Owns:
+   *   - `keyboardMode` state ('main' vs 'specialty')
+   *   - Sticky modifier latch state (Ctrl, Alt) — tap to arm, double-tap
+   *     to lock; next non-modifier key consumes the armed mod
+   *   - The dispatch function that resolves `KeySpec.bytes` with sticky
+   *     modifiers and calls `inject()`
+   *
+   * All injection flows through the `inject` prop (parent wires it to
+   * `shellStore.injectIntoActive`).
    */
+  import { onDestroy } from 'svelte';
+  import KeybarAccessory from './KeybarAccessory.svelte';
+  import KeybarSpecialty from './KeybarSpecialty.svelte';
+  import KeybarCustomizeSheet from './KeybarCustomizeSheet.svelte';
+  import type { KeySpec } from '../shell/keys';
+
   interface Props {
     /** Inject keystrokes into the terminal. Provided by parent. */
     inject: (data: string) => void;
     /** True when the iOS keyboard is visible (parent computes from visualViewport). */
     keyboardVisible: boolean;
+    /** Notify parent when our keyboardMode changes — drives the prompt-lock decision. */
+    onModeChange?: (mode: 'main' | 'specialty') => void;
+    /** Notify parent of the specialty grid's measured height (0 when not specialty). */
+    onSpecialtyHeightChange?: (height: number) => void;
   }
 
-  let { inject, keyboardVisible }: Props = $props();
+  const { inject, keyboardVisible, onModeChange, onSpecialtyHeightChange }: Props = $props();
 
-  // Sticky modifier state. Tap once = armed for next key. Long-press = lock.
-  let ctrlArmed = $state(false);
-  let altArmed = $state(false);
-  let ctrlLocked = $state(false);
-  let altLocked = $state(false);
+  /** Active keyboard mode — 'main' renders accessory row only, 'specialty' renders the grid. */
+  let keyboardMode = $state<'main' | 'specialty'>('main');
+  /** True while the customize sheet is open. */
+  let customizeOpen = $state(false);
 
-  function toggleCtrl(): void {
-    if (ctrlLocked) {
-      ctrlLocked = false;
-      ctrlArmed = false;
-    } else {
-      ctrlArmed = !ctrlArmed;
+  // ── Sticky modifier state ──────────────────────────────────────────
+  /** Armed (one-shot) modifier — cleared after next non-modifier key. */
+  let armedMod = $state<'ctrl' | 'alt' | null>(null);
+  /** Locked modifier — persistent until user taps again. */
+  let lockedMod = $state<'ctrl' | 'alt' | null>(null);
+  /**
+   * Double-tap detector for locking a modifier. We record the id + time
+   * of the most recent sticky tap; if the same sticky is tapped again
+   * within DOUBLE_TAP_MS we promote the arm to a lock.
+   */
+  const DOUBLE_TAP_MS = 400;
+  let lastStickyTap: { id: string; t: number } | null = null;
+
+  function toggleSticky(id: 'ctrl' | 'alt'): void {
+    const now = performance.now();
+    const isDoubleTap =
+      lastStickyTap !== null &&
+      lastStickyTap.id === id &&
+      now - lastStickyTap.t < DOUBLE_TAP_MS;
+    lastStickyTap = { id, t: now };
+
+    // If currently locked, any tap releases.
+    if (lockedMod === id) {
+      lockedMod = null;
+      armedMod = null;
+      return;
     }
-  }
-  function toggleAlt(): void {
-    if (altLocked) {
-      altLocked = false;
-      altArmed = false;
-    } else {
-      altArmed = !altArmed;
-    }
-  }
-  function lockCtrl(): void { ctrlLocked = true; ctrlArmed = true; }
-  function lockAlt(): void { altLocked = true; altArmed = true; }
 
-  /** Apply armed modifiers to a base character/seq, then disarm (unless locked). */
-  function fireKey(base: string, opts: { allowMods?: boolean } = {}): void {
-    const allowMods = opts.allowMods !== false;
-    let out = base;
-    if (allowMods && ctrlArmed) {
-      // Ctrl+letter → control byte (1-26). Pass single-char base.
-      if (base.length === 1) {
-        const code = base.toLowerCase().charCodeAt(0);
-        if (code >= 97 && code <= 122) {
-          out = String.fromCharCode(code - 96);
-        }
+    // Double-tap from armed → promote to locked.
+    if (isDoubleTap && armedMod === id) {
+      lockedMod = id;
+      armedMod = id;
+      return;
+    }
+
+    // Single tap toggles armed state.
+    armedMod = armedMod === id ? null : id;
+  }
+
+  /** Main dispatch: applies armed/locked mods to spec.bytes and calls inject(). */
+  function dispatch(spec: KeySpec): void {
+    if (spec.sticky) {
+      if (spec.id === 'ctrl' || spec.id === 'alt') toggleSticky(spec.id);
+      return;
+    }
+
+    let bytes = spec.bytes;
+    const effectiveMod = lockedMod ?? armedMod;
+
+    if (effectiveMod === 'ctrl' && bytes.length >= 1) {
+      // Ctrl + printable ASCII → control byte (bit 5 cleared). xterm/VT
+      // convention: Ctrl-@ = NUL (0x00), Ctrl-A = 0x01, … Ctrl-_ = 0x1f.
+      // We only transform the first byte so multi-byte sequences (Ctrl
+      // shouldn't normally combine with CSI sequences anyway) stay sane.
+      const first = bytes.charCodeAt(0);
+      if (first >= 0x40 && first <= 0x7e) {
+        bytes = String.fromCharCode(first & 0x1f) + bytes.slice(1);
+      } else if (first >= 0x20 && first <= 0x3f) {
+        // e.g. Ctrl-? = 0x7f (DEL). Rare but legal.
+        bytes = String.fromCharCode(first ^ 0x40) + bytes.slice(1);
       }
     }
-    if (allowMods && altArmed) {
+    if (effectiveMod === 'alt' && bytes.length >= 1) {
       // ESC prefix is the portable Meta encoding xterm.js expects.
-      out = '\x1b' + out;
+      bytes = '\x1b' + bytes;
     }
-    inject(out);
-    if (!ctrlLocked) ctrlArmed = false;
-    if (!altLocked) altArmed = false;
+
+    inject(bytes);
+    // Single-tap armed mods auto-release; locked stays active.
+    if (lockedMod === null) armedMod = null;
   }
 
-  // Sequence helpers — these are emitted with no modifier processing.
-  const ESC = '\x1b';
-  const ARROW_UP    = `${ESC}[A`;
-  const ARROW_DOWN  = `${ESC}[B`;
-  const ARROW_RIGHT = `${ESC}[C`;
-  const ARROW_LEFT  = `${ESC}[D`;
+  function toggleSpecialty(): void {
+    keyboardMode = keyboardMode === 'specialty' ? 'main' : 'specialty';
+    if (keyboardMode === 'specialty') {
+      // Dismiss the iOS native keyboard by blurring whatever is focused.
+      // The XtermPane's internal textarea holds focus while the user is
+      // typing, and blurring it drops the iOS kbd so our specialty grid
+      // can claim that screen space.
+      if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    }
+    onModeChange?.(keyboardMode);
+    // When leaving specialty, zero out the height so the prompt-lock
+    // releases its custom clamp.
+    if (keyboardMode !== 'specialty') onSpecialtyHeightChange?.(0);
+  }
 
-  function pressEsc(): void  { fireKey(ESC, { allowMods: false }); }
-  function pressTab(): void  { fireKey('\t', { allowMods: false }); }
-  function pressUp(): void   { fireKey(ARROW_UP, { allowMods: false }); }
-  function pressDown(): void { fireKey(ARROW_DOWN, { allowMods: false }); }
-  function pressLeft(): void { fireKey(ARROW_LEFT, { allowMods: false }); }
-  function pressRight(): void{ fireKey(ARROW_RIGHT, { allowMods: false }); }
-  function pressPipe(): void { fireKey('|'); }
-  function pressTilde(): void{ fireKey('~'); }
-  function pressSlash(): void{ fireKey('/'); }
+  function openCustomize(): void {
+    customizeOpen = true;
+  }
+
+  function closeCustomize(): void {
+    customizeOpen = false;
+  }
+
+  function handleSpecialtyHeight(h: number): void {
+    onSpecialtyHeightChange?.(h);
+  }
+
+  onDestroy(() => {
+    onSpecialtyHeightChange?.(0);
+  });
+
+  // True when we should render anything at all. Specialty mode is always
+  // rendered (it's the replacement for the iOS kbd), accessory row only
+  // when iOS keyboard is up.
+  const visible = $derived(keyboardVisible || keyboardMode === 'specialty');
 </script>
 
-<div class="keybar" class:visible={keyboardVisible} aria-label="Terminal modifier bar">
-  <button type="button" class="key" onclick={pressEsc}>Esc</button>
-  <button type="button" class="key" onclick={pressTab}>Tab</button>
-  <button
-    type="button"
-    class="key mod"
-    class:armed={ctrlArmed && !ctrlLocked}
-    class:locked={ctrlLocked}
-    onclick={toggleCtrl}
-    oncontextmenu={(e) => { e.preventDefault(); lockCtrl(); }}
-  >Ctrl</button>
-  <button
-    type="button"
-    class="key mod"
-    class:armed={altArmed && !altLocked}
-    class:locked={altLocked}
-    onclick={toggleAlt}
-    oncontextmenu={(e) => { e.preventDefault(); lockAlt(); }}
-  >Alt</button>
-  <button type="button" class="key" onclick={pressUp}>↑</button>
-  <button type="button" class="key" onclick={pressDown}>↓</button>
-  <button type="button" class="key" onclick={pressLeft}>←</button>
-  <button type="button" class="key" onclick={pressRight}>→</button>
-  <button type="button" class="key" onclick={pressPipe}>|</button>
-  <button type="button" class="key" onclick={pressTilde}>~</button>
-  <button type="button" class="key" onclick={pressSlash}>/</button>
+<div class="mobile-keybar" class:visible data-kb-mode={keyboardMode}>
+  {#if keyboardMode === 'main' && keyboardVisible}
+    <KeybarAccessory
+      onPress={dispatch}
+      onToggleSpecialty={toggleSpecialty}
+      onOpenCustomize={openCustomize}
+      {armedMod}
+      {lockedMod}
+    />
+  {:else if keyboardMode === 'specialty'}
+    <KeybarSpecialty
+      onPress={dispatch}
+      onDismiss={toggleSpecialty}
+      onOpenCustomize={openCustomize}
+      onHeightChange={handleSpecialtyHeight}
+      {armedMod}
+      {lockedMod}
+    />
+  {/if}
 </div>
 
+<KeybarCustomizeSheet open={customizeOpen} onClose={closeCustomize} />
+
 <style>
-  .keybar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 6px;
-    background: #111114;
-    border-top: 1px solid #25252c;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    flex-shrink: 0;
-    /* Hidden by default; the parent toggles `.visible` based on keyboard state. */
+  .mobile-keybar {
     display: none;
+    flex-direction: column;
+    flex-shrink: 0;
   }
 
-  .keybar.visible {
+  .mobile-keybar.visible {
     display: flex;
-  }
-
-  .key {
-    flex: 0 0 auto;
-    min-width: 36px;
-    height: 32px;
-    padding: 0 8px;
-    border: 1px solid #2a2a32;
-    border-radius: 6px;
-    background: #1a1a22;
-    color: #e0e0e8;
-    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    user-select: none;
-    touch-action: manipulation;
-  }
-
-  .key:active {
-    background: #25252e;
-  }
-
-  .key.mod.armed {
-    background: rgba(99, 179, 237, 0.18);
-    border-color: rgba(99, 179, 237, 0.6);
-    color: #9fcdf6;
-  }
-
-  .key.mod.locked {
-    background: rgba(99, 179, 237, 0.32);
-    border-color: rgba(99, 179, 237, 0.9);
-    color: #cfe5fb;
-    box-shadow: inset 0 0 0 1px rgba(99, 179, 237, 0.5);
   }
 </style>
