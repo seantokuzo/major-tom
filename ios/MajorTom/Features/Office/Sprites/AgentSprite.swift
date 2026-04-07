@@ -116,6 +116,12 @@ final class AgentSprite: SKSpriteNode {
         speechBubble.position = CGPoint(x: 0, y: spriteSize.height / 2 + 20)
         speechBubble.zPosition = 21
         addChild(speechBubble)
+
+        // Idle sprites: hide status dot, dim name label
+        if agentId.hasPrefix("idle-") {
+            statusDot.alpha = 0
+            nameLabel.alpha = 0.6
+        }
     }
 
     @available(*, unavailable)
@@ -124,6 +130,10 @@ final class AgentSprite: SKSpriteNode {
     }
 
     // MARK: - Properties
+
+    var isIdleSprite: Bool {
+        agentId.hasPrefix("idle-")
+    }
 
     var isDog: Bool {
         Self.dogTypes.contains(characterType)
@@ -138,6 +148,13 @@ final class AgentSprite: SKSpriteNode {
 
     /// Update the status indicator color based on agent status.
     func updateStatus(_ status: AgentStatus) {
+        // Idle pool sprites keep their dot hidden
+        if isIdleSprite {
+            statusDot.alpha = 0
+            return
+        }
+
+        statusDot.alpha = 1
         switch status {
         case .spawning:
             statusDot.fillColor = SKColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 1)

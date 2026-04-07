@@ -591,22 +591,26 @@
     }
 
     const prevAlpha = ctx.globalAlpha;
-    ctx.globalAlpha = agent.alpha;
+    const isIdle = agent.id.startsWith('idle-');
 
     // Name label above sprite
     const size = getCharacterSize(agent.characterType);
     const nameY = y - size.height / 2 - 6;
+    ctx.globalAlpha = isIdle ? agent.alpha * 0.5 : agent.alpha;
     ctx.fillStyle = 'white';
     ctx.font = '9px Menlo, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText(agent.name, x, nameY);
 
-    // Status dot (above the name text)
-    ctx.beginPath();
-    ctx.arc(x, nameY - 11, 3, 0, Math.PI * 2);
-    ctx.fillStyle = agent.statusColor;
-    ctx.fill();
+    // Status dot (above the name text) — skip for idle sprites
+    if (!isIdle) {
+      ctx.globalAlpha = agent.alpha;
+      ctx.beginPath();
+      ctx.arc(x, nameY - 11, 3, 0, Math.PI * 2);
+      ctx.fillStyle = agent.statusColor;
+      ctx.fill();
+    }
 
     ctx.globalAlpha = prevAlpha;
 

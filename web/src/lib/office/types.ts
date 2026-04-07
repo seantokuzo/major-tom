@@ -313,7 +313,7 @@ export const ALL_BEDROOM_AREAS: OfficeAreaType[] = [
 ];
 
 /** Map character type to their personal bedroom */
-export const CHARACTER_BEDROOM: Record<CharacterType, OfficeAreaType> = {
+export const CHARACTER_BEDROOM: Record<CharacterType, BreakDestination> = {
   architect:        'bedroomRow1Col1',
   leadEngineer:     'bedroomRow1Col2',
   engManager:       'bedroomRow1Col3',

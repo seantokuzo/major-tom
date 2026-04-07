@@ -38,7 +38,7 @@
   const truncatedId = $derived(agent.id.slice(0, 12) + '...');
   const deskLabel = $derived(agent.deskIndex !== null ? `Desk ${agent.deskIndex + 1}` : 'None');
 
-  const isTerminal = $derived(agent.status === 'complete' || agent.status === 'dismissed');
+  const isTerminal = $derived(agent.status === 'leaving');
 
   function sendMessage() {
     const trimmed = messageText.trim();

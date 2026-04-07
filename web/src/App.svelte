@@ -5,6 +5,10 @@
   import SessionInfo from './lib/components/SessionInfo.svelte';
   import ChatView from './lib/components/ChatView.svelte';
   import Terminal from './lib/components/Terminal.svelte';
+  import type { Component } from 'svelte';
+  // Shell is lazy-loaded only when the Phase 13 Wave 1 feature flag is on,
+  // so xterm.js + addons don't ship to users who haven't opted in.
+  // Caught by Copilot review on PR #89 — bundle bloat for opted-out users.
   import Toast from './lib/components/Toast.svelte';
   import OfficeCanvas from './lib/components/OfficeCanvas.svelte';
   import AgentInspector from './lib/components/AgentInspector.svelte';
@@ -83,7 +87,29 @@
 
   // ── Office state & tab management ─────────────────────────
 
-  type ViewTab = 'chat' | 'office' | 'characters';
+  type ViewTab = 'chat' | 'shell' | 'office' | 'characters';
+
+  // Phase 13 Wave 1 feature flag — opt in via:
+  //   localStorage.setItem('mt-shell-enabled', '1')
+  // Until flipped, the legacy chat tab is the default and the Shell tab
+  // is hidden so existing users see no change.
+  function readShellFlag(): boolean {
+    if (typeof localStorage === 'undefined') return false;
+    return localStorage.getItem('mt-shell-enabled') === '1';
+  }
+  const shellEnabled = $state(readShellFlag());
+
+  // Dynamic import of the Shell component — only fetched once the user
+  // opts into the feature flag, so xterm.js doesn't ship to everyone.
+  let ShellComponent = $state<Component | null>(null);
+  $effect(() => {
+    if (shellEnabled && !ShellComponent) {
+      void import('./lib/components/Shell.svelte').then((mod) => {
+        ShellComponent = mod.default as Component;
+      });
+    }
+  });
+
   let activeTab = $state<ViewTab>('chat');
   let activeView = $state<OfficeView>('office');
   let headerCollapsed = $state(false);
@@ -174,34 +200,6 @@
     });
   });
 
-  // Session mode: when relay is connected with an active session, populate crew as idle
-  // When disconnected or no session, exit session mode
-  // Not gated on activeTab — agents can spawn while on Chat tab
-  $effect(() => {
-    const hasSession = relay.isConnected && relay.hasSession;
-
-    const timer = setTimeout(() => {
-      if (hasSession) {
-        office.enterSessionMode();
-      } else if (office.sessionMode) {
-        office.exitSessionMode();
-      }
-    }, 150);
-    return () => clearTimeout(timer);
-  });
-
-  // Auto-idle fallback: when no session and no agents, start demo
-  // This is separate so it reacts to canDemo becoming true after cleanup
-  $effect(() => {
-    if (activeTab !== 'office') return;
-    if (office.sessionMode) return;
-    if (!office.canDemo) return;
-    if (office.demoMode) return;
-
-    const timer = setTimeout(() => office.ensureAutoIdle(), 200);
-    return () => clearTimeout(timer);
-  });
-
   function handleAgentClick(agentId: string) {
     office.selectAgent(agentId);
   }
@@ -240,6 +238,15 @@
         >
           Chat
         </button>
+        {#if shellEnabled}
+          <button
+            class="tab"
+            class:active={activeTab === 'shell'}
+            onclick={() => (activeTab = 'shell')}
+          >
+            Shell
+          </button>
+        {/if}
         <button
           class="tab"
           class:active={activeTab === 'office'}
@@ -258,15 +265,6 @@
           Crew
         </button>
       </nav>
-      <button
-        class="demo-btn"
-        class:active={office.demoMode}
-        disabled={(!office.canDemo && !office.demoMode) || office.sessionMode}
-        onclick={() => office.toggleDemo()}
-        title={office.sessionMode ? 'Demo disabled during active session' : office.demoMode ? 'Exit demo' : 'Launch demo office'}
-      >
-        {office.demoMode ? '■ Demo' : '▶ Demo'}
-      </button>
       <div class="header-spacer"></div>
       {#if relay.hasSession && relay.sessionName}
         <span class="session-label" title={relay.sessionName}>{relay.sessionName}</span>
@@ -282,15 +280,17 @@
           <NotificationToggle />
           <NotificationSettings />
         </span>
-        <AchievementIndicator />
-        {#if relay.multiUserEnabled}
-          <ActivityIndicator />
-        {/if}
-        <GitIndicator />
-        <GitHubIndicator />
-        <CIIndicator />
-        <AnalyticsIndicator />
-        <FleetIndicator />
+        <span class="header-indicators">
+          <AchievementIndicator />
+          {#if relay.multiUserEnabled}
+            <ActivityIndicator />
+          {/if}
+          <GitIndicator />
+          <GitHubIndicator />
+          <CIIndicator />
+          <AnalyticsIndicator />
+          <FleetIndicator />
+        </span>
         <button
           class="hamburger-btn"
           onclick={() => sessionStateManager.togglePanel()}
@@ -351,10 +351,17 @@
       {:else}
         <ChatView />
       {/if}
+    {:else if activeTab === 'shell'}
+      {#if ShellComponent}
+        {@const Shell = ShellComponent}
+        <Shell />
+      {:else}
+        <div class="shell-loading">loading shell…</div>
+      {/if}
     {:else if activeTab === 'characters'}
       <CharacterGallery />
     {:else}
-      <div class="office-wrapper" class:demo-active={office.demoMode}>
+      <div class="office-wrapper">
         {#if officeManager.activeSessionId}
           <div class="session-badge">{officeManager.activeSessionName}</div>
         {/if}
@@ -396,6 +403,8 @@
     height: 100%;
     display: flex;
     flex-direction: column;
+    max-width: 100vw;
+    overflow-x: hidden;
   }
 
   .header {
@@ -405,7 +414,7 @@
     display: flex;
     align-items: center;
     gap: var(--sp-sm);
-    overflow: hidden;
+    flex-wrap: wrap;
   }
 
   .mode-row {
@@ -538,18 +547,27 @@
     flex-shrink: 0;
   }
 
-  /* Hide auth & notification settings on mobile — accessible via ConnectionBar.
-     But keep hamburger visible. Use a wrapper span to target hiding. */
-  @media (max-width: 600px) {
-    .header-settings {
-      display: none;
-    }
-  }
-
-  .header-settings {
+  .header-settings,
+  .header-indicators {
     display: flex;
     align-items: center;
     gap: var(--sp-sm);
+  }
+
+  /* Mobile header: hide non-essential buttons, compact layout.
+     Must come AFTER base rules to win cascade. */
+  @media (max-width: 600px) {
+    .header-settings,
+    .header-indicators {
+      display: none;
+    }
+    .header-spacer {
+      display: none;
+    }
+    .header-actions {
+      gap: var(--sp-xs);
+      margin-left: auto;
+    }
   }
 
   .hamburger-btn {
@@ -668,6 +686,16 @@
     min-height: 0;
   }
 
+  .shell-loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+  }
+
   .session-badge {
     position: absolute;
     top: 6px;
@@ -687,42 +715,4 @@
     letter-spacing: 0.03em;
   }
 
-  .office-wrapper.demo-active {
-    box-shadow: inset 0 0 20px rgba(77, 217, 115, 0.15);
-  }
-
-  .demo-btn {
-    padding: 2px 10px;
-    font-family: Menlo, monospace;
-    font-size: 11px;
-    font-weight: bold;
-    color: rgb(77, 217, 115);
-    background: transparent;
-    border: 1px solid rgb(77, 217, 115);
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.15s;
-    margin-left: 8px;
-    flex-shrink: 0;
-  }
-
-  .demo-btn:hover:not(:disabled) {
-    background: rgba(77, 217, 115, 0.15);
-  }
-
-  .demo-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-  }
-
-  .demo-btn.active {
-    background: rgb(77, 217, 115);
-    color: rgb(30, 30, 30);
-    animation: demo-pulse 1.5s infinite alternate;
-  }
-
-  @keyframes demo-pulse {
-    from { box-shadow: 0 0 4px rgba(77, 217, 115, 0.4); }
-    to { box-shadow: 0 0 10px rgba(77, 217, 115, 0.6); }
-  }
 </style>

@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "echo \"No tests yet\" && exit 0",
+    "postinstall": "node scripts/fix-node-pty-perms.mjs",
     "tunnel:setup": "bash ../tunnel/setup.sh",
     "tunnel": "bash ../tunnel/start.sh",
     "dev:remote": "npm run dev & npm run tunnel"
@@ -28,6 +29,7 @@
     "fastify": "^5.8.2",
     "fastify-plugin": "^5.1.0",
     "jose": "^6.2.2",
+    "node-pty": "^1.1.0",
     "pino": "10.3.1",
     "web-push": "^3.6.7",
     "ws": "8.19.0"

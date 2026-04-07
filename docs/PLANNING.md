@@ -903,6 +903,60 @@ When the dachshund goes idle indoors, it looks for a blanket in Dog Corner. If n
 
 ---
 
+### Phase 12: "Glow Up" — Sprite Makeover + QA
+
+**Goal:** Transform the office from functional prototype to visually stunning game. Replace programmatic pixel art with real sprite sheets, decouple sprites from hardcoded roles, and burn down accumulated tech debt.
+
+| Wave | Key Deliverables |
+|------|------------------|
+| Wave 1: Sprite Architecture | Generic sprite pool (no hardcoded roles), dynamic agent-to-sprite mapping, kill demo mode |
+| Wave 2: Asset Pipeline | Image-based sprite sheet system, AI-generated 32×32 characters, more animation frames |
+| Wave 3: Visual Overhaul | New office maps/environments, furniture art, lighting effects, particle systems, ambient animations |
+| Wave 4: QA Bug Bash | Interactive testing via Chrome DevTools MCP, burn down open GitHub issues (#5–#61) |
+
+**Architecture Changes:**
+- Sprites become generic visual characters — no hardcoded role assignments
+- On agent spawn: assign random unoccupied sprite from pool, inherit agent's role name as display label
+- On agent dismiss: sprite returns to pool, resumes idle activities
+- Demo mode removed — idle activities serve the same visual purpose
+- Programmatic pixel art (ASCII grids, SKColor pixels) replaced with PNG sprite sheets
+- Consistent art style across iOS + Web
+
+**Success Criteria:**
+- [ ] Sprites are generic — any agent maps to any character
+- [ ] Real sprite sheet assets replace all programmatic art
+- [ ] Office environment has professional-quality pixel art
+- [ ] More animation frames (walk, work, idle, celebrate, error)
+- [ ] All HIGH/MED GitHub issues resolved
+- [ ] Interactive QA session completed with no critical bugs remaining
+
+---
+
+### Phase 13: "The Shell" — Real PTY Terminal + Ambient Approvals (v6.0)
+
+**Goal:** Throw away the chat window. Major Tom becomes a real terminal in your pocket — PTY-backed `claude` CLI streamed over WebSocket into xterm.js, with the sprite office and tool-approval UI riding alongside as overlays. Three approval modes (`local` / `remote` / `hybrid`) let you toggle between TUI prompts and phone cards, with two parallel intercept paths (shell hooks + SDK `canUseTool`) feeding one approval queue.
+
+**Full spec:** [`docs/PHASE-13-THE-SHELL.md`](./PHASE-13-THE-SHELL.md)
+
+| Wave | Key Deliverables | PR |
+|------|------------------|----|
+| Wave 1: PTY Foundation | `node-pty` + `tmux -L major-tom` detached server, xterm.js v6 pane, custom mobile keybar, multi-tab, binary WS framing | #89 (in review) |
+| Wave 2: Approval Routing + 3 Modes | Shell hook installer, loopback `/internal/approvals` endpoint, `tmux send-keys` injector for hybrid race, push notification pipeline with deep-link `/approvals/:id` route, mode toggle UI | — |
+| Wave 3: Sprite Re-Wiring + Demolition | Real `SubagentStart`/`SubagentStop` event source (1 sprite per `agent_id`), delete ChatView + MessageBubble + TemplateDrawer + PromptHistoryOverlay + old fake Terminal.svelte, slim Dexie schema | — |
+
+**Explicit non-goals (deferred to Phase 14+):** Native iOS shell (Phase 14+), `claude /login` automation (Phase 14.alpha auto-clicker), voice dictation rewire, terminal recording, multi-process in single window, tmux pane splits.
+
+**Success Criteria:**
+- [ ] PWA runs a real `claude` session inside xterm.js, survives WS reconnects via tmux persistence
+- [ ] Mobile keybar provides Esc / Tab / Ctrl / arrows / sticky modifiers
+- [ ] All three approval modes work end-to-end via both intercept paths
+- [ ] Push notifications deep-link to `/approvals/:id` with mode-appropriate action buttons
+- [ ] Sprites driven by real `SubagentStart`/`SubagentStop` SDK + hook events
+- [ ] Chat layer fully demolished — `git grep ChatView` returns nothing
+- [ ] North-Star flow in the spec works end-to-end on a real iPhone
+
+---
+
 ### Version Summary
 
 | Version | Phase | Theme | Key Deliverable |
@@ -915,6 +969,8 @@ When the dachshund goes idle indoors, it looks for a blanket in Dog Corner. If n
 | **v3.0** | 5 | Everywhere | Watch, widgets, stable tunnel |
 | **v3.1** | 6–10 ✅ | ClaudeGod → Lockdown | Permission control, iOS parity, fleet, social, security |
 | **v4.0** | 11 ✅ | The Pipeline | Git viewer, GitHub PR/Issues, CI dashboard |
+| **v5.0** | 12 | Glow Up | Sprite makeover, dynamic agent mapping, visual overhaul, QA |
+| **v6.0** | 13 | The Shell | Real PTY terminal, ambient approvals (3 modes), sprite re-wiring, chat demolition |
 
 > **Reality check:** v1.0 is done. v1.1 makes this actually usable as a daily workflow tool. The Office is the fun part — but Mission Control MVP comes first because you need the tool to actually work before you make it pretty.
 

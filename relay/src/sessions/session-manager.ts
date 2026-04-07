@@ -10,12 +10,105 @@ export class SessionNotFoundError extends Error {
   }
 }
 
+/**
+ * A TabHandle is the relay's view of one live PTY tab (one tmux window).
+ *
+ * Wave 1: identity + attach-time metadata, so tab listings and future
+ * approval routing (Wave 2 hybrid mode → tmux send-keys) have something
+ * to target.
+ */
+export interface TabHandle {
+  tabId: string;
+  /** OS pid of the tmux attach-session process feeding this WS. */
+  pid: number;
+  attachedAt: Date;
+  /** Wave 2 will track this to debounce hybrid-mode keystroke injection. */
+  lastPtyInputAt?: Date;
+}
+
 export class SessionManager {
   private sessions = new Map<string, Session>();
   private persistedMetas = new Map<string, SessionMeta>();
   private persistedWorkingDirs = new Map<string, string>();
+  /**
+   * Wave 1: relay-global map of live PTY tabs.
+   *
+   * The outer key is the `tabId` (tmux window name); the inner map is
+   * keyed by the OS pid of each `attach-session` client. Tracking
+   * multiple handles per tabId is required because `/shell/:tabId`
+   * deliberately allows concurrent attaches (multi-device viewing) —
+   * a single-handle Map would let device A's close handler evict
+   * device B's still-live registration. Caught by Copilot review on
+   * PR #89.
+   */
+  private tabs = new Map<string, Map<number, TabHandle>>();
 
   constructor(private persistence: SessionPersistence) {}
+
+  // ── PTY tab registry (Wave 1 — Phase 13 "The Shell") ────────
+
+  /** Pick the most recently attached handle from a per-pid map. */
+  private latestHandle(handles: Map<number, TabHandle>): TabHandle | undefined {
+    let latest: TabHandle | undefined;
+    for (const handle of handles.values()) {
+      if (!latest || handle.attachedAt.getTime() > latest.attachedAt.getTime()) {
+        latest = handle;
+      }
+    }
+    return latest;
+  }
+
+  registerTab(handle: TabHandle): void {
+    let handles = this.tabs.get(handle.tabId);
+    if (!handles) {
+      handles = new Map<number, TabHandle>();
+      this.tabs.set(handle.tabId, handles);
+    }
+    handles.set(handle.pid, handle);
+    logger.info({ tabId: handle.tabId, pid: handle.pid, attachCount: handles.size }, 'PTY tab registered');
+  }
+
+  /**
+   * Unregister a single attach (`pid`) from a `tabId`. The tab entry is
+   * removed only when its last attach drops, so a `close` from one
+   * device cannot evict another device's still-live registration.
+   * Calling without `pid` drops every attach for the tab — only used by
+   * shutdown paths.
+   */
+  unregisterTab(tabId: string, pid?: number): void {
+    const handles = this.tabs.get(tabId);
+    if (!handles) return;
+    if (pid === undefined) {
+      this.tabs.delete(tabId);
+      logger.info({ tabId }, 'PTY tab fully unregistered');
+      return;
+    }
+    if (!handles.delete(pid)) {
+      logger.debug({ tabId, stalePid: pid }, 'Stale unregisterTab ignored');
+      return;
+    }
+    if (handles.size === 0) {
+      this.tabs.delete(tabId);
+    }
+    logger.info({ tabId, pid, remaining: handles.size }, 'PTY tab attach unregistered');
+  }
+
+  /** Returns the most recent handle for a tabId, or undefined. */
+  getTab(tabId: string): TabHandle | undefined {
+    const handles = this.tabs.get(tabId);
+    if (!handles) return undefined;
+    return this.latestHandle(handles);
+  }
+
+  /** Returns one handle per live tab (most recent attach wins). */
+  listTabs(): TabHandle[] {
+    const out: TabHandle[] = [];
+    for (const handles of this.tabs.values()) {
+      const latest = this.latestHandle(handles);
+      if (latest) out.push(latest);
+    }
+    return out;
+  }
 
   /** On startup, load persisted session metadata from disk */
   async restoreFromDisk(): Promise<void> {

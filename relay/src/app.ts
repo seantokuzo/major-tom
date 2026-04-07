@@ -20,6 +20,8 @@ import { createNotificationConfigRoutes } from './routes/notification-config.js'
 import { createAnalyticsRoutes } from './routes/analytics.js';
 import { createAchievementRoutes } from './routes/achievements.js';
 import { createWsRoute } from './routes/ws.js';
+import { createShellRoute } from './routes/shell.js';
+import { tmuxBootstrap, TmuxMissingError, TmuxVersionError } from './adapters/tmux-bootstrap.js';
 
 // Services
 import { SessionManager } from './sessions/session-manager.js';
@@ -183,6 +185,21 @@ export async function buildApp(config: AppConfig) {
 
   // Achievement API (auth required)
   await app.register(createAchievementRoutes({ achievementService }));
+
+  // Shell WebSocket — Phase 13 "The Shell"
+  // Eager tmux bootstrap so the first `/shell/:tabId` attach doesn't race.
+  // Non-fatal: if tmux is missing on dev boxes without the shell experience,
+  // we warn and continue. The shell route still rechecks lazily per connect.
+  try {
+    await tmuxBootstrap.ensure();
+  } catch (err) {
+    if (err instanceof TmuxMissingError || err instanceof TmuxVersionError) {
+      logger.warn({ err: (err as Error).message }, 'tmux unavailable — shell route will be degraded');
+    } else {
+      logger.error({ err }, 'Unexpected tmux bootstrap error');
+    }
+  }
+  await app.register(createShellRoute({ sessionManager }));
 
   // WebSocket (auth via session cookie on upgrade)
   await app.register(createWsRoute({
