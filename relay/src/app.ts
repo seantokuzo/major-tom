@@ -154,7 +154,12 @@ export async function buildApp(config: AppConfig) {
   // it doesn't share state with worker IPC. The queue extends EventEmitter
   // and broadcasts 'enqueue'/'resolve' events, which the WS layer
   // subscribes to via the eventBus 'server.message' catch-all.
-  const shellApprovalQueue = new ApprovalQueue();
+  //
+  // Timeout is 600s to match the hook script's `curl --max-time 600` and
+  // settings.json `timeout: 600` — otherwise remote-mode approvals would
+  // get auto-denied at the queue's default 5-minute mark while the hook
+  // is still happily waiting another 5 minutes.
+  const shellApprovalQueue = new ApprovalQueue(600_000);
 
   // Install (or self-heal) the Major-Tom-private hook scripts. Idempotent
   // and hash-versioned. NEVER touches the user's real ~/.claude/.

@@ -795,24 +795,38 @@ class RelayStore {
   /**
    * REST decision POST — used by the cold-start path AND by the SW
    * action button click that fires before a tab is even open. The
-   * server-side route lives at routes/api-approvals.ts and resolves
-   * the same shellApprovalQueue the WS path uses.
+   * server-side route lives at routes/api-approvals.ts and only accepts
+   * 'allow' or 'deny' (not 'skip' / 'allow_always'), so the parameter
+   * type is intentionally narrowed.
    */
-  async respondToApprovalRest(requestId: string, decision: ApprovalDecision): Promise<void> {
+  async respondToApprovalRest(
+    requestId: string,
+    decision: Extract<ApprovalDecision, 'allow' | 'deny'>,
+  ): Promise<void> {
     // Optimistic: drop the card before the round-trip so the UI feels
     // instant. The server's broadcast will be a no-op for us.
     this.pendingApprovals = this.pendingApprovals.filter((a) => a.id !== requestId);
+    let res: Response;
     try {
-      await fetch(`/api/approvals/${encodeURIComponent(requestId)}/decision`, {
+      res = await fetch(`/api/approvals/${encodeURIComponent(requestId)}/decision`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision }),
       });
     } catch (err) {
-      // Re-fetch so the user sees the request again if the POST failed.
+      // Network error — re-fetch so the user sees the request again.
       void this.fetchPendingApprovals();
       throw err;
+    }
+    // 404 → server already resolved it (race with WS broadcast or another
+    // device). That's the desired terminal state, so swallow it.
+    if (res.status === 404) return;
+    if (!res.ok) {
+      // Server rejected the decision — re-fetch so the card comes back
+      // and the user can retry.
+      void this.fetchPendingApprovals();
+      throw new Error(`approval decision failed: ${res.status} ${res.statusText}`);
     }
   }
 

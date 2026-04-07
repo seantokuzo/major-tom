@@ -293,11 +293,32 @@ export class ApprovalQueue extends EventEmitter {
     // Build the pending entry with routing fields populated.
     return new Promise<ApprovalDecision>((resolveOuter) => {
       const timer = setTimeout(() => {
-        if (this.pending.has(dedupKey)) {
+        const pendingEntry = this.pending.get(dedupKey);
+        if (!pendingEntry) return;
+        this.emit('expired', { requestId: dedupKey });
+
+        // ── routing-aware expiry ──────────────────────────────
+        // Only `remote` mode owns the decision on the phone. For
+        // `local`/`hybrid`, the hook already returned 'ask' immediately
+        // and the TUI owns (or co-owns) the decision — so a timeout
+        // here MUST NOT broadcast a 'deny' that would clear the TUI
+        // prompt or post a fake decision to other devices. We just
+        // drop the pending entry silently and let the TUI keep going.
+        if (routingMode === 'remote') {
           logger.warn({ dedupKey, tool, routingMode }, 'Approval timed out, auto-denying');
-          this.emit('expired', { requestId: dedupKey });
           this.resolve(dedupKey, 'deny');
+          return;
         }
+
+        logger.info(
+          { dedupKey, tool, routingMode },
+          'Approval expired (local/hybrid) — clearing pending without auto-deny',
+        );
+        clearTimeout(pendingEntry.timer);
+        if (pendingEntry.delayTimer) {
+          clearTimeout(pendingEntry.delayTimer);
+        }
+        this.pending.delete(dedupKey);
       }, this.timeoutMs);
 
       const entry: PendingApproval = {

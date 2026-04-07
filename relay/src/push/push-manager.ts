@@ -1,4 +1,4 @@
-import webpush from 'web-push';
+import webpush, { type RequestOptions } from 'web-push';
 import { logger } from '../utils/logger.js';
 import { PushPersistence } from './push-persistence.js';
 
@@ -150,7 +150,9 @@ export class PushManager {
     // Build the web-push RequestOptions only if any options were passed.
     // Avoids sending an empty object that could trigger a header on
     // services that interpret an empty Topic field as a real topic.
-    const requestOptions: Record<string, unknown> | undefined =
+    // Typed as the actual web-push RequestOptions so the compiler catches
+    // typos in field names (e.g. lowercase `ttl` would silently no-op).
+    const requestOptions: RequestOptions | undefined =
       options && (options.urgency || options.TTL !== undefined || options.topic)
         ? {
             ...(options.urgency && { urgency: options.urgency }),
@@ -168,7 +170,7 @@ export class PushManager {
               keys: sub.keys,
             },
             payloadStr,
-            requestOptions as never,
+            requestOptions,
           );
           successCount++;
         } catch (err: unknown) {

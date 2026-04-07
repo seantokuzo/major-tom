@@ -89,9 +89,9 @@ export function createApiApprovalsRoutes(
 
     // ── POST /api/settings/approval-mode ─────────────────────
     // Persists the routing mode to `approval-mode.json` so the next
-    // shell hook invocation picks it up. Also flips the queue's
-    // recently-resolved cache so any in-flight intercepts behave
-    // sensibly during the transition.
+    // shell hook invocation picks it up. In-flight approvals keep
+    // whatever routingMode they were enqueued with — only fresh hook
+    // invocations see the new mode.
     fastify.post<{ Body: { mode?: unknown } }>(
       '/api/settings/approval-mode',
       { preHandler: requireSession },
