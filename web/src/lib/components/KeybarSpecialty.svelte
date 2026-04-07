@@ -5,8 +5,13 @@
    * a dense wrap-grid of specialty keys. F-keys (the last 12 in the
    * default config) are given their own bottom row per Termius convention.
    *
-   * Emits `onHeightChange` whenever its rendered height changes so that
-   * Shell.svelte can publish it into `--vv-h` for the prompt-line lock.
+   * `onHeightChange` is emitted whenever the rendered height changes,
+   * but Shell.svelte currently IGNORES the value and clamps `--vv-h` to
+   * `window.innerHeight` in specialty mode. The grid is a flex-shrink:0
+   * child of `.shell`, so flex flow naturally pins it to the bottom and
+   * subtracting its height would double-count the reservation. We keep
+   * the emitter for debugging + any future reactive layout work, but it
+   * is NOT load-bearing for the prompt-line lock.
    */
   import { onDestroy, onMount } from 'svelte';
   import { keybarStore } from '../stores/keybar.svelte';
@@ -17,8 +22,11 @@
     onDismiss: () => void;
     onOpenCustomize: () => void;
     onHeightChange: (h: number) => void;
-    armedMod: 'ctrl' | 'alt' | null;
-    lockedMod: 'ctrl' | 'alt' | null;
+    /** Per-modifier armed (one-shot) + locked (persistent) state. */
+    ctrlArmed: boolean;
+    ctrlLocked: boolean;
+    altArmed: boolean;
+    altLocked: boolean;
   }
 
   const {
@@ -26,8 +34,10 @@
     onDismiss,
     onOpenCustomize,
     onHeightChange,
-    armedMod,
-    lockedMod,
+    ctrlArmed,
+    ctrlLocked,
+    altArmed,
+    altLocked,
   }: Props = $props();
 
   let rootEl: HTMLDivElement | undefined = $state();
@@ -65,11 +75,17 @@
   }
 
   function isArmed(spec: KeySpec): boolean {
-    return !!spec.sticky && armedMod === spec.id && lockedMod !== spec.id;
+    if (!spec.sticky) return false;
+    if (spec.id === 'ctrl') return ctrlArmed && !ctrlLocked;
+    if (spec.id === 'alt') return altArmed && !altLocked;
+    return false;
   }
 
   function isLocked(spec: KeySpec): boolean {
-    return !!spec.sticky && lockedMod === spec.id;
+    if (!spec.sticky) return false;
+    if (spec.id === 'ctrl') return ctrlLocked;
+    if (spec.id === 'alt') return altLocked;
+    return false;
   }
 </script>
 

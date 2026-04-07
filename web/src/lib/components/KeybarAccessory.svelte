@@ -20,13 +20,22 @@
     onPress: (spec: KeySpec) => void;
     onToggleSpecialty: () => void;
     onOpenCustomize: () => void;
-    /** Which sticky modifier (if any) is currently armed — for highlight state. */
-    armedMod: 'ctrl' | 'alt' | null;
-    /** Same for lock. */
-    lockedMod: 'ctrl' | 'alt' | null;
+    /** Per-modifier armed (one-shot) + locked (persistent) state. */
+    ctrlArmed: boolean;
+    ctrlLocked: boolean;
+    altArmed: boolean;
+    altLocked: boolean;
   }
 
-  const { onPress, onToggleSpecialty, onOpenCustomize, armedMod, lockedMod }: Props = $props();
+  const {
+    onPress,
+    onToggleSpecialty,
+    onOpenCustomize,
+    ctrlArmed,
+    ctrlLocked,
+    altArmed,
+    altLocked,
+  }: Props = $props();
 
   function handleKey(spec: KeySpec, e: Event): void {
     // Prevent mousedown from stealing focus from the hidden input iOS uses
@@ -37,12 +46,16 @@
 
   function isArmed(spec: KeySpec): boolean {
     if (!spec.sticky) return false;
-    return armedMod === spec.id && lockedMod !== spec.id;
+    if (spec.id === 'ctrl') return ctrlArmed && !ctrlLocked;
+    if (spec.id === 'alt') return altArmed && !altLocked;
+    return false;
   }
 
   function isLocked(spec: KeySpec): boolean {
     if (!spec.sticky) return false;
-    return lockedMod === spec.id;
+    if (spec.id === 'ctrl') return ctrlLocked;
+    if (spec.id === 'alt') return altLocked;
+    return false;
   }
 </script>
 

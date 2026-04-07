@@ -124,7 +124,15 @@
   }
 
   function handleModeChange(mode: 'main' | 'specialty'): void {
+    const wasSpecialty = keyboardMode === 'specialty';
     keyboardMode = mode;
+    // When leaving specialty mode, re-focus the active terminal so the
+    // iOS keyboard reopens. Entering specialty blurs document.activeElement
+    // to dismiss the iOS kbd; without an explicit re-focus on exit, the
+    // user has to manually tap the terminal before they can type again.
+    if (wasSpecialty && mode === 'main') {
+      shellStore.focusActive();
+    }
   }
 
   function handleSpecialtyHeight(h: number): void {

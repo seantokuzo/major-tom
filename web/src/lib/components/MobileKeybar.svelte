@@ -43,17 +43,23 @@
   let customizeOpen = $state(false);
 
   // ── Sticky modifier state ──────────────────────────────────────────
-  /** Armed (one-shot) modifier — cleared after next non-modifier key. */
-  let armedMod = $state<'ctrl' | 'alt' | null>(null);
-  /** Locked modifier — persistent until user taps again. */
-  let lockedMod = $state<'ctrl' | 'alt' | null>(null);
+  // Each modifier has independent armed + locked state so Ctrl and Alt
+  // can be combined (e.g. Ctrl+Alt+Delete, Alt+Ctrl-C). An earlier pass
+  // collapsed these into a single `armedMod`/`lockedMod` pair which
+  // silently killed combo support — Copilot caught it on PR #91.
+  /** One-shot: cleared after the next non-modifier dispatch. */
+  let ctrlArmed = $state(false);
+  let altArmed = $state(false);
+  /** Persistent: stays on until the user taps the mod again. */
+  let ctrlLocked = $state(false);
+  let altLocked = $state(false);
   /**
-   * Double-tap detector for locking a modifier. We record the id + time
-   * of the most recent sticky tap; if the same sticky is tapped again
-   * within DOUBLE_TAP_MS we promote the arm to a lock.
+   * Double-tap detector for promoting an armed mod to a lock. We record
+   * the id + timestamp of the most recent sticky tap; if the SAME sticky
+   * is tapped again within DOUBLE_TAP_MS, the arm becomes a lock.
    */
   const DOUBLE_TAP_MS = 400;
-  let lastStickyTap: { id: string; t: number } | null = null;
+  let lastStickyTap: { id: 'ctrl' | 'alt'; t: number } | null = null;
 
   function toggleSticky(id: 'ctrl' | 'alt'): void {
     const now = performance.now();
@@ -63,25 +69,34 @@
       now - lastStickyTap.t < DOUBLE_TAP_MS;
     lastStickyTap = { id, t: now };
 
-    // If currently locked, any tap releases.
-    if (lockedMod === id) {
-      lockedMod = null;
-      armedMod = null;
+    const armed = id === 'ctrl' ? ctrlArmed : altArmed;
+    const locked = id === 'ctrl' ? ctrlLocked : altLocked;
+
+    // If currently locked, any tap on the same mod releases it.
+    if (locked) {
+      if (id === 'ctrl') {
+        ctrlLocked = false;
+        ctrlArmed = false;
+      } else {
+        altLocked = false;
+        altArmed = false;
+      }
       return;
     }
 
     // Double-tap from armed → promote to locked.
-    if (isDoubleTap && armedMod === id) {
-      lockedMod = id;
-      armedMod = id;
+    if (isDoubleTap && armed) {
+      if (id === 'ctrl') ctrlLocked = true;
+      else altLocked = true;
       return;
     }
 
-    // Single tap toggles armed state.
-    armedMod = armedMod === id ? null : id;
+    // Single tap toggles just this mod's armed state.
+    if (id === 'ctrl') ctrlArmed = !ctrlArmed;
+    else altArmed = !altArmed;
   }
 
-  /** Main dispatch: applies armed/locked mods to spec.bytes and calls inject(). */
+  /** Main dispatch: applies every active mod to spec.bytes and calls inject(). */
   function dispatch(spec: KeySpec): void {
     if (spec.sticky) {
       if (spec.id === 'ctrl' || spec.id === 'alt') toggleSticky(spec.id);
@@ -89,9 +104,10 @@
     }
 
     let bytes = spec.bytes;
-    const effectiveMod = lockedMod ?? armedMod;
+    const ctrlActive = ctrlLocked || ctrlArmed;
+    const altActive = altLocked || altArmed;
 
-    if (effectiveMod === 'ctrl' && bytes.length >= 1) {
+    if (ctrlActive && bytes.length >= 1) {
       // Ctrl + printable ASCII → control byte (bit 5 cleared). xterm/VT
       // convention: Ctrl-@ = NUL (0x00), Ctrl-A = 0x01, … Ctrl-_ = 0x1f.
       // We only transform the first byte so multi-byte sequences (Ctrl
@@ -104,14 +120,16 @@
         bytes = String.fromCharCode(first ^ 0x40) + bytes.slice(1);
       }
     }
-    if (effectiveMod === 'alt' && bytes.length >= 1) {
+    if (altActive && bytes.length >= 1) {
       // ESC prefix is the portable Meta encoding xterm.js expects.
+      // Combined with Ctrl above this yields Ctrl+Alt (ESC + control byte).
       bytes = '\x1b' + bytes;
     }
 
     inject(bytes);
     // Single-tap armed mods auto-release; locked stays active.
-    if (lockedMod === null) armedMod = null;
+    if (!ctrlLocked) ctrlArmed = false;
+    if (!altLocked) altArmed = false;
   }
 
   function toggleSpecialty(): void {
@@ -159,8 +177,10 @@
       onPress={dispatch}
       onToggleSpecialty={toggleSpecialty}
       onOpenCustomize={openCustomize}
-      {armedMod}
-      {lockedMod}
+      {ctrlArmed}
+      {ctrlLocked}
+      {altArmed}
+      {altLocked}
     />
   {:else if keyboardMode === 'specialty'}
     <KeybarSpecialty
@@ -168,8 +188,10 @@
       onDismiss={toggleSpecialty}
       onOpenCustomize={openCustomize}
       onHeightChange={handleSpecialtyHeight}
-      {armedMod}
-      {lockedMod}
+      {ctrlArmed}
+      {ctrlLocked}
+      {altArmed}
+      {altLocked}
     />
   {/if}
 </div>
