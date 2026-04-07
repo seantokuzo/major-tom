@@ -938,11 +938,11 @@ When the dachshund goes idle indoors, it looks for a blanket in Dog Corner. If n
 
 **Full spec:** [`docs/PHASE-13-THE-SHELL.md`](./PHASE-13-THE-SHELL.md)
 
-| Wave | Key Deliverables |
-|------|------------------|
-| Wave 1: PTY Foundation | `node-pty` + `tmux -L major-tom` detached server, xterm.js v6 pane, custom mobile keybar, multi-tab, binary WS framing |
-| Wave 2: Approval Routing + 3 Modes | Shell hook installer, loopback `/internal/approvals` endpoint, `tmux send-keys` injector for hybrid race, push notification pipeline with deep-link `/approvals/:id` route, mode toggle UI |
-| Wave 3: Sprite Re-Wiring + Demolition | Real `SubagentStart`/`SubagentStop` event source (1 sprite per `agent_id`), delete ChatView + MessageBubble + TemplateDrawer + PromptHistoryOverlay + old fake Terminal.svelte, slim Dexie schema |
+| Wave | Key Deliverables | PR |
+|------|------------------|----|
+| Wave 1: PTY Foundation | `node-pty` + `tmux -L major-tom` detached server, xterm.js v6 pane, custom mobile keybar, multi-tab, binary WS framing | #89 (in review) |
+| Wave 2: Approval Routing + 3 Modes | Shell hook installer, loopback `/internal/approvals` endpoint, `tmux send-keys` injector for hybrid race, push notification pipeline with deep-link `/approvals/:id` route, mode toggle UI | — |
+| Wave 3: Sprite Re-Wiring + Demolition | Real `SubagentStart`/`SubagentStop` event source (1 sprite per `agent_id`), delete ChatView + MessageBubble + TemplateDrawer + PromptHistoryOverlay + old fake Terminal.svelte, slim Dexie schema | — |
 
 **Explicit non-goals (deferred to Phase 14+):** Native iOS shell (Phase 14+), `claude /login` automation (Phase 14.alpha auto-clicker), voice dictation rewire, terminal recording, multi-process in single window, tmux pane splits.
 
