@@ -120,11 +120,17 @@ class ShellStore {
     }
   }
 
-  /** Push raw bytes to the PTY. Caller owns the encoding. */
+  /**
+   * Push raw bytes to the PTY. String input is UTF-8 encoded so the
+   * browser sends a *binary* WebSocket frame — the relay PTY route
+   * treats text frames as JSON control messages, so unencoded strings
+   * would be silently dropped (caught by Copilot review on PR #89).
+   */
   send(tabId: string, data: string | Uint8Array): void {
     const tab = this.tabs.find((t) => t.id === tabId);
     if (!tab || !tab.socket || tab.socket.readyState !== WebSocket.OPEN) return;
-    tab.socket.send(data);
+    const payload = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+    tab.socket.send(payload);
   }
 
   /** Send a JSON control frame (resize, etc). */

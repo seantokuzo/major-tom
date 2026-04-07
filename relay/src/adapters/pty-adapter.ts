@@ -73,7 +73,10 @@ export async function attachPty(
     [
       '-L', MAJOR_TOM_SOCKET,
       'attach-session',
-      '-d',                             // detach any other clients on this window cleanly
+      // No `-d`: allow concurrent tmux clients so the same shell window
+      // can be observed from multiple devices (laptop + phone) at once.
+      // Caught by Copilot review on PR #89 — `-d` would forcibly kick
+      // every other attached client, defeating multi-device viewing.
       '-t', `${MAJOR_TOM_SESSION}:${tabId}`,
     ],
     {

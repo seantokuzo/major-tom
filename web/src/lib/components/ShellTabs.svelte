@@ -17,21 +17,58 @@
   }
 
   let { onNew, onClose }: Props = $props();
+
+  /**
+   * Move focus to the tab at `index` (wraps around). Caught by Copilot
+   * review on PR #89 — `role="tab"` elements should live inside a
+   * `role="tablist"` and use roving tabindex + arrow-key navigation
+   * instead of every tab being individually tabbable.
+   */
+  function focusTabByIndex(index: number, tablist: HTMLElement | null): void {
+    const tabs = shellStore.tabs;
+    if (!tablist || tabs.length === 0) return;
+    const nextIndex = ((index % tabs.length) + tabs.length) % tabs.length;
+    const nextTab = tabs[nextIndex];
+    if (!nextTab) return;
+    shellStore.setActive(nextTab.id);
+    const tabElements = tablist.querySelectorAll<HTMLElement>('[role="tab"]');
+    tabElements[nextIndex]?.focus();
+  }
 </script>
 
-<div class="tabs">
-  {#each shellStore.tabs as tab (tab.id)}
+<div class="tabs" role="tablist" aria-label="Shell tabs" aria-orientation="horizontal">
+  {#each shellStore.tabs as tab, index (tab.id)}
     <div
       class="tab"
       class:active={shellStore.activeTabId === tab.id}
       role="tab"
-      tabindex="0"
+      tabindex={shellStore.activeTabId === tab.id ? 0 : -1}
       aria-selected={shellStore.activeTabId === tab.id}
       onclick={() => shellStore.setActive(tab.id)}
       onkeydown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           shellStore.setActive(tab.id);
+          return;
+        }
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          focusTabByIndex(index + 1, e.currentTarget.parentElement);
+          return;
+        }
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          focusTabByIndex(index - 1, e.currentTarget.parentElement);
+          return;
+        }
+        if (e.key === 'Home') {
+          e.preventDefault();
+          focusTabByIndex(0, e.currentTarget.parentElement);
+          return;
+        }
+        if (e.key === 'End') {
+          e.preventDefault();
+          focusTabByIndex(shellStore.tabs.length - 1, e.currentTarget.parentElement);
         }
       }}
     >

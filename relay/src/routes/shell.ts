@@ -23,6 +23,24 @@ interface ShellRouteDeps {
 /** Valid tabIds: 1-64 chars of `[a-zA-Z0-9._-]`. Defensive against path abuse. */
 const TAB_ID_RE = /^[a-zA-Z0-9._-]{1,64}$/;
 
+/** Same bounds as the runtime resize handler in pty-adapter.ts. */
+const DIM_MIN = 2;
+const DIM_MAX = 500;
+
+/**
+ * Clamp a query-string dimension into the same [2, 500] range we enforce
+ * on runtime resize control frames. Returns undefined for missing/invalid
+ * input so the PTY adapter falls back to its default. Caught by Copilot
+ * review on PR #89 — unbounded values would let an authed client force
+ * an oversized PTY allocation.
+ */
+function clampDim(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.max(DIM_MIN, Math.min(DIM_MAX, Math.floor(n)));
+}
+
 export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
   const { sessionManager } = deps;
 
@@ -77,15 +95,16 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
           return;
         }
 
-        // Optional initial cols/rows so the first redraw isn't at 80x24
-        const cols = colsQ ? Number(colsQ) : undefined;
-        const rows = rowsQ ? Number(rowsQ) : undefined;
+        // Optional initial cols/rows so the first redraw isn't at 80x24,
+        // clamped to the same bounds enforced on resize control frames.
+        const cols = clampDim(colsQ);
+        const rows = clampDim(rowsQ);
 
         try {
           const handle = await attachPty(socket, {
             tabId,
-            ...(cols && Number.isFinite(cols) ? { cols } : {}),
-            ...(rows && Number.isFinite(rows) ? { rows } : {}),
+            ...(cols !== undefined ? { cols } : {}),
+            ...(rows !== undefined ? { rows } : {}),
           });
 
           // Register the tab on the session manager so future waves can
