@@ -89,13 +89,35 @@
 
   type ViewTab = 'chat' | 'shell' | 'office' | 'characters';
 
-  // Phase 13 Wave 1 feature flag — opt in via:
+  // Phase 13 Wave 1 feature flag — opt in via either:
   //   localStorage.setItem('mt-shell-enabled', '1')
+  //   ?shell=1 in the URL (also persists to localStorage so it sticks)
   // Until flipped, the legacy chat tab is the default and the Shell tab
-  // is hidden so existing users see no change.
+  // is hidden so existing users see no change. The URL-param path exists
+  // because iOS Safari blocks `javascript:` paste in the address bar, so
+  // there's no way to flip localStorage from a phone without devtools.
   function readShellFlag(): boolean {
-    if (typeof localStorage === 'undefined') return false;
-    return localStorage.getItem('mt-shell-enabled') === '1';
+    // Wrap localStorage access in try/catch — privacy mode and quota
+    // errors can throw on getItem/setItem/removeItem, and an unhandled
+    // throw here would prevent the app from booting. Other stores like
+    // relay.svelte.ts already do this. Caught by Copilot review on PR #90.
+    try {
+      if (typeof localStorage === 'undefined') return false;
+      if (typeof location !== 'undefined') {
+        const params = new URLSearchParams(location.search);
+        if (params.get('shell') === '1') {
+          localStorage.setItem('mt-shell-enabled', '1');
+          return true;
+        }
+        if (params.get('shell') === '0') {
+          localStorage.removeItem('mt-shell-enabled');
+          return false;
+        }
+      }
+      return localStorage.getItem('mt-shell-enabled') === '1';
+    } catch {
+      return false;
+    }
   }
   const shellEnabled = $state(readShellFlag());
 

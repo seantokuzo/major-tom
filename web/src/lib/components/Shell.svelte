@@ -22,6 +22,17 @@
   import { relay } from '../stores/relay.svelte';
 
   let keyboardVisible = $state(false);
+  // Visual-viewport tracking for the prompt-line lock.
+  // - vvHeight: the height of the area the user can actually see (shrinks
+  //   when the iOS keyboard opens). We size .shell to this so the xterm
+  //   pane exactly fills the visible region.
+  // - vvOffsetTop: how much iOS has scrolled the layout viewport up to
+  //   reveal a focused input. We translate .shell DOWN by this amount so
+  //   it stays glued to where the user is actually looking, instead of
+  //   marching off-screen. Without this, the body scroll iOS does on
+  //   focus would push the terminal half off the top of the visible area.
+  let vvHeight = $state(0);
+  let vvOffsetTop = $state(0);
   let cleanupVv: (() => void) | null = null;
 
   // Ensure at least one tab on mount.
@@ -47,6 +58,8 @@
         raf = requestAnimationFrame(() => {
           const delta = window.innerHeight - vv.height;
           keyboardVisible = delta > 100;
+          vvHeight = vv.height;
+          vvOffsetTop = vv.offsetTop;
         });
       };
       vv.addEventListener('resize', recompute);
@@ -81,7 +94,13 @@
   }
 </script>
 
-<div class="shell">
+<div
+  class="shell"
+  class:keyboard-on={keyboardVisible}
+  style={keyboardVisible
+    ? `--vv-h:${vvHeight}px;--vv-top:${vvOffsetTop}px`
+    : undefined}
+>
   <ShellTabs onNew={handleNewTab} onClose={handleCloseTab} />
   <div class="panes">
     {#each shellStore.tabs as tab (tab.id)}
@@ -104,6 +123,33 @@
     min-height: 0;
     background: #0a0a0a;
     color: #e8e8e8;
+  }
+
+  /*
+   * Prompt-line position lock (Phase 13 Wave 1, smoke-test feedback).
+   *
+   * When the iOS soft keyboard is open we lift .shell out of normal flow
+   * and pin it to the visual viewport. `top: var(--vv-top)` cancels out
+   * iOS's automatic body-scroll on input focus (it scrolls the layout
+   * viewport up to bring the input above the keyboard, which would
+   * otherwise drag .shell off-screen). `height: var(--vv-h)` sizes the
+   * container exactly to the visible area, so the xterm pane refits to
+   * that, and the prompt line stays glued to the bottom of the visible
+   * region right above MobileKeybar — no janky body scroll, no
+   * disappearing prompt.
+   *
+   * v1 only fires when keyboardVisible is true; when the keyboard
+   * dismisses, .shell snaps back to its normal flex layout. Future
+   * Termius-style custom keyboard work will replace this with a fully
+   * owned bottom-locked input row.
+   */
+  .shell.keyboard-on {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: var(--vv-top, 0px);
+    height: var(--vv-h, 100dvh);
+    z-index: 100;
   }
 
   .panes {
