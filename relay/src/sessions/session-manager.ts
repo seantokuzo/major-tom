@@ -10,12 +10,51 @@ export class SessionNotFoundError extends Error {
   }
 }
 
+/**
+ * A TabHandle is the relay's view of one live PTY tab (one tmux window).
+ *
+ * Wave 1: identity + attach-time metadata, so tab listings and future
+ * approval routing (Wave 2 hybrid mode → tmux send-keys) have something
+ * to target.
+ */
+export interface TabHandle {
+  tabId: string;
+  /** OS pid of the tmux attach-session process feeding this WS. */
+  pid: number;
+  attachedAt: Date;
+  /** Wave 2 will track this to debounce hybrid-mode keystroke injection. */
+  lastPtyInputAt?: Date;
+}
+
 export class SessionManager {
   private sessions = new Map<string, Session>();
   private persistedMetas = new Map<string, SessionMeta>();
   private persistedWorkingDirs = new Map<string, string>();
+  /** Wave 1: relay-global map of live PTY tabs (tabId → tmux window handle). */
+  private tabs = new Map<string, TabHandle>();
 
   constructor(private persistence: SessionPersistence) {}
+
+  // ── PTY tab registry (Wave 1 — Phase 13 "The Shell") ────────
+
+  registerTab(handle: TabHandle): void {
+    this.tabs.set(handle.tabId, handle);
+    logger.info({ tabId: handle.tabId, pid: handle.pid }, 'PTY tab registered');
+  }
+
+  unregisterTab(tabId: string): void {
+    if (this.tabs.delete(tabId)) {
+      logger.info({ tabId }, 'PTY tab unregistered');
+    }
+  }
+
+  getTab(tabId: string): TabHandle | undefined {
+    return this.tabs.get(tabId);
+  }
+
+  listTabs(): TabHandle[] {
+    return [...this.tabs.values()];
+  }
 
   /** On startup, load persisted session metadata from disk */
   async restoreFromDisk(): Promise<void> {
