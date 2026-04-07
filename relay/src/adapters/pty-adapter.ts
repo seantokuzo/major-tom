@@ -23,6 +23,16 @@ export interface PtyAttachOptions {
   rows?: number;
 }
 
+/**
+ * Hard cap on how much data a single client→server binary frame may
+ * push into the PTY. The WebSocket-level `maxPayload` was bumped to
+ * 8 MiB so the relay can stream large server→client redraws, but the
+ * client→server direction has no legitimate need for big frames —
+ * paste of an entire 8 MiB blob would be an attack, not a use case.
+ * Caught by Copilot review on PR #89.
+ */
+const MAX_PTY_INPUT_BYTES = 64 * 1024;
+
 export interface PtyHandle {
   tabId: string;
   pty: IPty;
@@ -137,6 +147,15 @@ export async function attachPty(
   socket.on('message', (msg: Buffer, isBinary: boolean) => {
     if (handle.disposed) return;
     if (isBinary) {
+      // App-level cap: 8 MiB maxPayload is for server→client redraws,
+      // not for the client to push 8 MiB into the PTY in one frame.
+      if (msg.length > MAX_PTY_INPUT_BYTES) {
+        logger.warn(
+          { tabId, frameBytes: msg.length, limit: MAX_PTY_INPUT_BYTES },
+          'PTY input frame exceeds limit — dropping',
+        );
+        return;
+      }
       writeSafe(handle, msg);
       return;
     }
@@ -167,8 +186,19 @@ export async function attachPty(
       case 'input': {
         // Allow clients to send text input as a JSON control frame too,
         // in case their WS impl can't do binary easily (e.g. debug tools).
+        // Same MAX_PTY_INPUT_BYTES cap as the binary path so we can't
+        // be flooded via the JSON channel either.
         const data = typeof ctrl['data'] === 'string' ? (ctrl['data'] as string) : '';
-        if (data.length > 0) writeSafe(handle, Buffer.from(data, 'utf-8'));
+        if (data.length === 0) return;
+        const buf = Buffer.from(data, 'utf-8');
+        if (buf.length > MAX_PTY_INPUT_BYTES) {
+          logger.warn(
+            { tabId, frameBytes: buf.length, limit: MAX_PTY_INPUT_BYTES },
+            'PTY JSON input frame exceeds limit — dropping',
+          );
+          return;
+        }
+        writeSafe(handle, buf);
         return;
       }
       default:

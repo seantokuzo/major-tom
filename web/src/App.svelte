@@ -5,7 +5,10 @@
   import SessionInfo from './lib/components/SessionInfo.svelte';
   import ChatView from './lib/components/ChatView.svelte';
   import Terminal from './lib/components/Terminal.svelte';
-  import Shell from './lib/components/Shell.svelte';
+  import type { Component } from 'svelte';
+  // Shell is lazy-loaded only when the Phase 13 Wave 1 feature flag is on,
+  // so xterm.js + addons don't ship to users who haven't opted in.
+  // Caught by Copilot review on PR #89 — bundle bloat for opted-out users.
   import Toast from './lib/components/Toast.svelte';
   import OfficeCanvas from './lib/components/OfficeCanvas.svelte';
   import AgentInspector from './lib/components/AgentInspector.svelte';
@@ -95,6 +98,17 @@
     return localStorage.getItem('mt-shell-enabled') === '1';
   }
   const shellEnabled = $state(readShellFlag());
+
+  // Dynamic import of the Shell component — only fetched once the user
+  // opts into the feature flag, so xterm.js doesn't ship to everyone.
+  let ShellComponent = $state<Component | null>(null);
+  $effect(() => {
+    if (shellEnabled && !ShellComponent) {
+      void import('./lib/components/Shell.svelte').then((mod) => {
+        ShellComponent = mod.default as Component;
+      });
+    }
+  });
 
   let activeTab = $state<ViewTab>('chat');
   let activeView = $state<OfficeView>('office');
@@ -338,7 +352,12 @@
         <ChatView />
       {/if}
     {:else if activeTab === 'shell'}
-      <Shell />
+      {#if ShellComponent}
+        {@const Shell = ShellComponent}
+        <Shell />
+      {:else}
+        <div class="shell-loading">loading shell…</div>
+      {/if}
     {:else if activeTab === 'characters'}
       <CharacterGallery />
     {:else}
@@ -665,6 +684,16 @@
     position: relative;
     display: flex;
     min-height: 0;
+  }
+
+  .shell-loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
   }
 
   .session-badge {

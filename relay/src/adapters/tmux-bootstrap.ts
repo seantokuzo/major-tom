@@ -40,27 +40,55 @@ export class TmuxVersionError extends Error {
  */
 export class TmuxBootstrap {
   private promise: Promise<void> | null = null;
+  /**
+   * False until the in-flight `run()` resolves successfully. Without
+   * this flag, a concurrent `ensure()` would call `hasMajorTomSession()`
+   * before the first `run()` had created the session, see `false`,
+   * null the in-flight promise, and start a duplicate bootstrap. The
+   * flag means we only do "session went missing" revalidation AFTER
+   * the cached promise has resolved (Copilot review on PR #89).
+   */
+  private ready = false;
 
   async ensure(): Promise<void> {
-    if (this.promise) {
-      // If the session has since been killed externally, invalidate cache.
-      if (!(await hasMajorTomSession())) {
-        logger.warn('tmux session went missing — re-bootstrapping');
-        this.promise = null;
-      } else {
-        return this.promise;
+    const cached = this.promise;
+    if (cached) {
+      // While the first bootstrap is still in flight, every concurrent
+      // caller must reuse the same promise — no revalidation, no race.
+      if (!this.ready) return cached;
+
+      // Bootstrap finished. Now it's safe to check whether tmux was
+      // killed externally between the resolve and this call.
+      if (await hasMajorTomSession()) return cached;
+
+      // Another caller may have already nulled/replaced the promise
+      // while we were awaiting hasMajorTomSession.
+      if (this.promise !== cached) {
+        return this.promise ?? cached;
       }
-    }
-    this.promise = this.run().catch((err) => {
-      // Failed bootstrap must not poison future attempts.
+
+      logger.warn('tmux session went missing — re-bootstrapping');
       this.promise = null;
-      throw err;
-    });
-    return this.promise;
+      this.ready = false;
+    }
+
+    const runPromise = this.run()
+      .then(() => {
+        this.ready = true;
+      })
+      .catch((err) => {
+        // Failed bootstrap must not poison future attempts.
+        this.promise = null;
+        this.ready = false;
+        throw err;
+      });
+    this.promise = runPromise;
+    return runPromise;
   }
 
   reset(): void {
     this.promise = null;
+    this.ready = false;
   }
 
   private async run(): Promise<void> {

@@ -72,18 +72,12 @@
     opened = true;
     queueFit();
 
-    // Open the tab in the store if it doesn't already exist.
-    // The first onResize after fit() pushes the real dims to the relay.
-    const existing = shellStore.tabs.find((t) => t.id === tabId);
-    if (!existing) {
-      shellStore.openTab({
-        id: tabId,
-        label: tabId,
-        cols: lastDims.cols,
-        rows: lastDims.rows,
-        token: relay.authToken,
-      });
-    }
+    // Register listeners BEFORE openTab so the WebSocket connection (and
+    // any data tmux emits immediately on attach) cannot fire before we're
+    // subscribed. shellStore.onData/onStatus accept tab ids that don't
+    // exist yet — the listener Set is created lazily. Caught by Copilot
+    // review on PR #89; without this, the very first prompt redraw could
+    // be silently dropped on a fast-LAN attach.
 
     // PTY → terminal
     unsubData = shellStore.onData(tabId, (chunk) => {
@@ -106,6 +100,20 @@
         term.write(`\r\n\x1b[2;31m[shell] error${detail ? `: ${detail}` : ''}\x1b[0m\r\n`);
       }
     });
+
+    // Now that data + status listeners are wired, kick off the WS attach.
+    // Order matters: openTab() constructs the WebSocket synchronously and
+    // any first-frame data must land in our onData listener above.
+    const existing = shellStore.tabs.find((t) => t.id === tabId);
+    if (!existing) {
+      shellStore.openTab({
+        id: tabId,
+        label: tabId,
+        cols: lastDims.cols,
+        rows: lastDims.rows,
+        token: relay.authToken,
+      });
+    }
 
     // Terminal → PTY (handles keyboard, paste, AND keybar via term.input())
     term.onData((data) => {

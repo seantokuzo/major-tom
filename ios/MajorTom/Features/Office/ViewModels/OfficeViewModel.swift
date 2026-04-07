@@ -141,9 +141,6 @@ final class OfficeViewModel {
         let charType = agents[index].characterType
         agents[index].status = .celebrating
         agents[index].currentTask = result
-
-        // Release any activity station immediately on completion
-        activityManager.releaseStation(for: id)
         moodEngine.recordCompletion(id)
 
         // After a brief celebration, transition to leaving
@@ -151,15 +148,15 @@ final class OfficeViewModel {
             try? await Task.sleep(for: .seconds(2))
             if let idx = agents.firstIndex(where: { $0.id == id }) {
                 agents[idx].status = .leaving
-                releaseDesk(for: id)
             }
-            // Remove after walking out, then return sprite to idle pool
+            // Remove after walking out via the centralized cleanup path
+            // (releases desk + activity station + mood + selection in one
+            // place), then return the sprite to the idle pool. The inline
+            // cleanup that lived here previously regressed away from
+            // calling `removeAgent(id:)` in the sprite-pool refactor —
+            // Copilot review on PR #89.
             try? await Task.sleep(for: .seconds(1.5))
-            moodEngine.removeAgent(id)
-            agents.removeAll { $0.id == id }
-            if selectedAgentId == id {
-                selectedAgentId = nil
-            }
+            removeAgent(id: id)
             returnToIdlePool(charType)
         }
     }
@@ -175,17 +172,13 @@ final class OfficeViewModel {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
         agents[index].status = .leaving
         agents[index].currentTask = nil
-        releaseDesk(for: id)
-        activityManager.releaseStation(for: id)
 
-        // Remove after walking out, then return sprite to idle pool
+        // Remove after walking out via the centralized cleanup path,
+        // then return the sprite to the idle pool. Same dedupe as
+        // handleAgentComplete (Copilot review on PR #89).
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
-            moodEngine.removeAgent(id)
-            agents.removeAll { $0.id == id }
-            if selectedAgentId == id {
-                selectedAgentId = nil
-            }
+            removeAgent(id: id)
             returnToIdlePool(charType)
         }
     }

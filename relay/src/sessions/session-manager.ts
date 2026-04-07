@@ -30,44 +30,84 @@ export class SessionManager {
   private sessions = new Map<string, Session>();
   private persistedMetas = new Map<string, SessionMeta>();
   private persistedWorkingDirs = new Map<string, string>();
-  /** Wave 1: relay-global map of live PTY tabs (tabId → tmux window handle). */
-  private tabs = new Map<string, TabHandle>();
+  /**
+   * Wave 1: relay-global map of live PTY tabs.
+   *
+   * The outer key is the `tabId` (tmux window name); the inner map is
+   * keyed by the OS pid of each `attach-session` client. Tracking
+   * multiple handles per tabId is required because `/shell/:tabId`
+   * deliberately allows concurrent attaches (multi-device viewing) —
+   * a single-handle Map would let device A's close handler evict
+   * device B's still-live registration. Caught by Copilot review on
+   * PR #89.
+   */
+  private tabs = new Map<string, Map<number, TabHandle>>();
 
   constructor(private persistence: SessionPersistence) {}
 
   // ── PTY tab registry (Wave 1 — Phase 13 "The Shell") ────────
 
+  /** Pick the most recently attached handle from a per-pid map. */
+  private latestHandle(handles: Map<number, TabHandle>): TabHandle | undefined {
+    let latest: TabHandle | undefined;
+    for (const handle of handles.values()) {
+      if (!latest || handle.attachedAt.getTime() > latest.attachedAt.getTime()) {
+        latest = handle;
+      }
+    }
+    return latest;
+  }
+
   registerTab(handle: TabHandle): void {
-    this.tabs.set(handle.tabId, handle);
-    logger.info({ tabId: handle.tabId, pid: handle.pid }, 'PTY tab registered');
+    let handles = this.tabs.get(handle.tabId);
+    if (!handles) {
+      handles = new Map<number, TabHandle>();
+      this.tabs.set(handle.tabId, handles);
+    }
+    handles.set(handle.pid, handle);
+    logger.info({ tabId: handle.tabId, pid: handle.pid, attachCount: handles.size }, 'PTY tab registered');
   }
 
   /**
-   * Unregister a tab keyed by both `tabId` AND the registering pid, so a
-   * stale cleanup callback from an older socket cannot evict the handle of
-   * a newer attach against the same `tabId`. Multi-device attaches and
-   * fast reconnects can both reuse the same tab id; without the pid check
-   * the older socket's `close` handler would silently delete the live
-   * registration. Caught by Copilot review on PR #89.
+   * Unregister a single attach (`pid`) from a `tabId`. The tab entry is
+   * removed only when its last attach drops, so a `close` from one
+   * device cannot evict another device's still-live registration.
+   * Calling without `pid` drops every attach for the tab — only used by
+   * shutdown paths.
    */
   unregisterTab(tabId: string, pid?: number): void {
-    const current = this.tabs.get(tabId);
-    if (!current) return;
-    if (pid !== undefined && current.pid !== pid) {
-      // A newer attach has already taken over this tabId — leave it alone.
-      logger.debug({ tabId, stalePid: pid, currentPid: current.pid }, 'Stale unregisterTab ignored');
+    const handles = this.tabs.get(tabId);
+    if (!handles) return;
+    if (pid === undefined) {
+      this.tabs.delete(tabId);
+      logger.info({ tabId }, 'PTY tab fully unregistered');
       return;
     }
-    this.tabs.delete(tabId);
-    logger.info({ tabId, pid: current.pid }, 'PTY tab unregistered');
+    if (!handles.delete(pid)) {
+      logger.debug({ tabId, stalePid: pid }, 'Stale unregisterTab ignored');
+      return;
+    }
+    if (handles.size === 0) {
+      this.tabs.delete(tabId);
+    }
+    logger.info({ tabId, pid, remaining: handles.size }, 'PTY tab attach unregistered');
   }
 
+  /** Returns the most recent handle for a tabId, or undefined. */
   getTab(tabId: string): TabHandle | undefined {
-    return this.tabs.get(tabId);
+    const handles = this.tabs.get(tabId);
+    if (!handles) return undefined;
+    return this.latestHandle(handles);
   }
 
+  /** Returns one handle per live tab (most recent attach wins). */
   listTabs(): TabHandle[] {
-    return [...this.tabs.values()];
+    const out: TabHandle[] = [];
+    for (const handles of this.tabs.values()) {
+      const latest = this.latestHandle(handles);
+      if (latest) out.push(latest);
+    }
+    return out;
   }
 
   /** On startup, load persisted session metadata from disk */

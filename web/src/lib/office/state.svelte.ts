@@ -634,6 +634,13 @@ export function createOfficeState(): OfficeState {
     engine.removeAgent(id);
     agents = agents.filter((a) => a.id !== id);
     if (selectedAgentId === id) selectedAgentId = null;
+    // Stop the 30s mood speech scanner once no real agents are left.
+    // Idle sprites aren't registered in moodEngine, so its size is the
+    // canonical "real agent count". Without this, the interval would
+    // tick forever after the last completion (Copilot review on PR #89).
+    if (moodEngine.getAllMoods().size === 0) {
+      stopMoodSpeechScanner();
+    }
   }
 
   // ── Lifecycle Handlers ─────────────────────────────────────
@@ -655,13 +662,12 @@ export function createOfficeState(): OfficeState {
         startView = engineAgent.currentView ?? 'office';
       }
 
-      // Remove idle sprite
-      clearIdleTimer(idleSpriteId);
-      clearPingPongTimer(idleSpriteId);
-      clearPairing(idleSpriteId);
-      activityManager.release(idleSpriteId);
-      engine.removeAgent(idleSpriteId);
-      agents = agents.filter((a) => a.id !== idleSpriteId);
+      // Remove idle sprite via the centralized cleanup path so all
+      // associated state (timers, pairings, socialNegotiating, activity
+      // reservations) is cleared. Inline cleanup previously left stale
+      // ids in `socialNegotiating` for any idle sprite that was
+      // mid-negotiation when its character was claimed (Copilot review).
+      removeAgent(idleSpriteId);
     }
 
     const characterType = spriteType ?? ALL_CHARACTER_TYPES[agents.length % ALL_CHARACTER_TYPES.length];
