@@ -69,14 +69,22 @@ export async function attachPty(
   // Defensive re-check: the route already bootstrapped, but the tmux server
   // could have been killed externally in the gap before we spawn.
   await tmuxBootstrap.ensure();
-  await createWindow(tabId);
 
+  // Env vars that need to reach the SHELL inside the tmux window — must
+  // be injected at `new-window -e` time, not on the tmux client. Wave 2
+  // will append CLAUDE_CONFIG_DIR + MAJOR_TOM_APPROVAL here.
+  await createWindow(tabId, {
+    MAJOR_TOM_TAB_ID: tabId,
+  });
+
+  // Env vars below only affect the tmux *client* process (this attach-
+  // session), not the inner shell. We still set TERM/COLORTERM so xterm.js
+  // negotiates a 256-color truecolor stream with the client side.
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     LANG: process.env['LANG'] ?? 'en_US.UTF-8',
     TERM: 'xterm-256color',
     COLORTERM: 'truecolor',
-    MAJOR_TOM_TAB_ID: tabId,
   };
 
   const ptyProcess: IPty = pty.spawn(
