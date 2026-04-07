@@ -5,6 +5,7 @@
   import SessionInfo from './lib/components/SessionInfo.svelte';
   import ChatView from './lib/components/ChatView.svelte';
   import Terminal from './lib/components/Terminal.svelte';
+  import Shell from './lib/components/Shell.svelte';
   import Toast from './lib/components/Toast.svelte';
   import OfficeCanvas from './lib/components/OfficeCanvas.svelte';
   import AgentInspector from './lib/components/AgentInspector.svelte';
@@ -83,7 +84,18 @@
 
   // ── Office state & tab management ─────────────────────────
 
-  type ViewTab = 'chat' | 'office' | 'characters';
+  type ViewTab = 'chat' | 'shell' | 'office' | 'characters';
+
+  // Phase 13 Wave 1 feature flag — opt in via:
+  //   localStorage.setItem('mt-shell-enabled', '1')
+  // Until flipped, the legacy chat tab is the default and the Shell tab
+  // is hidden so existing users see no change.
+  function readShellFlag(): boolean {
+    if (typeof localStorage === 'undefined') return false;
+    return localStorage.getItem('mt-shell-enabled') === '1';
+  }
+  const shellEnabled = $state(readShellFlag());
+
   let activeTab = $state<ViewTab>('chat');
   let activeView = $state<OfficeView>('office');
   let headerCollapsed = $state(false);
@@ -212,6 +224,15 @@
         >
           Chat
         </button>
+        {#if shellEnabled}
+          <button
+            class="tab"
+            class:active={activeTab === 'shell'}
+            onclick={() => (activeTab = 'shell')}
+          >
+            Shell
+          </button>
+        {/if}
         <button
           class="tab"
           class:active={activeTab === 'office'}
@@ -316,6 +337,8 @@
       {:else}
         <ChatView />
       {/if}
+    {:else if activeTab === 'shell'}
+      <Shell />
     {:else if activeTab === 'characters'}
       <CharacterGallery />
     {:else}
