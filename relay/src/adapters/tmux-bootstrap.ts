@@ -41,10 +41,10 @@ export class TmuxVersionError extends Error {
 export class TmuxBootstrap {
   private promise: Promise<void> | null = null;
 
-  ensure(): Promise<void> {
+  async ensure(): Promise<void> {
     if (this.promise) {
       // If the session has since been killed externally, invalidate cache.
-      if (!hasMajorTomSession()) {
+      if (!(await hasMajorTomSession())) {
         logger.warn('tmux session went missing — re-bootstrapping');
         this.promise = null;
       } else {
@@ -64,7 +64,7 @@ export class TmuxBootstrap {
   }
 
   private async run(): Promise<void> {
-    const version = getTmuxVersion();
+    const version = await getTmuxVersion();
     if (!version) {
       throw new TmuxMissingError();
     }
@@ -73,7 +73,7 @@ export class TmuxBootstrap {
     }
     logger.info({ tmuxVersion: version.raw }, 'tmux version check passed');
 
-    ensureMajorTomSession();
+    await ensureMajorTomSession();
     logger.info('tmux Major Tom session ready');
   }
 }

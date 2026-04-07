@@ -4,27 +4,49 @@
  *
  * Wave 1 scope: version probe, server bootstrap, window lifecycle.
  * Wave 2 will add `sendKeys` for hybrid-mode phone decisions.
+ *
+ * All tmux interactions are async (`execFile` Promise-wrapped) so the
+ * Node event loop is not blocked while tmux executes — important when
+ * many WebSockets are alive at once. Caught by Copilot review on PR #89.
  */
-import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 /** Named socket all Major Tom tmux calls use — isolates us from the user's tmux. */
 export const MAJOR_TOM_SOCKET = 'major-tom';
 /** Canonical session name inside the dedicated socket. */
 export const MAJOR_TOM_SESSION = 'major-tom';
 
-function run(args: string[], input?: string): SpawnSyncReturns<string> {
-  return spawnSync('tmux', args, {
-    encoding: 'utf-8',
-    ...(input !== undefined ? { input } : {}),
-  });
+interface TmuxResult {
+  status: number;
+  stdout: string;
+  stderr: string;
+}
+
+/** Run a tmux command without blocking the event loop. */
+async function run(args: string[]): Promise<TmuxResult> {
+  try {
+    const { stdout, stderr } = await execFileAsync('tmux', args);
+    return { status: 0, stdout, stderr };
+  } catch (err) {
+    const e = err as { code?: number; stdout?: string; stderr?: string };
+    return {
+      status: typeof e.code === 'number' ? e.code : 1,
+      stdout: e.stdout ?? '',
+      stderr: e.stderr ?? '',
+    };
+  }
 }
 
 /**
- * Return tmux version triple or null if tmux is missing / output is unparseable.
- * `tmux -V` prints e.g. `tmux 3.6a` — we coerce letter suffixes into a dot-number.
+ * Return tmux version or null if tmux is missing / output is unparseable.
+ * `tmux -V` prints values like `tmux 3.6a`; we parse the numeric `major.minor`
+ * prefix and ignore any trailing suffix characters (Copilot review nit).
  */
-export function getTmuxVersion(): { major: number; minor: number; raw: string } | null {
-  const res = spawnSync('tmux', ['-V'], { encoding: 'utf-8' });
+export async function getTmuxVersion(): Promise<{ major: number; minor: number; raw: string } | null> {
+  const res = await run(['-V']);
   if (res.status !== 0 || !res.stdout) return null;
   const raw = res.stdout.trim();
   const match = /tmux\s+(\d+)\.(\d+)/.exec(raw);
@@ -40,8 +62,8 @@ export function isTmuxVersionSupported(version: { major: number; minor: number }
 }
 
 /** Returns true if the dedicated Major Tom tmux server has our session. */
-export function hasMajorTomSession(): boolean {
-  const res = run(['-L', MAJOR_TOM_SOCKET, 'has-session', '-t', MAJOR_TOM_SESSION]);
+export async function hasMajorTomSession(): Promise<boolean> {
+  const res = await run(['-L', MAJOR_TOM_SOCKET, 'has-session', '-t', MAJOR_TOM_SESSION]);
   return res.status === 0;
 }
 
@@ -49,8 +71,8 @@ export function hasMajorTomSession(): boolean {
  * Idempotently ensure the Major Tom tmux session exists on the dedicated socket.
  * `new-session -A` attaches if it already exists, creates if not. `-d` keeps it detached.
  */
-export function ensureMajorTomSession(): void {
-  const res = run([
+export async function ensureMajorTomSession(): Promise<void> {
+  const res = await run([
     '-L', MAJOR_TOM_SOCKET,
     'new-session',
     '-A',            // attach if exists
@@ -65,11 +87,11 @@ export function ensureMajorTomSession(): void {
 }
 
 /** Create a named tmux window inside the Major Tom session. Idempotent by name. */
-export function createWindow(tabId: string): void {
-  // `-k` kills an existing window with the same name — we want idempotent create
-  // but NOT destroy existing state, so we guard first with list-windows.
-  if (hasWindow(tabId)) return;
-  const res = run([
+export async function createWindow(tabId: string): Promise<void> {
+  // We want idempotent create but NOT destroy existing state, so we
+  // guard first with list-windows rather than passing tmux's `-k` flag.
+  if (await hasWindow(tabId)) return;
+  const res = await run([
     '-L', MAJOR_TOM_SOCKET,
     'new-window',
     '-d',
@@ -82,8 +104,8 @@ export function createWindow(tabId: string): void {
 }
 
 /** Check whether a window with the given name exists. */
-export function hasWindow(tabId: string): boolean {
-  const res = run([
+export async function hasWindow(tabId: string): Promise<boolean> {
+  const res = await run([
     '-L', MAJOR_TOM_SOCKET,
     'list-windows',
     '-t', MAJOR_TOM_SESSION,
@@ -94,8 +116,8 @@ export function hasWindow(tabId: string): boolean {
 }
 
 /** List all window names for the Major Tom session. */
-export function listWindows(): string[] {
-  const res = run([
+export async function listWindows(): Promise<string[]> {
+  const res = await run([
     '-L', MAJOR_TOM_SOCKET,
     'list-windows',
     '-t', MAJOR_TOM_SESSION,
@@ -106,9 +128,9 @@ export function listWindows(): string[] {
 }
 
 /** Kill a named window. No-op if it doesn't exist. */
-export function killWindow(tabId: string): void {
-  if (!hasWindow(tabId)) return;
-  run([
+export async function killWindow(tabId: string): Promise<void> {
+  if (!(await hasWindow(tabId))) return;
+  await run([
     '-L', MAJOR_TOM_SOCKET,
     'kill-window',
     '-t', `${MAJOR_TOM_SESSION}:${tabId}`,

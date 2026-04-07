@@ -981,20 +981,22 @@ export function createOfficeState(): OfficeState {
 
     const charType = agent.characterType;
 
-    // Clean up
-    releaseDesk(id);
-    clearIdleTimer(id);
-    clearPingPongTimer(id);
-    clearPairing(id);
-    activityManager.release(id);
+    // Mark the agent as leaving so the UI (AgentInspector etc.) can
+    // render its terminal state during the fade-out window. Caught by
+    // Copilot review on PR #89 — without this, AgentInspector's new
+    // `isTerminal = agent.status === 'leaving'` check never fires.
+    agent.status = 'leaving';
+    agents = [...agents];
     moodEngine.removeAgent(id);
-    if (selectedAgentId === id) selectedAgentId = null;
 
-    // Fade out animation
+    // Fade out animation, then delegate the rest of the cleanup to
+    // removeAgent() so all per-agent bookkeeping (socialNegotiating,
+    // pairings, activity manager, desks, timers) is cleared in exactly
+    // one place. Skipping that path previously left stale ids in
+    // `socialNegotiating` (Copilot review).
     engine.setAnimation(id, 'fade-out');
     setTimeout(() => {
-      engine.removeAgent(id);
-      agents = agents.filter((a) => a.id !== id);
+      removeAgent(id);
 
       // Return sprite to idle pool
       returnToIdlePool(charType);

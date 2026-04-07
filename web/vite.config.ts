@@ -13,6 +13,11 @@ export default defineConfig({
         target: 'ws://localhost:9090',
         ws: true,
       },
+      // Phase 13 shell PTY route — same relay, separate WS path.
+      '/shell': {
+        target: 'ws://localhost:9090',
+        ws: true,
+      },
     },
   },
 })

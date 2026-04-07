@@ -42,9 +42,11 @@ type PtyDataHandler = (data: string | Buffer) => void;
  * handle. The handle is `disposed = true` once either side closes — writes
  * after disposal are a silent no-op (write-after-kill crash guard on macOS).
  *
- * Assumes tmuxBootstrap.ensure() was awaited first. The caller (shell route)
- * must do that — we do not double-bootstrap here so the error path is cleaner
- * from the WS handler side.
+ * Callers may await tmuxBootstrap.ensure() first so route-level failures
+ * surface from the WS handler with clean error reporting, but this function
+ * still performs an idempotent bootstrap re-check before attaching as a
+ * defensive guard against the tmux server being killed externally between
+ * the route's bootstrap call and our spawn (Copilot review nit on PR #89).
  */
 export async function attachPty(
   socket: WebSocket,
@@ -54,11 +56,10 @@ export async function attachPty(
   const cols = options.cols && options.cols > 0 ? options.cols : 80;
   const rows = options.rows && options.rows > 0 ? options.rows : 24;
 
-  // Always make sure tmux + session + window exist before attach.
-  // If this is the first WS connection after startup, the app already
-  // awaited the global bootstrap; this is a cheap re-verification.
+  // Defensive re-check: the route already bootstrapped, but the tmux server
+  // could have been killed externally in the gap before we spawn.
   await tmuxBootstrap.ensure();
-  createWindow(tabId);
+  await createWindow(tabId);
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
