@@ -145,6 +145,11 @@
     shellStore.registerInjector(tabId, (data) => {
       term?.input(data, true);
     });
+    // Let the keybar restore focus to this terminal (e.g. after dismissing
+    // the specialty grid so the iOS keyboard comes back up).
+    shellStore.registerFocuser(tabId, () => {
+      term?.focus();
+    });
   });
 
   let pendingFit = false;
@@ -164,6 +169,7 @@
 
   onDestroy(() => {
     shellStore.unregisterInjector(tabId);
+    shellStore.unregisterFocuser(tabId);
     unsubData?.();
     unsubStatus?.();
     if (typeof window !== 'undefined' && window.visualViewport) {

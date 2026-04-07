@@ -47,6 +47,8 @@ export type DataListener = (chunk: Uint8Array) => void;
 export type StatusListener = (status: 'connecting' | 'open' | 'closed' | 'error', detail?: string) => void;
 /** Inject callback registered by an XtermPane so the keybar can drive its terminal. */
 export type Injector = (data: string) => void;
+/** Focus callback registered by an XtermPane so the keybar can restore focus. */
+export type Focuser = () => void;
 
 class ShellStore {
   tabs = $state<ShellTab[]>([]);
@@ -58,6 +60,9 @@ class ShellStore {
   private statusListeners = new Map<string, Set<StatusListener>>();
   /** tabId → mounted XtermPane's `term.input()` shim (set on mount, cleared on destroy). */
   private injectors = new Map<string, Injector>();
+  /** tabId → mounted XtermPane's `term.focus()` shim. Used by MobileKeybar to re-focus
+   *  the terminal after dismissing the specialty grid so the iOS keyboard reopens. */
+  private focusers = new Map<string, Focuser>();
 
   registerInjector(tabId: string, injector: Injector): void {
     this.injectors.set(tabId, injector);
@@ -67,12 +72,28 @@ class ShellStore {
     this.injectors.delete(tabId);
   }
 
+  registerFocuser(tabId: string, focuser: Focuser): void {
+    this.focusers.set(tabId, focuser);
+  }
+
+  unregisterFocuser(tabId: string): void {
+    this.focusers.delete(tabId);
+  }
+
   /** Inject text into the active tab's terminal (used by MobileKeybar). */
   injectIntoActive(data: string): void {
     const id = this.activeTabId;
     if (!id) return;
     const fn = this.injectors.get(id);
     if (fn) fn(data);
+  }
+
+  /** Focus the active tab's terminal (used when leaving specialty keyboard). */
+  focusActive(): void {
+    const id = this.activeTabId;
+    if (!id) return;
+    const fn = this.focusers.get(id);
+    if (fn) fn();
   }
 
   /** Add a new tab and connect immediately. Returns the tab id. */
