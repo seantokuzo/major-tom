@@ -3,7 +3,7 @@
  * dedicated tmux server socket (`-L major-tom`).
  *
  * Wave 1 scope: version probe, server bootstrap, window lifecycle.
- * Wave 2 will add `sendKeys` for hybrid-mode phone decisions.
+ * Wave 2 added `sendKeys` for hybrid-mode phone-decided approvals.
  *
  * All tmux interactions are async (`execFile` Promise-wrapped) so the
  * Node event loop is not blocked while tmux executes — important when
@@ -12,6 +12,7 @@
 import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
 import { promisify } from 'node:util';
+import { logger } from './logger.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -212,4 +213,55 @@ export async function killWindow(tabId: string): Promise<void> {
     'kill-window',
     '-t', `${MAJOR_TOM_SESSION}:${tabId}`,
   ]);
+}
+
+/**
+ * Inject keystrokes into a tmux window. Variadic — pass each key as a
+ * SEPARATE arg. tmux's send-keys treats `'a' 'Enter'` as the literal letter
+ * followed by the Enter key, NOT as a 5-char string. Mixing them into one
+ * concatenated string breaks on some shells and the `Enter` key name is the
+ * portable way to do newlines.
+ *
+ * Used by hybrid-mode approval routing in Wave 2: when the phone resolves
+ * an approval, the relay injects `a` `Enter` (allow) or `d` `Enter` (deny)
+ * into the tmux window where `claude` is prompting.
+ *
+ * Best-effort: failures are logged but not thrown — caller is responsible
+ * for the higher-level race resolution. Returns true on success.
+ *
+ * @param windowTarget e.g. `major-tom:t1`
+ * @param keys e.g. `'a', 'Enter'` or `'d', 'Enter'`
+ */
+export async function sendKeys(windowTarget: string, ...keys: string[]): Promise<boolean> {
+  if (keys.length === 0) return false;
+  const res = await run([
+    '-L', MAJOR_TOM_SOCKET,
+    'send-keys',
+    '-t', windowTarget,
+    ...keys,
+  ]);
+  if (res.status !== 0) {
+    logger.warn(
+      { windowTarget, keys, stderr: res.stderr.trim() || res.stdout.trim() },
+      'tmux send-keys failed',
+    );
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Capture the current visible content of a tmux window pane. Used by smoke
+ * tests / debug tooling to verify state without needing the user to look at
+ * the terminal. Returns the captured text or null on failure.
+ */
+export async function capturePane(windowTarget: string): Promise<string | null> {
+  const res = await run([
+    '-L', MAJOR_TOM_SOCKET,
+    'capture-pane',
+    '-p',
+    '-t', windowTarget,
+  ]);
+  if (res.status !== 0) return null;
+  return res.stdout;
 }

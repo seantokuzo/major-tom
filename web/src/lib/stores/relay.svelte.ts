@@ -66,7 +66,17 @@ export interface ApprovalRequest {
     level: 'high' | 'medium' | 'low';
     reason: string;
   };
+  // ── Phase 13 Wave 2 routing fields (optional, additive) ──
+  routingMode?: 'local' | 'remote' | 'hybrid';
+  source?: 'sdk' | 'hook';
+  tabId?: string;
 }
+
+// ── Approval routing mode (Phase 13 Wave 2) ─────────────────
+// Orthogonal to PermissionMode (manual/smart/delay/god). Routing
+// decides WHO owns the approval (TUI vs phone vs both); permission
+// mode decides HOW the chosen owner answers it.
+export type ApprovalRoutingMode = 'local' | 'remote' | 'hybrid';
 
 // ── Agent model ─────────────────────────────────────────────
 
@@ -243,6 +253,12 @@ class RelayStore {
     delaySeconds: 5,
     godSubMode: 'normal',
   });
+
+  // Phase 13 Wave 2 — approval routing dimension. Defaults to 'local'
+  // (TUI owns) so legacy users see no behavior change. Persisted on the
+  // relay side via /api/settings/approval-mode and rehydrated on first
+  // App.svelte mount.
+  approvalRoutingMode = $state<ApprovalRoutingMode>('local');
 
   // Manual disconnect flag — prevents auto-reconnect after user clicks Disconnect
   manuallyDisconnected = $state(false);
@@ -724,6 +740,114 @@ class RelayStore {
       delaySeconds: delaySeconds ?? this.permissionMode.delaySeconds,
       godSubMode: godSubMode ?? this.permissionMode.godSubMode,
     });
+  }
+
+  // ── Phase 13 Wave 2 — approval routing API ────────────────
+  // These hit REST endpoints (not WS) so they work for cold-start
+  // service-worker click handoff and for the routing-mode persistence
+  // path that needs to survive a full relay restart.
+
+  /**
+   * Cold-start fetch — pulls every approval the shell hook server is
+   * currently holding. Called on app boot AND whenever the SW posts
+   * us a navigation message after a notification click. Merges into
+   * pendingApprovals using the same dedup-by-id rule as addApproval.
+   */
+  async fetchPendingApprovals(): Promise<void> {
+    try {
+      const res = await fetch('/api/approvals/pending', {
+        credentials: 'include',
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        pending?: Array<{
+          requestId: string;
+          tool: string;
+          description: string;
+          details?: Record<string, unknown>;
+          source?: 'sdk' | 'hook';
+          routingMode?: ApprovalRoutingMode;
+          tabId?: string;
+        }>;
+      };
+      const list = Array.isArray(data?.pending) ? data.pending : [];
+      for (const a of list) {
+        if (this.pendingApprovals.some((p) => p.id === a.requestId)) continue;
+        const toolUseId = a.details?.['tool_use_id'] as string | undefined;
+        this.pendingApprovals.push({
+          id: a.requestId,
+          tool: a.tool,
+          description: a.description,
+          details: a.details,
+          toolUseId,
+          receivedAt: new Date(),
+          ...(a.routingMode && { routingMode: a.routingMode }),
+          ...(a.source && { source: a.source }),
+          ...(a.tabId && { tabId: a.tabId }),
+        });
+      }
+    } catch {
+      // Silent — relay may not be reachable yet, the WS reconnect path
+      // will eventually push live approvals through addApproval.
+    }
+  }
+
+  /**
+   * REST decision POST — used by the cold-start path AND by the SW
+   * action button click that fires before a tab is even open. The
+   * server-side route lives at routes/api-approvals.ts and resolves
+   * the same shellApprovalQueue the WS path uses.
+   */
+  async respondToApprovalRest(requestId: string, decision: ApprovalDecision): Promise<void> {
+    // Optimistic: drop the card before the round-trip so the UI feels
+    // instant. The server's broadcast will be a no-op for us.
+    this.pendingApprovals = this.pendingApprovals.filter((a) => a.id !== requestId);
+    try {
+      await fetch(`/api/approvals/${encodeURIComponent(requestId)}/decision`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision }),
+      });
+    } catch (err) {
+      // Re-fetch so the user sees the request again if the POST failed.
+      void this.fetchPendingApprovals();
+      throw err;
+    }
+  }
+
+  /**
+   * Persist the routing mode to the relay (writes approval-mode.json).
+   * The shell hook script reads this file via jq on every invocation.
+   */
+  async setApprovalRoutingMode(mode: ApprovalRoutingMode): Promise<void> {
+    this.approvalRoutingMode = mode;
+    try {
+      await fetch('/api/settings/approval-mode', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+    } catch {
+      // Soft-fail — local UI still reflects the choice; user can retry.
+    }
+  }
+
+  /** Initial load of routing mode from disk on app boot. */
+  async loadApprovalRoutingMode(): Promise<void> {
+    try {
+      const res = await fetch('/api/settings/approval-mode', {
+        credentials: 'include',
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { mode?: ApprovalRoutingMode };
+      if (data?.mode === 'local' || data?.mode === 'remote' || data?.mode === 'hybrid') {
+        this.approvalRoutingMode = data.mode;
+      }
+    } catch {
+      // Use the default 'local'.
+    }
   }
 
   requestFleetStatus(): void {
@@ -1465,6 +1589,15 @@ class RelayStore {
         break;
 
       case 'approval.resolved':
+        // Phase 13 Wave 2 — drop the resolved card so other devices /
+        // tabs that didn't initiate the decision still clear their UI.
+        // Single-user (no resolvedBy) flows arrive here too: the relay
+        // broadcasts the resolve event from shellApprovalQueue, and our
+        // local sendApproval already filtered the card optimistically,
+        // so the .filter() below is a no-op in that case. Worth it.
+        this.pendingApprovals = this.pendingApprovals.filter(
+          (a) => a.id !== message.requestId,
+        );
         if (message.resolvedBy?.name) {
           const myId = this.user?.userId;
           if (myId !== message.resolvedBy.userId) {
@@ -1624,6 +1757,12 @@ class RelayStore {
 
   private addApproval(event: ApprovalRequestMessage): void {
     const toolUseId = event.details?.['tool_use_id'] as string | undefined;
+    // Phase 13 Wave 2 — dedup by requestId so a hybrid hook intercept
+    // followed by a worker-side broadcast for the same tool_use_id
+    // doesn't stack two cards.
+    if (this.pendingApprovals.some((a) => a.id === event.requestId)) {
+      return;
+    }
     this.pendingApprovals.push({
       id: event.requestId,
       tool: event.tool,
@@ -1632,6 +1771,9 @@ class RelayStore {
       toolUseId,
       receivedAt: new Date(),
       priority: event.priority,
+      ...(event.routingMode && { routingMode: event.routingMode }),
+      ...(event.source && { source: event.source }),
+      ...(event.tabId && { tabId: event.tabId }),
     });
   }
 

@@ -1,5 +1,4 @@
 import { EventEmitter } from 'node:events';
-import { randomUUID } from 'node:crypto';
 import {
   unstable_v2_createSession,
   type SDKSession,
@@ -96,8 +95,11 @@ export class ClaudeCliAdapter implements IAdapter {
     const sdkSession = unstable_v2_createSession({
       model: 'claude-sonnet-4-20250514',
       permissionMode: 'default',
+      // Phase 13 Wave 2 — thread `options.signal` so cancellation
+      // unblocks the queue's pending promise instead of leaking the
+      // session until the approval timeout fires.
       canUseTool: (toolName, input, options) =>
-        this.handlePermission(session.id, toolName, input, options.toolUseID),
+        this.handlePermission(session.id, toolName, input, options.toolUseID, options.signal),
       env: {
         ...process.env,
         NO_COLOR: '1',
@@ -181,6 +183,7 @@ export class ClaudeCliAdapter implements IAdapter {
     toolName: string,
     input: Record<string, unknown>,
     toolUseId: string,
+    signal?: AbortSignal,
   ): Promise<PermissionResult> {
     // ── Check permission filter first (smart/god auto-allow) ──
     const filterResult = this.permissionFilter.check(toolName, input);
@@ -199,7 +202,9 @@ export class ClaudeCliAdapter implements IAdapter {
     }
 
     // ── Not auto-allowed — queue for manual/delay approval ──
-    const requestId = randomUUID();
+    // Phase 13 Wave 2 — use toolUseId as the canonical requestId so the
+    // SDK and shell-hook intercept paths share the same dedup key.
+    const requestId = toolUseId;
     const description = JSON.stringify(input);
     const details: Record<string, unknown> = {
       tool_name: toolName,
@@ -217,7 +222,7 @@ export class ClaudeCliAdapter implements IAdapter {
 
     logger.info({ sessionId, requestId, toolName, toolUseId }, 'Permission requested');
 
-    const decision = await this.approvalQueue.waitForDecision(requestId, toolName, description, details);
+    const decision = await this.approvalQueue.waitForDecision(requestId, toolName, description, details, signal);
 
     logger.info({ sessionId, requestId, toolName, decision }, 'Permission decision received');
 

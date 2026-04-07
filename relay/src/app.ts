@@ -21,7 +21,20 @@ import { createAnalyticsRoutes } from './routes/analytics.js';
 import { createAchievementRoutes } from './routes/achievements.js';
 import { createWsRoute } from './routes/ws.js';
 import { createShellRoute } from './routes/shell.js';
+import { createApiApprovalsRoutes } from './routes/api-approvals.js';
 import { tmuxBootstrap, TmuxMissingError, TmuxVersionError } from './adapters/tmux-bootstrap.js';
+
+// Phase 13 Wave 2 — shell-side approval routing
+import { ApprovalQueue } from './hooks/approval-queue.js';
+import { createHookServer } from './hooks/hook-server.js';
+import { installHooks } from './installer/install-hooks.js';
+import { eventBus } from './events/event-bus.js';
+import { NotificationBatcher } from './push/notification-batcher.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import type { Server as HttpServer } from 'node:http';
+
+const execFileAsync = promisify(execFile);
 
 // Services
 import { SessionManager } from './sessions/session-manager.js';
@@ -51,6 +64,12 @@ declare module 'fastify' {
 
 export interface AppConfig {
   port: number;
+  /**
+   * Hook HTTP server port (Phase 13 Wave 2). The shell hook script
+   * (`pretooluse.sh`) curls 127.0.0.1:HOOK_PORT/hooks/pre-tool-use.
+   * Defaults to 9091 in `server.ts` (env var `HOOK_PORT`).
+   */
+  hookPort: number;
   claudeWorkDir: string;
   multiUserEnabled: boolean;
   authGoogleEnabled: boolean;
@@ -128,6 +147,89 @@ export async function buildApp(config: AppConfig) {
       // Config file doesn't exist or is malformed — use defaults
     }
   }
+
+  // ── Phase 13 Wave 2 — shell-side approval routing ──────
+  // The relay-level ApprovalQueue is distinct from per-session worker
+  // queues. PTY-spawned `claude` flows through hooks (not workers), so
+  // it doesn't share state with worker IPC. The queue extends EventEmitter
+  // and broadcasts 'enqueue'/'resolve' events, which the WS layer
+  // subscribes to via the eventBus 'server.message' catch-all.
+  const shellApprovalQueue = new ApprovalQueue();
+
+  // Install (or self-heal) the Major-Tom-private hook scripts. Idempotent
+  // and hash-versioned. NEVER touches the user's real ~/.claude/.
+  try {
+    installHooks();
+  } catch (err) {
+    logger.error({ err }, 'Hook installer failed — shell approval routing degraded');
+  }
+
+  // Probe `jq` — required by the shell hook for per-invocation mode
+  // reading. If missing the hook falls back to the MAJOR_TOM_APPROVAL
+  // env var, but the user wouldn't be able to switch modes from the PWA.
+  // Loud warning, never fatal.
+  try {
+    await execFileAsync('jq', ['--version']);
+  } catch {
+    logger.warn(
+      'jq not found on PATH — Phase 13 hook scripts will fall back to MAJOR_TOM_APPROVAL env var. ' +
+      'Install with `brew install jq` to enable PWA mode switching.',
+    );
+  }
+
+  // Notification batcher used by BOTH Wave 2 intercept paths (shell hook
+  // and SDK canUseTool) so rapid-fire approvals collapse into a single
+  // push instead of spamming the device's lockscreen. Single instance
+  // shared across the relay so the batch window is global.
+  const shellNotificationBatcher = new NotificationBatcher(pushManager);
+
+  // Start the hook HTTP server. Plain Node http (not Fastify) — it
+  // serves a tiny number of routes that need to block long-lived
+  // connections (`--max-time 600` in remote mode), and Fastify's
+  // request lifecycle plays poorly with that pattern.
+  let hookHttpServer: HttpServer | undefined;
+  try {
+    hookHttpServer = createHookServer(
+      { approvalQueue: shellApprovalQueue, notificationBatcher: shellNotificationBatcher },
+      config.hookPort,
+    );
+  } catch (err) {
+    logger.error({ err, port: config.hookPort }, 'Failed to start hook HTTP server');
+  }
+
+  // Wire approval-queue events into the eventBus so the WS layer
+  // broadcasts them to all connected PWAs. The eventBus 'server.message'
+  // catch-all forwards to the existing serverMessageHandler in ws.ts.
+  shellApprovalQueue.on('enqueue', (payload: {
+    requestId: string;
+    tool: string;
+    description: string;
+    details: Record<string, unknown>;
+    source?: 'sdk' | 'hook';
+    routingMode?: 'local' | 'remote' | 'hybrid';
+    tabId?: string;
+  }) => {
+    eventBus.emit('approval.request', {
+      type: 'approval.request',
+      requestId: payload.requestId,
+      tool: payload.tool,
+      description: payload.description,
+      details: payload.details,
+      ...(payload.routingMode && { routingMode: payload.routingMode }),
+      ...(payload.source && { source: payload.source }),
+      ...(payload.tabId && { tabId: payload.tabId }),
+    });
+  });
+  shellApprovalQueue.on('resolve', (payload: { requestId: string; decision: string }) => {
+    // Broadcast resolve so other PWAs/devices clear their overlay.
+    // Single-user mode: no resolvedBy attribution. Multi-user mode would
+    // already broadcast a richer version through the WS handler at ws.ts:725.
+    eventBus.emit('server.message', {
+      type: 'approval.resolved',
+      requestId: payload.requestId,
+      decision: payload.decision,
+    });
+  });
 
   // ── Fastify instance ───────────────────────────────────
   const app = Fastify({
@@ -219,7 +321,12 @@ export async function buildApp(config: AppConfig) {
     rateLimiter,
     claudeWorkDir: config.claudeWorkDir,
     multiUserEnabled: config.multiUserEnabled,
+    shellApprovalQueue,
   }));
+
+  // Phase 13 Wave 2 — REST endpoints for approvals (cold-start fetch
+  // and SW-action POSTs that can't go through the WebSocket).
+  await app.register(createApiApprovalsRoutes({ shellApprovalQueue }));
 
   // 6. Static file serving + SPA fallback (must be LAST — catches unmatched routes)
   await app.register(staticPlugin);
@@ -260,6 +367,18 @@ export async function buildApp(config: AppConfig) {
       sandboxGuard.dispose();
     }
     await pushManager.dispose();
+    shellNotificationBatcher.dispose();
+    if (hookHttpServer) {
+      await new Promise<void>((resolve) => {
+        hookHttpServer!.close((err) => {
+          if (err) {
+            logger.warn({ err }, 'Hook HTTP server close error');
+          }
+          resolve();
+        });
+      });
+      logger.info('Hook HTTP server closed');
+    }
     logger.info('Shutdown complete');
   });
 

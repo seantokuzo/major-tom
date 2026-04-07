@@ -53,14 +53,20 @@ export class NotificationBatcher {
         type: 'approval',
         title: 'Major Tom',
         body: `\u{1F527} Tool approval needed: ${item.tool}`,
-        data: { url: '/', requestId: item.requestId },
+        // Phase 13 Wave 2 — `tag` lets the SW dedup notifications across
+        // devices: when one device resolves the approval, every other
+        // device's SW closes the matching notification by tag. Without
+        // this, dismissed approvals would linger on lockscreens.
+        data: { url: '/', requestId: item.requestId, tag: item.requestId },
       };
     } else {
       payload = {
         type: 'approval',
         title: 'Major Tom',
         body: `\u{1F527} ${batch.length} tools waiting for approval`,
-        data: { url: '/' },
+        // For batches we tag with a sentinel so the SW knows it's a
+        // batch grouping, not tied to a single requestId.
+        data: { url: '/', tag: 'major-tom-approval-batch' },
       };
     }
 
@@ -70,7 +76,14 @@ export class NotificationBatcher {
     );
 
     try {
-      await this.pushManager.notifyAll(payload);
+      // urgency:'high' so APNS wakes the device immediately for approvals.
+      // topic mirrors `tag` so push services replace the previous in-flight
+      // approval push instead of stacking — only one approval card at a time.
+      const topic =
+        batch.length === 1
+          ? `mt-approval-${batch[0]!.requestId}`
+          : 'mt-approval-batch';
+      await this.pushManager.notifyAll(payload, { urgency: 'high', topic });
     } catch (err: unknown) {
       logger.error({ err }, 'Failed to send batched push notification');
     }

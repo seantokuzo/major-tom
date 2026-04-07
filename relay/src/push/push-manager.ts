@@ -19,6 +19,26 @@ export interface NotificationPayload {
   data?: Record<string, unknown>;
 }
 
+/**
+ * Per-call options that map onto web-push's `RequestOptions` (the third
+ * argument to `webpush.sendNotification`). Phase 13 Wave 2 uses
+ * `urgency: 'high'` for approval prompts so iOS APNS doesn't coalesce
+ * them with low-priority traffic, and `topic` so multiple in-flight
+ * approvals replace each other on the lockscreen instead of stacking.
+ *
+ * `tag` is a SW-side dedup key that goes inside the payload data, NOT a
+ * web-push field — included here for symmetry but actually applied via
+ * `payload.data.tag` in the SW notification handler.
+ */
+export interface NotifyAllOptions {
+  /** APNS / VAPID urgency. 'high' = wake immediately. */
+  urgency?: 'very-low' | 'low' | 'normal' | 'high';
+  /** Time-to-live in seconds. Push services drop the message after this. */
+  TTL?: number;
+  /** Push service "topic" header — replaces an outstanding push with same topic. */
+  topic?: string;
+}
+
 // ── Push Manager ─────────────────────────────────────────────
 // Manages VAPID keys and push subscriptions.
 // Subscriptions are persisted to disk and restored on startup.
@@ -109,8 +129,16 @@ export class PushManager {
     return removed;
   }
 
-  /** Send a push notification to all stored subscriptions */
-  async notifyAll(payload: NotificationPayload): Promise<void> {
+  /**
+   * Send a push notification to all stored subscriptions.
+   *
+   * The optional `options` arg threads through to web-push's third
+   * `RequestOptions` parameter — used by Phase 13 Wave 2 to send
+   * approval requests with `urgency: 'high'` so they don't get
+   * coalesced into a low-priority drip on iOS. Existing callers that
+   * don't pass options keep their previous default behavior.
+   */
+  async notifyAll(payload: NotificationPayload, options?: NotifyAllOptions): Promise<void> {
     if (!this.initialized || this.subscriptions.size === 0) {
       return;
     }
@@ -118,6 +146,18 @@ export class PushManager {
     const payloadStr = JSON.stringify(payload);
     const expiredEndpoints: string[] = [];
     let successCount = 0;
+
+    // Build the web-push RequestOptions only if any options were passed.
+    // Avoids sending an empty object that could trigger a header on
+    // services that interpret an empty Topic field as a real topic.
+    const requestOptions: Record<string, unknown> | undefined =
+      options && (options.urgency || options.TTL !== undefined || options.topic)
+        ? {
+            ...(options.urgency && { urgency: options.urgency }),
+            ...(options.TTL !== undefined && { TTL: options.TTL }),
+            ...(options.topic && { topic: options.topic }),
+          }
+        : undefined;
 
     await Promise.allSettled(
       [...this.subscriptions.values()].map(async (sub) => {
@@ -128,6 +168,7 @@ export class PushManager {
               keys: sub.keys,
             },
             payloadStr,
+            requestOptions as never,
           );
           successCount++;
         } catch (err: unknown) {

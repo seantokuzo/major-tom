@@ -25,6 +25,7 @@
   import LoginScreen from './lib/components/LoginScreen.svelte';
   import CharacterGallery from './lib/components/CharacterGallery.svelte';
   import PermissionModeSwitcher from './lib/components/PermissionModeSwitcher.svelte';
+  import ApprovalOverlay from './lib/components/ApprovalOverlay.svelte';
   import SessionPanel from './lib/components/SessionPanel.svelte';
   import FleetPanel from './lib/components/FleetPanel.svelte';
   import FleetIndicator from './lib/components/FleetIndicator.svelte';
@@ -238,7 +239,44 @@
       relay.connect();
     }
   });
+
+  // ── Phase 13 Wave 2 — approval cold-start + SW navigation ──
+  // The shell hook server is independent of the WebSocket, so a freshly
+  // opened PWA might miss live `approval.request` broadcasts that fired
+  // before connect. fetchPendingApprovals() pulls them via REST so the
+  // overlay can render even on first paint.
+  //
+  // We also subscribe to messages from the service worker. When the user
+  // taps a push notification, the SW posts {type: 'mt-approval-nav',
+  // requestId} to all visible clients — we re-fetch so the overlay shows
+  // the freshest queue ordering, and surface a toast if the request was
+  // already resolved by another device.
+  let approvalBootDone = $state(false);
+  $effect(() => {
+    if (!relay.isAuthenticated || approvalBootDone) return;
+    approvalBootDone = true;
+    void relay.loadApprovalRoutingMode();
+    void relay.fetchPendingApprovals();
+  });
+
+  $effect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const handler = (event: MessageEvent) => {
+      const msg = event.data as { type?: string; requestId?: string } | null;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'mt-approval-nav' || msg.type === 'mt-approval-resolved') {
+        void relay.fetchPendingApprovals();
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
+  });
 </script>
+
+<!-- Phase 13 Wave 2 — fullscreen approval overlay for shell hook intercepts.
+     Mounted outside .app so its fixed-position layer doesn't fight any
+     stacking context inside the app shell. -->
+<ApprovalOverlay />
 
 <div class="app">
   <header class="header">

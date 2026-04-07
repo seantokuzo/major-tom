@@ -419,6 +419,10 @@ export interface ApprovalRequestMessage {
     level: 'high' | 'medium' | 'low';
     reason: string;
   };
+  // ── Phase 13 Wave 2 routing fields (optional, additive) ──
+  routingMode?: 'local' | 'remote' | 'hybrid';
+  source?: 'sdk' | 'hook';
+  tabId?: string;
 }
 
 // ── Notification config types ────────────────────────────────

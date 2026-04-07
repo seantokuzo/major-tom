@@ -1,10 +1,22 @@
 <script lang="ts">
   import { relay } from '../stores/relay.svelte';
-  import type { PermissionMode, GodSubMode } from '../stores/relay.svelte';
+  import type { PermissionMode, GodSubMode, ApprovalRoutingMode } from '../stores/relay.svelte';
 
   let openDropdown = $state<'delay' | 'god' | null>(null);
   let godConfirmPending = $state(false);
   let switcherEl: HTMLDivElement | undefined;
+
+  // ── Phase 13 Wave 2 — approval routing dimension ──────────
+  // This is orthogonal to the permission mode above. The mode
+  // (manual/smart/delay/god) decides HOW each approval is answered;
+  // the routing decides WHO answers it (TUI, phone, or both racing).
+  // The shell hook script in MAJOR_TOM_CONFIG_DIR reads this value
+  // from approval-mode.json on every invocation, so we don't need to
+  // restart the relay when the user flips a pill.
+  const routingMode = $derived<ApprovalRoutingMode>(relay.approvalRoutingMode);
+  function setRouting(mode: ApprovalRoutingMode) {
+    void relay.setApprovalRoutingMode(mode);
+  }
 
   const DELAY_OPTIONS = [3, 5, 10, 15, 30];
 
@@ -166,6 +178,43 @@
         </button>
       </div>
     {/if}
+  </div>
+</div>
+
+<!-- Phase 13 Wave 2 — Approval routing (shell hook intercept path) -->
+<div class="routing-row" role="group" aria-label="Approval routing">
+  <span class="routing-label">Route</span>
+  <div class="routing-pills">
+    <button
+      type="button"
+      class="route-pill"
+      class:active={routingMode === 'local'}
+      data-mode="local"
+      onclick={() => setRouting('local')}
+      title="TUI owns approvals — phone gets a quiet notification"
+    >
+      Local
+    </button>
+    <button
+      type="button"
+      class="route-pill"
+      class:active={routingMode === 'remote'}
+      data-mode="remote"
+      onclick={() => setRouting('remote')}
+      title="Phone owns approvals — TUI blocks until you decide here"
+    >
+      Remote
+    </button>
+    <button
+      type="button"
+      class="route-pill"
+      class:active={routingMode === 'hybrid'}
+      data-mode="hybrid"
+      onclick={() => setRouting('hybrid')}
+      title="Both can decide — first answer wins"
+    >
+      Hybrid
+    </button>
   </div>
 </div>
 
@@ -541,5 +590,74 @@
 
   .confirm-ok:hover {
     background: #f5c842;
+  }
+
+  /* ── Phase 13 Wave 2 — approval routing row ─────────────── */
+  .routing-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    padding: 0 2px;
+  }
+
+  .routing-label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-tertiary);
+  }
+
+  .routing-pills {
+    display: flex;
+    flex: 1;
+    background: rgba(10, 10, 15, 0.7);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 2px;
+    gap: 0;
+  }
+
+  .route-pill {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    background: transparent;
+    border: none;
+    padding: 4px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    min-height: 24px;
+  }
+
+  .route-pill:hover:not(.active) {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .route-pill.active {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .route-pill.active[data-mode='local'] {
+    background: var(--surface-hover);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .route-pill.active[data-mode='remote'] {
+    color: #a8d0ff;
+    background: rgba(80, 160, 255, 0.18);
+    box-shadow: 0 1px 4px rgba(80, 160, 255, 0.25);
+  }
+
+  .route-pill.active[data-mode='hybrid'] {
+    color: #d4b3ff;
+    background: rgba(180, 120, 255, 0.18);
+    box-shadow: 0 1px 4px rgba(180, 120, 255, 0.25);
   }
 </style>
