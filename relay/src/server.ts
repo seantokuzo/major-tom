@@ -14,6 +14,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PIN_FILE = resolve(__dirname, '..', '.pin');
 
 const PORT = parseInt(process.env['WS_PORT'] ?? '9090', 10);
+// Phase 13 Wave 2 — port for the internal hook HTTP server. Loopback only.
+// The shell hook script (`pretooluse.sh`) curls 127.0.0.1:HOOK_PORT/hooks/...
+const HOOK_PORT = parseInt(process.env['HOOK_PORT'] ?? '9091', 10);
 const CLAUDE_WORK_DIR = process.env['CLAUDE_WORK_DIR'] ?? process.cwd();
 const MULTI_USER_ENABLED = (process.env['MULTI_USER_ENABLED'] ?? 'false').toLowerCase() === 'true';
 const AUTH_GOOGLE_ENABLED = process.env['AUTH_GOOGLE_ENABLED'] !== undefined
@@ -26,6 +29,7 @@ async function main() {
   try {
     app = await buildApp({
       port: PORT,
+      hookPort: HOOK_PORT,
       claudeWorkDir: CLAUDE_WORK_DIR,
       multiUserEnabled: MULTI_USER_ENABLED,
       authGoogleEnabled: AUTH_GOOGLE_ENABLED,

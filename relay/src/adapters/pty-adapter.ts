@@ -16,6 +16,7 @@ import {
   createWindow,
 } from '../utils/tmux-cli.js';
 import { tmuxBootstrap } from './tmux-bootstrap.js';
+import { MAJOR_TOM_CONFIG_DIR } from '../installer/install-hooks.js';
 
 export interface PtyAttachOptions {
   tabId: string;
@@ -71,10 +72,31 @@ export async function attachPty(
   await tmuxBootstrap.ensure();
 
   // Env vars that need to reach the SHELL inside the tmux window — must
-  // be injected at `new-window -e` time, not on the tmux client. Wave 2
-  // will append CLAUDE_CONFIG_DIR + MAJOR_TOM_APPROVAL here.
+  // be injected at `new-window -e` time, not on the tmux client. Wave 2:
+  //
+  //   CLAUDE_CONFIG_DIR    — points Claude Code at our private config dir
+  //                          so the installed PreToolUse hook fires.
+  //   MAJOR_TOM_CONFIG_DIR — same path, kept under a separate name so the
+  //                          hook script can read approval-mode.json from
+  //                          a stable place even if Claude Code remaps
+  //                          CLAUDE_CONFIG_DIR.
+  //   MAJOR_TOM_APPROVAL   — fallback default mode (the hook script
+  //                          re-reads approval-mode.json on every call,
+  //                          this is just the no-jq fallback).
+  //   MAJOR_TOM_RELAY_PORT — internal hook HTTP server port. The hook
+  //                          script POSTs to 127.0.0.1:<port>/hooks/...
+  //                          NOT the WS port. Defaults to 9091, matching
+  //                          server.ts's HOOK_PORT default.
+  //   MAJOR_TOM_TAB_ID     — already injected pre-Wave-2; the hook script
+  //                          forwards it as `X-MT-Tab` so the relay knows
+  //                          which tmux window to target for hybrid mode.
+  const hookPort = process.env['HOOK_PORT'] ?? '9091';
   await createWindow(tabId, {
     MAJOR_TOM_TAB_ID: tabId,
+    CLAUDE_CONFIG_DIR: MAJOR_TOM_CONFIG_DIR,
+    MAJOR_TOM_CONFIG_DIR: MAJOR_TOM_CONFIG_DIR,
+    MAJOR_TOM_APPROVAL: process.env['MAJOR_TOM_APPROVAL'] ?? 'local',
+    MAJOR_TOM_RELAY_PORT: hookPort,
   });
 
   // Env vars below only affect the tmux *client* process (this attach-

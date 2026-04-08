@@ -85,8 +85,11 @@ async function startSession(sessionId: string, _workingDir: string): Promise<voi
     const sdkSession = unstable_v2_createSession({
       model: 'claude-sonnet-4-20250514',
       permissionMode: 'default',
+      // Phase 13 Wave 2 — thread `options.signal` so cancellation
+      // unblocks the queue's pending promise instead of leaking the
+      // worker until the 5min approval timeout fires.
       canUseTool: (toolName, input, options) =>
-        handlePermission(sessionId, toolName, input, options.toolUseID),
+        handlePermission(sessionId, toolName, input, options.toolUseID, options.signal),
       env: {
         ...process.env,
         NO_COLOR: '1',
@@ -221,6 +224,7 @@ async function handlePermission(
   toolName: string,
   input: Record<string, unknown>,
   toolUseId: string,
+  signal?: AbortSignal,
 ): Promise<PermissionResult> {
   // Check permission filter first (smart/god auto-allow)
   const filterResult = permissionFilter.check(toolName, input);
@@ -239,8 +243,14 @@ async function handlePermission(
     return { behavior: 'allow', toolUseID: toolUseId };
   }
 
-  // Not auto-allowed — queue for manual/delay approval
-  const requestId = randomUUID();
+  // Phase 13 Wave 2 — use the SDK's tool_use_id as the canonical
+  // dedup/correlation key. Previously we generated a randomUUID() which
+  // meant a duplicate canUseTool call (e.g. SDK retry) would create
+  // two pending entries instead of attaching to the existing one.
+  // The IPC channel still calls it `requestId`; downstream handlers
+  // (parent fleet-manager, ws.ts approval handler, PWA) treat it as
+  // an opaque correlation token.
+  const requestId = toolUseId;
   const description = JSON.stringify(input);
   const details: Record<string, unknown> = {
     tool_name: toolName,
@@ -260,7 +270,16 @@ async function handlePermission(
 
   workerLog.info({ sessionId, requestId, toolName, toolUseId }, 'Permission requested');
 
-  const decision = await approvalQueue.waitForDecision(requestId, toolName, description, details);
+  // Wave 2 — pass the SDK's abort signal so cancelled tool calls clean
+  // up the pending entry instead of leaking until the queue's 5-min
+  // timeout. waitForDecision returns 'deny' on abort.
+  const decision = await approvalQueue.waitForDecision(
+    requestId,
+    toolName,
+    description,
+    details,
+    signal,
+  );
 
   workerLog.info({ sessionId, requestId, toolName, decision }, 'Permission decision received');
 

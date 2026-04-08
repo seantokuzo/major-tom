@@ -35,6 +35,7 @@ import type { AuditLog } from '../security/audit-log.js';
 import type { RateLimiter } from '../security/rate-limiter.js';
 import type { UserRole } from '../users/types.js';
 import { logger } from '../utils/logger.js';
+import type { ApprovalQueue } from '../hooks/approval-queue.js';
 
 interface WsDeps {
   sessionManager: SessionManager;
@@ -53,6 +54,12 @@ interface WsDeps {
   rateLimiter?: RateLimiter;
   claudeWorkDir: string;
   multiUserEnabled: boolean;
+  /**
+   * Phase 13 Wave 2 — top-level approval queue for shell-side intercepts.
+   * Distinct from the per-session worker queues used by fleetManager.
+   * The WS approval handler tries this queue first before falling back to fleet.
+   */
+  shellApprovalQueue: ApprovalQueue;
 }
 
 /**
@@ -77,6 +84,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     rateLimiter,
     claudeWorkDir,
     multiUserEnabled,
+    shellApprovalQueue,
   } = deps;
 
   const notificationDigest = new NotificationDigest(pushManager, notificationConfigManager);
@@ -715,7 +723,40 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           }
         }
         recordAudit(ws, `approval.${message.decision}`, { details: `requestId=${message.requestId}` });
-        fleetManager.resolveApproval(message.requestId, message.decision);
+
+        // ── Phase 13 Wave 2 — try shellApprovalQueue first ──
+        // Shell-side intercepts (PTY-spawned `claude` flowing through hooks)
+        // live in the top-level shellApprovalQueue, NOT in fleetManager.
+        // We try the shell queue first; if the requestId isn't there, fall
+        // back to fleet (existing worker-IPC path).
+        let resolvedByShellQueue = false;
+        if (shellApprovalQueue.isPending(message.requestId)) {
+          // Look up the pending entry to detect hybrid routing — hybrid
+          // resolves go through `resolveHybrid` so the relay also injects
+          // `a` / `d` Enter into the right tmux window.
+          const pending = shellApprovalQueue.getPendingDetails().find(
+            (p) => p.requestId === message.requestId,
+          );
+          const isHybridDecision =
+            pending?.routingMode === 'hybrid' &&
+            pending.tabId &&
+            (message.decision === 'allow' || message.decision === 'deny');
+          if (isHybridDecision && pending?.tabId) {
+            // Best-effort send-keys + queue resolve. Don't await — the
+            // tmux call shouldn't block the WS handler.
+            void shellApprovalQueue.resolveHybrid(
+              message.requestId,
+              message.decision as 'allow' | 'deny',
+              pending.tabId,
+            );
+          } else {
+            shellApprovalQueue.resolve(message.requestId, message.decision);
+          }
+          resolvedByShellQueue = true;
+        }
+        if (!resolvedByShellQueue) {
+          fleetManager.resolveApproval(message.requestId, message.decision);
+        }
         // Broadcast who resolved the approval (multi-user enrichment)
         if (userRegistry && activityFeed) {
           const approverUserId = presenceManager.getUserId(ws);

@@ -1,8 +1,21 @@
+import { EventEmitter } from 'node:events';
 import { logger } from '../utils/logger.js';
+import { sendKeys, MAJOR_TOM_SESSION } from '../utils/tmux-cli.js';
 
 export type ApprovalDecision = 'allow' | 'deny' | 'skip' | 'allow_always';
 /** Queue-level mode: manual blocks, auto resolves immediately, delay resolves after timer */
 export type ApprovalQueueMode = 'manual' | 'auto' | 'delay';
+
+/**
+ * Wave 2: ORTHOGONAL routing dimension. Independent of `manual`/`auto`/`delay`.
+ * - `local`  — TUI owns the decision; phone gets a passive notification
+ * - `remote` — phone owns the decision; TUI is bypassed (hook blocks)
+ * - `hybrid` — both prompt; first to resolve wins; phone-wins uses tmux send-keys
+ */
+export type ApprovalRoutingMode = 'local' | 'remote' | 'hybrid';
+
+/** Where the request originated. Used to decide enqueue behavior + dedup. */
+export type ApprovalSource = 'sdk' | 'hook';
 
 interface PendingApproval {
   requestId: string;
@@ -14,20 +27,57 @@ interface PendingApproval {
   /** Optional delay timer for 'delay' mode auto-approval */
   delayTimer?: ReturnType<typeof setTimeout>;
   createdAt: number;
+  // ── Wave 2 routing fields (optional for backwards compat) ──
+  /** Canonical Claude tool_use_id — populated when source==='sdk' or source==='hook' */
+  toolUseId?: string;
+  /** Routing dimension — local/remote/hybrid. Defaults to 'local' for legacy callers. */
+  routingMode?: ApprovalRoutingMode;
+  /** Origin path: sdk callback or shell hook script */
+  source?: ApprovalSource;
+  /** tmux window name for hybrid send-keys target */
+  tabId?: string;
+}
+
+interface EnqueueOptions {
+  /** Canonical dedup key — typically Claude's tool_use_id */
+  dedupKey: string;
+  source: ApprovalSource;
+  routingMode: ApprovalRoutingMode;
+  tool: string;
+  description?: string;
+  details?: Record<string, unknown>;
+  /** Required for hybrid mode so the relay knows where to inject keystrokes */
+  tabId?: string;
+  /** Optional abort signal that resolves the approval as 'deny' if aborted */
+  signal?: AbortSignal;
 }
 
 // ── Approval Queue ──────────────────────────────────────────
-// Hook scripts POST approval requests here and block until
-// the iOS app sends a decision back through the WebSocket.
+// Hook scripts AND the SDK callback path both flow through this queue.
+// Wave 2 added orthogonal routing-mode dimension and tool_use_id dedup.
+//
+// Emits the following events for the WebSocket layer to broadcast:
+//   - 'enqueue'  → { requestId, tool, description, details, source, routingMode }
+//   - 'resolve'  → { requestId, decision }
+//   - 'expired'  → { requestId }
+//
+// The events are additive; existing waitForDecision() callsites that don't
+// pass routing options keep working untouched.
 
-export class ApprovalQueue {
+export class ApprovalQueue extends EventEmitter {
   private pending = new Map<string, PendingApproval>();
   private timeoutMs: number;
   private mode: ApprovalQueueMode = 'manual';
   private delaySeconds = 10;
+  /** Recently resolved tool_use_ids — short TTL, used to short-circuit hybrid races. */
+  private resolved = new Map<string, ApprovalDecision>();
+  private RESOLVED_TTL_MS = 60_000;
 
   constructor(timeoutMs = 5 * 60 * 1000) {
+    super();
     this.timeoutMs = timeoutMs;
+    // Match listener cap to FleetManager scale (50)
+    this.setMaxListeners(50);
   }
 
   /**
@@ -113,12 +163,29 @@ export class ApprovalQueue {
    * Queue an approval request and wait for a decision.
    * Returns a Promise that resolves when the iOS app responds.
    * The hook script blocks on this.
+   *
+   * Wave 2: optional `signal` aborts the wait and resolves as 'deny'. The
+   * SDK adapter threads the canUseTool `options.signal` through this so
+   * cancellations clean up properly. Existing callsites without a signal
+   * remain unaffected.
    */
-  waitForDecision(requestId: string, tool: string, description = '', details: Record<string, unknown> = {}): Promise<ApprovalDecision> {
+  waitForDecision(
+    requestId: string,
+    tool: string,
+    description = '',
+    details: Record<string, unknown> = {},
+    signal?: AbortSignal,
+  ): Promise<ApprovalDecision> {
     // Auto mode: immediately allow without queuing
     if (this.mode === 'auto') {
       logger.info({ requestId, tool, mode: 'auto' }, 'Auto-approving (ClaudeGod mode)');
       return Promise.resolve('allow');
+    }
+
+    // Pre-aborted signal: resolve immediately as deny.
+    if (signal?.aborted) {
+      logger.info({ requestId, tool }, 'Approval aborted before enqueue');
+      return Promise.resolve('deny');
     }
 
     return new Promise<ApprovalDecision>((resolve) => {
@@ -126,6 +193,7 @@ export class ApprovalQueue {
       const timer = setTimeout(() => {
         if (this.pending.has(requestId)) {
           logger.warn({ requestId, tool }, 'Approval timed out, auto-denying');
+          this.emit('expired', { requestId });
           this.resolve(requestId, 'deny');
         }
       }, this.timeoutMs);
@@ -153,8 +221,158 @@ export class ApprovalQueue {
         }, this.delaySeconds * 1000);
       }
 
+      // Wire abort signal — resolves as 'deny' and removes the entry. We
+      // intentionally do NOT call this.resolve() with the public method
+      // because the caller's promise handler is the same `resolve` we own.
+      if (signal) {
+        const onAbort = () => {
+          if (this.pending.has(requestId)) {
+            logger.info({ requestId, tool }, 'Approval aborted by signal');
+            this.resolve(requestId, 'deny');
+          }
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+
       this.pending.set(requestId, entry);
       logger.info({ requestId, tool, mode: this.mode }, 'Approval queued, waiting for decision');
+    });
+  }
+
+  /**
+   * Wave 2 unified entrypoint that supports the routing-mode dimension.
+   * Idempotent on dedupKey — duplicate enqueues attach to the existing
+   * pending entry instead of creating a new one. Returns the same Promise
+   * for both calls so dedup is cooperative.
+   */
+  enqueueAndWait(opts: EnqueueOptions): Promise<ApprovalDecision> {
+    const {
+      dedupKey,
+      source,
+      routingMode,
+      tool,
+      description = '',
+      details = {},
+      tabId,
+      signal,
+    } = opts;
+
+    // ── Recently-resolved short-circuit (hybrid race protection) ──
+    const cached = this.resolved.get(dedupKey);
+    if (cached) {
+      logger.info({ dedupKey, decision: cached, tool }, 'Approval already resolved (cache hit)');
+      return Promise.resolve(cached);
+    }
+
+    // ── Dedup: same toolUseId already in flight → attach to it ──
+    const existing = this.pending.get(dedupKey);
+    if (existing) {
+      logger.info({ dedupKey, tool, source }, 'Approval dedup — returning existing pending Promise');
+      return new Promise<ApprovalDecision>((resolveAttach) => {
+        // Wrap the existing resolve so both callers see the result.
+        const originalResolve = existing.resolve;
+        existing.resolve = (decision) => {
+          originalResolve(decision);
+          resolveAttach(decision);
+        };
+      });
+    }
+
+    // Auto mode escape — same as legacy waitForDecision.
+    if (this.mode === 'auto') {
+      logger.info({ dedupKey, tool, mode: 'auto' }, 'Auto-approving (ClaudeGod mode)');
+      this.markResolved(dedupKey, 'allow');
+      return Promise.resolve('allow');
+    }
+
+    if (signal?.aborted) {
+      logger.info({ dedupKey, tool }, 'Approval aborted before enqueue');
+      return Promise.resolve('deny');
+    }
+
+    // Build the pending entry with routing fields populated.
+    return new Promise<ApprovalDecision>((resolveOuter) => {
+      const timer = setTimeout(() => {
+        const pendingEntry = this.pending.get(dedupKey);
+        if (!pendingEntry) return;
+        this.emit('expired', { requestId: dedupKey });
+
+        // ── routing-aware expiry ──────────────────────────────
+        // Only `remote` mode owns the decision on the phone. For
+        // `local`/`hybrid`, the hook already returned 'ask' immediately
+        // and the TUI owns (or co-owns) the decision — so a timeout
+        // here MUST NOT broadcast a 'deny' that would clear the TUI
+        // prompt or post a fake decision to other devices. We just
+        // drop the pending entry silently and let the TUI keep going.
+        if (routingMode === 'remote') {
+          logger.warn({ dedupKey, tool, routingMode }, 'Approval timed out, auto-denying');
+          this.resolve(dedupKey, 'deny');
+          return;
+        }
+
+        logger.info(
+          { dedupKey, tool, routingMode },
+          'Approval expired (local/hybrid) — clearing pending without auto-deny',
+        );
+        clearTimeout(pendingEntry.timer);
+        if (pendingEntry.delayTimer) {
+          clearTimeout(pendingEntry.delayTimer);
+        }
+        this.pending.delete(dedupKey);
+      }, this.timeoutMs);
+
+      const entry: PendingApproval = {
+        requestId: dedupKey,
+        tool,
+        description,
+        details,
+        resolve: resolveOuter,
+        timer,
+        createdAt: Date.now(),
+        toolUseId: dedupKey,
+        routingMode,
+        source,
+        tabId,
+      };
+
+      if (this.mode === 'delay') {
+        entry.delayTimer = setTimeout(() => {
+          if (this.pending.has(dedupKey)) {
+            logger.info(
+              { dedupKey, tool, delaySeconds: this.delaySeconds },
+              'Delay expired, auto-approving',
+            );
+            this.resolve(dedupKey, 'allow');
+          }
+        }, this.delaySeconds * 1000);
+      }
+
+      if (signal) {
+        const onAbort = () => {
+          if (this.pending.has(dedupKey)) {
+            logger.info({ dedupKey, tool }, 'Approval aborted by signal');
+            this.resolve(dedupKey, 'deny');
+          }
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+
+      this.pending.set(dedupKey, entry);
+      logger.info(
+        { dedupKey, tool, mode: this.mode, routingMode, source, tabId },
+        'Approval enqueued (Wave 2)',
+      );
+
+      // Tell the WS layer there's a new pending approval.
+      this.emit('enqueue', {
+        requestId: dedupKey,
+        tool,
+        description,
+        details,
+        source,
+        routingMode,
+        tabId,
+      });
     });
   }
 
@@ -172,9 +390,62 @@ export class ApprovalQueue {
     if (entry.delayTimer) {
       clearTimeout(entry.delayTimer);
     }
+    // Cache the decision for hybrid race short-circuit (TTL-bounded).
+    if (entry.toolUseId) {
+      this.markResolved(entry.toolUseId, decision);
+    }
     entry.resolve(decision);
-    logger.info({ requestId, decision, tool: entry.tool }, 'Approval resolved');
+    logger.info({ requestId, decision, tool: entry.tool, source: entry.source }, 'Approval resolved');
+    this.emit('resolve', { requestId, decision });
     return true;
+  }
+
+  /**
+   * Resolve a hybrid-mode approval coming from the phone. Marks the
+   * dedupKey as resolved (short-circuiting any duplicate enqueue) and
+   * injects the decision into the tmux window so the TUI's prompt
+   * resolves too. Best-effort: a stray keystroke is acceptable if the
+   * TUI has already moved on. The relay does NOT delay or wait — see
+   * Wave 2 spec OQ#2.
+   */
+  async resolveHybrid(
+    dedupKey: string,
+    decision: 'allow' | 'deny',
+    tabId: string,
+  ): Promise<boolean> {
+    if (this.isResolved(dedupKey)) {
+      logger.info({ dedupKey, decision }, 'Hybrid resolve skipped — already resolved');
+      return false;
+    }
+    // Short-circuit any future duplicate enqueues immediately so we never
+    // double-fire even if the TUI's send-keys takes a beat to land.
+    this.markResolved(dedupKey, decision);
+
+    // Mirror into the pending map so any in-flight Promise also resolves.
+    this.resolve(dedupKey, decision);
+
+    const key = decision === 'allow' ? 'a' : 'd';
+    const target = `${MAJOR_TOM_SESSION}:${tabId}`;
+    const ok = await sendKeys(target, key, 'Enter');
+    if (!ok) {
+      logger.warn({ dedupKey, target, decision }, 'Hybrid send-keys injection failed');
+    } else {
+      logger.info({ dedupKey, target, decision }, 'Hybrid send-keys injected');
+    }
+    return ok;
+  }
+
+  /** True if this dedupKey was resolved within the TTL window. */
+  isResolved(dedupKey: string): boolean {
+    return this.resolved.has(dedupKey);
+  }
+
+  /** Mark a dedupKey as resolved with TTL cleanup. */
+  markResolved(dedupKey: string, decision: ApprovalDecision): void {
+    this.resolved.set(dedupKey, decision);
+    setTimeout(() => {
+      this.resolved.delete(dedupKey);
+    }, this.RESOLVED_TTL_MS).unref();
   }
 
   /** Get all pending approval request IDs */
@@ -183,12 +454,25 @@ export class ApprovalQueue {
   }
 
   /** Get all pending approvals with full details (for re-broadcasting on reconnect) */
-  getPendingDetails(): Array<{ requestId: string; tool: string; description: string; details: Record<string, unknown> }> {
+  getPendingDetails(): Array<{
+    requestId: string;
+    tool: string;
+    description: string;
+    details: Record<string, unknown>;
+    routingMode?: ApprovalRoutingMode;
+    source?: ApprovalSource;
+    tabId?: string;
+    createdAt: number;
+  }> {
     return [...this.pending.values()].map((p) => ({
       requestId: p.requestId,
       tool: p.tool,
       description: p.description,
       details: p.details,
+      routingMode: p.routingMode,
+      source: p.source,
+      tabId: p.tabId,
+      createdAt: p.createdAt,
     }));
   }
 

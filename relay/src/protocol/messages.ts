@@ -537,6 +537,13 @@ export interface ApprovalRequestMessage {
     level: 'high' | 'medium' | 'low';
     reason: string;
   };
+  // ── Phase 13 Wave 2 routing fields (optional, additive) ──
+  /** Which routing mode the queue was in when this enqueued. */
+  routingMode?: 'local' | 'remote' | 'hybrid';
+  /** Origin of the approval — SDK callback or shell hook script. */
+  source?: 'sdk' | 'hook';
+  /** tmux window name for hybrid send-keys target. Only set when source==='hook'. */
+  tabId?: string;
 }
 
 export interface ToolStartMessage {
@@ -914,7 +921,12 @@ export interface ApprovalResolvedMessage {
   type: 'approval.resolved';
   requestId: string;
   decision: string;
-  resolvedBy: {
+  /**
+   * Who resolved the approval. Required in multi-user mode (the WS handler
+   * always includes it). Optional for Phase 13 shell-side resolves which
+   * can come from any device with no user attribution.
+   */
+  resolvedBy?: {
     userId: string;
     name?: string;
   };
