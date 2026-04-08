@@ -9,11 +9,14 @@ import * as pty from 'node-pty';
 import type { IPty } from 'node-pty';
 import type { WebSocket } from 'ws';
 import { homedir } from 'node:os';
+import { randomBytes } from 'node:crypto';
 import { logger } from '../utils/logger.js';
 import {
-  MAJOR_TOM_SESSION,
   MAJOR_TOM_SOCKET,
   createWindow,
+  createViewSession,
+  killSession,
+  killWindow,
 } from '../utils/tmux-cli.js';
 import { tmuxBootstrap } from './tmux-bootstrap.js';
 import { MAJOR_TOM_CONFIG_DIR } from '../installer/install-hooks.js';
@@ -36,6 +39,15 @@ const MAX_PTY_INPUT_BYTES = 64 * 1024;
 
 export interface PtyHandle {
   tabId: string;
+  /**
+   * Unique per-attach tmux view session name (e.g. `view-t1-a3bf91c2`).
+   * Created at attach time as a grouped session sharing the master session's
+   * window set but tracking its OWN "current window" slot, so a second
+   * client's attach can't pull this client's view onto a different window.
+   * Killed in `dispose()` — killing a grouped session leaves the shared
+   * windows alive because they belong to the master session.
+   */
+  viewSessionId: string;
   pty: IPty;
   socket: WebSocket;
   disposed: boolean;
@@ -52,6 +64,14 @@ type PtyDataHandler = (data: string | Buffer) => void;
  * Spawn a tmux attach into `tabId`, wire it to `socket`, and return the
  * handle. The handle is `disposed = true` once either side closes — writes
  * after disposal are a silent no-op (write-after-kill crash guard on macOS).
+ *
+ * Wave 2.6 change: each attach now creates its OWN grouped tmux "view"
+ * session (`view-<tabId>-<randhex>`) which shares the master session's
+ * window set but tracks an independent "current window" slot. This is the
+ * fix for the session-handling bug where a second WS attaching with
+ * `-t major-tom:t2` would forcibly switch every other client's view from
+ * t1 to t2 (the master session has one shared current-window slot; a
+ * grouped session is the tmux-native way to get per-client isolation).
  *
  * Callers may await tmuxBootstrap.ensure() first so route-level failures
  * surface from the WS handler with clean error reporting, but this function
@@ -99,6 +119,22 @@ export async function attachPty(
     MAJOR_TOM_RELAY_PORT: hookPort,
   });
 
+  // Create a unique per-attach grouped view session. Unique suffix so two
+  // devices viewing the same tabId concurrently each get their own
+  // current-window slot (no cross-contamination). 8 hex chars = 32 bits of
+  // randomness, vastly more than enough to avoid collisions at human-scale
+  // attach rates.
+  const viewSessionId = `view-${tabId}-${randomBytes(4).toString('hex')}`;
+  try {
+    await createViewSession(viewSessionId, tabId);
+  } catch (err) {
+    logger.error(
+      { err, tabId, viewSessionId },
+      'Failed to create grouped view session — aborting PTY attach',
+    );
+    throw err;
+  }
+
   // Env vars below only affect the tmux *client* process (this attach-
   // session), not the inner shell. We still set TERM/COLORTERM so xterm.js
   // negotiates a 256-color truecolor stream with the client side.
@@ -118,7 +154,11 @@ export async function attachPty(
       // can be observed from multiple devices (laptop + phone) at once.
       // Caught by Copilot review on PR #89 — `-d` would forcibly kick
       // every other attached client, defeating multi-device viewing.
-      '-t', `${MAJOR_TOM_SESSION}:${tabId}`,
+      //
+      // Wave 2.6: target the view session, NOT the master. Each attach
+      // has its own grouped view session so current-window switches in
+      // one client do not drag other clients along.
+      '-t', viewSessionId,
     ],
     {
       name: 'xterm-256color',
@@ -135,6 +175,7 @@ export async function attachPty(
 
   const handle: PtyHandle = {
     tabId,
+    viewSessionId,
     pty: ptyProcess,
     socket,
     disposed: false,
@@ -142,8 +183,8 @@ export async function attachPty(
   };
 
   logger.info(
-    { tabId, pid: ptyProcess.pid, cols, rows },
-    'PTY attached to tmux window',
+    { tabId, viewSessionId, pid: ptyProcess.pid, cols, rows },
+    'PTY attached to tmux window via grouped view session',
   );
 
   // ── PTY → socket (binary frames) ────────────────────────────
@@ -256,15 +297,34 @@ export async function attachPty(
         }
         return;
       }
+      case 'kill': {
+        // Wave 2.6: user deliberately closed the CLI tab (UI confirm modal
+        // already in front of this path). Kill the underlying tmux WINDOW,
+        // not just the view session — otherwise the shared window would
+        // leak inside the master session forever, which is the "forgotten
+        // sessions hanging around" problem the user called out.
+        //
+        // Fire-and-forget: tmux killing the window will naturally cause
+        // every attached view session's PTY to exit (shell receives SIGHUP),
+        // which triggers onExit → dispose() → socket close. We don't need
+        // to reply to the client.
+        logger.info({ tabId, viewSessionId }, 'Client requested kill-window');
+        killWindow(tabId).catch((err) => {
+          logger.warn({ err, tabId }, 'kill-window failed');
+        });
+        return;
+      }
       default:
         logger.debug({ tabId, type: ctrl['type'] }, 'Ignoring unknown control frame');
     }
   });
 
-  socket.on('close', () => dispose(handle, 'socket-closed'));
+  socket.on('close', () => {
+    void dispose(handle, 'socket-closed');
+  });
   socket.on('error', (err) => {
     logger.warn({ err, tabId }, 'Socket error on PTY session');
-    dispose(handle, 'socket-error');
+    void dispose(handle, 'socket-error');
   });
 
   return handle;
@@ -284,17 +344,33 @@ function writeSafe(handle: PtyHandle, data: Buffer): void {
   }
 }
 
-/** Tear down the PTY exactly once. Safe to call from any exit path. */
-export function dispose(handle: PtyHandle, reason: string): void {
+/**
+ * Tear down the PTY exactly once. Safe to call from any exit path.
+ *
+ * Wave 2.6: also kills the per-attach grouped view session. Killing a
+ * grouped session does NOT kill the shared windows — those belong to the
+ * master `major-tom` session and survive until someone explicitly
+ * `killWindow`s them (that's what the `kill` control frame does when the
+ * user closes a CLI tab via the confirmation modal). So relay restarts,
+ * WS reconnects, and stray browser-tab closures still leave the real
+ * `claude` process running inside its tmux window, which is the whole
+ * point of Phase 13.
+ */
+export async function dispose(handle: PtyHandle, reason: string): Promise<void> {
   if (handle.disposed) return;
   handle.disposed = true;
-  logger.info({ tabId: handle.tabId, reason }, 'Disposing PTY handle');
+  logger.info({ tabId: handle.tabId, viewSessionId: handle.viewSessionId, reason }, 'Disposing PTY handle');
   try {
     handle.pty.kill();
   } catch (err) {
     logger.debug({ err, tabId: handle.tabId }, 'PTY kill threw (likely already dead)');
   }
-  // NOTE: we deliberately do NOT destroy the tmux window here — closing the
-  // WebSocket only detaches the attach-session client. The real `claude`
-  // process keeps running inside tmux, which is the whole point of Phase 13.
+  try {
+    await killSession(handle.viewSessionId);
+  } catch (err) {
+    logger.debug(
+      { err, tabId: handle.tabId, viewSessionId: handle.viewSessionId },
+      'kill view session threw (likely already gone)',
+    );
+  }
 }
