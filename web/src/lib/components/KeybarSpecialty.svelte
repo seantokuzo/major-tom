@@ -27,6 +27,13 @@
     ctrlLocked: boolean;
     altArmed: boolean;
     altLocked: boolean;
+    /**
+     * True when the active tab is in tmux copy mode. Drives the primary
+     * highlight on the `tmux-scroll` button — previously the button was
+     * permanently highlighted (misread as "always selected"), now it
+     * only lights up when the flag is actually on.
+     */
+    copyModeActive: boolean;
   }
 
   const {
@@ -38,6 +45,7 @@
     ctrlLocked,
     altArmed,
     altLocked,
+    copyModeActive,
   }: Props = $props();
 
   let rootEl: HTMLDivElement | undefined = $state();
@@ -122,7 +130,7 @@
         class:sticky={spec.sticky}
         class:armed={isArmed(spec)}
         class:locked={isLocked(spec)}
-        class:primary={spec.id === 'tmux-scroll'}
+        class:primary={spec.id === 'tmux-scroll' && copyModeActive}
         data-key-id={spec.id}
         aria-label={spec.description ?? spec.label}
         title={spec.description ?? spec.label}
