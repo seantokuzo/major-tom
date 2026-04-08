@@ -145,9 +145,19 @@ export function getKey(id: string): KeySpec | undefined {
  * `tmux-scroll` is FIRST because it's the single most-used key on the bar
  * (single-tap entry to tmux copy-mode for scrolling). Customize button is
  * the rendered last by the component, not in this list.
+ *
+ * Phase 13 Wave 2.5 additions:
+ *   - `pgup`/`pgdn` — in-terminal scrolling without entering copy-mode
+ *     (most applications handle these natively; also works as "scroll
+ *     through bash history" equivalents after Up/Down exhaustion).
+ *   - `lbracket` — the raw `[` key is impossible to reach on iOS numeric
+ *     row without a shift-chord. Also doubles as the escape hatch into
+ *     tmux copy-mode when combined with the Ctrl latch (`Ctrl-B [`).
  */
 export const DEFAULT_ACCESSORY_KEYS: string[] = [
   'tmux-scroll',
+  'pgup',
+  'pgdn',
   'esc',
   'tab',
   'ctrl',
@@ -156,6 +166,7 @@ export const DEFAULT_ACCESSORY_KEYS: string[] = [
   'arrow-down',
   'arrow-left',
   'arrow-right',
+  'lbracket',
   'pipe',
   'slash',
   'dash',

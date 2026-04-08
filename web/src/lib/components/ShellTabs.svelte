@@ -36,66 +36,120 @@
   }
 </script>
 
-<div class="tabs" role="tablist" aria-label="Shell tabs" aria-orientation="horizontal">
-  {#each shellStore.tabs as tab, index (tab.id)}
-    <div
-      class="tab"
-      class:active={shellStore.activeTabId === tab.id}
-      role="tab"
-      tabindex={shellStore.activeTabId === tab.id ? 0 : -1}
-      aria-selected={shellStore.activeTabId === tab.id}
-      onclick={() => shellStore.setActive(tab.id)}
-      onkeydown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          shellStore.setActive(tab.id);
-          return;
-        }
-        if (e.key === 'ArrowRight') {
-          e.preventDefault();
-          focusTabByIndex(index + 1, e.currentTarget.parentElement);
-          return;
-        }
-        if (e.key === 'ArrowLeft') {
-          e.preventDefault();
-          focusTabByIndex(index - 1, e.currentTarget.parentElement);
-          return;
-        }
-        if (e.key === 'Home') {
-          e.preventDefault();
-          focusTabByIndex(0, e.currentTarget.parentElement);
-          return;
-        }
-        if (e.key === 'End') {
-          e.preventDefault();
-          focusTabByIndex(shellStore.tabs.length - 1, e.currentTarget.parentElement);
-        }
-      }}
-    >
-      <span class="dot" class:on={tab.connected}></span>
-      <span class="label">{tab.label}</span>
-      <button
-        type="button"
-        class="close"
-        title="Detach tab (tmux window stays alive)"
-        aria-label="Detach tab"
-        onclick={(e) => { e.stopPropagation(); onClose(tab.id); }}
-      >×</button>
-    </div>
-  {/each}
+<!--
+  ARIA: `role="tablist"` must only contain `role="tab"` children. The
+  zoom controls and the "new tab" button are NOT tabs, so they sit
+  outside the inner tablist — the outer wrapper is a plain flexbox row
+  that screen readers treat as a single toolbar. Caught by Copilot
+  review on PR #93.
+-->
+<div class="tab-strip" role="toolbar" aria-label="CLI tab controls">
+  <div
+    class="tabs"
+    role="tablist"
+    aria-label="CLI tabs"
+    aria-orientation="horizontal"
+  >
+    {#each shellStore.tabs as tab, index (tab.id)}
+      <div
+        class="tab"
+        class:active={shellStore.activeTabId === tab.id}
+        role="tab"
+        tabindex={shellStore.activeTabId === tab.id ? 0 : -1}
+        aria-selected={shellStore.activeTabId === tab.id}
+        onclick={() => shellStore.setActive(tab.id)}
+        onkeydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            shellStore.setActive(tab.id);
+            return;
+          }
+          if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            focusTabByIndex(index + 1, e.currentTarget.parentElement);
+            return;
+          }
+          if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            focusTabByIndex(index - 1, e.currentTarget.parentElement);
+            return;
+          }
+          if (e.key === 'Home') {
+            e.preventDefault();
+            focusTabByIndex(0, e.currentTarget.parentElement);
+            return;
+          }
+          if (e.key === 'End') {
+            e.preventDefault();
+            focusTabByIndex(shellStore.tabs.length - 1, e.currentTarget.parentElement);
+          }
+        }}
+      >
+        <span class="dot" class:on={tab.connected}></span>
+        <span class="label">{tab.label}</span>
+        <button
+          type="button"
+          class="close"
+          title="Detach tab (tmux window stays alive)"
+          aria-label="Detach tab"
+          onclick={(e) => { e.stopPropagation(); onClose(tab.id); }}
+        >×</button>
+      </div>
+    {/each}
+  </div>
   <button type="button" class="new" onclick={onNew} aria-label="New tab">+</button>
+  <div class="zoom" role="group" aria-label="Terminal font size">
+    <button
+      type="button"
+      class="zoom-btn"
+      aria-label="Decrease terminal font size"
+      title="Zoom out ({shellStore.fontSize}px)"
+      onclick={() => shellStore.bumpFontSize(-1)}
+    >A−</button>
+    <button
+      type="button"
+      class="zoom-btn"
+      aria-label="Increase terminal font size"
+      title="Zoom in ({shellStore.fontSize}px)"
+      onclick={() => shellStore.bumpFontSize(1)}
+    >A+</button>
+  </div>
 </div>
 
 <style>
-  .tabs {
+  /*
+   * Outer toolbar row — background + border live here so the visual
+   * strip still renders as one unit even though the inner tablist is
+   * a separate ARIA landmark.
+   */
+  .tab-strip {
     display: flex;
     align-items: center;
     gap: 4px;
     padding: 4px 6px;
     background: #0d0d11;
     border-bottom: 1px solid #1f1f26;
-    overflow-x: auto;
     flex-shrink: 0;
+  }
+
+  /* Inner tablist — the horizontally scrollable container of tabs. */
+  .tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  @media (max-width: 480px) {
+    .tab-strip {
+      padding: 2px 4px;
+      gap: 2px;
+    }
+    .tabs {
+      gap: 2px;
+    }
   }
 
   .tab {
@@ -168,5 +222,46 @@
   .new:hover {
     color: #e8e8f0;
     border-color: #4dd973;
+  }
+
+  .zoom {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+    flex-shrink: 0;
+    padding-left: 4px;
+    border-left: 1px solid #1f1f26;
+  }
+
+  .zoom-btn {
+    padding: 4px 8px;
+    background: transparent;
+    border: 1px solid #2a2a35;
+    border-radius: 6px;
+    color: #888893;
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    min-width: 32px;
+    min-height: 28px;
+  }
+
+  .zoom-btn:hover {
+    color: #e8e8f0;
+    border-color: #4dd973;
+  }
+
+  .zoom-btn:active {
+    background: #16161d;
+  }
+
+  @media (max-width: 480px) {
+    .zoom-btn {
+      padding: 3px 6px;
+      min-width: 28px;
+    }
   }
 </style>

@@ -23,6 +23,15 @@
   let activeTab = $state<'accessory' | 'specialty'>('accessory');
   /** Text filter for the "add key" picker. */
   let filter = $state('');
+  /**
+   * Collapsed by default so the active-keys list gets the full sheet
+   * height for reorder/remove. Expanding flips it into a disclosure
+   * panel and the active list goes back to sharing the space.
+   * State is scoped to the sheet's lifetime — reopening the sheet
+   * resets to collapsed, which is the desired behavior (the sheet
+   * unmounts when `open === false`).
+   */
+  let addListOpen = $state(false);
 
   const currentIds = $derived(
     activeTab === 'accessory' ? keybarStore.accessoryIds : keybarStore.specialtyIds
@@ -110,7 +119,7 @@
         </button>
       </div>
 
-      <section class="active-list">
+      <section class="active-list" class:expanded={!addListOpen}>
         <div class="section-title">Active ({currentKeys.length})</div>
         {#if currentKeys.length === 0}
           <div class="empty">No keys — add some below.</div>
@@ -150,34 +159,53 @@
         </ul>
       </section>
 
-      <section class="add-list">
-        <div class="section-title">Add a key</div>
-        <input
-          type="text"
-          name="keybar-filter"
-          class="filter-input"
-          placeholder="Filter…"
-          bind:value={filter}
-        />
-        <ul>
-          {#each availableKeys as spec (spec.id)}
-            <li data-available-key-id={spec.id}>
-              <span class="row-label">
-                <span class="label-glyph">{spec.label}</span>
-                <span class="label-desc">{spec.description ?? spec.id}</span>
-              </span>
-              <button
-                type="button"
-                class="icon-btn accent"
-                aria-label="Add"
-                onpointerdown={(e) => { e.preventDefault(); addKey(spec.id); }}
-              >+</button>
-            </li>
-          {/each}
-          {#if availableKeys.length === 0}
-            <li class="empty">All library keys are already active.</li>
-          {/if}
-        </ul>
+      <section class="add-list" class:open={addListOpen}>
+        <button
+          type="button"
+          class="add-toggle"
+          aria-expanded={addListOpen}
+          aria-controls="kb-add-list-body"
+          onpointerdown={(e) => { e.preventDefault(); }}
+          onclick={() => { addListOpen = !addListOpen; }}
+        >
+          <span class="section-title add-title">Add a key</span>
+          <span class="chevron" aria-hidden="true">{addListOpen ? '▾' : '▸'}</span>
+        </button>
+        <!--
+          `aria-controls` on the disclosure toggle references this id,
+          so the container must always exist in the DOM — we toggle
+          visibility via `hidden` instead of an `{#if}` guard. Assistive
+          tech that follows the aria-controls pointer never finds a
+          dangling reference. Caught by Copilot PR #93 round 3 review.
+        -->
+        <div id="kb-add-list-body" class="add-body" hidden={!addListOpen}>
+          <input
+            type="text"
+            name="keybar-filter"
+            class="filter-input"
+            placeholder="Filter…"
+            bind:value={filter}
+          />
+          <ul>
+            {#each availableKeys as spec (spec.id)}
+              <li data-available-key-id={spec.id}>
+                <span class="row-label">
+                  <span class="label-glyph">{spec.label}</span>
+                  <span class="label-desc">{spec.description ?? spec.id}</span>
+                </span>
+                <button
+                  type="button"
+                  class="icon-btn accent"
+                  aria-label="Add"
+                  onpointerdown={(e) => { e.preventDefault(); addKey(spec.id); }}
+                >+</button>
+              </li>
+            {/each}
+            {#if availableKeys.length === 0}
+              <li class="empty">All library keys are already active.</li>
+            {/if}
+          </ul>
+        </div>
       </section>
 
       <footer class="sheet-footer">
@@ -272,18 +300,67 @@
   .active-list,
   .add-list {
     padding: 10px 14px;
-    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
 
+  /* Default: active list takes whatever is left after the add panel. */
   .active-list {
-    max-height: 30vh;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
     border-bottom: 1px solid #20202a;
   }
 
+  /* When the add panel is collapsed, the active list gets the full sheet. */
+  .active-list.expanded {
+    flex: 1 1 auto;
+  }
+
+  /* The add panel is a disclosure — header only when collapsed, full
+     scrollable picker when open. Collapsed it's a 1-line header, so no
+     flex:1 (that would squeeze the active list for no reason). */
   .add-list {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .add-list.open {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .add-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 6px 0;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-family: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .add-toggle .add-title {
+    margin-bottom: 0;
+  }
+
+  .chevron {
+    color: #6a6a78;
+    font-size: 0.8rem;
+    line-height: 1;
+  }
+
+  .add-body {
     flex: 1;
     min-height: 0;
+    overflow-y: auto;
+    margin-top: 8px;
   }
 
   .section-title {

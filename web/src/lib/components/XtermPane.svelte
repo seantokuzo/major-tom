@@ -7,6 +7,7 @@
   import '@xterm/xterm/css/xterm.css';
   import { shellStore } from '../stores/shell.svelte';
   import { relay } from '../stores/relay.svelte';
+  import { keybarModifiers } from '../shell/modifiers.svelte';
 
   interface Props {
     tabId: string;
@@ -37,7 +38,10 @@
 
     term = new Terminal({
       fontFamily: 'Berkeley Mono, ui-monospace, Menlo, monospace',
-      fontSize: 14,
+      // Initial size from the shared store so zoom preference persists
+      // across refreshes and new tabs. Reactive updates are handled via
+      // the $effect below that watches shellStore.fontSize.
+      fontSize: shellStore.fontSize,
       cursorBlink: true,
       allowProposedApi: true,
       scrollback: 5000,
@@ -87,17 +91,17 @@
     unsubStatus = shellStore.onStatus(tabId, (status, detail) => {
       if (!term) return;
       if (status === 'connecting') {
-        term.write('\r\n\x1b[2;37m[shell] connecting…\x1b[0m\r\n');
+        term.write('\r\n\x1b[2;37m[cli] connecting…\x1b[0m\r\n');
       } else if (status === 'open') {
-        term.write('\r\n\x1b[2;32m[shell] connected\x1b[0m\r\n');
+        term.write('\r\n\x1b[2;32m[cli] connected\x1b[0m\r\n');
         // Resync size to the relay on (re)open
         if (lastDims.cols && lastDims.rows) {
           shellStore.sendControl(tabId, { type: 'resize', cols: lastDims.cols, rows: lastDims.rows });
         }
       } else if (status === 'closed') {
-        term.write(`\r\n\x1b[2;33m[shell] disconnected${detail ? ` (${detail})` : ''}\x1b[0m\r\n`);
+        term.write(`\r\n\x1b[2;33m[cli] disconnected${detail ? ` (${detail})` : ''}\x1b[0m\r\n`);
       } else if (status === 'error') {
-        term.write(`\r\n\x1b[2;31m[shell] error${detail ? `: ${detail}` : ''}\x1b[0m\r\n`);
+        term.write(`\r\n\x1b[2;31m[cli] error${detail ? `: ${detail}` : ''}\x1b[0m\r\n`);
       }
     });
 
@@ -115,9 +119,25 @@
       });
     }
 
-    // Terminal → PTY (handles keyboard, paste, AND keybar via term.input())
+    // Terminal → PTY (handles keyboard, paste, AND keybar via term.input()).
+    //
+    // Bug 5 fix: apply any currently-armed keybar modifier to the bytes
+    // before they leave the browser. Without this, the user can tap
+    // Ctrl on the soft keybar and then type 'c' on the iOS keyboard —
+    // and the literal 'c' lands at the prompt because iOS input never
+    // touches the keybar's dispatch function. keybarModifiers.transform
+    // is a no-op when nothing is armed, so desktop-only users who never
+    // interact with the keybar pay zero cost.
     term.onData((data) => {
-      shellStore.send(tabId, data);
+      // Transform contract says empty input is a no-op (no transform,
+      // no clear). Gate BOTH the send and the clearArmed behind a
+      // non-empty check so an empty onData event (possible in some
+      // xterm.js edge cases) does not silently release the user's
+      // armed Ctrl/Alt latch. Caught by Copilot PR #93 round 4 review.
+      if (data.length === 0) return;
+      const transformed = keybarModifiers.transform(data);
+      shellStore.send(tabId, transformed);
+      keybarModifiers.clearArmed();
     });
 
     term.onResize(({ cols, rows }) => {
@@ -167,6 +187,38 @@
     });
   }
 
+  // Reactively sync the xterm font size with the shared store. Bumping the
+  // font size invalidates the cached cell dimensions, so we also have to
+  // refit — otherwise the terminal keeps rendering at the previous grid
+  // size and half the prompt falls off the right edge.
+  $effect(() => {
+    const size = shellStore.fontSize;
+    if (!term) return;
+    if (term.options.fontSize === size) return;
+    term.options.fontSize = size;
+    queueFit();
+  });
+
+  // Bug 4: force a repaint when this tab is (re)activated. A hidden tab
+  // uses `display: none`, so tmux never bothered to repaint the window
+  // while it was off-screen — xterm renders whatever was in its buffer
+  // from BEFORE the switch. On reactivation we refit (in case the
+  // viewport size changed), then send a `refresh` control frame that
+  // asks the relay to nudge tmux into a full repaint via a 1-col resize
+  // wobble. Finally we steal focus back so the iOS soft-keyboard pops
+  // straight up without a second tap.
+  $effect(() => {
+    const seq = shellStore.activationSeq[tabId];
+    if (!seq) return;
+    if (shellStore.activeTabId !== tabId) return;
+    if (!opened) return;
+    requestAnimationFrame(() => {
+      queueFit();
+      shellStore.sendControl(tabId, { type: 'refresh' });
+      term?.focus();
+    });
+  });
+
   onDestroy(() => {
     shellStore.unregisterInjector(tabId);
     shellStore.unregisterFocuser(tabId);
@@ -201,6 +253,13 @@
     width: 100%;
     padding: 6px 8px;
     box-sizing: border-box;
+  }
+
+  /* Mobile: shave padding so the prompt line gets every last column. */
+  @media (max-width: 480px) {
+    .xterm-pane :global(.xterm) {
+      padding: 2px 4px;
+    }
   }
 
   .xterm-pane :global(.xterm-viewport) {

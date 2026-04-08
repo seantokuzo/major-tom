@@ -231,6 +231,31 @@ export async function attachPty(
         writeSafe(handle, buf);
         return;
       }
+      case 'refresh': {
+        // Bug 4: nudge tmux into repainting the visible window. When the
+        // web client swaps between CLI tabs (display: none on the hidden
+        // pane), tmux never repaints the off-screen window, so on
+        // reactivation the xterm buffer shows stale content. A 1-col
+        // resize wobble forces tmux to emit a full redraw without the
+        // client needing to know tmux is involved at all.
+        const currentCols = ptyProcess.cols;
+        const currentRows = ptyProcess.rows;
+        if (
+          Number.isFinite(currentCols) && Number.isFinite(currentRows) &&
+          currentCols > 2 && currentRows > 2
+        ) {
+          try {
+            ptyProcess.resize(currentCols - 1, currentRows);
+            ptyProcess.resize(currentCols, currentRows);
+          } catch (err) {
+            logger.warn(
+              { err, tabId, cols: currentCols, rows: currentRows },
+              'PTY refresh (resize wobble) failed',
+            );
+          }
+        }
+        return;
+      }
       default:
         logger.debug({ tabId, type: ctrl['type'] }, 'Ignoring unknown control frame');
     }

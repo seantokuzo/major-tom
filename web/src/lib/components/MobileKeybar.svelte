@@ -23,6 +23,7 @@
   import KeybarSpecialty from './KeybarSpecialty.svelte';
   import KeybarCustomizeSheet from './KeybarCustomizeSheet.svelte';
   import type { KeySpec } from '../shell/keys';
+  import { keybarModifiers } from '../shell/modifiers.svelte';
 
   interface Props {
     /** Inject keystrokes into the terminal. Provided by parent. */
@@ -43,93 +44,29 @@
   let customizeOpen = $state(false);
 
   // ── Sticky modifier state ──────────────────────────────────────────
-  // Each modifier has independent armed + locked state so Ctrl and Alt
-  // can be combined (e.g. Ctrl+Alt+Delete, Alt+Ctrl-C). An earlier pass
-  // collapsed these into a single `armedMod`/`lockedMod` pair which
-  // silently killed combo support — Copilot caught it on PR #91.
-  /** One-shot: cleared after the next non-modifier dispatch. */
-  let ctrlArmed = $state(false);
-  let altArmed = $state(false);
-  /** Persistent: stays on until the user taps the mod again. */
-  let ctrlLocked = $state(false);
-  let altLocked = $state(false);
+  // State lives in `keybarModifiers` (shared singleton) so XtermPane can
+  // intercept iOS soft-keyboard input and apply armed modifiers too. We
+  // surface the reactive fields as $derived locals so the rendered
+  // children (KeybarAccessory/KeybarSpecialty) don't have to import the
+  // store themselves — the prop-drilling shape from Wave 1 is preserved.
+  const ctrlArmed = $derived(keybarModifiers.ctrlArmed);
+  const ctrlLocked = $derived(keybarModifiers.ctrlLocked);
+  const altArmed = $derived(keybarModifiers.altArmed);
+  const altLocked = $derived(keybarModifiers.altLocked);
+
   /**
-   * Double-tap detector for promoting an armed mod to a lock. We record
-   * the id + timestamp of the most recent sticky tap; if the SAME sticky
-   * is tapped again within DOUBLE_TAP_MS, the arm becomes a lock.
+   * Main dispatch: sticky keys toggle the shared latch; non-sticky keys
+   * inject their raw bytes. The transform + clearArmed() happens inside
+   * XtermPane.onData — that's the single chokepoint that EVERY input
+   * flows through (iOS keyboard, physical keyboard, and keybar
+   * injections, since term.input(..., true) fires onData synchronously).
    */
-  const DOUBLE_TAP_MS = 400;
-  let lastStickyTap: { id: 'ctrl' | 'alt'; t: number } | null = null;
-
-  function toggleSticky(id: 'ctrl' | 'alt'): void {
-    const now = performance.now();
-    const isDoubleTap =
-      lastStickyTap !== null &&
-      lastStickyTap.id === id &&
-      now - lastStickyTap.t < DOUBLE_TAP_MS;
-    lastStickyTap = { id, t: now };
-
-    const armed = id === 'ctrl' ? ctrlArmed : altArmed;
-    const locked = id === 'ctrl' ? ctrlLocked : altLocked;
-
-    // If currently locked, any tap on the same mod releases it.
-    if (locked) {
-      if (id === 'ctrl') {
-        ctrlLocked = false;
-        ctrlArmed = false;
-      } else {
-        altLocked = false;
-        altArmed = false;
-      }
-      return;
-    }
-
-    // Double-tap from armed → promote to locked.
-    if (isDoubleTap && armed) {
-      if (id === 'ctrl') ctrlLocked = true;
-      else altLocked = true;
-      return;
-    }
-
-    // Single tap toggles just this mod's armed state.
-    if (id === 'ctrl') ctrlArmed = !ctrlArmed;
-    else altArmed = !altArmed;
-  }
-
-  /** Main dispatch: applies every active mod to spec.bytes and calls inject(). */
   function dispatch(spec: KeySpec): void {
     if (spec.sticky) {
-      if (spec.id === 'ctrl' || spec.id === 'alt') toggleSticky(spec.id);
+      if (spec.id === 'ctrl' || spec.id === 'alt') keybarModifiers.toggleSticky(spec.id);
       return;
     }
-
-    let bytes = spec.bytes;
-    const ctrlActive = ctrlLocked || ctrlArmed;
-    const altActive = altLocked || altArmed;
-
-    if (ctrlActive && bytes.length >= 1) {
-      // Ctrl + printable ASCII → control byte (bit 5 cleared). xterm/VT
-      // convention: Ctrl-@ = NUL (0x00), Ctrl-A = 0x01, … Ctrl-_ = 0x1f.
-      // We only transform the first byte so multi-byte sequences (Ctrl
-      // shouldn't normally combine with CSI sequences anyway) stay sane.
-      const first = bytes.charCodeAt(0);
-      if (first >= 0x40 && first <= 0x7e) {
-        bytes = String.fromCharCode(first & 0x1f) + bytes.slice(1);
-      } else if (first >= 0x20 && first <= 0x3f) {
-        // e.g. Ctrl-? = 0x7f (DEL). Rare but legal.
-        bytes = String.fromCharCode(first ^ 0x40) + bytes.slice(1);
-      }
-    }
-    if (altActive && bytes.length >= 1) {
-      // ESC prefix is the portable Meta encoding xterm.js expects.
-      // Combined with Ctrl above this yields Ctrl+Alt (ESC + control byte).
-      bytes = '\x1b' + bytes;
-    }
-
-    inject(bytes);
-    // Single-tap armed mods auto-release; locked stays active.
-    if (!ctrlLocked) ctrlArmed = false;
-    if (!altLocked) altArmed = false;
+    inject(spec.bytes);
   }
 
   function toggleSpecialty(): void {
