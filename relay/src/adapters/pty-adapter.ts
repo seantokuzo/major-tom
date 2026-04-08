@@ -145,33 +145,55 @@ export async function attachPty(
     COLORTERM: 'truecolor',
   };
 
-  const ptyProcess: IPty = pty.spawn(
-    'tmux',
-    [
-      '-L', MAJOR_TOM_SOCKET,
-      'attach-session',
-      // No `-d`: allow concurrent tmux clients so the same shell window
-      // can be observed from multiple devices (laptop + phone) at once.
-      // Caught by Copilot review on PR #89 — `-d` would forcibly kick
-      // every other attached client, defeating multi-device viewing.
-      //
-      // Wave 2.6: target the view session, NOT the master. Each attach
-      // has its own grouped view session so current-window switches in
-      // one client do not drag other clients along.
-      '-t', viewSessionId,
-    ],
-    {
-      name: 'xterm-256color',
-      cols,
-      rows,
-      cwd: process.env['HOME'] ?? homedir(),
-      env: env as { [key: string]: string },
-      // Binary mode: `encoding: null` tells node-pty to emit Buffers on
-      // onData. Types claim it's `string`, see #489 — we cast the handler.
-      encoding: null as unknown as undefined,
-      handleFlowControl: true,
-    },
-  );
+  // Wrap pty.spawn in try/catch so a spawn failure can clean up the
+  // grouped view session we just created — otherwise a failed attach
+  // would leak a `view-*` session inside the master tmux server forever
+  // (no handle exists yet, so socket.on('close') → dispose() won't run).
+  // Caught by Copilot PR #94 review.
+  let ptyProcess: IPty;
+  try {
+    ptyProcess = pty.spawn(
+      'tmux',
+      [
+        '-L', MAJOR_TOM_SOCKET,
+        'attach-session',
+        // No `-d`: allow concurrent tmux clients so the same shell window
+        // can be observed from multiple devices (laptop + phone) at once.
+        // Caught by Copilot review on PR #89 — `-d` would forcibly kick
+        // every other attached client, defeating multi-device viewing.
+        //
+        // Wave 2.6: target the view session, NOT the master. Each attach
+        // has its own grouped view session so current-window switches in
+        // one client do not drag other clients along.
+        '-t', viewSessionId,
+      ],
+      {
+        name: 'xterm-256color',
+        cols,
+        rows,
+        cwd: process.env['HOME'] ?? homedir(),
+        env: env as { [key: string]: string },
+        // Binary mode: `encoding: null` tells node-pty to emit Buffers on
+        // onData. Types claim it's `string`, see #489 — we cast the handler.
+        encoding: null as unknown as undefined,
+        handleFlowControl: true,
+      },
+    );
+  } catch (err) {
+    logger.error(
+      { err, tabId, viewSessionId },
+      'pty.spawn failed after view session created — cleaning up grouped session',
+    );
+    try {
+      await killSession(viewSessionId);
+    } catch (cleanupErr) {
+      logger.warn(
+        { err: cleanupErr, viewSessionId },
+        'Failed to clean up view session after pty.spawn failure',
+      );
+    }
+    throw err;
+  }
 
   const handle: PtyHandle = {
     tabId,
@@ -202,8 +224,14 @@ export async function attachPty(
 
   ptyProcess.onExit(({ exitCode, signal }) => {
     if (handle.disposed) return;
-    handle.disposed = true;
     logger.info({ tabId, exitCode, signal }, 'PTY exited');
+    // Notify the client with exit details BEFORE disposing. We intentionally
+    // do NOT flip handle.disposed here — dispose() is the single source of
+    // truth for that flag. Flipping it early meant the subsequent
+    // socket.on('close') dispose call would short-circuit and `killSession`
+    // would never run on the natural PTY-exit path, leaking the grouped
+    // view session inside the master tmux server. Caught by Copilot PR #94
+    // review.
     if (socket.readyState === socket.OPEN) {
       try {
         socket.send(JSON.stringify({ type: 'exit', exitCode, signal }));
@@ -212,6 +240,7 @@ export async function attachPty(
         // socket already gone — ignore
       }
     }
+    void dispose(handle, 'pty-exited');
   });
 
   // ── socket → PTY (binary = data, text = control JSON) ───────

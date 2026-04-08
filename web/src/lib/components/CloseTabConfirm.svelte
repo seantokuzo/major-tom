@@ -16,7 +16,13 @@
    *     explicitly click it.
    *   - Escape → cancel (native dialog convention)
    *   - Backdrop click → cancel
-   *   - Tab/Shift-Tab cycles between Cancel and Close
+   *
+   * NOTE: Tab/Shift-Tab can still move focus OUT of the modal back into
+   * the tab strip / xterm underneath. A full focus trap would need
+   * keydown interception + focusable-element enumeration; we deliberately
+   * skipped it for now since the worst case ("user tabs out, hits Enter")
+   * lands on a terminal that ignores the keypress, not on another
+   * destructive control. Keeping this comment honest per Copilot PR #94.
    */
   import { onMount } from 'svelte';
 
