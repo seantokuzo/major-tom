@@ -96,23 +96,43 @@ self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     event.waitUntil(
       (async () => {
+        // Mirror the relay.svelte.ts respondToApprovalRest contract:
+        //   - 2xx → success
+        //   - 404 → already resolved by another device, treat as success
+        //   - any other status → failure, surface an error notification
+        //     and DO NOT broadcast mt-approval-resolved (otherwise live
+        //     PWAs would drop the card even though nothing was decided)
+        let res;
+        let networkFailed = false;
         try {
-          await fetch(`/api/approvals/${encodeURIComponent(requestId)}/decision`, {
+          res = await fetch(`/api/approvals/${encodeURIComponent(requestId)}/decision`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ decision }),
           });
         } catch {
-          // Network failed — surface a follow-up notification so the
-          // user knows their decision didn't land. Tagged differently
-          // so it doesn't replace anything important.
+          networkFailed = true;
+        }
+
+        const succeeded = !networkFailed && res && (res.ok || res.status === 404);
+
+        if (!succeeded) {
+          // Network or server error — surface a follow-up notification
+          // so the user knows their decision didn't land. Tagged
+          // differently so it doesn't replace anything important.
+          const reason = networkFailed
+            ? 'network error'
+            : `server returned ${res?.status ?? 'unknown'}`;
           await self.registration.showNotification('Major Tom', {
-            body: `Couldn't send decision (${decision}) — open the app to retry`,
+            body: `Couldn't send decision (${decision}) — ${reason}. Open the app to retry.`,
             tag: 'mt-approval-error',
             icon: '/favicon.svg',
           });
+          return;
         }
+
+        // Only broadcast resolution to live clients on success.
         const winClients = await self.clients.matchAll({
           type: 'window',
           includeUncontrolled: true,

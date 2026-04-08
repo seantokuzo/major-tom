@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Major Tom — SubagentStart hook (Wave 2 placeholder)
 #
-# Installed by relay/scripts/install-hooks.ts to:
+# Installed by relay/src/installer/install-hooks.ts to:
 #   $HOME/.major-tom/claude-config/hooks/subagent-start.sh
 #
 # Wave 2 just logs the event to the relay so we can confirm the hook fires.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Major Tom — PreToolUse hook
 #
-# Installed by relay/scripts/install-hooks.ts to:
+# Installed by relay/src/installer/install-hooks.ts to:
 #   $HOME/.major-tom/claude-config/hooks/pretooluse.sh
 #
 # Routes tool-approval prompts through the relay according to the routing
@@ -69,7 +69,14 @@ case "$MODE" in
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask"}}'
     ;;
   *)
-    # Unknown mode — fall back to local behavior
+    # Unknown mode — fall back to local behavior (fire-and-forget POST
+    # so the phone still sees a notification, then echo 'ask' so the TUI
+    # owns the decision).
+    curl -fsS --max-time 1 -X POST "$RELAY_URL" \
+      -H "Content-Type: application/json" \
+      -H "X-MT-Mode: local" \
+      -H "X-MT-Tab: $TAB_ID" \
+      -d "$PAYLOAD" >/dev/null 2>&1 &
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask"}}'
     ;;
 esac

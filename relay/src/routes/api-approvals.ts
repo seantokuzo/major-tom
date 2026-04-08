@@ -16,7 +16,7 @@
  * separate Node http port (9091) and is loopback-only.
  */
 import type { FastifyPluginAsync } from 'fastify';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { requireSession } from '../plugins/auth.js';
 import type { ApprovalQueue } from '../hooks/approval-queue.js';
@@ -123,7 +123,6 @@ export function createApiApprovalsRoutes(
       async () => {
         const path = join(MAJOR_TOM_CONFIG_DIR, 'approval-mode.json');
         try {
-          const { readFile } = await import('node:fs/promises');
           const raw = await readFile(path, 'utf-8');
           const parsed = JSON.parse(raw) as { mode?: unknown };
           if (isRoutingMode(parsed.mode)) {
