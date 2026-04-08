@@ -11,9 +11,11 @@
  */
 import type { FastifyPluginAsync } from 'fastify';
 import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
+import { requireSession } from '../plugins/auth.js';
 import type { SessionManager } from '../sessions/session-manager.js';
 import { attachPty } from '../adapters/pty-adapter.js';
 import { tmuxBootstrap } from '../adapters/tmux-bootstrap.js';
+import { killWindow } from '../utils/tmux-cli.js';
 import { logger } from '../utils/logger.js';
 
 interface ShellRouteDeps {
@@ -132,6 +134,47 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
           } catch { /* ignore */ }
           socket.close(1011, 'pty attach failed');
         }
+      },
+    );
+
+    // ── REST fallback kill ────────────────────────────────────
+    // `POST /shell/:tabId/kill` — last-resort path for closing a tab
+    // when the shell WebSocket isn't in OPEN state. The frontend normally
+    // sends `{type:'kill'}` in-band over the WS, but if the user clicks
+    // the × while the socket is CONNECTING (initial connect or mid-
+    // reconnect) or already CLOSING/CLOSED, that in-band send is a no-op
+    // and the tmux window would otherwise leak forever. Caught by Copilot
+    // PR #94 review round 2.
+    //
+    // Session-authed via the existing `requireSession` preHandler — same
+    // cookie the WebSocket upgrade uses, so anyone who could open a shell
+    // tab in the first place can also kill it.
+    fastify.post<{ Params: { tabId: string } }>(
+      '/shell/:tabId/kill',
+      { preHandler: requireSession },
+      async (request, reply) => {
+        const { tabId } = request.params;
+        if (!TAB_ID_RE.test(tabId)) {
+          logger.warn({ tabId, ip: request.ip }, 'REST kill rejected — invalid tabId');
+          return reply.code(400).send({ error: 'Invalid tabId' });
+        }
+        try {
+          await killWindow(tabId);
+          logger.info(
+            { tabId, email: request.sessionUser?.email, ip: request.ip },
+            'Shell window killed via REST fallback',
+          );
+        } catch (err) {
+          // `tmux kill-window` on a non-existent window errors — that's a
+          // successful outcome for us (the window is already gone, which is
+          // what the caller wanted). Log at debug and still return ok so
+          // the client doesn't retry forever on an idempotent success.
+          logger.debug(
+            { err, tabId },
+            'killWindow threw (window likely already gone)',
+          );
+        }
+        return { status: 'ok' };
       },
     );
   };

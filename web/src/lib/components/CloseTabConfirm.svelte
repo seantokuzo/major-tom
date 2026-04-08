@@ -3,26 +3,36 @@
    * CloseTabConfirm — destructive confirmation modal for closing a CLI tab.
    *
    * Phase 13 Wave 2.6: closing a tab now sends a `{type:'kill'}` control
-   * frame to the relay which runs `tmux kill-window` server-side. That is
-   * an irreversible action — the shell process (claude, pnpm dev, anything
-   * running in the window) dies immediately. This dialog is the fat-finger
-   * safety net between the × button and that destructive path.
+   * frame to the relay which runs `tmux kill-window` server-side (or hits
+   * `POST /shell/:tabId/kill` as a REST fallback when the WS isn't OPEN).
+   * That is an irreversible action — the shell process (claude, pnpm dev,
+   * anything running in the window) dies immediately. This dialog is the
+   * fat-finger safety net between the × button and that destructive path.
    *
-   * Accessibility:
-   *   - role="dialog" + aria-modal="true" + aria-labelledby for the title
-   *   - Default focus lands on the Cancel button (the SAFE action), so a
-   *     user spamming Enter or rage-tapping the × can't accidentally kill
-   *     a session — they'd have to Tab over to the destructive button or
-   *     explicitly click it.
-   *   - Escape → cancel (native dialog convention)
-   *   - Backdrop click → cancel
+   * Implementation: native HTML `<dialog>` element with `.showModal()`.
+   * That's what gives us, for free:
+   *   - Proper focus trap (Tab/Shift-Tab cycles only inside the dialog —
+   *     focus can't leak onto the underlying tab strip or xterm)
+   *   - Escape closes the dialog (via the `cancel` event, which we hook
+   *     to route through `onCancel` so the parent can clear pending state)
+   *   - Inert-ing of the rest of the page so screen readers and pointer
+   *     events don't leak past the modal
+   *   - Browser-native `::backdrop` pseudo-element for the dim overlay
    *
-   * NOTE: Tab/Shift-Tab can still move focus OUT of the modal back into
-   * the tab strip / xterm underneath. A full focus trap would need
-   * keydown interception + focusable-element enumeration; we deliberately
-   * skipped it for now since the worst case ("user tabs out, hits Enter")
-   * lands on a terminal that ignores the keypress, not on another
-   * destructive control. Keeping this comment honest per Copilot PR #94.
+   * The previous div+role="dialog" version tried to DIY this and users
+   * could Tab out onto underlying focusable controls — caught by Copilot
+   * PR #94 review round 2.
+   *
+   * Focus lands on the Cancel button (the SAFE action) via an explicit
+   * `.focus()` in onMount — showModal()'s own autofocus logic picks the
+   * first tabbable element, which would be Cancel anyway, but we make it
+   * explicit so rage-tapping Enter hits Cancel on every browser.
+   *
+   * Backdrop click → cancel: native `<dialog>` clicks bubble up with
+   * `event.target === dialogEl` for backdrop-area hits (the backdrop is
+   * technically part of the dialog element itself), while clicks on
+   * inner content have event.target set to the inner element. We use
+   * that distinction instead of a separate backdrop div.
    */
   import { onMount } from 'svelte';
 
@@ -34,38 +44,65 @@
 
   let { tabId, onCancel, onConfirm }: Props = $props();
 
+  let dialogEl = $state<HTMLDialogElement | undefined>(undefined);
   let cancelBtnEl = $state<HTMLButtonElement | undefined>(undefined);
 
   onMount(() => {
-    // Land focus on the safe action, not the destructive one. queueMicrotask
-    // lets Svelte finish mounting before we grab focus — without the delay
-    // the button may not be in the DOM yet on first mount.
+    const dialog = dialogEl;
+    if (!dialog) return;
+    // showModal() gets us the focus trap + native backdrop + inert-ing
+    // for free. Without this call, the <dialog> element renders but
+    // behaves like a regular block and none of the modal semantics apply.
+    dialog.showModal();
+    // Override showModal's default autofocus — queueMicrotask lets the
+    // browser finish its own initial focus resolution before we grab it,
+    // otherwise on some engines our .focus() would be clobbered.
     queueMicrotask(() => cancelBtnEl?.focus());
+    return () => {
+      // Component unmounting (parent cleared pendingCloseTabId) — make
+      // sure we release the dialog's modal state too. Safe if already
+      // closed (no-op).
+      if (dialog.open) dialog.close();
+    };
   });
 
-  function handleKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Escape') {
-      e.preventDefault();
+  /**
+   * Escape triggers the native `cancel` event on `<dialog>`. We hook it
+   * and route through the parent's `onCancel` prop so the parent clears
+   * `pendingCloseTabId` (which unmounts this component). Preventing the
+   * default avoids a double-close race between the native dialog.close()
+   * path and our own unmount path.
+   */
+  function handleCancel(e: Event): void {
+    e.preventDefault();
+    onCancel();
+  }
+
+  /**
+   * Backdrop click detection. With native `<dialog>` the backdrop is the
+   * ::backdrop pseudo-element attached to the dialog element itself, so
+   * a click on the dim area bubbles with `event.target === dialogEl`.
+   * Clicks on inner content have event.target set to the inner element
+   * (the h3, a p, a button, etc.) so they don't match.
+   */
+  function handleDialogClick(e: MouseEvent): void {
+    if (e.target === dialogEl) {
       onCancel();
     }
   }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-  class="close-backdrop"
-  onclick={onCancel}
-  onkeydown={handleKeydown}
-  role="presentation"
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<dialog
+  bind:this={dialogEl}
+  class="close-dialog"
+  aria-labelledby="close-tab-title"
+  aria-describedby="close-tab-desc"
+  oncancel={handleCancel}
+  onclick={handleDialogClick}
 >
-  <div
-    class="close-dialog"
-    onclick={(e) => e.stopPropagation()}
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="close-tab-title"
-    aria-describedby="close-tab-desc"
-  >
+  <div class="close-inner">
     <div class="close-header">
       <h3 id="close-tab-title" class="close-title">Close CLI tab?</h3>
     </div>
@@ -97,33 +134,32 @@
       </button>
     </div>
   </div>
-</div>
+</dialog>
 
 <style>
-  .close-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.65);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 200;
-    padding: var(--sp-lg, 16px);
-  }
-
   .close-dialog {
+    /* Native <dialog> carries default padding/border/margin we don't want —
+       reset so our own .close-inner owns the layout. */
+    padding: 0;
+    margin: auto;
     background: var(--surface, #16161d);
     border: 1px solid var(--border, #2a2a35);
     border-radius: var(--r-md, 8px);
-    width: 100%;
+    width: calc(100% - 32px);
     max-width: 380px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+    color: var(--text-primary, #e8e8f0);
     overflow: hidden;
     /*
      * The destructive nature of this dialog warrants a subtle red tint on
      * the top border so the user's eye registers "warning" before reading.
      */
     border-top: 2px solid #e05252;
+  }
+
+  /* Native browser backdrop — replaces the old .close-backdrop div. */
+  .close-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.65);
   }
 
   .close-header {
