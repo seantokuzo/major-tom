@@ -84,6 +84,22 @@
     </div>
   {/each}
   <button type="button" class="new" onclick={onNew} aria-label="New tab">+</button>
+  <div class="zoom" role="group" aria-label="Terminal font size">
+    <button
+      type="button"
+      class="zoom-btn"
+      aria-label="Decrease terminal font size"
+      title="Zoom out ({shellStore.fontSize}px)"
+      onclick={() => shellStore.bumpFontSize(-1)}
+    >A−</button>
+    <button
+      type="button"
+      class="zoom-btn"
+      aria-label="Increase terminal font size"
+      title="Zoom in ({shellStore.fontSize}px)"
+      onclick={() => shellStore.bumpFontSize(1)}
+    >A+</button>
+  </div>
 </div>
 
 <style>
@@ -96,6 +112,13 @@
     border-bottom: 1px solid #1f1f26;
     overflow-x: auto;
     flex-shrink: 0;
+  }
+
+  @media (max-width: 480px) {
+    .tabs {
+      padding: 2px 4px;
+      gap: 2px;
+    }
   }
 
   .tab {
@@ -168,5 +191,46 @@
   .new:hover {
     color: #e8e8f0;
     border-color: #4dd973;
+  }
+
+  .zoom {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+    flex-shrink: 0;
+    padding-left: 4px;
+    border-left: 1px solid #1f1f26;
+  }
+
+  .zoom-btn {
+    padding: 4px 8px;
+    background: transparent;
+    border: 1px solid #2a2a35;
+    border-radius: 6px;
+    color: #888893;
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    min-width: 32px;
+    min-height: 28px;
+  }
+
+  .zoom-btn:hover {
+    color: #e8e8f0;
+    border-color: #4dd973;
+  }
+
+  .zoom-btn:active {
+    background: #16161d;
+  }
+
+  @media (max-width: 480px) {
+    .zoom-btn {
+      padding: 3px 6px;
+      min-width: 28px;
+    }
   }
 </style>

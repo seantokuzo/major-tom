@@ -42,6 +42,40 @@ const MAX_RECONNECT_ATTEMPTS = 20;
 const RECONNECT_BASE_MS = 500;
 const RECONNECT_MAX_MS = 10_000;
 
+/** Font size clamp: too small = unreadable, too large = one glyph fills the pane. */
+const FONT_SIZE_MIN = 8;
+const FONT_SIZE_MAX = 28;
+const FONT_SIZE_STORAGE_KEY = 'mt-cli-font-size';
+
+/** Compute the default font size for a fresh install: smaller on phones. */
+function defaultFontSize(): number {
+  if (typeof window === 'undefined') return 14;
+  try {
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 480px)').matches) {
+      return 12;
+    }
+  } catch {
+    // matchMedia can throw in some test harnesses
+  }
+  return 14;
+}
+
+function loadPersistedFontSize(): number {
+  if (typeof window === 'undefined') return 14;
+  try {
+    const raw = window.localStorage.getItem(FONT_SIZE_STORAGE_KEY);
+    if (raw) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= FONT_SIZE_MIN && n <= FONT_SIZE_MAX) {
+        return Math.floor(n);
+      }
+    }
+  } catch {
+    // Privacy mode / quota — fall through to default
+  }
+  return defaultFontSize();
+}
+
 /** Listener type for binary frames coming from the relay PTY. */
 export type DataListener = (chunk: Uint8Array) => void;
 export type StatusListener = (status: 'connecting' | 'open' | 'closed' | 'error', detail?: string) => void;
@@ -53,6 +87,12 @@ export type Focuser = () => void;
 class ShellStore {
   tabs = $state<ShellTab[]>([]);
   activeTabId = $state<string | null>(null);
+  /**
+   * Terminal font size in pixels, persisted per-device so phone and
+   * desktop can each pick their comfortable zoom level. Mutate via
+   * setFontSize/bumpFontSize; XtermPane reacts via $effect.
+   */
+  fontSize = $state<number>(loadPersistedFontSize());
 
   /** tabId → set of listeners for binary PTY data. */
   private dataListeners = new Map<string, Set<DataListener>>();
@@ -139,6 +179,23 @@ class ShellStore {
     if (this.tabs.find((t) => t.id === tabId)) {
       this.activeTabId = tabId;
     }
+  }
+
+  /** Font size accessors — persist to localStorage on every change. */
+  setFontSize(px: number): void {
+    const clamped = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, Math.floor(px)));
+    if (clamped === this.fontSize) return;
+    this.fontSize = clamped;
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(clamped));
+    } catch {
+      // Privacy mode / quota — state-only change is fine
+    }
+  }
+
+  bumpFontSize(delta: number): void {
+    this.setFontSize(this.fontSize + delta);
   }
 
   /**

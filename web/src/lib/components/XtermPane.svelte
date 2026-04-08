@@ -37,7 +37,10 @@
 
     term = new Terminal({
       fontFamily: 'Berkeley Mono, ui-monospace, Menlo, monospace',
-      fontSize: 14,
+      // Initial size from the shared store so zoom preference persists
+      // across refreshes and new tabs. Reactive updates are handled via
+      // the $effect below that watches shellStore.fontSize.
+      fontSize: shellStore.fontSize,
       cursorBlink: true,
       allowProposedApi: true,
       scrollback: 5000,
@@ -167,6 +170,18 @@
     });
   }
 
+  // Reactively sync the xterm font size with the shared store. Bumping the
+  // font size invalidates the cached cell dimensions, so we also have to
+  // refit — otherwise the terminal keeps rendering at the previous grid
+  // size and half the prompt falls off the right edge.
+  $effect(() => {
+    const size = shellStore.fontSize;
+    if (!term) return;
+    if (term.options.fontSize === size) return;
+    term.options.fontSize = size;
+    queueFit();
+  });
+
   onDestroy(() => {
     shellStore.unregisterInjector(tabId);
     shellStore.unregisterFocuser(tabId);
@@ -201,6 +216,13 @@
     width: 100%;
     padding: 6px 8px;
     box-sizing: border-box;
+  }
+
+  /* Mobile: shave padding so the prompt line gets every last column. */
+  @media (max-width: 480px) {
+    .xterm-pane :global(.xterm) {
+      padding: 2px 4px;
+    }
   }
 
   .xterm-pane :global(.xterm-viewport) {
