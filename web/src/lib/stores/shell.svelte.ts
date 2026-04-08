@@ -19,6 +19,14 @@ interface ShellTab {
   reconnectTimer: number | null;
   /** True once the WS is OPEN. */
   connected: boolean;
+  /**
+   * Dev-mode legacy auth token (relayStore.authToken), stashed at openTab
+   * time so the REST kill fallback can mirror the WS route's `?token=`
+   * query-param path when the user is using legacy token auth instead of
+   * the Google session cookie. Null in production / Google-auth mode.
+   * Added for Copilot PR #94 review round 3.
+   */
+  token: string | null;
 }
 
 /** Detect the relay base from the current page origin (same logic as relay store). */
@@ -166,6 +174,7 @@ class ShellStore {
       reconnectAttempt: 0,
       reconnectTimer: null,
       connected: false,
+      token: opts.token,
     };
     this.tabs.push(tab);
     this.activateInternal(id);
@@ -180,12 +189,53 @@ class ShellStore {
     if (tab.reconnectTimer !== null) {
       clearTimeout(tab.reconnectTimer);
     }
+    // Wave 2.6: tell the relay to kill the underlying tmux window, not
+    // just detach this client. Without this, every closed tab leaks a
+    // tmux window inside the master `major-tom` session forever — the
+    // real "forgotten sessions hanging around" problem the user flagged.
+    //
+    // Two paths depending on WebSocket state:
+    //   OPEN  → send {type:'kill'} in-band. WebSocket preserves frame
+    //           ordering on the wire so the server processes kill →
+    //           close in that order. Fast, stays on the existing socket.
+    //   other → CONNECTING/CLOSING/CLOSED/null all mean the in-band
+    //           send is a no-op, which would leak the tmux window since
+    //           socket.on('close') on the server only disposes the
+    //           grouped view session, not the underlying window. Fall
+    //           back to POST /shell/:tabId/kill so "close tab" is
+    //           reliably destructive in every socket state. Caught by
+    //           Copilot PR #94 review round 2.
+    if (tab.socket && tab.socket.readyState === WebSocket.OPEN) {
+      let sent = false;
+      try {
+        tab.socket.send(JSON.stringify({ type: 'kill' }));
+        sent = true;
+      } catch {
+        // send threw despite readyState === OPEN (rare race) — fall
+        // through to the REST fallback so the window still gets killed.
+      }
+      if (!sent) {
+        void this.killWindowRest(tabId, tab.token);
+      }
+    } else {
+      void this.killWindowRest(tabId, tab.token);
+    }
     if (tab.socket) {
       try { tab.socket.close(1000, 'tab-closed'); } catch { /* ignore */ }
     }
     this.tabs.splice(idx, 1);
     this.dataListeners.delete(tabId);
     this.statusListeners.delete(tabId);
+    // Drop the stale activation counter entry too. Reactive spread with
+    // `delete` on a clone so the $state proxy observes the change.
+    // Without this the record grows unbounded over the app's lifetime —
+    // microscopic per-entry, but "open N tabs → close them all → repeat"
+    // is a perfectly normal usage pattern and leaking keys has no upside.
+    if (tabId in this.activationSeq) {
+      const next = { ...this.activationSeq };
+      delete next[tabId];
+      this.activationSeq = next;
+    }
     if (this.activeTabId === tabId) {
       // Falling back to the first remaining tab (if any) — route through
       // activateInternal so the newly-visible pane gets a fresh paint.
@@ -281,6 +331,53 @@ class ShellStore {
     let n = 1;
     while (this.tabs.find((t) => t.id === `t${n}`)) n++;
     return `t${n}`;
+  }
+
+  /**
+   * REST fallback for killing a tmux window when the shell WebSocket
+   * is not in OPEN state (CONNECTING, CLOSING, CLOSED, or null). The
+   * relay endpoint mirrors the shell WS auth: session cookie primary,
+   * dev-only `?token=AUTH_TOKEN` legacy fallback. We pass the same
+   * token the tab's WebSocket used at connect time when available so
+   * users relying on legacy token auth (no Google session cookie) don't
+   * hit a 401 on this fallback — which would reintroduce the tmux
+   * window leak for CONNECTING/CLOSED socket states. Caught by Copilot
+   * PR #94 review round 3.
+   *
+   * Fire-and-forget on purpose — closeTab() continues synchronously and
+   * the UI tab is removed immediately regardless of whether the kill
+   * request lands. If it fails we log a warning and move on; the worst
+   * case is a stranded tmux window, which is exactly what we had before
+   * this fallback existed (so no regression).
+   *
+   * Added as part of Copilot PR #94 review round 2 — the in-band kill
+   * frame was only sent on OPEN sockets, so closing during the initial
+   * connect or a mid-reconnect leaked the window.
+   */
+  private async killWindowRest(tabId: string, token: string | null): Promise<void> {
+    if (typeof window === 'undefined') return;
+    const host = detectRelayHost();
+    const proto = window.location.protocol === 'https:' ? 'https' : 'http';
+    const params = new URLSearchParams();
+    if (token) params.set('token', token);
+    const qs = params.toString();
+    const url = `${proto}://${host}/shell/${encodeURIComponent(tabId)}/kill${qs ? `?${qs}` : ''}`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        console.warn(
+          `[shellStore] REST kill fallback returned ${res.status} for tab ${tabId}`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[shellStore] REST kill fallback threw for tab ${tabId}:`,
+        err,
+      );
+    }
   }
 
   private connect(tabId: string, cols: number, rows: number, token: string | null): void {

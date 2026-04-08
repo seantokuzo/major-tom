@@ -205,14 +205,134 @@ export async function listWindows(): Promise<string[]> {
   return res.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
 }
 
-/** Kill a named window. No-op if it doesn't exist. */
+/**
+ * Kill a named window. No-op if it doesn't exist (idempotent under concurrent
+ * closes), throws if `tmux kill-window` returns non-zero for any reason other
+ * than "already gone".
+ *
+ * The throw-on-failure behavior matters: callers in `pty-adapter.ts` and
+ * `routes/shell.ts` wrap this call in `.catch(...)` / `try/catch` and log
+ * the failure — without a throw path those error handlers would be
+ * unreachable, meaning real tmux failures would be silently swallowed
+ * while the UI assumed the tab was killed. Caught by Copilot PR #94
+ * review round 3.
+ *
+ * Round 4 race fix: between the `hasWindow()` guard and the `kill-window`
+ * call, another actor (natural shell exit, external kill, a second REST
+ * fallback) can remove the window — `kill-window` then fails and Round 3's
+ * throw would surface a false 500 to the REST client even though the window
+ * is genuinely gone. So on non-zero exit we re-check `hasWindow()` and treat
+ * "gone now" as success; anything else re-throws with the original tmux
+ * error message. Caught by Copilot PR #94 review round 4.
+ */
 export async function killWindow(tabId: string): Promise<void> {
   if (!(await hasWindow(tabId))) return;
-  await run([
+  const res = await run([
     '-L', MAJOR_TOM_SOCKET,
     'kill-window',
     '-t', `${MAJOR_TOM_SESSION}:${tabId}`,
   ]);
+  if (res.status !== 0) {
+    // Race window: something else killed it between hasWindow() and here.
+    // If the window is gone now, that's the desired end state — success.
+    if (!(await hasWindow(tabId))) return;
+    throw new Error(
+      `tmux kill-window(${tabId}) failed: ${res.stderr || res.stdout || 'unknown error'}`,
+    );
+  }
+}
+
+/**
+ * Create a grouped "view" session that shares the master session's window set
+ * but has its OWN current-window slot, then point it at `tabId`.
+ *
+ * This is the fix for the Phase 13 Wave 2.5 session-handling bug: when two
+ * WebSocket clients both attached directly to the master `major-tom` session
+ * via `attach-session -t major-tom:<tabId>`, they were sharing the single
+ * "current window" slot of the master session — so client B attaching with
+ * `-t major-tom:t2` forcibly switched client A's view from t1 to t2. Grouped
+ * sessions sidestep this: per the tmux man page, "the current and previous
+ * window and any session options remain independent and may be switched
+ * between without affecting other sessions in the group".
+ *
+ * Usage: call this BEFORE `pty.spawn('tmux', ['attach-session', '-t', viewId])`.
+ * Each WS attach should get a UNIQUE viewId so multi-device concurrent views
+ * of the same tabId don't cross-contaminate either.
+ */
+export async function createViewSession(viewId: string, tabId: string): Promise<void> {
+  // tmux 3.6a on macOS rejects `new-session -t … -A` the same way `new-session
+  // -A` fails when the session already exists (open-terminal error), so guard
+  // with has-session first and treat the existing-session path as a no-op.
+  // Because each attach generates a fresh viewId this should effectively
+  // never hit — it's pure defense against accidental reuse.
+  const exists = await run([
+    '-L', MAJOR_TOM_SOCKET,
+    'has-session',
+    '-t', viewId,
+  ]);
+  if (exists.status !== 0) {
+    const createRes = await run([
+      '-L', MAJOR_TOM_SOCKET,
+      'new-session',
+      '-d',                   // detached — no tty required
+      '-t', MAJOR_TOM_SESSION, // grouped with master, shares windows
+      '-s', viewId,            // new grouped session's name
+    ]);
+    if (createRes.status !== 0) {
+      throw new Error(
+        `tmux new-session (grouped ${viewId}) failed: ${createRes.stderr || createRes.stdout}`,
+      );
+    }
+  }
+  // Point the grouped session at the requested window. This changes ONLY
+  // `view-…`'s current-window slot, not the master session's slot. If the
+  // select fails (e.g. window was just killed), we log and bail so the
+  // caller can surface a real error instead of silently attaching to the
+  // wrong window.
+  const selectRes = await run([
+    '-L', MAJOR_TOM_SOCKET,
+    'select-window',
+    '-t', `${viewId}:${tabId}`,
+  ]);
+  if (selectRes.status !== 0) {
+    throw new Error(
+      `tmux select-window (${viewId}:${tabId}) failed: ${selectRes.stderr || selectRes.stdout}`,
+    );
+  }
+}
+
+/**
+ * Kill an entire tmux session. Idempotent — no-op if the session is gone.
+ *
+ * Used to tear down per-WS grouped view sessions on dispose. Killing a
+ * grouped session does NOT kill the shared windows — those belong to the
+ * master `major-tom` session and survive until explicitly `killWindow`'d.
+ *
+ * Round 4: logs a warn on non-zero exit. Previously the result was fully
+ * ignored so a real `tmux kill-session` failure (tmux server error, grouped
+ * session in a weird state) would silently leak a `view-*` session with no
+ * log signal at all. dispose() is best-effort cleanup so we don't throw —
+ * the log line is enough to correlate leaks with tmux errors after the fact.
+ * Caught by Copilot PR #94 review round 4.
+ */
+export async function killSession(sessionName: string): Promise<void> {
+  const exists = await run([
+    '-L', MAJOR_TOM_SOCKET,
+    'has-session',
+    '-t', sessionName,
+  ]);
+  if (exists.status !== 0) return;
+  const res = await run([
+    '-L', MAJOR_TOM_SOCKET,
+    'kill-session',
+    '-t', sessionName,
+  ]);
+  if (res.status !== 0) {
+    logger.warn(
+      { sessionName, stderr: res.stderr.trim() || res.stdout.trim() },
+      'tmux kill-session failed',
+    );
+  }
 }
 
 /**
