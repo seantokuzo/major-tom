@@ -150,7 +150,10 @@ class ShellStore {
   openTab(opts: { id?: string; label?: string; cols: number; rows: number; token: string | null }): string {
     const id = opts.id ?? this.generateTabId();
     if (this.tabs.find((t) => t.id === id)) {
-      this.activeTabId = id;
+      // Re-focusing an existing tab is just an activation — route it
+      // through the shared helper so the XtermPane refresh $effect
+      // fires for this path too (Copilot PR #93 review).
+      this.activateInternal(id);
       return id;
     }
     const tab: ShellTab = {
@@ -162,7 +165,7 @@ class ShellStore {
       connected: false,
     };
     this.tabs.push(tab);
-    this.activeTabId = id;
+    this.activateInternal(id);
     this.connect(id, opts.cols, opts.rows, opts.token);
     return id;
   }
@@ -181,20 +184,31 @@ class ShellStore {
     this.dataListeners.delete(tabId);
     this.statusListeners.delete(tabId);
     if (this.activeTabId === tabId) {
-      this.activeTabId = this.tabs[0]?.id ?? null;
+      // Falling back to the first remaining tab (if any) — route through
+      // activateInternal so the newly-visible pane gets a fresh paint.
+      // Null = no tabs left, nothing to activate.
+      this.activateInternal(this.tabs[0]?.id ?? null);
     }
   }
 
   setActive(tabId: string): void {
     if (this.tabs.find((t) => t.id === tabId)) {
-      this.activeTabId = tabId;
-      // Bump the activation sequence for this tab so the XtermPane $effect
-      // fires and forces a repaint. Without this nudge, tmux leaves stale
-      // content in the hidden pane's xterm buffer (display: none means
-      // tmux never repainted the region while it was off-screen).
-      const prev = this.activationSeq[tabId] ?? 0;
-      this.activationSeq = { ...this.activationSeq, [tabId]: prev + 1 };
+      this.activateInternal(tabId);
     }
+  }
+
+  /**
+   * Single chokepoint for mutating `activeTabId`. Bumping the activation
+   * counter here means every path that changes the visible tab (openTab,
+   * re-openTab, closeTab fallback, setActive) triggers the XtermPane
+   * refresh $effect — not just the explicit user-initiated switches.
+   * Caught by Copilot review on PR #93.
+   */
+  private activateInternal(tabId: string | null): void {
+    this.activeTabId = tabId;
+    if (tabId === null) return;
+    const prev = this.activationSeq[tabId] ?? 0;
+    this.activationSeq = { ...this.activationSeq, [tabId]: prev + 1 };
   }
 
   /** Font size accessors — persist to localStorage on every change. */

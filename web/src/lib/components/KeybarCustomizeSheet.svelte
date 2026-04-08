@@ -165,7 +165,8 @@
           class="add-toggle"
           aria-expanded={addListOpen}
           aria-controls="kb-add-list-body"
-          onpointerdown={(e) => { e.preventDefault(); addListOpen = !addListOpen; }}
+          onpointerdown={(e) => { e.preventDefault(); }}
+          onclick={() => { addListOpen = !addListOpen; }}
         >
           <span class="section-title add-title">Add a key</span>
           <span class="chevron" aria-hidden="true">{addListOpen ? '▾' : '▸'}</span>
