@@ -11,7 +11,6 @@
  */
 import type { FastifyPluginAsync } from 'fastify';
 import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
-import { requireSession } from '../plugins/auth.js';
 import type { SessionManager } from '../sessions/session-manager.js';
 import { attachPty } from '../adapters/pty-adapter.js';
 import { tmuxBootstrap } from '../adapters/tmux-bootstrap.js';
@@ -146,33 +145,62 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
     // and the tmux window would otherwise leak forever. Caught by Copilot
     // PR #94 review round 2.
     //
-    // Session-authed via the existing `requireSession` preHandler — same
-    // cookie the WebSocket upgrade uses, so anyone who could open a shell
-    // tab in the first place can also kill it.
-    fastify.post<{ Params: { tabId: string } }>(
+    // Auth MIRRORS the WebSocket route above: session cookie primary,
+    // dev-only `?token=AUTH_TOKEN` legacy fallback. Rolling custom auth
+    // here instead of using `requireSession` because the WS route accepts
+    // the legacy token too, and a user relying on `relay.authToken`
+    // (dev mode, no Google sign-in) would otherwise hit 401 on this REST
+    // fallback and the tmux window would leak for CONNECTING/CLOSED
+    // socket states. Caught by Copilot PR #94 review round 3.
+    fastify.post<{ Params: { tabId: string }; Querystring: { token?: string } }>(
       '/shell/:tabId/kill',
-      { preHandler: requireSession },
       async (request, reply) => {
         const { tabId } = request.params;
         if (!TAB_ID_RE.test(tabId)) {
           logger.warn({ tabId, ip: request.ip }, 'REST kill rejected — invalid tabId');
           return reply.code(400).send({ error: 'Invalid tabId' });
         }
+
+        // ── Auth (mirrors /shell/:tabId WS upgrade above) ────
+        const sessionCookie = request.cookies?.[SESSION_COOKIE];
+        const { token: queryToken } = request.query;
+        const legacyAuthToken = process.env['AUTH_TOKEN'];
+        const isDevMode = process.env['NODE_ENV'] !== 'production';
+
+        let authed = false;
+        let email: string | undefined;
+
+        if (isDevMode && queryToken && legacyAuthToken && queryToken === legacyAuthToken) {
+          authed = true;
+        } else if (sessionCookie) {
+          try {
+            const payload = await verifySessionToken(sessionCookie);
+            authed = true;
+            email = payload.email;
+          } catch {
+            authed = false;
+          }
+        }
+
+        if (!authed) {
+          logger.warn({ tabId, ip: request.ip }, 'REST kill unauthenticated — rejecting');
+          return reply.code(401).send({ error: 'Authentication required' });
+        }
+
         try {
           await killWindow(tabId);
           logger.info(
-            { tabId, email: request.sessionUser?.email, ip: request.ip },
+            { tabId, email, ip: request.ip },
             'Shell window killed via REST fallback',
           );
         } catch (err) {
-          // `tmux kill-window` on a non-existent window errors — that's a
-          // successful outcome for us (the window is already gone, which is
-          // what the caller wanted). Log at debug and still return ok so
-          // the client doesn't retry forever on an idempotent success.
-          logger.debug(
-            { err, tabId },
-            'killWindow threw (window likely already gone)',
-          );
+          // `killWindow` throws on non-zero tmux exit codes (round 3
+          // fix). A throw here means tmux actually failed — not that the
+          // window is missing (that's a silent no-op inside killWindow
+          // itself via the has-window guard). Return 500 so the client
+          // can log the failure instead of assuming the kill landed.
+          logger.warn({ err, tabId }, 'killWindow threw in REST fallback');
+          return reply.code(500).send({ error: 'Failed to kill tmux window' });
         }
         return { status: 'ok' };
       },

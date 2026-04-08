@@ -205,14 +205,29 @@ export async function listWindows(): Promise<string[]> {
   return res.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
 }
 
-/** Kill a named window. No-op if it doesn't exist. */
+/**
+ * Kill a named window. No-op if it doesn't exist, throws if the underlying
+ * `tmux kill-window` returns non-zero.
+ *
+ * The throw-on-failure behavior matters: callers in `pty-adapter.ts` and
+ * `routes/shell.ts` wrap this call in `.catch(...)` / `try/catch` and log
+ * the failure — without a throw path those error handlers would be
+ * unreachable, meaning real tmux failures would be silently swallowed
+ * while the UI assumed the tab was killed. Caught by Copilot PR #94
+ * review round 3.
+ */
 export async function killWindow(tabId: string): Promise<void> {
   if (!(await hasWindow(tabId))) return;
-  await run([
+  const res = await run([
     '-L', MAJOR_TOM_SOCKET,
     'kill-window',
     '-t', `${MAJOR_TOM_SESSION}:${tabId}`,
   ]);
+  if (res.status !== 0) {
+    throw new Error(
+      `tmux kill-window(${tabId}) failed: ${res.stderr || res.stdout || 'unknown error'}`,
+    );
+  }
 }
 
 /**

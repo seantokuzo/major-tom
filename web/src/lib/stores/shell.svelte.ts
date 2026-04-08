@@ -19,6 +19,14 @@ interface ShellTab {
   reconnectTimer: number | null;
   /** True once the WS is OPEN. */
   connected: boolean;
+  /**
+   * Dev-mode legacy auth token (relayStore.authToken), stashed at openTab
+   * time so the REST kill fallback can mirror the WS route's `?token=`
+   * query-param path when the user is using legacy token auth instead of
+   * the Google session cookie. Null in production / Google-auth mode.
+   * Added for Copilot PR #94 review round 3.
+   */
+  token: string | null;
 }
 
 /** Detect the relay base from the current page origin (same logic as relay store). */
@@ -166,6 +174,7 @@ class ShellStore {
       reconnectAttempt: 0,
       reconnectTimer: null,
       connected: false,
+      token: opts.token,
     };
     this.tabs.push(tab);
     this.activateInternal(id);
@@ -206,10 +215,10 @@ class ShellStore {
         // through to the REST fallback so the window still gets killed.
       }
       if (!sent) {
-        void this.killWindowRest(tabId);
+        void this.killWindowRest(tabId, tab.token);
       }
     } else {
-      void this.killWindowRest(tabId);
+      void this.killWindowRest(tabId, tab.token);
     }
     if (tab.socket) {
       try { tab.socket.close(1000, 'tab-closed'); } catch { /* ignore */ }
@@ -326,9 +335,14 @@ class ShellStore {
 
   /**
    * REST fallback for killing a tmux window when the shell WebSocket
-   * is not in OPEN state (CONNECTING, CLOSING, CLOSED, or null). Hits
-   * the same session cookie the shell route uses for its own auth, so
-   * no extra auth plumbing needed on the client side.
+   * is not in OPEN state (CONNECTING, CLOSING, CLOSED, or null). The
+   * relay endpoint mirrors the shell WS auth: session cookie primary,
+   * dev-only `?token=AUTH_TOKEN` legacy fallback. We pass the same
+   * token the tab's WebSocket used at connect time when available so
+   * users relying on legacy token auth (no Google session cookie) don't
+   * hit a 401 on this fallback — which would reintroduce the tmux
+   * window leak for CONNECTING/CLOSED socket states. Caught by Copilot
+   * PR #94 review round 3.
    *
    * Fire-and-forget on purpose — closeTab() continues synchronously and
    * the UI tab is removed immediately regardless of whether the kill
@@ -340,11 +354,14 @@ class ShellStore {
    * frame was only sent on OPEN sockets, so closing during the initial
    * connect or a mid-reconnect leaked the window.
    */
-  private async killWindowRest(tabId: string): Promise<void> {
+  private async killWindowRest(tabId: string, token: string | null): Promise<void> {
     if (typeof window === 'undefined') return;
     const host = detectRelayHost();
     const proto = window.location.protocol === 'https:' ? 'https' : 'http';
-    const url = `${proto}://${host}/shell/${encodeURIComponent(tabId)}/kill`;
+    const params = new URLSearchParams();
+    if (token) params.set('token', token);
+    const qs = params.toString();
+    const url = `${proto}://${host}/shell/${encodeURIComponent(tabId)}/kill${qs ? `?${qs}` : ''}`;
     try {
       const res = await fetch(url, {
         method: 'POST',

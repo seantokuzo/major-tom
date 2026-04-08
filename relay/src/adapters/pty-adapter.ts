@@ -368,8 +368,14 @@ function writeSafe(handle: PtyHandle, data: Buffer): void {
     // pass bytes unchanged. See microsoft/node-pty#489.
     (handle.pty as unknown as { write: (d: Buffer) => void }).write(data);
   } catch (err) {
-    logger.warn({ err, tabId: handle.tabId }, 'PTY write failed — marking disposed');
-    handle.disposed = true;
+    // Route through dispose() rather than flipping `handle.disposed = true`
+    // directly. Flipping the flag here meant the subsequent socket.on('close')
+    // dispose call would short-circuit on `if (handle.disposed) return;`, so
+    // `killSession(handle.viewSessionId)` never ran on the write-error teardown
+    // path — leaking the per-attach grouped view session. Same class of bug
+    // as the Round 1 onExit fix. Caught by Copilot PR #94 review round 3.
+    logger.warn({ err, tabId: handle.tabId }, 'PTY write failed — disposing handle');
+    void dispose(handle, 'pty-write-failed');
   }
 }
 
