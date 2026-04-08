@@ -73,9 +73,10 @@
    * `q`); every other key injects its raw bytes.
    *
    * The ctrl/alt transform + clearArmed() happens inside XtermPane.onData
-   * — that's the single chokepoint that EVERY input flows through (iOS
-   * keyboard, physical keyboard, and keybar injections, since
-   * term.input(..., true) fires onData synchronously).
+   * — that's the single chokepoint that normally EVERY input flows through
+   * (iOS keyboard, physical keyboard, and keybar injections, since
+   * term.input(..., true) fires onData synchronously). The tmux-scroll
+   * branch is the ONE exception: see inline comment for why.
    */
   function dispatch(spec: KeySpec): void {
     if (spec.sticky) {
@@ -92,7 +93,17 @@
       if (!tabId) return;
       const wasActive = shellStore.isInCopyMode(tabId);
       shellStore.toggleCopyMode(tabId);
-      inject(wasActive ? TMUX_EXIT_COPY_MODE : TMUX_ENTER_COPY_MODE);
+      // Send the copy-mode control sequence DIRECTLY via shellStore.send,
+      // bypassing XtermPane.onData + keybarModifiers.transform. If the
+      // user had Ctrl or Alt armed when they tapped the button, letting
+      // the bytes flow through the normal transform chain would corrupt
+      // the sequence — Alt would prefix `\x1b` (so `^B[` becomes ESC ^B[
+      // and copy-mode entry fails silently); Ctrl would mangle the byte.
+      // Still call clearArmed() manually so the user's next keystroke
+      // doesn't inherit a one-shot latch they thought they "spent" on
+      // this press. Caught by Copilot review on PR #95.
+      shellStore.send(tabId, wasActive ? TMUX_EXIT_COPY_MODE : TMUX_ENTER_COPY_MODE);
+      keybarModifiers.clearArmed();
       return;
     }
     inject(spec.bytes);

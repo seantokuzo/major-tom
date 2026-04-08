@@ -56,6 +56,13 @@
 
   function handleDragDown(e: PointerEvent): void {
     if (!copyModeActive) return;
+    // Touch-only gesture. iPadOS users with a trackpad or mouse still
+    // send PointerEvents, but for them a drag means "select text" or
+    // "drag the cursor", not "scroll tmux scrollback" — they have a
+    // real scroll wheel for that. Filtering on pointerType keeps mouse
+    // drags doing their native thing even when copy mode is toggled on.
+    // Caught by Copilot review on PR #95.
+    if (e.pointerType !== 'touch') return;
     // Primary pointer only — ignore multi-touch / right-click / stylus
     // secondary buttons so we don't fight a pinch gesture.
     if (!e.isPrimary) return;
