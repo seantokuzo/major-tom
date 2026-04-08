@@ -25,12 +25,134 @@
   let lastDims = { cols: 80, rows: 24 };
   let opened = false;
 
+  // ── Drag-to-scroll (tmux copy mode) ────────────────────────────────
+  // When the active tab is in tmux copy mode (user tapped the tmux-scroll
+  // button on the keybar, flipping shellStore.copyModeByTab[tabId] = true),
+  // we hijack vertical touch drags on this pane and translate them into
+  // synthetic Up/Down arrow keys into the PTY. tmux copy mode moves the
+  // selection cursor one line per Up/Down, which in turn scrolls the
+  // viewport when the cursor hits the top/bottom edge — exactly the
+  // "tap-and-drag to scroll through scrollback" UX from Termius.
+  //
+  // Direction mapping: a finger moving DOWN wants to reveal OLDER content
+  // (scroll up toward the top of scrollback), which is Up arrow in copy
+  // mode. A finger moving UP wants newer content = Down arrow. Matches
+  // natural iOS scroll intuition.
+  //
+  // The accumulator pattern means fast swipes emit multiple arrow keys in
+  // a single pointermove event (batched into one shellStore.send() call
+  // so we don't flood the WS), and sub-threshold movement across event
+  // boundaries isn't lost. 18px per line feels about right on a normal
+  // iPhone — snappy but not twitchy.
+  const DRAG_LINE_PX = 18;
+  const ARROW_UP = '\x1b[A';
+  const ARROW_DOWN = '\x1b[B';
+
+  let dragging = false;
+  let dragPointerId = -1;
+  let dragLastY = 0;
+  let dragAccumulator = 0;
+  const copyModeActive = $derived(shellStore.isInCopyMode(tabId));
+
+  function handleDragDown(e: PointerEvent): void {
+    if (!copyModeActive) return;
+    // Touch-only gesture. iPadOS users with a trackpad or mouse still
+    // send PointerEvents, but for them a drag means "select text" or
+    // "drag the cursor", not "scroll tmux scrollback" — they have a
+    // real scroll wheel for that. Filtering on pointerType keeps mouse
+    // drags doing their native thing even when copy mode is toggled on.
+    // Caught by Copilot review on PR #95.
+    if (e.pointerType !== 'touch') return;
+    // Primary pointer only — ignore multi-touch / right-click / stylus
+    // secondary buttons so we don't fight a pinch gesture.
+    if (!e.isPrimary) return;
+    e.preventDefault();
+    dragging = true;
+    dragPointerId = e.pointerId;
+    dragLastY = e.clientY;
+    dragAccumulator = 0;
+    // Capture so moves outside this element still reach us — without
+    // this, a finger sliding off the top of the xterm pane onto the
+    // tab bar would silently end the gesture.
+    containerEl?.setPointerCapture(e.pointerId);
+  }
+
+  function handleDragMove(e: PointerEvent): void {
+    if (!dragging || e.pointerId !== dragPointerId) return;
+    // NOT gating on copyModeActive here — once a drag has started, finish
+    // it with the original semantics even if the user happens to tap the
+    // scroll button mid-gesture. Releasing the finger cleans up; until
+    // then we honor the drag that was in flight.
+    e.preventDefault();
+    const curY = e.clientY;
+    dragAccumulator += curY - dragLastY;
+    dragLastY = curY;
+    // Drain the accumulator into whole-line counts. Finger DOWN (positive
+    // delta) → UP arrows (older content). Finger UP (negative delta) →
+    // DOWN arrows (newer content).
+    let linesUp = 0;
+    let linesDown = 0;
+    while (dragAccumulator >= DRAG_LINE_PX) {
+      linesUp++;
+      dragAccumulator -= DRAG_LINE_PX;
+    }
+    while (dragAccumulator <= -DRAG_LINE_PX) {
+      linesDown++;
+      dragAccumulator += DRAG_LINE_PX;
+    }
+    // Only one of linesUp/linesDown can be non-zero in a single event
+    // (the accumulator is strictly signed after the loop runs), but the
+    // code is trivially safe either way.
+    if (linesUp > 0) shellStore.send(tabId, ARROW_UP.repeat(linesUp));
+    if (linesDown > 0) shellStore.send(tabId, ARROW_DOWN.repeat(linesDown));
+  }
+
+  function handleDragEnd(e: PointerEvent): void {
+    if (!dragging || e.pointerId !== dragPointerId) return;
+    dragging = false;
+    dragAccumulator = 0;
+    if (containerEl?.hasPointerCapture(e.pointerId)) {
+      containerEl.releasePointerCapture(e.pointerId);
+    }
+    dragPointerId = -1;
+  }
+
   // iOS Safari aggressively drops WebGL contexts when the PWA backgrounds.
   // Skip the addon entirely on iOS — fall back to the canvas/DOM renderer.
   // (Phase 13 spec, "iOS WebGL context loss" reality check.)
   function isIOS(): boolean {
     if (typeof navigator === 'undefined') return false;
     return /iP(hone|od|ad)/.test(navigator.userAgent);
+  }
+
+  // When the user taps into the terminal, iOS pops up the software keyboard
+  // plus a "QuickType" assist bar above it (password / credit card / contact
+  // suggestions on the left, a collapse checkmark on the right). The web
+  // platform can't remove that bar entirely — Termius manages it because it
+  // is a native app using UITextField.inputAssistantItem, an API that is
+  // unreachable from a PWA. But we CAN suppress most of the left-side junk
+  // by telling iOS this input is not a form field, not a password, not a
+  // credit card, and has no autocomplete use.
+  //
+  // xterm.js maintains a hidden `.xterm-helper-textarea` inside its root
+  // that receives keyboard input — we apply the attribute soup directly to
+  // that element. The right-side collapse checkmark stays; that's baked
+  // into iOS and not removable from a web context.
+  function suppressIOSInputAssistance(container: HTMLDivElement): void {
+    const helper = container.querySelector(
+      '.xterm-helper-textarea'
+    ) as HTMLTextAreaElement | null;
+    if (!helper) return;
+    helper.setAttribute('autocomplete', 'off');
+    helper.setAttribute('autocorrect', 'off');
+    helper.setAttribute('autocapitalize', 'off');
+    helper.setAttribute('spellcheck', 'false');
+    helper.setAttribute('enterkeyhint', 'send');
+    // 1Password / LastPass / Bitwarden hints — stops them from injecting a
+    // "fill with password" button into the assist bar on iOS.
+    helper.setAttribute('data-1p-ignore', 'true');
+    helper.setAttribute('data-lpignore', 'true');
+    helper.setAttribute('data-form-type', 'other');
   }
 
   onMount(() => {
@@ -75,6 +197,7 @@
     term.open(containerEl);
     opened = true;
     queueFit();
+    suppressIOSInputAssistance(containerEl);
 
     // Register listeners BEFORE openTab so the WebSocket connection (and
     // any data tmux emits immediately on attach) cannot fire before we're
@@ -234,7 +357,15 @@
   });
 </script>
 
-<div class="xterm-pane" bind:this={containerEl}></div>
+<div
+  class="xterm-pane"
+  class:copy-mode={copyModeActive}
+  bind:this={containerEl}
+  onpointerdown={handleDragDown}
+  onpointermove={handleDragMove}
+  onpointerup={handleDragEnd}
+  onpointercancel={handleDragEnd}
+></div>
 
 <style>
   .xterm-pane {
@@ -245,6 +376,16 @@
     /* xterm needs a positioned container for some addons. */
     position: relative;
     overflow: hidden;
+  }
+
+  /*
+   * In tmux copy mode we own all touch gestures on this pane and translate
+   * them to PTY arrow keys, so disable the browser's native pan gesture
+   * recognition — otherwise iOS would steal the drag for page scrolling
+   * before our pointermove handler gets to drain its accumulator.
+   */
+  .xterm-pane.copy-mode {
+    touch-action: none;
   }
 
   /* xterm.css ships its own .xterm rules; this just lets it fill the pane. */

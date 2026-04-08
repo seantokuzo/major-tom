@@ -24,6 +24,10 @@
   import KeybarCustomizeSheet from './KeybarCustomizeSheet.svelte';
   import type { KeySpec } from '../shell/keys';
   import { keybarModifiers } from '../shell/modifiers.svelte';
+  import { shellStore } from '../stores/shell.svelte';
+
+  const TMUX_ENTER_COPY_MODE = '\x02['; // Ctrl-B, [
+  const TMUX_EXIT_COPY_MODE = 'q';
 
   interface Props {
     /** Inject keystrokes into the terminal. Provided by parent. */
@@ -55,15 +59,51 @@
   const altLocked = $derived(keybarModifiers.altLocked);
 
   /**
-   * Main dispatch: sticky keys toggle the shared latch; non-sticky keys
-   * inject their raw bytes. The transform + clearArmed() happens inside
-   * XtermPane.onData — that's the single chokepoint that EVERY input
-   * flows through (iOS keyboard, physical keyboard, and keybar
-   * injections, since term.input(..., true) fires onData synchronously).
+   * Reactive "is the active tab currently in tmux copy mode". Drives the
+   * highlighted state of the `tmux-scroll` button on both the accessory
+   * row and the specialty grid. Read from shellStore so a tab switch
+   * immediately re-derives the correct visual — different tabs can each
+   * be in their own copy-mode state independently.
+   */
+  const copyModeActive = $derived(shellStore.isInCopyMode(shellStore.activeTabId));
+
+  /**
+   * Main dispatch: sticky keys toggle the shared latch; the tmux-scroll
+   * key toggles per-tab copy mode (entering sends `^B[`, exiting sends
+   * `q`); every other key injects its raw bytes.
+   *
+   * The ctrl/alt transform + clearArmed() happens inside XtermPane.onData
+   * — that's the single chokepoint that normally EVERY input flows through
+   * (iOS keyboard, physical keyboard, and keybar injections, since
+   * term.input(..., true) fires onData synchronously). The tmux-scroll
+   * branch is the ONE exception: see inline comment for why.
    */
   function dispatch(spec: KeySpec): void {
     if (spec.sticky) {
       if (spec.id === 'ctrl' || spec.id === 'alt') keybarModifiers.toggleSticky(spec.id);
+      return;
+    }
+    if (spec.id === 'tmux-scroll') {
+      // Toggle semantics so the button's "selected" highlight actually
+      // reflects whether we're in copy mode. Client-side tracking is
+      // best-effort — see shellStore.copyModeByTab comment for drift
+      // behavior. No active tab = no-op (keybar shouldn't be visible
+      // with zero tabs anyway, but defensive).
+      const tabId = shellStore.activeTabId;
+      if (!tabId) return;
+      const wasActive = shellStore.isInCopyMode(tabId);
+      shellStore.toggleCopyMode(tabId);
+      // Send the copy-mode control sequence DIRECTLY via shellStore.send,
+      // bypassing XtermPane.onData + keybarModifiers.transform. If the
+      // user had Ctrl or Alt armed when they tapped the button, letting
+      // the bytes flow through the normal transform chain would corrupt
+      // the sequence — Alt would prefix `\x1b` (so `^B[` becomes ESC ^B[
+      // and copy-mode entry fails silently); Ctrl would mangle the byte.
+      // Still call clearArmed() manually so the user's next keystroke
+      // doesn't inherit a one-shot latch they thought they "spent" on
+      // this press. Caught by Copilot review on PR #95.
+      shellStore.send(tabId, wasActive ? TMUX_EXIT_COPY_MODE : TMUX_ENTER_COPY_MODE);
+      keybarModifiers.clearArmed();
       return;
     }
     inject(spec.bytes);
@@ -118,6 +158,7 @@
       {ctrlLocked}
       {altArmed}
       {altLocked}
+      {copyModeActive}
     />
   {:else if keyboardMode === 'specialty'}
     <KeybarSpecialty
@@ -129,6 +170,7 @@
       {ctrlLocked}
       {altArmed}
       {altLocked}
+      {copyModeActive}
     />
   {/if}
 </div>

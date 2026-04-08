@@ -114,6 +114,26 @@ class ShellStore {
    * under them.
    */
   activationSeq = $state<Record<string, number>>({});
+  /**
+   * Per-tab "is in tmux copy mode" flag. Flipped by the tmux-scroll button
+   * on the keybar — first press enters copy mode (`^B[`), second press exits
+   * (`q`). Used by:
+   *   - KeybarAccessory / KeybarSpecialty to light up the scroll button
+   *     ONLY when the flag is truthy (instead of always-highlighted).
+   *   - XtermPane to flip on its drag-to-scroll touch handlers, so a
+   *     tap-and-drag on the terminal body synthesizes Up/Down arrows into
+   *     the PTY and navigates tmux's copy-mode cursor line-by-line —
+   *     matching Termius's scroll-in-copy-mode UX.
+   *
+   * Drift note: the client can't observe tmux's real copy-mode state, so
+   * exiting copy mode via a hardware keyboard (`q`, `Escape` in vi-mode)
+   * leaves this flag stale. Recovery: the next tap on the scroll button
+   * sends the wrong byte sequence (`q` at a bash prompt is harmless, a
+   * bare `^B[` in actual copy mode is a no-op), and the tap after that
+   * resyncs to the correct state. Two-tap recovery is an acceptable
+   * trade for not needing a server round-trip to track mode.
+   */
+  copyModeByTab = $state<Record<string, boolean>>({});
 
   /** tabId → set of listeners for binary PTY data. */
   private dataListeners = new Map<string, Set<DataListener>>();
@@ -155,6 +175,27 @@ class ShellStore {
     if (!id) return;
     const fn = this.focusers.get(id);
     if (fn) fn();
+  }
+
+  // ── Copy-mode state (drag-to-scroll) ────────────────────────────
+  isInCopyMode(tabId: string | null): boolean {
+    if (!tabId) return false;
+    return this.copyModeByTab[tabId] === true;
+  }
+
+  /** Flip the flag for a tab and return the new state. */
+  toggleCopyMode(tabId: string): boolean {
+    const next = !this.isInCopyMode(tabId);
+    this.copyModeByTab = { ...this.copyModeByTab, [tabId]: next };
+    return next;
+  }
+
+  /** Remove the entry for a tab entirely (used on closeTab cleanup). */
+  clearCopyMode(tabId: string): void {
+    if (!(tabId in this.copyModeByTab)) return;
+    const next = { ...this.copyModeByTab };
+    delete next[tabId];
+    this.copyModeByTab = next;
   }
 
   /** Add a new tab and connect immediately. Returns the tab id. */
@@ -236,6 +277,10 @@ class ShellStore {
       delete next[tabId];
       this.activationSeq = next;
     }
+    // Drop the copy-mode flag too so a future tab re-using the same id
+    // (unlikely but possible via explicit openTab({id})) doesn't inherit
+    // a stale true.
+    this.clearCopyMode(tabId);
     if (this.activeTabId === tabId) {
       // Falling back to the first remaining tab (if any) — route through
       // activateInternal so the newly-visible pane gets a fresh paint.
