@@ -106,8 +106,10 @@ class KeybarModifiers {
       // Caught by Copilot PR #93 review: a previous version blanket-XOR'd
       // the 0x20..0x3f range with 0x40, which produced nonsense for all
       // but 0x3f — e.g. Ctrl-Space would have become '`' (0x60) instead
-      // of the conventional NUL. Only two Ctrl combinations live below
-      // 0x40, so just special-case them and drop the rest on the floor.
+      // of the conventional NUL. Only two Ctrl combinations have a
+      // defined meaning below 0x40, so special-case them and pass
+      // everything else through unmodified (see fall-through comment
+      // below).
       const first = out.charCodeAt(0);
       if (first >= 0x40 && first <= 0x7e) {
         out = String.fromCharCode(first & 0x1f) + out.slice(1);

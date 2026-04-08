@@ -171,36 +171,41 @@
           <span class="section-title add-title">Add a key</span>
           <span class="chevron" aria-hidden="true">{addListOpen ? '▾' : '▸'}</span>
         </button>
-        {#if addListOpen}
-          <div id="kb-add-list-body" class="add-body">
-            <input
-              type="text"
-              name="keybar-filter"
-              class="filter-input"
-              placeholder="Filter…"
-              bind:value={filter}
-            />
-            <ul>
-              {#each availableKeys as spec (spec.id)}
-                <li data-available-key-id={spec.id}>
-                  <span class="row-label">
-                    <span class="label-glyph">{spec.label}</span>
-                    <span class="label-desc">{spec.description ?? spec.id}</span>
-                  </span>
-                  <button
-                    type="button"
-                    class="icon-btn accent"
-                    aria-label="Add"
-                    onpointerdown={(e) => { e.preventDefault(); addKey(spec.id); }}
-                  >+</button>
-                </li>
-              {/each}
-              {#if availableKeys.length === 0}
-                <li class="empty">All library keys are already active.</li>
-              {/if}
-            </ul>
-          </div>
-        {/if}
+        <!--
+          `aria-controls` on the disclosure toggle references this id,
+          so the container must always exist in the DOM — we toggle
+          visibility via `hidden` instead of an `{#if}` guard. Assistive
+          tech that follows the aria-controls pointer never finds a
+          dangling reference. Caught by Copilot PR #93 round 3 review.
+        -->
+        <div id="kb-add-list-body" class="add-body" hidden={!addListOpen}>
+          <input
+            type="text"
+            name="keybar-filter"
+            class="filter-input"
+            placeholder="Filter…"
+            bind:value={filter}
+          />
+          <ul>
+            {#each availableKeys as spec (spec.id)}
+              <li data-available-key-id={spec.id}>
+                <span class="row-label">
+                  <span class="label-glyph">{spec.label}</span>
+                  <span class="label-desc">{spec.description ?? spec.id}</span>
+                </span>
+                <button
+                  type="button"
+                  class="icon-btn accent"
+                  aria-label="Add"
+                  onpointerdown={(e) => { e.preventDefault(); addKey(spec.id); }}
+                >+</button>
+              </li>
+            {/each}
+            {#if availableKeys.length === 0}
+              <li class="empty">All library keys are already active.</li>
+            {/if}
+          </ul>
+        </div>
       </section>
 
       <footer class="sheet-footer">
