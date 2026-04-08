@@ -20,9 +20,18 @@
   import XtermPane from './XtermPane.svelte';
   import ShellTabs from './ShellTabs.svelte';
   import MobileKeybar from './MobileKeybar.svelte';
+  import CloseTabConfirm from './CloseTabConfirm.svelte';
   import { shellStore } from '../stores/shell.svelte';
   import { relay } from '../stores/relay.svelte';
   import { keybarModifiers } from '../shell/modifiers.svelte';
+
+  /**
+   * Tab ID staged for destructive close confirmation. Non-null → modal is
+   * open. The modal's Confirm handler reads this value, calls closeTab,
+   * then clears it. Cancel just clears. This intermediate state exists so
+   * the × button is a REQUEST, not an action — fat-finger safety.
+   */
+  let pendingCloseTabId = $state<string | null>(null);
 
   let iosKeyboardVisible = $state(false);
   // Visual-viewport tracking for the prompt-line lock.
@@ -125,7 +134,23 @@
   }
 
   function handleCloseTab(id: string): void {
-    shellStore.closeTab(id);
+    // Stage the close for confirmation instead of executing immediately.
+    // The CloseTabConfirm modal is mandatory because closeTab is now
+    // destructive (kills the tmux window + inner shell process). Protects
+    // against accidental × taps on mobile.
+    pendingCloseTabId = id;
+  }
+
+  function confirmCloseTab(): void {
+    const id = pendingCloseTabId;
+    pendingCloseTabId = null;
+    if (id !== null) {
+      shellStore.closeTab(id);
+    }
+  }
+
+  function cancelCloseTab(): void {
+    pendingCloseTabId = null;
   }
 
   function injectFromKeybar(data: string): void {
@@ -174,6 +199,14 @@
     onSpecialtyHeightChange={handleSpecialtyHeight}
   />
 </div>
+
+{#if pendingCloseTabId !== null}
+  <CloseTabConfirm
+    tabId={pendingCloseTabId}
+    onCancel={cancelCloseTab}
+    onConfirm={confirmCloseTab}
+  />
+{/if}
 
 <style>
   .shell {
