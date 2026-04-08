@@ -102,13 +102,26 @@ class KeybarModifiers {
       // for uppercase, lowercase, and the @[\]^_` range between them.
       // We only transform the first byte so multi-byte sequences (e.g.
       // CSI escape codes from the arrow keys) stay sane.
+      //
+      // Caught by Copilot PR #93 review: a previous version blanket-XOR'd
+      // the 0x20..0x3f range with 0x40, which produced nonsense for all
+      // but 0x3f — e.g. Ctrl-Space would have become '`' (0x60) instead
+      // of the conventional NUL. Only two Ctrl combinations live below
+      // 0x40, so just special-case them and drop the rest on the floor.
       const first = out.charCodeAt(0);
       if (first >= 0x40 && first <= 0x7e) {
         out = String.fromCharCode(first & 0x1f) + out.slice(1);
-      } else if (first >= 0x20 && first <= 0x3f) {
-        // e.g. Ctrl-? → DEL (0x7f). Rare but legal.
-        out = String.fromCharCode(first ^ 0x40) + out.slice(1);
+      } else if (first === 0x20) {
+        // Ctrl-Space → NUL (0x00). Used by readline to set a mark.
+        out = String.fromCharCode(0x00) + out.slice(1);
+      } else if (first === 0x3f) {
+        // Ctrl-? → DEL (0x7f). Rare but legal.
+        out = String.fromCharCode(0x7f) + out.slice(1);
       }
+      // Anything else (digits, common punctuation) has no defined Ctrl
+      // transform — pass it through unmodified so users can still type,
+      // say, Ctrl-1 and have it land as a literal '1' rather than a
+      // garbled control byte.
     }
     if (altActive) {
       // xterm's portable Meta encoding is ESC + key byte.
