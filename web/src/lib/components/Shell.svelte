@@ -1,6 +1,8 @@
 <script lang="ts">
   /**
    * Shell — top-level container for the Phase 13 terminal experience.
+   * User-visible name is "CLI" (Phase 13 Wave 2.5 rename); internal
+   * identifiers stay `shell` to avoid churning storage keys and routes.
    *
    * Layout:
    *   ┌────────────────┐
@@ -11,8 +13,8 @@
    *   │ MobileKeybar   │  ← visible only when iOS keyboard is up
    *   └────────────────┘
    *
-   * Wave 1 ships behind a localStorage feature flag (`mt-shell-enabled`)
-   * so the legacy chat layer keeps working until Wave 3 demolition.
+   * Wave 2.5 removed the `?shell=1` feature gate — CLI is now the
+   * default surface on page load. Chat stays mounted until Wave 3.
    */
   import { onDestroy, onMount } from 'svelte';
   import XtermPane from './XtermPane.svelte';
@@ -155,7 +157,7 @@
       </div>
     {/each}
     {#if shellStore.tabs.length === 0}
-      <div class="empty">No shell session. Tap + above to start one.</div>
+      <div class="empty">No CLI session. Tap + above to start one.</div>
     {/if}
   </div>
   <MobileKeybar

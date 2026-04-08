@@ -36,7 +36,7 @@
   }
 </script>
 
-<div class="tabs" role="tablist" aria-label="Shell tabs" aria-orientation="horizontal">
+<div class="tabs" role="tablist" aria-label="CLI tabs" aria-orientation="horizontal">
   {#each shellStore.tabs as tab, index (tab.id)}
     <div
       class="tab"

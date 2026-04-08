@@ -87,17 +87,17 @@
     unsubStatus = shellStore.onStatus(tabId, (status, detail) => {
       if (!term) return;
       if (status === 'connecting') {
-        term.write('\r\n\x1b[2;37m[shell] connecting…\x1b[0m\r\n');
+        term.write('\r\n\x1b[2;37m[cli] connecting…\x1b[0m\r\n');
       } else if (status === 'open') {
-        term.write('\r\n\x1b[2;32m[shell] connected\x1b[0m\r\n');
+        term.write('\r\n\x1b[2;32m[cli] connected\x1b[0m\r\n');
         // Resync size to the relay on (re)open
         if (lastDims.cols && lastDims.rows) {
           shellStore.sendControl(tabId, { type: 'resize', cols: lastDims.cols, rows: lastDims.rows });
         }
       } else if (status === 'closed') {
-        term.write(`\r\n\x1b[2;33m[shell] disconnected${detail ? ` (${detail})` : ''}\x1b[0m\r\n`);
+        term.write(`\r\n\x1b[2;33m[cli] disconnected${detail ? ` (${detail})` : ''}\x1b[0m\r\n`);
       } else if (status === 'error') {
-        term.write(`\r\n\x1b[2;31m[shell] error${detail ? `: ${detail}` : ''}\x1b[0m\r\n`);
+        term.write(`\r\n\x1b[2;31m[cli] error${detail ? `: ${detail}` : ''}\x1b[0m\r\n`);
       }
     });
 

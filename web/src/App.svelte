@@ -6,9 +6,10 @@
   import ChatView from './lib/components/ChatView.svelte';
   import Terminal from './lib/components/Terminal.svelte';
   import type { Component } from 'svelte';
-  // Shell is lazy-loaded only when the Phase 13 Wave 1 feature flag is on,
-  // so xterm.js + addons don't ship to users who haven't opted in.
-  // Caught by Copilot review on PR #89 — bundle bloat for opted-out users.
+  // Shell is lazy-loaded so xterm.js + addons only hit the network once the
+  // user actually opens the CLI tab. Phase 13 Wave 2.5 flipped the default
+  // to CLI, so most users will hit this path on first paint, but the dynamic
+  // import still avoids blocking the initial bundle parse.
   import Toast from './lib/components/Toast.svelte';
   import OfficeCanvas from './lib/components/OfficeCanvas.svelte';
   import AgentInspector from './lib/components/AgentInspector.svelte';
@@ -90,50 +91,26 @@
 
   type ViewTab = 'chat' | 'shell' | 'office' | 'characters';
 
-  // Phase 13 Wave 1 feature flag — opt in via either:
-  //   localStorage.setItem('mt-shell-enabled', '1')
-  //   ?shell=1 in the URL (also persists to localStorage so it sticks)
-  // Until flipped, the legacy chat tab is the default and the Shell tab
-  // is hidden so existing users see no change. The URL-param path exists
-  // because iOS Safari blocks `javascript:` paste in the address bar, so
-  // there's no way to flip localStorage from a phone without devtools.
-  function readShellFlag(): boolean {
-    // Wrap localStorage access in try/catch — privacy mode and quota
-    // errors can throw on getItem/setItem/removeItem, and an unhandled
-    // throw here would prevent the app from booting. Other stores like
-    // relay.svelte.ts already do this. Caught by Copilot review on PR #90.
-    try {
-      if (typeof localStorage === 'undefined') return false;
-      if (typeof location !== 'undefined') {
-        const params = new URLSearchParams(location.search);
-        if (params.get('shell') === '1') {
-          localStorage.setItem('mt-shell-enabled', '1');
-          return true;
-        }
-        if (params.get('shell') === '0') {
-          localStorage.removeItem('mt-shell-enabled');
-          return false;
-        }
-      }
-      return localStorage.getItem('mt-shell-enabled') === '1';
-    } catch {
-      return false;
-    }
-  }
-  const shellEnabled = $state(readShellFlag());
+  // Phase 13 Wave 2.5 — the Shell tab (now labeled "CLI") is always
+  // rendered and is the default active tab. The old `?shell=1` /
+  // localStorage feature flag was removed along with Wave 1's chat-first
+  // fallback. Chat stays mounted and reachable via the tab bar; Wave 3
+  // will delete the chat layer entirely.
 
-  // Dynamic import of the Shell component — only fetched once the user
-  // opts into the feature flag, so xterm.js doesn't ship to everyone.
+  // Dynamic import of the Shell component — defers xterm.js + addons until
+  // the user actually needs them. Fired immediately on mount because CLI is
+  // the default tab; retained as a dynamic import so initial bundle parse
+  // isn't blocked by terminal code.
   let ShellComponent = $state<Component | null>(null);
   $effect(() => {
-    if (shellEnabled && !ShellComponent) {
+    if (!ShellComponent) {
       void import('./lib/components/Shell.svelte').then((mod) => {
         ShellComponent = mod.default as Component;
       });
     }
   });
 
-  let activeTab = $state<ViewTab>('chat');
+  let activeTab = $state<ViewTab>('shell');
   let activeView = $state<OfficeView>('office');
   let headerCollapsed = $state(false);
 
@@ -301,20 +278,19 @@
       <nav class="tabs">
         <button
           class="tab"
+          class:active={activeTab === 'shell'}
+          onclick={() => (activeTab = 'shell')}
+          aria-label="CLI tab"
+        >
+          CLI
+        </button>
+        <button
+          class="tab"
           class:active={activeTab === 'chat'}
           onclick={() => (activeTab = 'chat')}
         >
           Chat
         </button>
-        {#if shellEnabled}
-          <button
-            class="tab"
-            class:active={activeTab === 'shell'}
-            onclick={() => (activeTab = 'shell')}
-          >
-            Shell
-          </button>
-        {/if}
         <button
           class="tab"
           class:active={activeTab === 'office'}
@@ -424,7 +400,7 @@
         {@const Shell = ShellComponent}
         <Shell />
       {:else}
-        <div class="shell-loading">loading shell…</div>
+        <div class="shell-loading">loading CLI…</div>
       {/if}
     {:else if activeTab === 'characters'}
       <CharacterGallery />
