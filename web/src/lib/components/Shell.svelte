@@ -22,6 +22,7 @@
   import MobileKeybar from './MobileKeybar.svelte';
   import { shellStore } from '../stores/shell.svelte';
   import { relay } from '../stores/relay.svelte';
+  import { keybarModifiers } from '../shell/modifiers.svelte';
 
   let iosKeyboardVisible = $state(false);
   // Visual-viewport tracking for the prompt-line lock.
@@ -107,6 +108,12 @@
 
   onDestroy(() => {
     cleanupVv?.();
+    // Reset sticky Ctrl/Alt latches when leaving the CLI view so that a
+    // stray armed mod can't silently apply to the first keystroke the
+    // next time the user comes back. The store is a module-level
+    // singleton so without this it would survive the Shell unmount.
+    // Caught by Copilot PR #93 round 4 review.
+    keybarModifiers.reset();
   });
 
   function handleNewTab(): void {

@@ -129,6 +129,12 @@
     // is a no-op when nothing is armed, so desktop-only users who never
     // interact with the keybar pay zero cost.
     term.onData((data) => {
+      // Transform contract says empty input is a no-op (no transform,
+      // no clear). Gate BOTH the send and the clearArmed behind a
+      // non-empty check so an empty onData event (possible in some
+      // xterm.js edge cases) does not silently release the user's
+      // armed Ctrl/Alt latch. Caught by Copilot PR #93 round 4 review.
+      if (data.length === 0) return;
       const transformed = keybarModifiers.transform(data);
       shellStore.send(tabId, transformed);
       keybarModifiers.clearArmed();

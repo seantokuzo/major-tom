@@ -94,8 +94,11 @@ class ShellStore {
    */
   fontSize = $state<number>(loadPersistedFontSize());
   /**
-   * Monotonic per-tab activation counter. Bumped by setActive() so the
-   * XtermPane for the newly-visible tab can fire a refresh $effect and
+   * Monotonic per-tab activation counter. Bumped by activateInternal()
+   * whenever a tab becomes active — that covers openTab (new + re-open),
+   * the closeTab fallback to tabs[0], and explicit setActive() calls.
+   * The XtermPane for the newly-visible tab watches its own entry via a
+   * $effect and, on bump, refits + sends a `refresh` control frame to
    * force tmux to repaint its window. A hidden pane (`display: none`)
    * has a stale xterm buffer because tmux doesn't repaint regions it
    * can't see — on reactivation we need to pull fresh state or the
@@ -213,6 +216,12 @@ class ShellStore {
 
   /** Font size accessors — persist to localStorage on every change. */
   setFontSize(px: number): void {
+    // Guard against NaN/Infinity leaking into localStorage. Math.floor(NaN)
+    // returns NaN and then the clamp Math.max/Math.min propagates it, so
+    // without this early return a bad caller could poison the persisted
+    // size and brick the terminal until the user manually clears storage.
+    // Caught by Copilot PR #93 round 4 review.
+    if (!Number.isFinite(px)) return;
     const clamped = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, Math.floor(px)));
     if (clamped === this.fontSize) return;
     this.fontSize = clamped;
