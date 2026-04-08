@@ -331,7 +331,13 @@ export async function buildApp(config: AppConfig) {
 
   // Phase 13 Wave 2 — REST endpoints for approvals (cold-start fetch
   // and SW-action POSTs that can't go through the WebSocket).
-  await app.register(createApiApprovalsRoutes({ shellApprovalQueue }));
+  // Rate limiter + audit log are threaded in so the REST decision
+  // endpoint has parity with the WebSocket handler in ws.ts.
+  await app.register(createApiApprovalsRoutes({
+    shellApprovalQueue,
+    rateLimiter,
+    auditLog,
+  }));
 
   // 6. Static file serving + SPA fallback (must be LAST — catches unmatched routes)
   await app.register(staticPlugin);

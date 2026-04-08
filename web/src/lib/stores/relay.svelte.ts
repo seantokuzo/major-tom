@@ -750,8 +750,20 @@ class RelayStore {
   /**
    * Cold-start fetch — pulls every approval the shell hook server is
    * currently holding. Called on app boot AND whenever the SW posts
-   * us a navigation message after a notification click. Merges into
-   * pendingApprovals using the same dedup-by-id rule as addApproval.
+   * us a navigation message after a notification click.
+   *
+   * This is a full reconciliation of the hook-sourced slice: the server
+   * is the source of truth for `source === 'hook'` approvals, so we
+   * rebuild that slice from the response (preserving server ordering)
+   * and leave non-hook approvals (SDK-sourced, worker-IPC) untouched.
+   * This guarantees:
+   *   1. Ordering matches the server — no mis-ordered cards when the
+   *      local list already contained a subset.
+   *   2. Stale hook cards are dropped — if an approval was resolved
+   *      out-of-band (another device, WS broadcast missed), the re-fetch
+   *      removes it from the overlay instead of leaving it hanging.
+   *   3. We keep existing `receivedAt` timestamps for entries the client
+   *      already knew about, which avoids flickering sort order.
    */
   async fetchPendingApprovals(): Promise<void> {
     try {
@@ -771,21 +783,37 @@ class RelayStore {
         }>;
       };
       const list = Array.isArray(data?.pending) ? data.pending : [];
-      for (const a of list) {
-        if (this.pendingApprovals.some((p) => p.id === a.requestId)) continue;
+
+      // Index existing entries by id so we can preserve receivedAt when
+      // an entry is re-confirmed by the server.
+      const existingById = new Map<string, ApprovalRequest>();
+      for (const p of this.pendingApprovals) {
+        existingById.set(p.id, p);
+      }
+
+      // Everything NOT sourced from the hook stays exactly as-is — the
+      // server only owns the hook slice.
+      const nonHook = this.pendingApprovals.filter((p) => p.source !== 'hook');
+
+      // Rebuild the hook slice in server order. Use existing receivedAt
+      // when we already knew about the entry; otherwise stamp now.
+      const hookSlice: ApprovalRequest[] = list.map((a) => {
+        const prior = existingById.get(a.requestId);
         const toolUseId = a.details?.['tool_use_id'] as string | undefined;
-        this.pendingApprovals.push({
+        return {
           id: a.requestId,
           tool: a.tool,
           description: a.description,
           details: a.details,
           toolUseId,
-          receivedAt: new Date(),
+          receivedAt: prior?.receivedAt ?? new Date(),
           ...(a.routingMode && { routingMode: a.routingMode }),
-          ...(a.source && { source: a.source }),
+          source: 'hook' as const,
           ...(a.tabId && { tabId: a.tabId }),
-        });
-      }
+        };
+      });
+
+      this.pendingApprovals = [...nonHook, ...hookSlice];
     } catch {
       // Silent — relay may not be reachable yet, the WS reconnect path
       // will eventually push live approvals through addApproval.

@@ -22,9 +22,15 @@ import { requireSession } from '../plugins/auth.js';
 import type { ApprovalQueue } from '../hooks/approval-queue.js';
 import { MAJOR_TOM_CONFIG_DIR } from '../installer/install-hooks.js';
 import { logger } from '../utils/logger.js';
+import type { RateLimiter } from '../security/rate-limiter.js';
+import type { AuditLog } from '../security/audit-log.js';
 
 interface ApiApprovalsDeps {
   shellApprovalQueue: ApprovalQueue;
+  /** Optional — only present when multi-user mode is enabled. Mirrors ws.ts. */
+  rateLimiter?: RateLimiter;
+  /** Optional — only present when multi-user mode is enabled. Mirrors ws.ts. */
+  auditLog?: AuditLog;
 }
 
 type RoutingMode = 'local' | 'remote' | 'hybrid';
@@ -57,6 +63,10 @@ export function createApiApprovalsRoutes(
     // Endpoint the SW notification actions hit. Body: { decision }.
     // Hybrid-mode resolves go through resolveHybrid (tmux send-keys);
     // everything else through plain resolve().
+    //
+    // When multi-user mode is enabled the handler also enforces the
+    // per-user approval rate limit and records an audit entry so the
+    // REST path has parity with the WebSocket handler in ws.ts.
     fastify.post<{
       Params: { id: string };
       Body: { decision?: unknown };
@@ -69,11 +79,41 @@ export function createApiApprovalsRoutes(
         if (!isDecisionLite(decision)) {
           return reply.code(400).send({ error: 'decision must be "allow" or "deny"' });
         }
+
+        // Rate limit check — mirrors ws.ts approval handler.
+        // Only runs when multi-user mode is enabled (deps are optional).
+        const sessionUser = request.sessionUser;
+        if (deps.rateLimiter && sessionUser?.userId && sessionUser.role) {
+          const check = deps.rateLimiter.check(
+            sessionUser.userId,
+            sessionUser.role,
+            'approval',
+          );
+          if (!check.allowed) {
+            return reply.code(429).send({
+              error: `Approval rate limit exceeded — retry in ${check.retryAfter}s`,
+              retryAfter: check.retryAfter,
+            });
+          }
+        }
+
         if (!deps.shellApprovalQueue.isPending(requestId)) {
           // It may have already been resolved (the cache will catch
           // duplicate enqueues but the API should also gracefully no-op).
           return reply.code(404).send({ error: 'No pending approval with that id' });
         }
+
+        // Audit entry — mirrors ws.ts `approval.${decision}` action format.
+        if (deps.auditLog && sessionUser?.userId && sessionUser.role) {
+          await deps.auditLog.record({
+            userId: sessionUser.userId,
+            email: sessionUser.email,
+            role: sessionUser.role,
+            action: `approval.${decision}`,
+            details: `requestId=${requestId} source=rest`,
+          });
+        }
+
         const pending = deps.shellApprovalQueue.getPendingDetails().find(
           (p) => p.requestId === requestId,
         );

@@ -251,9 +251,17 @@
   // requestId} to all visible clients — we re-fetch so the overlay shows
   // the freshest queue ordering, and surface a toast if the request was
   // already resolved by another device.
+  // Guard against double-firing during the same authenticated session.
+  // Reset on sign-out so a re-login without a full page reload re-runs
+  // the cold-start fetch and the routing pills stay in sync with the
+  // relay's `approval-mode.json`.
   let approvalBootDone = $state(false);
   $effect(() => {
-    if (!relay.isAuthenticated || approvalBootDone) return;
+    if (!relay.isAuthenticated) {
+      approvalBootDone = false;
+      return;
+    }
+    if (approvalBootDone) return;
     approvalBootDone = true;
     void relay.loadApprovalRoutingMode();
     void relay.fetchPendingApprovals();
