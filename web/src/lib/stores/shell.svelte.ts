@@ -180,6 +180,25 @@ class ShellStore {
     if (tab.reconnectTimer !== null) {
       clearTimeout(tab.reconnectTimer);
     }
+    // Wave 2.6: tell the relay to kill the underlying tmux window, not
+    // just detach this client. Without this, every closed tab leaks a
+    // tmux window inside the master `major-tom` session forever — the
+    // real "forgotten sessions hanging around" problem the user flagged.
+    //
+    // Order matters: send the kill control frame BEFORE closing the
+    // WebSocket. WebSocket preserves frame ordering on the wire, so the
+    // server processes kill → close in that order. The kill triggers
+    // `tmux kill-window` on the server, which causes the inner shell
+    // to exit naturally, which disposes the PTY, which closes the WS
+    // from the server side too. Our own close() is mostly belt-and-
+    // braces — if the server is slow we still hang up on our side.
+    if (tab.socket && tab.socket.readyState === WebSocket.OPEN) {
+      try {
+        tab.socket.send(JSON.stringify({ type: 'kill' }));
+      } catch {
+        // ignore — socket may already be closing
+      }
+    }
     if (tab.socket) {
       try { tab.socket.close(1000, 'tab-closed'); } catch { /* ignore */ }
     }
