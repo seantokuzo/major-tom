@@ -193,6 +193,26 @@
     queueFit();
   });
 
+  // Bug 4: force a repaint when this tab is (re)activated. A hidden tab
+  // uses `display: none`, so tmux never bothered to repaint the window
+  // while it was off-screen — xterm renders whatever was in its buffer
+  // from BEFORE the switch. On reactivation we refit (in case the
+  // viewport size changed), then send a `refresh` control frame that
+  // asks the relay to nudge tmux into a full repaint via a 1-col resize
+  // wobble. Finally we steal focus back so the iOS soft-keyboard pops
+  // straight up without a second tap.
+  $effect(() => {
+    const seq = shellStore.activationSeq[tabId];
+    if (!seq) return;
+    if (shellStore.activeTabId !== tabId) return;
+    if (!opened) return;
+    requestAnimationFrame(() => {
+      queueFit();
+      shellStore.sendControl(tabId, { type: 'refresh' });
+      term?.focus();
+    });
+  });
+
   onDestroy(() => {
     shellStore.unregisterInjector(tabId);
     shellStore.unregisterFocuser(tabId);

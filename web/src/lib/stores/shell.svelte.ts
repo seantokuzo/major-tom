@@ -93,6 +93,16 @@ class ShellStore {
    * setFontSize/bumpFontSize; XtermPane reacts via $effect.
    */
   fontSize = $state<number>(loadPersistedFontSize());
+  /**
+   * Monotonic per-tab activation counter. Bumped by setActive() so the
+   * XtermPane for the newly-visible tab can fire a refresh $effect and
+   * force tmux to repaint its window. A hidden pane (`display: none`)
+   * has a stale xterm buffer because tmux doesn't repaint regions it
+   * can't see — on reactivation we need to pull fresh state or the
+   * user sees the pre-switch prompt even after the shell's cwd moved
+   * under them.
+   */
+  activationSeq = $state<Record<string, number>>({});
 
   /** tabId → set of listeners for binary PTY data. */
   private dataListeners = new Map<string, Set<DataListener>>();
@@ -178,6 +188,12 @@ class ShellStore {
   setActive(tabId: string): void {
     if (this.tabs.find((t) => t.id === tabId)) {
       this.activeTabId = tabId;
+      // Bump the activation sequence for this tab so the XtermPane $effect
+      // fires and forces a repaint. Without this nudge, tmux leaves stale
+      // content in the hidden pane's xterm buffer (display: none means
+      // tmux never repainted the region while it was off-screen).
+      const prev = this.activationSeq[tabId] ?? 0;
+      this.activationSeq = { ...this.activationSeq, [tabId]: prev + 1 };
     }
   }
 
