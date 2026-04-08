@@ -7,6 +7,7 @@
   import '@xterm/xterm/css/xterm.css';
   import { shellStore } from '../stores/shell.svelte';
   import { relay } from '../stores/relay.svelte';
+  import { keybarModifiers } from '../shell/modifiers.svelte';
 
   interface Props {
     tabId: string;
@@ -118,9 +119,19 @@
       });
     }
 
-    // Terminal → PTY (handles keyboard, paste, AND keybar via term.input())
+    // Terminal → PTY (handles keyboard, paste, AND keybar via term.input()).
+    //
+    // Bug 5 fix: apply any currently-armed keybar modifier to the bytes
+    // before they leave the browser. Without this, the user can tap
+    // Ctrl on the soft keybar and then type 'c' on the iOS keyboard —
+    // and the literal 'c' lands at the prompt because iOS input never
+    // touches the keybar's dispatch function. keybarModifiers.transform
+    // is a no-op when nothing is armed, so desktop-only users who never
+    // interact with the keybar pay zero cost.
     term.onData((data) => {
-      shellStore.send(tabId, data);
+      const transformed = keybarModifiers.transform(data);
+      shellStore.send(tabId, transformed);
+      keybarModifiers.clearArmed();
     });
 
     term.onResize(({ cols, rows }) => {
