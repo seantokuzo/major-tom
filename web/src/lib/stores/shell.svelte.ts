@@ -205,6 +205,16 @@ class ShellStore {
     this.tabs.splice(idx, 1);
     this.dataListeners.delete(tabId);
     this.statusListeners.delete(tabId);
+    // Drop the stale activation counter entry too. Reactive spread with
+    // `delete` on a clone so the $state proxy observes the change.
+    // Without this the record grows unbounded over the app's lifetime —
+    // microscopic per-entry, but "open N tabs → close them all → repeat"
+    // is a perfectly normal usage pattern and leaking keys has no upside.
+    if (tabId in this.activationSeq) {
+      const next = { ...this.activationSeq };
+      delete next[tabId];
+      this.activationSeq = next;
+    }
     if (this.activeTabId === tabId) {
       // Falling back to the first remaining tab (if any) — route through
       // activateInternal so the newly-visible pane gets a fresh paint.
