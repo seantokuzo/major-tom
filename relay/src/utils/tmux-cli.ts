@@ -206,8 +206,9 @@ export async function listWindows(): Promise<string[]> {
 }
 
 /**
- * Kill a named window. No-op if it doesn't exist, throws if the underlying
- * `tmux kill-window` returns non-zero.
+ * Kill a named window. No-op if it doesn't exist (idempotent under concurrent
+ * closes), throws if `tmux kill-window` returns non-zero for any reason other
+ * than "already gone".
  *
  * The throw-on-failure behavior matters: callers in `pty-adapter.ts` and
  * `routes/shell.ts` wrap this call in `.catch(...)` / `try/catch` and log
@@ -215,6 +216,14 @@ export async function listWindows(): Promise<string[]> {
  * unreachable, meaning real tmux failures would be silently swallowed
  * while the UI assumed the tab was killed. Caught by Copilot PR #94
  * review round 3.
+ *
+ * Round 4 race fix: between the `hasWindow()` guard and the `kill-window`
+ * call, another actor (natural shell exit, external kill, a second REST
+ * fallback) can remove the window — `kill-window` then fails and Round 3's
+ * throw would surface a false 500 to the REST client even though the window
+ * is genuinely gone. So on non-zero exit we re-check `hasWindow()` and treat
+ * "gone now" as success; anything else re-throws with the original tmux
+ * error message. Caught by Copilot PR #94 review round 4.
  */
 export async function killWindow(tabId: string): Promise<void> {
   if (!(await hasWindow(tabId))) return;
@@ -224,6 +233,9 @@ export async function killWindow(tabId: string): Promise<void> {
     '-t', `${MAJOR_TOM_SESSION}:${tabId}`,
   ]);
   if (res.status !== 0) {
+    // Race window: something else killed it between hasWindow() and here.
+    // If the window is gone now, that's the desired end state — success.
+    if (!(await hasWindow(tabId))) return;
     throw new Error(
       `tmux kill-window(${tabId}) failed: ${res.stderr || res.stdout || 'unknown error'}`,
     );
@@ -295,6 +307,13 @@ export async function createViewSession(viewId: string, tabId: string): Promise<
  * Used to tear down per-WS grouped view sessions on dispose. Killing a
  * grouped session does NOT kill the shared windows — those belong to the
  * master `major-tom` session and survive until explicitly `killWindow`'d.
+ *
+ * Round 4: logs a warn on non-zero exit. Previously the result was fully
+ * ignored so a real `tmux kill-session` failure (tmux server error, grouped
+ * session in a weird state) would silently leak a `view-*` session with no
+ * log signal at all. dispose() is best-effort cleanup so we don't throw —
+ * the log line is enough to correlate leaks with tmux errors after the fact.
+ * Caught by Copilot PR #94 review round 4.
  */
 export async function killSession(sessionName: string): Promise<void> {
   const exists = await run([
@@ -303,11 +322,17 @@ export async function killSession(sessionName: string): Promise<void> {
     '-t', sessionName,
   ]);
   if (exists.status !== 0) return;
-  await run([
+  const res = await run([
     '-L', MAJOR_TOM_SOCKET,
     'kill-session',
     '-t', sessionName,
   ]);
+  if (res.status !== 0) {
+    logger.warn(
+      { sessionName, stderr: res.stderr.trim() || res.stdout.trim() },
+      'tmux kill-session failed',
+    );
+  }
 }
 
 /**
