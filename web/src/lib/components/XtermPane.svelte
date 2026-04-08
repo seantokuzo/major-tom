@@ -118,6 +118,36 @@
     return /iP(hone|od|ad)/.test(navigator.userAgent);
   }
 
+  // When the user taps into the terminal, iOS pops up the software keyboard
+  // plus a "QuickType" assist bar above it (password / credit card / contact
+  // suggestions on the left, a collapse checkmark on the right). The web
+  // platform can't remove that bar entirely — Termius manages it because it
+  // is a native app using UITextField.inputAssistantItem, an API that is
+  // unreachable from a PWA. But we CAN suppress most of the left-side junk
+  // by telling iOS this input is not a form field, not a password, not a
+  // credit card, and has no autocomplete use.
+  //
+  // xterm.js maintains a hidden `.xterm-helper-textarea` inside its root
+  // that receives keyboard input — we apply the attribute soup directly to
+  // that element. The right-side collapse checkmark stays; that's baked
+  // into iOS and not removable from a web context.
+  function suppressIOSInputAssistance(container: HTMLDivElement): void {
+    const helper = container.querySelector(
+      '.xterm-helper-textarea'
+    ) as HTMLTextAreaElement | null;
+    if (!helper) return;
+    helper.setAttribute('autocomplete', 'off');
+    helper.setAttribute('autocorrect', 'off');
+    helper.setAttribute('autocapitalize', 'off');
+    helper.setAttribute('spellcheck', 'false');
+    helper.setAttribute('enterkeyhint', 'send');
+    // 1Password / LastPass / Bitwarden hints — stops them from injecting a
+    // "fill with password" button into the assist bar on iOS.
+    helper.setAttribute('data-1p-ignore', 'true');
+    helper.setAttribute('data-lpignore', 'true');
+    helper.setAttribute('data-form-type', 'other');
+  }
+
   onMount(() => {
     if (!containerEl) return;
 
@@ -160,6 +190,7 @@
     term.open(containerEl);
     opened = true;
     queueFit();
+    suppressIOSInputAssistance(containerEl);
 
     // Register listeners BEFORE openTab so the WebSocket connection (and
     // any data tmux emits immediately on attach) cannot fire before we're
