@@ -9,6 +9,9 @@ import Foundation
 final class RelayProcess {
     private(set) var state = RelayState()
 
+    /// Log store fed by stdout/stderr lines from the relay process.
+    let logStore = LogStore()
+
     private var process: Process?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
@@ -192,18 +195,58 @@ final class RelayProcess {
 
     // MARK: - Output Handling
 
+    /// Partial-line buffer per pipe (data may arrive mid-line).
+    private var stdoutBuffer = ""
+    private var stderrBuffer = ""
+
     private func readPipeAsync(_ pipe: Pipe, label: String) {
-        pipe.fileHandleForReading.readabilityHandler = { handle in
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else {
                 handle.readabilityHandler = nil
                 return
             }
-            if let text = String(data: data, encoding: .utf8) {
-                // Print to console for now — future: feed into LogStore
-                for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
-                    if !line.isEmpty {
-                        print("[relay/\(label)] \(line)")
+            guard let self, let text = String(data: data, encoding: .utf8) else { return }
+
+            // Buffer management — data may arrive as partial lines
+            let buffer: String
+            if label == "stdout" {
+                buffer = self.stdoutBuffer + text
+            } else {
+                buffer = self.stderrBuffer + text
+            }
+
+            let lines = buffer.split(separator: "\n", omittingEmptySubsequences: false)
+
+            // If the chunk doesn't end with \n, the last element is a partial line — keep it
+            let hasTrailingNewline = text.hasSuffix("\n")
+            let completeLines: ArraySlice<Substring>
+            let remainder: String
+
+            if hasTrailingNewline {
+                completeLines = lines[...]
+                remainder = ""
+            } else {
+                completeLines = lines.dropLast()
+                remainder = String(lines.last ?? "")
+            }
+
+            if label == "stdout" {
+                self.stdoutBuffer = remainder
+            } else {
+                self.stderrBuffer = remainder
+            }
+
+            // Feed complete lines into LogStore on the main actor
+            let lineStrings = completeLines.compactMap { line -> String? in
+                let s = String(line)
+                return s.isEmpty ? nil : s
+            }
+
+            if !lineStrings.isEmpty {
+                DispatchQueue.main.async {
+                    for line in lineStrings {
+                        self.logStore.append(line)
                     }
                 }
             }
