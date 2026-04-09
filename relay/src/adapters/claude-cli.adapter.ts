@@ -4,6 +4,9 @@ import {
   type SDKSession,
   type SDKMessage,
   type PermissionResult,
+  type PreToolUseHookInput,
+  type SubagentStartHookInput,
+  type SubagentStopHookInput,
 } from '@anthropic-ai/claude-agent-sdk';
 import { Session } from '../sessions/session.js';
 import { SessionManager } from '../sessions/session-manager.js';
@@ -27,6 +30,30 @@ import { logger } from '../utils/logger.js';
 // We get a simple `canUseTool` callback for approval and an async
 // generator for streaming events.
 
+/**
+ * Phase 13 Wave 3 — pending `PreToolUse(Task)` → `SubagentStart` correlation.
+ *
+ * Mirror of the worker-side `PENDING_TASK_TTL_MS` / `PendingTaskEntry`
+ * pattern in `relay/src/fleet/worker.ts`. Kept in sync so this adapter
+ * (the reference implementation for a future VSCode chat participant
+ * phase) stays structurally identical to the live worker path.
+ *
+ * `SubagentStartHookInput` carries only `agent_id` + `agent_type` —
+ * neither the task description nor a correlating tool_use_id. The
+ * description lives in the prior `PreToolUse` firing on the `Task`
+ * tool. Stash those entries keyed by `tool_use_id` and drain the
+ * oldest on each subsequent `SubagentStart`. Lazy GC on every
+ * SubagentStart (TTL 30s) so a crashed subagent spawn can't leak
+ * entries. 30s is conservative — in practice the gap is milliseconds.
+ */
+const PENDING_TASK_TTL_MS = 30_000;
+
+interface PendingTaskEntry {
+  description: string;
+  prompt: string;
+  enqueuedAt: number;
+}
+
 interface SdkSessionEntry {
   session: Session;
   sdkSession: SDKSession;
@@ -35,6 +62,41 @@ interface SdkSessionEntry {
   hasStreamedText: boolean;
   /** True while the stream consumer loop is running */
   streamAlive: boolean;
+  /** Phase 13 Wave 3 — correlate PreToolUse(Task) → SubagentStart by arrival order. */
+  pendingTaskByToolUseId: Map<string, PendingTaskEntry>;
+}
+
+/**
+ * Drain expired entries from a session's pending-task map. Called on
+ * every SubagentStart so a mis-correlation can't accumulate indefinitely.
+ */
+function gcPendingTasks(entry: SdkSessionEntry): void {
+  const now = Date.now();
+  for (const [key, value] of entry.pendingTaskByToolUseId) {
+    if (now - value.enqueuedAt > PENDING_TASK_TTL_MS) {
+      entry.pendingTaskByToolUseId.delete(key);
+    }
+  }
+}
+
+/**
+ * Consume the oldest pending task entry (FIFO) on SubagentStart.
+ *
+ * `SubagentStart` carries no `tool_use_id`, so direct lookup is
+ * impossible. FIFO ordering is a good-enough approximation: a Task
+ * tool call is almost always immediately followed by its own
+ * SubagentStart before a subsequent Task fires. Concurrent Task calls
+ * still work as long as subagent spawns happen in the same order as
+ * the Task calls, which is how the SDK ordinarily drives them. The
+ * failure mode is pathological interleaving — see the correlation-miss
+ * `warn` below.
+ */
+function consumeOldestPendingTask(entry: SdkSessionEntry): PendingTaskEntry | undefined {
+  const firstKey = entry.pendingTaskByToolUseId.keys().next();
+  if (firstKey.done) return undefined;
+  const value = entry.pendingTaskByToolUseId.get(firstKey.value);
+  entry.pendingTaskByToolUseId.delete(firstKey.value);
+  return value;
 }
 
 // ── Agent role classification from task description ──────────
@@ -92,6 +154,15 @@ export class ClaudeCliAdapter implements IAdapter {
       );
     }
 
+    // Phase 13 Wave 3 — per-session state the inline SDK hooks close
+    // over. Declared BEFORE unstable_v2_createSession so the hook
+    // callbacks capture a stable reference. Stashed on the
+    // SdkSessionEntry below.
+    const pendingTaskByToolUseId = new Map<string, PendingTaskEntry>();
+    // Capture a reference to the emitter for the hook closures below —
+    // `this` inside an async callback is lost.
+    const emitter = this.emitter;
+
     const sdkSession = unstable_v2_createSession({
       model: 'claude-sonnet-4-20250514',
       permissionMode: 'default',
@@ -100,6 +171,100 @@ export class ClaudeCliAdapter implements IAdapter {
       // session until the approval timeout fires.
       canUseTool: (toolName, input, options) =>
         this.handlePermission(session.id, toolName, input, options.toolUseID, options.signal),
+      // Phase 13 Wave 3 — real subagent lifecycle events. Replaces
+      // the old system-event heuristic that watched for task-shaped
+      // SDK messages with first-class hooks. See the comment on
+      // `pendingTaskByToolUseId` at module scope for the correlation
+      // rationale.
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: 'Task',
+            hooks: [
+              async (input, toolUseID) => {
+                if (
+                  input.hook_event_name === 'PreToolUse' &&
+                  (input as PreToolUseHookInput).tool_name === 'Task' &&
+                  typeof toolUseID === 'string'
+                ) {
+                  const toolInput =
+                    ((input as PreToolUseHookInput).tool_input as Record<string, unknown>) ??
+                    undefined;
+                  const description =
+                    typeof toolInput?.['description'] === 'string'
+                      ? (toolInput['description'] as string)
+                      : '';
+                  const prompt =
+                    typeof toolInput?.['prompt'] === 'string'
+                      ? (toolInput['prompt'] as string)
+                      : '';
+                  pendingTaskByToolUseId.set(toolUseID, {
+                    description,
+                    prompt,
+                    enqueuedAt: Date.now(),
+                  });
+                }
+                // Don't affect permission — canUseTool is the gate.
+                return {};
+              },
+            ],
+          },
+        ],
+        SubagentStart: [
+          {
+            hooks: [
+              async (input) => {
+                if (input.hook_event_name !== 'SubagentStart') return {};
+                const startInput = input as SubagentStartHookInput;
+                const { agent_id: agentId, agent_type: agentType } = startInput;
+
+                const entry = this.sessions.get(session.id);
+                if (!entry) return {};
+
+                gcPendingTasks(entry);
+                const pending = consumeOldestPendingTask(entry);
+
+                const taskDesc = pending?.description ?? '';
+                if (!pending) {
+                  logger.warn(
+                    { agentId, agentType, sessionId: session.id },
+                    'sprite-label correlation miss — SubagentStart fired without a pending PreToolUse(Task) entry',
+                  );
+                }
+
+                const label = taskDesc || agentType;
+                const role = taskDesc ? classifyAgentRole(taskDesc) : agentType;
+
+                emitter.emit('agent-lifecycle', {
+                  agentId,
+                  event: 'spawn',
+                  task: label,
+                  role,
+                } satisfies AgentEvent);
+                return {};
+              },
+            ],
+          },
+        ],
+        SubagentStop: [
+          {
+            hooks: [
+              async (input) => {
+                if (input.hook_event_name !== 'SubagentStop') return {};
+                const stopInput = input as SubagentStopHookInput;
+                const { agent_id: agentId, last_assistant_message: lastMsg } = stopInput;
+
+                emitter.emit('agent-lifecycle', {
+                  agentId,
+                  event: 'dismissed',
+                  result: lastMsg ?? '',
+                } satisfies AgentEvent);
+                return {};
+              },
+            ],
+          },
+        ],
+      },
       env: {
         ...process.env,
         NO_COLOR: '1',
@@ -107,7 +272,14 @@ export class ClaudeCliAdapter implements IAdapter {
     });
 
     const streamAbort = new AbortController();
-    const entry: SdkSessionEntry = { session, sdkSession, streamAbort, hasStreamedText: false, streamAlive: false };
+    const entry: SdkSessionEntry = {
+      session,
+      sdkSession,
+      streamAbort,
+      hasStreamedText: false,
+      streamAlive: false,
+      pendingTaskByToolUseId,
+    };
     this.sessions.set(session.id, entry);
 
     // Start consuming the stream in the background
@@ -328,39 +500,11 @@ export class ClaudeCliAdapter implements IAdapter {
         );
         break;
 
-      case 'task_started': {
-        const taskId = msg['task_id'] as string;
-        const description = (msg['description'] as string) ?? '';
-        const role = classifyAgentRole(description);
-        this.emitter.emit('agent-lifecycle', {
-          agentId: taskId,
-          event: 'spawn',
-          task: description,
-          role,
-        } satisfies AgentEvent);
-        break;
-      }
-
-      case 'task_progress': {
-        const taskId = msg['task_id'] as string;
-        this.emitter.emit('agent-lifecycle', {
-          agentId: taskId,
-          event: 'working',
-          task: (msg['description'] as string) ?? (msg['summary'] as string) ?? '',
-        } satisfies AgentEvent);
-        break;
-      }
-
-      case 'task_notification': {
-        const taskId = msg['task_id'] as string;
-        const status = msg['status'] as string;
-        this.emitter.emit('agent-lifecycle', {
-          agentId: taskId,
-          event: status === 'completed' ? 'complete' : 'dismissed',
-          result: (msg['summary'] as string) ?? status,
-        } satisfies AgentEvent);
-        break;
-      }
+      // Phase 13 Wave 3 — task-shaped SDK system events are no longer
+      // the sprite source of truth. Real `SubagentStart` / `SubagentStop`
+      // hooks on the SDK session (see `start()` above) now drive
+      // sprite spawn/dismiss, with task-description correlation via
+      // `pendingTaskByToolUseId`.
 
       case 'status': {
         const status = msg['status'] as string | null;
