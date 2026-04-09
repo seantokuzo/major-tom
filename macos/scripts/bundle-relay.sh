@@ -44,6 +44,13 @@ mkdir -p "${OUTPUT_DIR}"
 echo "Copying relay dist..."
 cp -R "${RELAY_DIR}/dist/"* "${OUTPUT_DIR}/"
 
+# Stage runtime hook templates used by the relay's hook installer
+if [[ -d "${RELAY_DIR}/scripts/hook-templates" ]]; then
+    echo "Copying relay hook templates..."
+    mkdir -p "${OUTPUT_DIR}/scripts"
+    cp -R "${RELAY_DIR}/scripts/hook-templates" "${OUTPUT_DIR}/scripts/"
+fi
+
 # Copy node-pty native addon
 # node-pty compiles a .node file that lives in node_modules
 echo "Locating node-pty native addon..."
@@ -75,15 +82,12 @@ else
     echo "         This is expected if node-pty is not yet installed. Run 'cd relay && npm install' first."
 fi
 
-# Copy package.json for Node module resolution (node needs it for ESM)
+# Install production-only dependencies into the staged output so devDependencies
+# (test frameworks, linters, etc.) are excluded and the bundle stays lean.
+echo "Installing production node_modules (--omit=dev)..."
 cp "${RELAY_DIR}/package.json" "${OUTPUT_DIR}/package.json"
-
-# Also need the node_modules for external dependencies that esbuild didn't bundle
-# (esbuild uses --packages=external, so runtime deps must be present)
-echo "Copying node_modules (external dependencies)..."
-if [[ -d "${RELAY_DIR}/node_modules" ]]; then
-    cp -R "${RELAY_DIR}/node_modules" "${OUTPUT_DIR}/node_modules"
-fi
+cp "${RELAY_DIR}/package-lock.json" "${OUTPUT_DIR}/package-lock.json" 2>/dev/null || true
+(cd "${OUTPUT_DIR}" && npm ci --omit=dev --ignore-scripts 2>/dev/null || npm install --omit=dev --ignore-scripts)
 
 echo ""
 echo "Relay dist staged at: ${OUTPUT_DIR}"

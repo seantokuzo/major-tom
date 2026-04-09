@@ -164,18 +164,28 @@ final class RelayProcess {
         guard let proc = process else { return true }
 
         return await withCheckedContinuation { continuation in
+            let resumeLock = NSLock()
+            var didResume = false
+
+            func resumeOnce(_ result: Bool) {
+                resumeLock.lock()
+                defer { resumeLock.unlock() }
+
+                guard !didResume else { return }
+                didResume = true
+                continuation.resume(returning: result)
+            }
+
             let workItem = DispatchWorkItem {
                 proc.waitUntilExit()
-                continuation.resume(returning: true)
+                resumeOnce(true)
             }
 
             DispatchQueue.global().async(execute: workItem)
 
             DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
-                if !workItem.isCancelled {
-                    workItem.cancel()
-                    continuation.resume(returning: false)
-                }
+                workItem.cancel()
+                resumeOnce(false)
             }
         }
     }
@@ -203,11 +213,33 @@ final class RelayProcess {
     // MARK: - Dependency Checks
 
     private func tmuxAvailable() -> Bool {
+        // Check common Homebrew and system paths first, since GUI-launched
+        // macOS apps often have a minimal PATH that excludes /opt/homebrew/bin
+        // and /usr/local/bin where Homebrew installs tmux.
+        let knownPaths = [
+            "/opt/homebrew/bin/tmux",   // Apple Silicon Homebrew
+            "/usr/local/bin/tmux",      // Intel Homebrew
+            "/usr/bin/tmux",            // System (unlikely but possible)
+        ]
+
+        for path in knownPaths {
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return true
+            }
+        }
+
+        // Fall back to which(1) with an expanded PATH for any non-standard installs
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/which")
         proc.arguments = ["tmux"]
         proc.standardOutput = FileHandle.nullDevice
         proc.standardError = FileHandle.nullDevice
+
+        // Inject Homebrew paths into the probe's PATH so which can find them
+        var env = ProcessInfo.processInfo.environment
+        let extraPaths = "/opt/homebrew/bin:/usr/local/bin"
+        env["PATH"] = extraPaths + ":" + (env["PATH"] ?? "/usr/bin:/bin")
+        proc.environment = env
 
         do {
             try proc.run()
