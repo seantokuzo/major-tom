@@ -66,6 +66,10 @@ struct TerminalWebView: UIViewRepresentable {
         }
         #endif
 
+        // Store a weak reference in the view model so the native keybar
+        // can forward key taps via evaluateJavaScript.
+        viewModel.webView = webView
+
         // Inject the auth cookie, then load the terminal page.
         Task { @MainActor in
             await injectAuthCookie(into: dataStore)

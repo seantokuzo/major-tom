@@ -2,13 +2,17 @@ import SwiftUI
 
 /// Main terminal view — hosts the WKWebView terminal and manages lifecycle.
 ///
-/// Wave 1: Read-only terminal rendering. The terminal connects to the relay's
-/// `/shell/:tabId` WebSocket and displays live output. No keyboard input yet
-/// (Wave 2 adds the native keybar and iOS keyboard integration).
+/// Wave 2: Full keyboard input. The NativeKeybar sits above the iOS software
+/// keyboard with specialty keys (Esc, Tab, Ctrl, arrows). The SpecialtyKeyGrid
+/// slides up as an alternative to the iOS keyboard with function keys, Ctrl
+/// combos, tmux shortcuts, and symbols.
 struct TerminalView: View {
     let auth: AuthService
 
     @State private var viewModel: TerminalViewModel
+
+    /// Whether the specialty key grid is visible.
+    @State private var showSpecialtyGrid = false
 
     init(auth: AuthService) {
         self.auth = auth
@@ -25,9 +29,37 @@ struct TerminalView: View {
                 // Status bar
                 statusBar
 
-                // Terminal web view (full bleed)
+                // Terminal web view (fills available space)
                 terminalContent
-                    .ignoresSafeArea(.container, edges: .bottom)
+
+                // Specialty key grid (slides up from bottom)
+                if showSpecialtyGrid {
+                    SpecialtyKeyGrid(
+                        onSendBytes: { bytes in
+                            viewModel.sendBytes(bytes)
+                        },
+                        onDismiss: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showSpecialtyGrid = false
+                            }
+                        }
+                    )
+                }
+
+                // Native keybar — always visible when terminal is active
+                if viewModel.connectionState == .connected || viewModel.isReady {
+                    NativeKeybar(
+                        onSendBytes: { bytes in
+                            viewModel.sendBytes(bytes)
+                        },
+                        onToggleSpecialty: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showSpecialtyGrid.toggle()
+                            }
+                        },
+                        specialtyGridVisible: showSpecialtyGrid
+                    )
+                }
             }
         }
     }
