@@ -115,6 +115,12 @@ struct MajorTomApp: App {
                 }
                 .tag(AppTab.control)
 
+            TerminalView(auth: auth)
+                .tabItem {
+                    Label("Shell", systemImage: "apple.terminal")
+                }
+                .tag(AppTab.terminal)
+
             OfficeView(viewModel: officeViewModel, relay: relay)
                 .tabItem {
                     Label("Office", systemImage: "building.2")
@@ -331,6 +337,7 @@ struct MajorTomApp: App {
 
 enum AppTab: Hashable {
     case control
+    case terminal
     case office
     case connect
     case analytics

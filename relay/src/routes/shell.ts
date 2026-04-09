@@ -21,6 +21,57 @@ interface ShellRouteDeps {
   sessionManager: SessionManager;
 }
 
+/** Result of authenticating a shell request (WS upgrade or REST kill). */
+interface ShellAuthResult {
+  authed: boolean;
+  email?: string;
+}
+
+/**
+ * Shared auth logic for shell routes. Checks (in order):
+ *  1. Dev-mode legacy AUTH_TOKEN via ?token= query param
+ *  2. Session cookie (primary path)
+ *  3. WKWebView JWT fallback via ?token= (verified as session token)
+ *
+ * Extracted to avoid duplication between the WS upgrade and REST kill
+ * handlers — Copilot caught the drift risk on PR #97 review.
+ */
+async function authenticateShellRequest(
+  sessionCookie: string | undefined,
+  queryToken: string | undefined,
+): Promise<ShellAuthResult> {
+  const legacyAuthToken = process.env['AUTH_TOKEN'];
+  const isDevMode = process.env['NODE_ENV'] !== 'production';
+
+  // 1. Dev-mode legacy AUTH_TOKEN
+  if (isDevMode && queryToken && legacyAuthToken && queryToken === legacyAuthToken) {
+    return { authed: true };
+  }
+
+  // 2. Session cookie (primary)
+  if (sessionCookie) {
+    try {
+      const payload = await verifySessionToken(sessionCookie);
+      return { authed: true, email: payload.email };
+    } catch {
+      // Cookie present but invalid — fall through to JWT fallback
+    }
+  }
+
+  // 3. WKWebView JWT fallback: cookie injection can fail in edge cases,
+  //    so also accept the session JWT as a ?token= query param.
+  if (queryToken && queryToken !== legacyAuthToken) {
+    try {
+      const payload = await verifySessionToken(queryToken);
+      return { authed: true, email: payload.email };
+    } catch {
+      // Token invalid
+    }
+  }
+
+  return { authed: false };
+}
+
 /** Valid tabIds: 1-64 chars of `[a-zA-Z0-9._-]`. Defensive against path abuse. */
 const TAB_ID_RE = /^[a-zA-Z0-9._-]{1,64}$/;
 
@@ -60,23 +111,8 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
         // ── Auth ──────────────────────────────────────────────
         const sessionCookie = request.cookies?.[SESSION_COOKIE];
         const { token: queryToken, cols: colsQ, rows: rowsQ } = request.query;
-        const legacyAuthToken = process.env['AUTH_TOKEN'];
-        const isDevMode = process.env['NODE_ENV'] !== 'production';
 
-        let authed = false;
-        let email: string | undefined;
-
-        if (isDevMode && queryToken && legacyAuthToken && queryToken === legacyAuthToken) {
-          authed = true;
-        } else if (sessionCookie) {
-          try {
-            const payload = await verifySessionToken(sessionCookie);
-            authed = true;
-            email = payload.email;
-          } catch {
-            authed = false;
-          }
-        }
+        const { authed, email } = await authenticateShellRequest(sessionCookie, queryToken);
 
         if (!authed) {
           logger.warn({ tabId, ip: request.ip }, 'Shell WS unauthenticated — closing');
@@ -161,26 +197,11 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
           return reply.code(400).send({ error: 'Invalid tabId' });
         }
 
-        // ── Auth (mirrors /shell/:tabId WS upgrade above) ────
+        // ── Auth (shared with /shell/:tabId WS upgrade) ─────
         const sessionCookie = request.cookies?.[SESSION_COOKIE];
         const { token: queryToken } = request.query;
-        const legacyAuthToken = process.env['AUTH_TOKEN'];
-        const isDevMode = process.env['NODE_ENV'] !== 'production';
 
-        let authed = false;
-        let email: string | undefined;
-
-        if (isDevMode && queryToken && legacyAuthToken && queryToken === legacyAuthToken) {
-          authed = true;
-        } else if (sessionCookie) {
-          try {
-            const payload = await verifySessionToken(sessionCookie);
-            authed = true;
-            email = payload.email;
-          } catch {
-            authed = false;
-          }
-        }
+        const { authed, email } = await authenticateShellRequest(sessionCookie, queryToken);
 
         if (!authed) {
           logger.warn({ tabId, ip: request.ip }, 'REST kill unauthenticated — rejecting');
