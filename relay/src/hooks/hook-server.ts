@@ -304,9 +304,10 @@ export function createHookServer(
       // ── Subagent-stop ────────────────────────────────────
       // Phase 13 Wave 3 — PTY-originated `SubagentStop` hook events.
       // Mirrors `/hooks/subagent-start` shape. Emits a `dismissed`
-      // agent-lifecycle event with `last_assistant_message` as the
-      // summary string, matching the existing `agent-tracker.dismiss()`
-      // contract.
+      // agent-lifecycle event. NOTE: the payload also carries
+      // `last_assistant_message`, but `ws.ts`'s `dismissed` branch
+      // ignores `event.result` (only `complete` forwards it), so
+      // passing it here would be dead data.
       if (method === 'POST' && url === '/hooks/subagent-stop') {
         const body = await readBody(req);
         let payload: Record<string, unknown>;
@@ -318,10 +319,6 @@ export function createHookServer(
         }
 
         const agentId = typeof payload['agent_id'] === 'string' ? (payload['agent_id'] as string) : '';
-        const lastMessage =
-          typeof payload['last_assistant_message'] === 'string'
-            ? (payload['last_assistant_message'] as string)
-            : '';
 
         if (!agentId) {
           logger.warn(
@@ -341,7 +338,6 @@ export function createHookServer(
           reportAgentLifecycle({
             agentId,
             event: 'dismissed',
-            result: lastMessage,
           });
         } else {
           logger.warn(

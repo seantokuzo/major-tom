@@ -67,14 +67,15 @@ interface SdkSessionEntry {
 }
 
 /**
- * Drain expired entries from a session's pending-task map. Called on
- * every SubagentStart so a mis-correlation can't accumulate indefinitely.
+ * Drain expired entries from a pending-task map. Called on every
+ * `PreToolUse(Task)` insert AND every `SubagentStart` so expired
+ * entries can't accumulate when subagent spawns fail/are denied.
  */
-function gcPendingTasks(entry: SdkSessionEntry): void {
+function gcPendingTasks(map: Map<string, PendingTaskEntry>): void {
   const now = Date.now();
-  for (const [key, value] of entry.pendingTaskByToolUseId) {
+  for (const [key, value] of map) {
     if (now - value.enqueuedAt > PENDING_TASK_TTL_MS) {
-      entry.pendingTaskByToolUseId.delete(key);
+      map.delete(key);
     }
   }
 }
@@ -91,11 +92,13 @@ function gcPendingTasks(entry: SdkSessionEntry): void {
  * failure mode is pathological interleaving — see the correlation-miss
  * `warn` below.
  */
-function consumeOldestPendingTask(entry: SdkSessionEntry): PendingTaskEntry | undefined {
-  const firstKey = entry.pendingTaskByToolUseId.keys().next();
+function consumeOldestPendingTask(
+  map: Map<string, PendingTaskEntry>,
+): PendingTaskEntry | undefined {
+  const firstKey = map.keys().next();
   if (firstKey.done) return undefined;
-  const value = entry.pendingTaskByToolUseId.get(firstKey.value);
-  entry.pendingTaskByToolUseId.delete(firstKey.value);
+  const value = map.get(firstKey.value);
+  map.delete(firstKey.value);
   return value;
 }
 
@@ -198,6 +201,11 @@ export class ClaudeCliAdapter implements IAdapter {
                     typeof toolInput?.['prompt'] === 'string'
                       ? (toolInput['prompt'] as string)
                       : '';
+                  // Drain any TTL-expired entries BEFORE inserting a
+                  // new one — otherwise denied/cancelled Tasks (no
+                  // corresponding SubagentStart) would leak into the
+                  // map for the session lifetime.
+                  gcPendingTasks(pendingTaskByToolUseId);
                   pendingTaskByToolUseId.set(toolUseID, {
                     description,
                     prompt,
@@ -221,8 +229,8 @@ export class ClaudeCliAdapter implements IAdapter {
                 const entry = this.sessions.get(session.id);
                 if (!entry) return {};
 
-                gcPendingTasks(entry);
-                const pending = consumeOldestPendingTask(entry);
+                gcPendingTasks(entry.pendingTaskByToolUseId);
+                const pending = consumeOldestPendingTask(entry.pendingTaskByToolUseId);
 
                 const taskDesc = pending?.description ?? '';
                 if (!pending) {
@@ -252,12 +260,15 @@ export class ClaudeCliAdapter implements IAdapter {
               async (input) => {
                 if (input.hook_event_name !== 'SubagentStop') return {};
                 const stopInput = input as SubagentStopHookInput;
-                const { agent_id: agentId, last_assistant_message: lastMsg } = stopInput;
+                const { agent_id: agentId } = stopInput;
 
+                // `last_assistant_message` is available on stopInput
+                // but ws.ts's `dismissed` handler (see routes/ws.ts
+                // agent-lifecycle switch) ignores `event.result` —
+                // only `complete` forwards it. Don't pass dead data.
                 emitter.emit('agent-lifecycle', {
                   agentId,
                   event: 'dismissed',
-                  result: lastMsg ?? '',
                 } satisfies AgentEvent);
                 return {};
               },
