@@ -94,6 +94,18 @@ const SETTINGS_JSON = JSON.stringify(
           ],
         },
       ],
+      // Phase 13 Wave 3 — SubagentStop dismisses the sprite when a
+      // PTY-spawned subagent finishes. Mirrors SubagentStart in shape.
+      SubagentStop: [
+        {
+          hooks: [
+            {
+              type: 'command',
+              command: '$CLAUDE_CONFIG_DIR/hooks/subagent-stop.sh',
+            },
+          ],
+        },
+      ],
     },
   },
   null,
@@ -122,6 +134,15 @@ const HOOK_FILES: HookFileSpec[] = [
   {
     relativePath: join('hooks', 'subagent-start.sh'),
     templateFilename: 'subagent-start.sh',
+    executable: true,
+  },
+  // Phase 13 Wave 3 — new SubagentStop hook template. `writeIfChanged`
+  // is content-hashed, so existing installs from Wave 2 will detect
+  // the settings.json hash mismatch on next startup and also pick up
+  // the new subagent-stop.sh automatically — no manual reinstall.
+  {
+    relativePath: join('hooks', 'subagent-stop.sh'),
+    templateFilename: 'subagent-stop.sh',
     executable: true,
   },
 ];

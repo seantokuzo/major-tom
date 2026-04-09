@@ -195,7 +195,16 @@ export async function buildApp(config: AppConfig) {
   let hookHttpServer: HttpServer | undefined;
   try {
     hookHttpServer = createHookServer(
-      { approvalQueue: shellApprovalQueue, notificationBatcher: shellNotificationBatcher },
+      {
+        approvalQueue: shellApprovalQueue,
+        notificationBatcher: shellNotificationBatcher,
+        // Phase 13 Wave 3 — route PTY-originated SubagentStart/Stop
+        // hook events through the same agent-lifecycle fanout the SDK
+        // adapter uses. ws.ts:1662-1693 already listens on
+        // fleetManager.on('agent-lifecycle') and does the full
+        // tracker + broadcast dance.
+        reportAgentLifecycle: (event) => fleetManager.reportAgentLifecycle(event),
+      },
       config.hookPort,
     );
   } catch (err) {

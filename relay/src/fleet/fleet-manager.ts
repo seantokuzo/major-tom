@@ -637,6 +637,19 @@ export class FleetManager {
     this.approvalSessionMap.clear();
   }
 
+  /**
+   * Phase 13 Wave 3 — inject an `agent-lifecycle` event from a
+   * non-worker source (the PTY shell hook server). Routes through the
+   * same emitter that `ipc:agent.lifecycle` messages from workers use,
+   * so `ws.ts:1662-1693` picks it up and runs the full
+   * `agentTracker.spawn/dismiss` + `broadcastToAll` fan-out with no
+   * special-casing. Kept minimal on purpose — the handoff spec says
+   * the tracker + fanout do not change in Wave 3, only the producers.
+   */
+  reportAgentLifecycle(event: AgentEvent): void {
+    this.emitter.emit('agent-lifecycle', event);
+  }
+
   /** Clear pending approvals for a specific session */
   private clearApprovalsForSession(sessionId: string): void {
     const toDelete: string[] = [];
