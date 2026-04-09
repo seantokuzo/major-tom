@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Major Tom Terminal</title>
+<link rel="stylesheet" href="xterm.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0d0d12;
+    color: #e8e8e8;
+    font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+    -webkit-text-size-adjust: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  #terminal-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* Safe area insets for notch/home indicator */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* xterm.js fills the container */
+  #terminal-container .xterm {
+    height: 100%;
+    width: 100%;
+    padding: 2px 4px;
+  }
+
+  #terminal-container .xterm-viewport {
+    overflow-y: auto;
+  }
+
+  /* Status message shown before terminal connects */
+  #status-message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 14px;
+    color: #666680;
+    text-align: center;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+
+  #status-message.hidden { opacity: 0; }
+</style>
+</head>
+<body>
+<div id="terminal-container"></div>
+<div id="status-message">Connecting...</div>
+
+<script src="xterm.min.js"></script>
+<script src="xterm-addon-fit.min.js"></script>
+<script src="xterm-addon-webgl.min.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  // ── Bridge: JS → Swift ────────────────────────────────────────────
+  // All messages to native go through this function.
+  function postToNative(msg) {
+    try {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.majorTom) {
+        window.webkit.messageHandlers.majorTom.postMessage(msg);
+      }
+    } catch (e) {
+      // Silently ignore — handler may not be registered (e.g. desktop debug)
+    }
+  }
+
+  // ── State ──────────────────────────────────────────────────────────
+  var term = null;
+  var fitAddon = null;
+  var webglAddon = null;
+  var ws = null;
+  var reconnectTimer = null;
+  var reconnectAttempt = 0;
+  var maxReconnectAttempts = 20;
+  var reconnectBaseMs = 500;
+  var reconnectMaxMs = 10000;
+  var statusEl = document.getElementById('status-message');
+
+  // Config injected by WKUserScript at document start
+  var config = window.__MAJOR_TOM_CONFIG__ || {};
+
+  // ── Terminal Setup ─────────────────────────────────────────────────
+  function initTerminal() {
+    var theme = config.theme || {};
+
+    term = new Terminal({
+      fontFamily: 'SF Mono, ui-monospace, Menlo, monospace',
+      fontSize: 13,
+      cursorBlink: true,
+      allowProposedApi: true,
+      scrollback: 5000,
+      theme: {
+        background:          theme.background          || '#0d0d12',
+        foreground:          theme.foreground          || '#e8e8e8',
+        cursor:              theme.cursor              || '#f2a641',
+        cursorAccent:        theme.cursorAccent        || '#0d0d12',
+        selectionBackground: theme.selectionBackground || 'rgba(242, 166, 65, 0.25)',
+        black:               theme.black               || '#1a1a24',
+        red:                 theme.red                 || '#f24d4d',
+        green:               theme.green               || '#4dd97a',
+        yellow:              theme.yellow              || '#f2cc33',
+        blue:                theme.blue                || '#4d8af2',
+        magenta:             theme.magenta             || '#b84df2',
+        cyan:                theme.cyan                || '#4dd9d9',
+        white:               theme.white               || '#e8e8e8',
+        brightBlack:         theme.brightBlack         || '#666680',
+        brightRed:           theme.brightRed           || '#f27a7a',
+        brightGreen:         theme.brightGreen         || '#7ae89e',
+        brightYellow:        theme.brightYellow        || '#f2d966',
+        brightBlue:          theme.brightBlue          || '#7ab3f2',
+        brightMagenta:       theme.brightMagenta       || '#cc7af2',
+        brightCyan:          theme.brightCyan          || '#7ae8e8',
+        brightWhite:         theme.brightWhite         || '#ffffff'
+      }
+    });
+
+    fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+
+    // Try WebGL renderer for performance; fall back to canvas on failure.
+    // Skip on older iOS devices where WebGL context is unreliable.
+    try {
+      webglAddon = new WebglAddon.WebglAddon();
+      webglAddon.onContextLoss(function() {
+        if (webglAddon) {
+          webglAddon.dispose();
+          webglAddon = null;
+        }
+      });
+      term.loadAddon(webglAddon);
+    } catch (e) {
+      webglAddon = null;
+    }
+
+    var container = document.getElementById('terminal-container');
+    term.open(container);
+
+    // Fit to container
+    requestAnimationFrame(function() {
+      try { fitAddon.fit(); } catch (e) { /* ignore */ }
+    });
+
+    // Terminal events → native bridge
+    term.onBell(function() {
+      postToNative({ type: 'bell' });
+    });
+
+    term.onTitleChange(function(title) {
+      postToNative({ type: 'title', title: title });
+    });
+
+    term.onSelectionChange(function() {
+      var sel = term.getSelection();
+      if (sel) {
+        postToNative({ type: 'selection', text: sel });
+      }
+    });
+
+    term.onResize(function(size) {
+      postToNative({ type: 'resize', cols: size.cols, rows: size.rows });
+      // Also tell the relay about the new size
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows }));
+      }
+    });
+
+    // Terminal input → WebSocket (keyboard data from xterm)
+    term.onData(function(data) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(data);
+      }
+    });
+
+    // Resize on viewport changes (rotation, keyboard show/hide)
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', queueFit);
+      window.visualViewport.addEventListener('scroll', queueFit);
+    }
+    window.addEventListener('resize', queueFit);
+
+    // Tell native we're ready
+    postToNative({ type: 'ready' });
+
+    // Auto-connect if config is already injected
+    if (config.relayURL && config.tabId) {
+      connectWS();
+    }
+  }
+
+  // ── Fit Debounce ───────────────────────────────────────────────────
+  var fitPending = false;
+  function queueFit() {
+    if (fitPending) return;
+    fitPending = true;
+    requestAnimationFrame(function() {
+      fitPending = false;
+      if (fitAddon && term) {
+        try { fitAddon.fit(); } catch (e) { /* ignore */ }
+      }
+    });
+  }
+
+  // ── WebSocket Connection ───────────────────────────────────────────
+  function buildWsUrl() {
+    var url = config.relayURL + '/shell/' + encodeURIComponent(config.tabId);
+    var params = [];
+    // Pass initial dimensions so the PTY sizes correctly on first attach
+    if (term) {
+      params.push('cols=' + term.cols);
+      params.push('rows=' + term.rows);
+    }
+    // Auth fallback: pass token as query param (WKWebView cookie edge cases)
+    if (config.token) {
+      params.push('token=' + encodeURIComponent(config.token));
+    }
+    if (params.length > 0) {
+      url += '?' + params.join('&');
+    }
+    return url;
+  }
+
+  function connectWS() {
+    if (ws) {
+      try { ws.close(); } catch (e) { /* ignore */ }
+    }
+
+    var url = buildWsUrl();
+    setStatus('Connecting...');
+
+    try {
+      ws = new WebSocket(url);
+      ws.binaryType = 'arraybuffer';
+    } catch (e) {
+      setStatus('Connection failed');
+      postToNative({ type: 'disconnected', code: 0, reason: 'WebSocket constructor failed' });
+      scheduleReconnect();
+      return;
+    }
+
+    ws.onopen = function() {
+      reconnectAttempt = 0;
+      hideStatus();
+      postToNative({ type: 'connected', tabId: config.tabId });
+    };
+
+    ws.onmessage = function(event) {
+      if (!term) return;
+      if (typeof event.data === 'string') {
+        // Could be a JSON control message from the relay
+        try {
+          var msg = JSON.parse(event.data);
+          if (msg.type === 'error') {
+            term.write('\r\n\x1b[2;31m[relay] ' + (msg.message || 'unknown error') + '\x1b[0m\r\n');
+            return;
+          }
+        } catch (e) {
+          // Not JSON — treat as raw terminal data
+        }
+        term.write(event.data);
+      } else if (event.data instanceof ArrayBuffer) {
+        term.write(new Uint8Array(event.data));
+      }
+    };
+
+    ws.onclose = function(event) {
+      postToNative({
+        type: 'disconnected',
+        code: event.code,
+        reason: event.reason || 'Connection closed'
+      });
+
+      // Don't reconnect on intentional close (1000) or auth failure (1008)
+      if (event.code === 1000 || event.code === 1008) {
+        setStatus(event.code === 1008 ? 'Authentication failed' : 'Disconnected');
+        return;
+      }
+
+      setStatus('Disconnected — reconnecting...');
+      scheduleReconnect();
+    };
+
+    ws.onerror = function() {
+      // onclose will fire after onerror, so we handle reconnect there
+    };
+  }
+
+  function scheduleReconnect() {
+    if (reconnectAttempt >= maxReconnectAttempts) {
+      setStatus('Connection lost. Tap to retry.');
+      return;
+    }
+
+    var delay = Math.min(
+      reconnectBaseMs * Math.pow(1.5, reconnectAttempt),
+      reconnectMaxMs
+    );
+    reconnectAttempt++;
+
+    reconnectTimer = setTimeout(function() {
+      reconnectTimer = null;
+      connectWS();
+    }, delay);
+  }
+
+  // ── Status Display ─────────────────────────────────────────────────
+  function setStatus(msg) {
+    if (statusEl) {
+      statusEl.textContent = msg;
+      statusEl.classList.remove('hidden');
+    }
+  }
+
+  function hideStatus() {
+    if (statusEl) {
+      statusEl.classList.add('hidden');
+    }
+  }
+
+  // ── Bridge: Swift → JS ────────────────────────────────────────────
+  // Exposed as window.MajorTom for webView.evaluateJavaScript() calls.
+  window.MajorTom = {
+    /**
+     * Initialize connection with config from native layer.
+     * @param {Object} cfg - { url, token?, tabId, theme }
+     */
+    connect: function(cfg) {
+      if (cfg.url) config.relayURL = cfg.url;
+      if (cfg.token) config.token = cfg.token;
+      if (cfg.tabId) config.tabId = cfg.tabId;
+      if (cfg.theme) {
+        config.theme = cfg.theme;
+        if (term) {
+          term.options.theme = cfg.theme;
+        }
+      }
+      connectWS();
+    },
+
+    /** Graceful disconnect. */
+    disconnect: function() {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      reconnectAttempt = maxReconnectAttempts; // prevent auto-reconnect
+      if (ws) {
+        try { ws.close(1000, 'User disconnect'); } catch (e) { /* ignore */ }
+      }
+      setStatus('Disconnected');
+    },
+
+    /**
+     * Inject a keystroke from the native keybar.
+     * @param {Object} key - { key, ctrl?, alt?, shift? }
+     */
+    sendKey: function(key) {
+      if (!term) return;
+      var data = key.key || '';
+
+      // Handle modifier keys
+      if (key.ctrl && data.length === 1) {
+        // Ctrl+letter → ASCII control code (e.g. Ctrl+C = 0x03)
+        var code = data.toUpperCase().charCodeAt(0);
+        if (code >= 65 && code <= 90) { // A-Z
+          data = String.fromCharCode(code - 64);
+        }
+      }
+
+      // Special key mapping
+      var specialKeys = {
+        'Escape': '\x1b',
+        'Tab': '\t',
+        'Enter': '\r',
+        'Backspace': '\x7f',
+        'ArrowUp': '\x1b[A',
+        'ArrowDown': '\x1b[B',
+        'ArrowRight': '\x1b[C',
+        'ArrowLeft': '\x1b[D',
+        'Home': '\x1b[H',
+        'End': '\x1b[F',
+        'PageUp': '\x1b[5~',
+        'PageDown': '\x1b[6~',
+        'Delete': '\x1b[3~'
+      };
+
+      if (specialKeys[key.key]) {
+        data = specialKeys[key.key];
+      }
+
+      // Write to the terminal (which triggers onData → WebSocket)
+      term.input(data, true);
+    },
+
+    /**
+     * Force terminal resize.
+     * @param {number} cols
+     * @param {number} rows
+     */
+    resize: function(cols, rows) {
+      if (term) {
+        term.resize(cols, rows);
+      }
+    },
+
+    /**
+     * Update terminal theme.
+     * @param {Object} theme - { background, foreground, cursor, ... }
+     */
+    setTheme: function(theme) {
+      if (term) {
+        term.options.theme = theme;
+      }
+    },
+
+    /**
+     * Paste text into the terminal.
+     * @param {string} text
+     */
+    paste: function(text) {
+      if (term && ws && ws.readyState === WebSocket.OPEN) {
+        // Send directly to the PTY, bypassing xterm input processing
+        // to avoid bracket paste mode issues in raw paste.
+        ws.send(text);
+      }
+    },
+
+    /** Focus the terminal (show keyboard). */
+    focus: function() {
+      if (term) {
+        term.focus();
+      }
+    },
+
+    /** Blur the terminal (hide keyboard). */
+    blur: function() {
+      if (term) {
+        term.blur();
+      }
+    }
+  };
+
+  // ── Init ───────────────────────────────────────────────────────────
+  // Wait for DOM ready, then initialize.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTerminal);
+  } else {
+    initTerminal();
+  }
+})();
+</script>
+</body>
+</html>
