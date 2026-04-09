@@ -1,0 +1,9 @@
+# SwiftPM build artifacts
+.build/
+.swiftpm/
+
+# Bundled binaries (built by scripts)
+build/
+
+# Cached downloads
+.cache/
