@@ -78,6 +78,18 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
           }
         }
 
+        // WKWebView fallback: cookie injection can fail in edge cases,
+        // so also accept the session JWT as a ?token= query param.
+        if (!authed && queryToken && queryToken !== legacyAuthToken) {
+          try {
+            const payload = await verifySessionToken(queryToken);
+            authed = true;
+            email = payload.email;
+          } catch {
+            authed = false;
+          }
+        }
+
         if (!authed) {
           logger.warn({ tabId, ip: request.ip }, 'Shell WS unauthenticated — closing');
           socket.close(1008, 'Authentication required');
@@ -175,6 +187,17 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
         } else if (sessionCookie) {
           try {
             const payload = await verifySessionToken(sessionCookie);
+            authed = true;
+            email = payload.email;
+          } catch {
+            authed = false;
+          }
+        }
+
+        // WKWebView JWT fallback (mirrors WS upgrade route above)
+        if (!authed && queryToken && queryToken !== legacyAuthToken) {
+          try {
+            const payload = await verifySessionToken(queryToken);
             authed = true;
             email = payload.email;
           } catch {
