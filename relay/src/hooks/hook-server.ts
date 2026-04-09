@@ -14,11 +14,22 @@
  *     shell script also checks, but a manual curl probe might not)
  *   - SubagentStart placeholder endpoint
  *   - Push notification fire on enqueue
+ *
+ * Phase 13 Wave 3 added:
+ *   - `/hooks/subagent-start` now actually emits an `agent-lifecycle`
+ *     spawn event (was a log-only placeholder)
+ *   - `/hooks/subagent-stop` new endpoint that emits `dismissed` with
+ *     `last_assistant_message` as the summary
+ *   - Both go through the injected `reportAgentLifecycle` callback
+ *     (a bound `FleetManager.reportAgentLifecycle`) so ws.ts's existing
+ *     agent-lifecycle fanout handles tracker updates + broadcast with
+ *     no changes to the downstream path
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { logger } from '../utils/logger.js';
 import { ApprovalQueue } from './approval-queue.js';
 import type { NotificationBatcher } from '../push/notification-batcher.js';
+import type { AgentEvent } from '../adapters/adapter.interface.js';
 
 function readBody(req: IncomingMessage, maxBytes = 65_536): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -79,6 +90,15 @@ function decisionToPermissionDecision(decision: string): 'allow' | 'deny' | 'ask
 interface HookServerDeps {
   approvalQueue: ApprovalQueue;
   notificationBatcher?: NotificationBatcher;
+  /**
+   * Phase 13 Wave 3 — injected by `app.ts` as
+   * `fleetManager.reportAgentLifecycle.bind(fleetManager)`. The PTY
+   * shell-hook endpoints call this to push spawn/dismiss events into
+   * the same agent-lifecycle fanout that SDK-originated events use.
+   * Optional so existing callers that construct a hook server without
+   * fleet access (e.g. tests) still work.
+   */
+  reportAgentLifecycle?: (event: AgentEvent) => void;
 }
 
 // ── Hook HTTP Server ────────────────────────────────────────
@@ -95,7 +115,7 @@ export function createHookServer(
     approvalQueueOrDeps instanceof ApprovalQueue
       ? { approvalQueue: approvalQueueOrDeps }
       : approvalQueueOrDeps;
-  const { approvalQueue, notificationBatcher } = deps;
+  const { approvalQueue, notificationBatcher, reportAgentLifecycle } = deps;
 
   const server = createServer(async (req, res) => {
     const url = req.url ?? '';
@@ -222,20 +242,114 @@ export function createHookServer(
         return;
       }
 
-      // ── Subagent-start (Wave 2 placeholder) ──────────────
-      // Wave 3 will use this to broadcast spawn-time agent metadata to
-      // the PWA so the sprite layer can show subagents as they're born.
+      // ── Subagent-start ───────────────────────────────────
+      // Phase 13 Wave 3 — PTY-originated `SubagentStart` hook events.
+      // Parse `agent_id` / `agent_type` out of the hook payload and
+      // push a `spawn` agent-lifecycle event into the shared fanout.
+      //
+      // Unlike the SDK adapter path, we CANNOT correlate back to a
+      // prior `PreToolUse(Task)` here — each shell hook invocation is
+      // a fresh subprocess with no shared state. So PTY-originated
+      // sprites fall back to `agent_type` as their label. That's fine:
+      // the SDK side recovers the richer description via the in-process
+      // `pendingTaskByToolUseId` map; the PTY side gets a coarser but
+      // still-correct label.
       if (method === 'POST' && url === '/hooks/subagent-start') {
         const body = await readBody(req);
+        let payload: Record<string, unknown>;
         try {
-          const payload = JSON.parse(body) as Record<string, unknown>;
-          logger.info(
-            { tabId: req.headers['x-mt-tab'], session: payload['session_id'] },
-            'SubagentStart hook received',
-          );
+          payload = JSON.parse(body) as Record<string, unknown>;
         } catch {
-          // ignore — Wave 2 just logs the event
+          sendJson(res, 400, { error: 'Invalid JSON in hook payload' });
+          return;
         }
+
+        const agentId = typeof payload['agent_id'] === 'string' ? (payload['agent_id'] as string) : '';
+        const agentType =
+          typeof payload['agent_type'] === 'string' ? (payload['agent_type'] as string) : 'subagent';
+
+        if (!agentId) {
+          logger.warn(
+            { tabId: req.headers['x-mt-tab'], session: payload['session_id'] },
+            'SubagentStart hook missing agent_id — dropping',
+          );
+          sendJson(res, 400, { error: 'Missing agent_id in hook payload' });
+          return;
+        }
+
+        logger.info(
+          { tabId: req.headers['x-mt-tab'], session: payload['session_id'], agentId, agentType },
+          'SubagentStart hook received',
+        );
+
+        if (reportAgentLifecycle) {
+          reportAgentLifecycle({
+            agentId,
+            event: 'spawn',
+            task: agentType,
+            role: agentType,
+          });
+        } else {
+          logger.warn(
+            { agentId, agentType },
+            'SubagentStart hook received but reportAgentLifecycle not wired — dropping (check createHookServer deps)',
+          );
+        }
+
+        // `SubagentStart` expects an empty-object envelope (no-op).
+        sendJson(res, 200, {});
+        return;
+      }
+
+      // ── Subagent-stop ────────────────────────────────────
+      // Phase 13 Wave 3 — PTY-originated `SubagentStop` hook events.
+      // Mirrors `/hooks/subagent-start` shape. Emits a `dismissed`
+      // agent-lifecycle event with `last_assistant_message` as the
+      // summary string, matching the existing `agent-tracker.dismiss()`
+      // contract.
+      if (method === 'POST' && url === '/hooks/subagent-stop') {
+        const body = await readBody(req);
+        let payload: Record<string, unknown>;
+        try {
+          payload = JSON.parse(body) as Record<string, unknown>;
+        } catch {
+          sendJson(res, 400, { error: 'Invalid JSON in hook payload' });
+          return;
+        }
+
+        const agentId = typeof payload['agent_id'] === 'string' ? (payload['agent_id'] as string) : '';
+        const lastMessage =
+          typeof payload['last_assistant_message'] === 'string'
+            ? (payload['last_assistant_message'] as string)
+            : '';
+
+        if (!agentId) {
+          logger.warn(
+            { tabId: req.headers['x-mt-tab'], session: payload['session_id'] },
+            'SubagentStop hook missing agent_id — dropping',
+          );
+          sendJson(res, 400, { error: 'Missing agent_id in hook payload' });
+          return;
+        }
+
+        logger.info(
+          { tabId: req.headers['x-mt-tab'], session: payload['session_id'], agentId },
+          'SubagentStop hook received',
+        );
+
+        if (reportAgentLifecycle) {
+          reportAgentLifecycle({
+            agentId,
+            event: 'dismissed',
+            result: lastMessage,
+          });
+        } else {
+          logger.warn(
+            { agentId },
+            'SubagentStop hook received but reportAgentLifecycle not wired — dropping (check createHookServer deps)',
+          );
+        }
+
         sendJson(res, 200, {});
         return;
       }
