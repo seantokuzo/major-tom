@@ -91,6 +91,7 @@
   var maxReconnectAttempts = 20;
   var reconnectBaseMs = 500;
   var reconnectMaxMs = 10000;
+  var useTokenFallback = false; // Flipped to true after an auth failure (1008)
   var statusEl = document.getElementById('status-message');
 
   // Config injected by WKUserScript at document start
@@ -226,8 +227,10 @@
       params.push('cols=' + term.cols);
       params.push('rows=' + term.rows);
     }
-    // Auth fallback: pass token as query param (WKWebView cookie edge cases)
-    if (config.token) {
+    // Auth fallback: only pass token as query param after a cookie auth
+    // failure (1008 close code). This keeps the JWT out of URLs/logs/
+    // proxies under normal operation — cookies are the primary auth path.
+    if (config.token && (useTokenFallback || config.tokenFallback)) {
       params.push('token=' + encodeURIComponent(config.token));
     }
     if (params.length > 0) {
@@ -286,9 +289,25 @@
         reason: event.reason || 'Connection closed'
       });
 
-      // Don't reconnect on intentional close (1000) or auth failure (1008)
-      if (event.code === 1000 || event.code === 1008) {
-        setStatus(event.code === 1008 ? 'Authentication failed' : 'Disconnected');
+      // Don't reconnect on intentional close (1000).
+      if (event.code === 1000) {
+        setStatus('Disconnected');
+        return;
+      }
+
+      // Auth failure (1008): flip to token-fallback mode and retry once.
+      // Cookie injection can fail in WKWebView edge cases, so the next
+      // attempt will include the JWT as a ?token= query param.
+      if (event.code === 1008 && !useTokenFallback && config.token) {
+        useTokenFallback = true;
+        setStatus('Auth retry with token fallback...');
+        scheduleReconnect();
+        return;
+      }
+
+      // Permanent auth failure — don't keep retrying.
+      if (event.code === 1008) {
+        setStatus('Authentication failed');
         return;
       }
 

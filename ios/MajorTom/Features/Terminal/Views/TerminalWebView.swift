@@ -13,6 +13,16 @@ import WebKit
 struct TerminalWebView: UIViewRepresentable {
     let viewModel: TerminalViewModel
 
+    /// Remove the script message handler on teardown to break the
+    /// WKWebView → userContentController → coordinator retain cycle.
+    /// Without this, the Coordinator (and transitively the WKWebView)
+    /// leaks every time SwiftUI recreates the view.
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "majorTom")
+        webView.configuration.userContentController.removeAllUserScripts()
+        webView.navigationDelegate = nil
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         let contentController = WKUserContentController()
@@ -79,19 +89,31 @@ struct TerminalWebView: UIViewRepresentable {
 
     // MARK: - Cookie Injection
 
+    /// Returns true when the relay URL uses a secure transport (`https`/`wss`).
+    private func isRelaySecure() -> Bool {
+        let base = viewModel.relayBaseURL.lowercased()
+        return base.hasPrefix("https://") || base.hasPrefix("wss://")
+    }
+
     /// Inject the session JWT as an HTTPCookie into the WKWebsiteDataStore.
     /// This is the primary auth mechanism for the WebSocket connection.
+    /// Cookie expiry matches the relay's 7-day JWT lifetime so reconnects
+    /// don't fail with a dropped cookie while the token is still valid.
     private func injectAuthCookie(into dataStore: WKWebsiteDataStore) async {
         guard let token = viewModel.authToken else { return }
 
-        let cookieProperties: [HTTPCookiePropertyKey: Any] = [
+        var cookieProperties: [HTTPCookiePropertyKey: Any] = [
             .name: "mt-session",
             .value: token,
             .domain: viewModel.relayDomain,
             .path: "/",
-            .secure: "FALSE",
-            .expires: Date().addingTimeInterval(86400), // 24h
+            .expires: Date().addingTimeInterval(7 * 24 * 60 * 60), // 7 days — matches relay JWT lifetime
         ]
+
+        // Mark secure when relay uses HTTPS/WSS; omit for local http/ws dev.
+        if isRelaySecure() {
+            cookieProperties[.secure] = "TRUE"
+        }
 
         guard let cookie = HTTPCookie(properties: cookieProperties) else { return }
         await dataStore.httpCookieStore.setCookie(cookie)

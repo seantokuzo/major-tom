@@ -128,6 +128,12 @@ final class TerminalViewModel {
     }
 
     /// Build the config object to inject into the terminal page via WKUserScript.
+    ///
+    /// The token is included so the JS layer can use it as a query-param
+    /// fallback if cookie auth fails (WKWebView edge cases). The JS side
+    /// only appends `?token=` when `config.tokenFallback` is true — by
+    /// default cookies are the primary auth path, keeping the JWT out of
+    /// URLs/logs/proxies.
     var bridgeConfig: [String: Any] {
         var config: [String: Any] = [
             "relayURL": relayURL,
@@ -136,6 +142,9 @@ final class TerminalViewModel {
         ]
         if let token = authToken {
             config["token"] = token
+            // Token is available for fallback but JS won't use it in the
+            // URL by default — see terminal.html's connectWS() gating.
+            config["tokenFallback"] = false
         }
         return config
     }

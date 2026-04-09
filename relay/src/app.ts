@@ -250,6 +250,23 @@ export async function buildApp(config: AppConfig) {
     logger: {
       level: process.env['LOG_LEVEL'] ?? 'info',
       name: 'major-tom-relay',
+      // Redact JWTs from request URLs so ?token= values never appear in
+      // logs. The shell route accepts a session JWT as a query-param
+      // fallback for WKWebView cookie edge cases — without this,
+      // Fastify's default request serializer would log the full URL
+      // including the credential. Caught by Copilot PR #97 review.
+      serializers: {
+        req(request: { method?: string; url?: string; hostname?: string; remoteAddress?: string; remotePort?: number }) {
+          return {
+            method: request.method,
+            // Strip ?token=<value> from the logged URL
+            url: request.url?.replace(/([?&])token=[^&]*/g, '$1token=REDACTED'),
+            hostname: request.hostname,
+            remoteAddress: request.remoteAddress,
+            remotePort: request.remotePort,
+          };
+        },
+      },
     },
     trustProxy: true, // Behind Cloudflare Tunnel
     bodyLimit: 65_536, // 64 KB max body (matches old readBody limit)
