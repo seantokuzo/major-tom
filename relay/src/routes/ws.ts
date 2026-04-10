@@ -92,6 +92,24 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   const clients = new Set<WebSocket>();
   const presenceManager = new PresenceManager();
 
+  // ── Per-client metadata for admin status endpoint ──────────
+  interface ClientMeta { ip: string; userAgent: string; connectedAt: string }
+  const clientMetas = new Map<WebSocket, ClientMeta>();
+
+  // Register the tracker so health.ts can enumerate connected clients
+  // without importing ws.ts (avoids circular deps).
+  import('../routes/health.js').then(({ setClientTracker }) => {
+    setClientTracker(() =>
+      [...clientMetas.values()].map((m) => ({
+        ip: m.ip,
+        userAgent: m.userAgent,
+        connectedAt: m.connectedAt,
+      })),
+    );
+  }).catch(() => {
+    // Defensive — should never happen in practice
+  });
+
   // ── Achievement event wiring ────────────────────────────────
   // When an achievement unlocks, broadcast to all connected clients + record in analytics
   achievementService.onUnlock((payload) => {
@@ -1759,12 +1777,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     wireAdapterEvents();
 
     // Shared socket setup — wires up event handlers after auth succeeds
-    function setupSocket(socket: WebSocket, ip: string, sessionPayload?: SessionPayload): void {
+    function setupSocket(socket: WebSocket, ip: string, userAgent: string, sessionPayload?: SessionPayload): void {
       (socket as WebSocket & { isAlive: boolean }).isAlive = true;
       socket.on('pong', () => {
         (socket as WebSocket & { isAlive: boolean }).isAlive = true;
       });
       clients.add(socket);
+      clientMetas.set(socket, { ip, userAgent, connectedAt: new Date().toISOString() });
 
       // Register presence if we have user identity
       if (sessionPayload) {
@@ -1778,6 +1797,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       socket.on('close', () => {
         clients.delete(socket);
+        clientMetas.delete(socket);
         // Disconnect from presence before untracking session
         const disconnectResult = presenceManager.disconnect(socket);
         untrackClientSession(socket);
@@ -1828,11 +1848,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       const legacyAuthToken = process.env['AUTH_TOKEN'];
       const isDevMode = process.env['NODE_ENV'] !== 'production';
 
+      const ua = (request.headers['user-agent'] as string | undefined) ?? 'unknown';
+
       // Legacy token auth: dev-only, if ?token= matches AUTH_TOKEN env var, skip OAuth
       if (isDevMode && queryToken && legacyAuthToken && queryToken === legacyAuthToken) {
         const ip = request.ip;
         logger.info({ ip }, 'Client connected via WebSocket (legacy token auth, dev mode)');
-        setupSocket(socket, ip);
+        setupSocket(socket, ip, ua);
         return;
       }
 
@@ -1861,7 +1883,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           // Authenticated — set up connection
           const ip = request.ip;
           logger.info({ ip, email: payload.email, userId: payload.userId }, 'Client connected via WebSocket');
-          setupSocket(socket, ip, payload);
+          setupSocket(socket, ip, ua, payload);
         })
         .catch(() => {
           socket.close(1008, 'Invalid session');
@@ -1876,6 +1898,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           logger.info('Terminating dead WebSocket connection');
           conn.terminate();
           clients.delete(client);
+          clientMetas.delete(client);
           continue;
         }
         conn.isAlive = false;
@@ -1900,6 +1923,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         client.close(1001, 'Server shutting down');
       }
       clients.clear();
+      clientMetas.clear();
     });
   };
 }
