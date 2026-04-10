@@ -1,37 +1,89 @@
+import AppKit
 import SwiftUI
 
 /// Ground Control — macOS menu bar app for managing the Major Tom relay server.
 ///
-/// Lives in the menu bar (no dock icon). Provides start/stop/restart controls,
-/// quick links to the PWA, and a management window with live log viewer.
+/// Lives in the menu bar (no dock icon, LSUIElement = true). Provides start/stop/restart
+/// controls, quick links to the PWA, and a management window with live logs, dashboard,
+/// config, and security panel. Shows a first-run onboarding wizard on initial launch.
 @main
 struct GroundControlApp: App {
     @State private var configManager: ConfigManager
     @State private var relay: RelayProcess
+    @State private var updateChecker = UpdateChecker()
+    @State private var showOnboarding: Bool
 
     init() {
         let cm = ConfigManager()
         _configManager = State(initialValue: cm)
         _relay = State(initialValue: RelayProcess(configManager: cm))
+        _showOnboarding = State(initialValue: !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding"))
+
+        // Start checking for updates at launch so the menu bar can show availability
+        // even if the user never opens the Management window.
+        updateChecker.startChecking()
     }
 
     var body: some Scene {
         // Menu bar extra — the primary UI
         MenuBarExtra {
-            MenuBarView(relay: relay)
+            MenuBarView(relay: relay, updateChecker: updateChecker)
+                .onAppear {
+                    // Open onboarding window on first launch. MenuBarExtra.onAppear is
+                    // the earliest point where we can use EnvironmentValues in the scene.
+                    if showOnboarding {
+                        NSApplication.shared.activate(ignoringOtherApps: true)
+                        // Open onboarding via NSApp since @Environment(\.openWindow)
+                        // is not available in @main App structs.
+                        for window in NSApplication.shared.windows where window.identifier?.rawValue == "onboarding" {
+                            window.makeKeyAndOrderFront(nil)
+                            return
+                        }
+                        // If the window isn't materialized yet, iterate all windows
+                        // and bring forward any whose title matches the onboarding
+                        // scene. No custom URL scheme needed.
+                        for window in NSApplication.shared.windows where window.title == "Welcome" {
+                            window.makeKeyAndOrderFront(nil)
+                            return
+                        }
+                    }
+                }
         } label: {
             menuBarLabel
         }
 
-        // Management window — log viewer, dashboard, and config UI
+        // Management window — log viewer, dashboard, config, and security
         Window("Ground Control", id: "management") {
-            ManagementWindow(relay: relay, logStore: relay.logStore, configManager: configManager)
-                .frame(minWidth: 700, minHeight: 450)
+            ManagementWindow(
+                relay: relay,
+                logStore: relay.logStore,
+                configManager: configManager,
+                updateChecker: updateChecker
+            )
+            .frame(minWidth: 700, minHeight: 450)
         }
         .defaultSize(width: 900, height: 600)
+
+        // Onboarding window — shown on first launch
+        Window("Welcome", id: "onboarding") {
+            OnboardingView(
+                configManager: configManager,
+                relay: relay,
+                onComplete: {
+                    showOnboarding = false
+                }
+            )
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
     }
 
-    /// Menu bar icon with status-aware appearance.
+    /// Menu bar icon — colored circle overlay indicates relay status.
+    ///
+    /// - Green: relay running
+    /// - Red: relay error
+    /// - Yellow: starting/stopping
+    /// - Gray (no overlay): relay stopped
     @ViewBuilder
     private var menuBarLabel: some View {
         switch relay.state.processState {

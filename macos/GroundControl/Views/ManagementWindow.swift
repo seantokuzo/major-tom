@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Sidebar navigation items for the management window.
@@ -21,22 +22,61 @@ enum ManagementSection: String, CaseIterable, Identifiable {
 
 /// Management window with sidebar navigation.
 ///
-/// Dashboard (Wave 3), Logs (Wave 2), and Configuration (Wave 4) are functional.
-/// Security shows placeholder content.
+/// All four tabs are functional: Dashboard, Logs, Configuration, and Security.
+/// Shows a non-intrusive update banner when a new version is available.
 struct ManagementWindow: View {
     let relay: RelayProcess
     let logStore: LogStore
     let configManager: ConfigManager
+    let updateChecker: UpdateChecker
 
     @State private var selectedSection: ManagementSection = .dashboard
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-        } detail: {
-            detail
+        VStack(spacing: 0) {
+            // Update available banner
+            if updateChecker.updateAvailable, let version = updateChecker.latestVersion {
+                updateBanner(version: version)
+            }
+
+            NavigationSplitView {
+                sidebar
+            } detail: {
+                detail
+            }
         }
         .navigationTitle("Ground Control")
+        .onReceive(NotificationCenter.default.publisher(for: .switchToSection)) { notification in
+            if let section = notification.object as? ManagementSection {
+                selectedSection = section
+            }
+        }
+    }
+
+    // MARK: - Update Banner
+
+    @ViewBuilder
+    private func updateBanner(version: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.circle.fill")
+                .foregroundStyle(.blue)
+
+            Text("Version \(version) is available")
+                .font(.callout)
+
+            Spacer()
+
+            if let url = updateChecker.releaseURL {
+                Button("View Release") {
+                    NSWorkspace.shared.open(url)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.blue.opacity(0.08))
     }
 
     // MARK: - Sidebar
@@ -44,11 +84,16 @@ struct ManagementWindow: View {
     @ViewBuilder
     private var sidebar: some View {
         List(ManagementSection.allCases, selection: $selectedSection) { section in
-            Label(section.rawValue, systemImage: section.sfSymbol)
+            sidebarRow(for: section)
                 .tag(section)
         }
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
+    }
+
+    @ViewBuilder
+    private func sidebarRow(for section: ManagementSection) -> some View {
+        Label(section.rawValue, systemImage: section.sfSymbol)
     }
 
     // MARK: - Detail
@@ -63,29 +108,7 @@ struct ManagementWindow: View {
         case .configuration:
             ConfigView(relay: relay, configManager: configManager)
         case .security:
-            placeholderView(
-                icon: ManagementSection.security.sfSymbol,
-                title: "Security",
-                subtitle: "Auth tokens and access control coming soon."
-            )
+            SecurityView(relay: relay, configManager: configManager)
         }
-    }
-
-    @ViewBuilder
-    private func placeholderView(icon: String, title: String, subtitle: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 40))
-                .foregroundStyle(.tertiary)
-
-            Text(title)
-                .font(.title2)
-                .fontWeight(.medium)
-
-            Text(subtitle)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

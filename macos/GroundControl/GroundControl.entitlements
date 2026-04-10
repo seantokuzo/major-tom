@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Network: relay server binds a port -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <!-- Network: HTTP client for health checks, GitHub API, Cloudflare -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <!-- Hardened runtime: Node.js loads native addons (node-pty) -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- File access: relay reads/writes ~/.major-tom/ -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <!-- Keychain: OAuth secrets, tunnel token -->
+    <key>com.apple.security.keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.majortom.groundcontrol</string>
+    </array>
+</dict>
+</plist>
