@@ -87,23 +87,36 @@ struct TerminalWebView: UIViewRepresentable {
             return
         }
 
-        // Tab switch: disconnect current WS and connect to the new tabId.
+        // Tab switch: connect to the new tabId (connect() already closes the
+        // existing WS internally, so we skip disconnect() to avoid poisoning
+        // the reconnect counter).
         if let newTabId = viewModel.pendingTabSwitch {
-            viewModel.pendingTabSwitch = nil
-            viewModel.connectionState = .connecting
-
             let escaped = newTabId
                 .replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "'", with: "\\'")
 
-            // Disconnect current session, update config, reconnect.
+            // Call connect() directly — it closes the old socket and resets
+            // reconnect state. Return true/false so we know if MajorTom was
+            // available; only consume the pending switch on success.
             let js = """
             if(window.MajorTom){
-              window.MajorTom.disconnect();
               window.MajorTom.connect({tabId:'\(escaped)'});
+              true;
+            } else {
+              false;
             }
             """
-            webView.evaluateJavaScript(js) { _, _ in }
+            webView.evaluateJavaScript(js) { result, error in
+                guard error == nil, let didSwitch = result as? Bool, didSwitch else {
+                    return
+                }
+                // Only clear the pending switch after the JS bridge confirmed
+                // the reconnect path was invoked.
+                if viewModel.pendingTabSwitch == newTabId {
+                    viewModel.pendingTabSwitch = nil
+                }
+                viewModel.connectionState = .connecting
+            }
         }
     }
 
