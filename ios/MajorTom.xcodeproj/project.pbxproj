@@ -313,6 +313,7 @@
 		96C1E3AF7CCC785A62706B1F /* MajorTomWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MajorTomWidgets.entitlements; sourceTree = "<group>"; };
 		98BCC0CB0F9FD6AB70872448 /* TerminalTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTab.swift; sourceTree = "<group>"; };
 		99396FACEBA85FA298D818E8 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		9B4F2B6950741FAA4F1D7ADB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		9E41011D1A5C03C795509B68 /* MajorTomWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MajorTomWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A198759EB4EA086A9CBF595F /* AchievementsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementsViewModel.swift; sourceTree = "<group>"; };
 		A2873A7A68C25BFA4E7C9756 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
@@ -1063,6 +1064,7 @@
 		AE0E9BD8AD760950C331396C /* MajorTomWidgets */ = {
 			isa = PBXGroup;
 			children = (
+				9B4F2B6950741FAA4F1D7ADB /* Info.plist */,
 				2DFEBE6C7D4CF8C8369579EA /* MajorTomLiveActivityWidget.swift */,
 				96C1E3AF7CCC785A62706B1F /* MajorTomWidgets.entitlements */,
 				CCBDA7E064D0179C4FD35A17 /* MajorTomWidgetsBundle.swift */,
@@ -1119,6 +1121,7 @@
 		B785C26F2874B8A4F530FD1D /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				F4CC29694F42E4B5FD57C761 /* Components */,
 				D28A628DB467A01A77C6F494 /* ViewModels */,
 				DE1EBD87DDB29A1DB6A9A638 /* Views */,
 			);
@@ -1348,6 +1351,13 @@
 				61D2E96EC4746E43CE222912 /* ToolActivityView.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		F4CC29694F42E4B5FD57C761 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Components;
 			sourceTree = "<group>";
 		};
 		F6C0669B96C670DBFE4B9DC7 /* Services */ = {
@@ -1845,10 +1855,8 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = MajorTomWidgets/MajorTomWidgets.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_GENERATION_MODE = GeneratedFile;
+				INFOPLIST_FILE = MajorTomWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Major Tom Widgets";
-				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
-				INFOPLIST_KEY_NSExtension_NSExtensionPrincipalClass = "$(PRODUCT_MODULE_NAME).WidgetExtension";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../../Frameworks @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.majortom.app.widgets;
@@ -1895,10 +1903,8 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = MajorTomWidgets/MajorTomWidgets.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_GENERATION_MODE = GeneratedFile;
+				INFOPLIST_FILE = MajorTomWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Major Tom Widgets";
-				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
-				INFOPLIST_KEY_NSExtension_NSExtensionPrincipalClass = "$(PRODUCT_MODULE_NAME).WidgetExtension";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../../Frameworks @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.majortom.app.widgets;
