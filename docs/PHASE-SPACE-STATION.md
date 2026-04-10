@@ -924,12 +924,12 @@ The web version will always be limited by the browser's rendering pipeline. Spri
 
 ---
 
-## Open Questions
+## Resolved Decisions
 
-1. **Art creation**: Hand-draw all pixel art, or use AI generation + manual cleanup? Aseprite license needed?
-2. **Scene size**: 1200x800 or stick with 800x600 and just retheme? Bigger scene = more content but more work.
-3. **Multi-view vs single scroll**: The PWA does multi-view (tab switching). Should the station be one big scrollable map or deck-based tabs? Spec assumes deck-based tabs in Wave 4.
-4. **Relay integration priority**: Wire to live data in Wave 6, or pull it earlier? STATUS.md says relay wiring was "Not Started (Deferred)."
-5. **PWA character parity**: The PWA has 14 characters, iOS has 9. Spec adds 5 in Wave 6. Should we align character types exactly or keep them distinct (crew roles vs office roles)?
-6. **Sound on by default?**: Some users hate app sounds. Default to off with prominent toggle?
-7. **Tile map approach**: Full `SKTileMapNode` (requires tile textures upfront) vs. hybrid `SKSpriteNode` grid (easier to iterate but less performant)?
+1. **Art creation**: Hybrid approach. Free itch.io pixel art packs for environment (floors, walls, furniture). Programmatic upgrade (PixelArtBuilder 16x16 → 32x32 space crew) for characters initially. AI-generated art (DALL-E via ChatGPT Plus) as optional upgrade later for premium character sprites.
+2. **Scene size**: **1200x800** — go big. Camera pan/zoom handles the mobile screen.
+3. **Multi-view vs single scroll**: **Deck-based tabs** with airlock door transitions. Multi-view UX, not scrollable map.
+4. **Relay integration**: **Wave 6** — visual revamp first, wire live data when station is ready.
+5. **Character identity**: **DISTINCT from PWA.** iOS gets space crew roles (Commander, Engineer, Navigator, etc.). PWA keeps office workers. iOS is the premium experience — if parity ever happens, PWA copies iOS, not the other way around.
+6. **Sound**: **Off by default** with visible toggle. Full sound design is a future phase — user will collect sound FX assets.
+7. **Tile map**: **SKTileMapNode** — GPU-instanced, one draw call for floors, fits the 50 draw call budget.
