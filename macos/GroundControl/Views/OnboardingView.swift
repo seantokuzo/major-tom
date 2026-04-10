@@ -57,6 +57,11 @@ struct OnboardingView: View {
         .onAppear {
             checkTmux()
         }
+        .alert("Save Failed", isPresented: $showSaveError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Could not save configuration: \(saveError ?? "Unknown error"). Please try again.")
+        }
     }
 
     // MARK: - Header
@@ -495,17 +500,22 @@ struct OnboardingView: View {
         return result == 0
     }
 
+    @State private var saveError: String?
+    @State private var showSaveError = false
+
     private func finishSetup() {
         // Apply config
         configManager.config.port = port
         configManager.config.authMode = authMode
         configManager.config.cloudflareEnabled = enableCloudflare
 
-        // Save
+        // Save — only proceed if successful
         do {
             try configManager.save()
         } catch {
-            print("[Onboarding] Failed to save config: \(error)")
+            saveError = error.localizedDescription
+            showSaveError = true
+            return
         }
 
         // Mark onboarding complete

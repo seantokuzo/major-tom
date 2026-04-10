@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Ground Control — macOS menu bar app for managing the Major Tom relay server.
@@ -17,12 +18,34 @@ struct GroundControlApp: App {
         _configManager = State(initialValue: cm)
         _relay = State(initialValue: RelayProcess(configManager: cm))
         _showOnboarding = State(initialValue: !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding"))
+
+        // Start checking for updates at launch so the menu bar can show availability
+        // even if the user never opens the Management window.
+        updateChecker.startChecking()
     }
 
     var body: some Scene {
         // Menu bar extra — the primary UI
         MenuBarExtra {
             MenuBarView(relay: relay, updateChecker: updateChecker)
+                .onAppear {
+                    // Open onboarding window on first launch. MenuBarExtra.onAppear is
+                    // the earliest point where we can use EnvironmentValues in the scene.
+                    if showOnboarding {
+                        NSApplication.shared.activate(ignoringOtherApps: true)
+                        // Open onboarding via NSApp since @Environment(\.openWindow)
+                        // is not available in @main App structs.
+                        for window in NSApplication.shared.windows where window.identifier?.rawValue == "onboarding" {
+                            window.makeKeyAndOrderFront(nil)
+                            return
+                        }
+                        // If the window isn't materialized yet, use notification to
+                        // request it. As a fallback, we send an AppleEvent to open it.
+                        if let url = URL(string: "groundcontrol://onboarding") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                }
         } label: {
             menuBarLabel
         }
@@ -36,9 +59,6 @@ struct GroundControlApp: App {
                 updateChecker: updateChecker
             )
             .frame(minWidth: 700, minHeight: 450)
-            .onAppear {
-                updateChecker.startChecking()
-            }
         }
         .defaultSize(width: 900, height: 600)
 

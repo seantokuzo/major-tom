@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Sidebar navigation items for the management window.

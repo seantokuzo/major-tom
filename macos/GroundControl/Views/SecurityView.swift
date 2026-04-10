@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Security panel showing connected devices with session revocation,
@@ -120,7 +121,7 @@ struct SecurityView: View {
 
                 Spacer()
 
-                // Revoke button
+                // Revoke button — disabled until the relay exposes /api/admin/revoke
                 Button(role: .destructive) {
                     revokeConfirmation = client
                 } label: {
@@ -129,6 +130,8 @@ struct SecurityView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .disabled(true)
+                .help("Coming soon — requires relay endpoint")
             }
             .padding(.vertical, 4)
 
@@ -182,6 +185,9 @@ struct SecurityView: View {
     }
 
     // MARK: - Revoke Action
+    // TODO: The relay does not yet expose /api/admin/revoke — this function is a
+    // placeholder for when that endpoint is added. Until then the Revoke button is
+    // disabled in the UI.
 
     private func revokeSession(for client: ConnectedClient) async {
         let url = URL(string: "http://127.0.0.1:\(relay.state.port)/api/admin/revoke")!
