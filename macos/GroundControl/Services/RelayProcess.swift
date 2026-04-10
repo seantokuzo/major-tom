@@ -12,6 +12,9 @@ final class RelayProcess {
     /// Log store fed by stdout/stderr lines from the relay process.
     let logStore = LogStore()
 
+    /// Config manager providing relay settings and Keychain secrets.
+    let configManager: ConfigManager
+
     private var process: Process?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
@@ -19,6 +22,15 @@ final class RelayProcess {
 
     /// Grace period before SIGKILL after SIGTERM (seconds).
     private let shutdownTimeout: TimeInterval = 5.0
+
+    // MARK: - Init
+
+    init(configManager: ConfigManager = ConfigManager()) {
+        self.configManager = configManager
+        // Sync RelayState ports from config
+        self.state.port = configManager.config.port
+        self.state.hookPort = configManager.config.hookPort
+    }
 
     // MARK: - Lifecycle
 
@@ -96,16 +108,39 @@ final class RelayProcess {
         proc.arguments = [paths.relayEntry.path]
         proc.currentDirectoryURL = paths.relayDir
 
-        // Environment
+        // Environment — derived from ConfigManager
+        let config = configManager.config
         var env = ProcessInfo.processInfo.environment
         env["NODE_ENV"] = paths.isDevelopment ? "development" : "production"
-        env["WS_PORT"] = String(state.port)
-        env["HOOK_PORT"] = String(state.hookPort)
-        env["LOG_LEVEL"] = "info"
-        // Inherit CLAUDE_WORK_DIR from parent env, or use home directory
-        if env["CLAUDE_WORK_DIR"] == nil {
-            env["CLAUDE_WORK_DIR"] = FileManager.default.homeDirectoryForCurrentUser.path
+        env["WS_PORT"] = String(config.port)
+        env["HOOK_PORT"] = String(config.hookPort)
+        env["LOG_LEVEL"] = config.logLevel.rawValue
+        env["CLAUDE_WORK_DIR"] = config.expandedClaudeWorkDir
+        env["MULTI_USER_ENABLED"] = config.multiUserEnabled ? "true" : "false"
+
+        // Auth mode → relay env vars
+        switch config.authMode {
+        case .none:
+            env["AUTH_PIN_ENABLED"] = "false"
+            env["AUTH_GOOGLE_ENABLED"] = "false"
+        case .pin:
+            env["AUTH_PIN_ENABLED"] = "true"
+            env["AUTH_GOOGLE_ENABLED"] = "false"
+        case .google:
+            env["AUTH_PIN_ENABLED"] = "false"
+            env["AUTH_GOOGLE_ENABLED"] = "true"
+            if let clientId = configManager.getSecret(ConfigManager.SecretKey.googleClientId) {
+                env["GOOGLE_CLIENT_ID"] = clientId
+            }
+            if let clientSecret = configManager.getSecret(ConfigManager.SecretKey.googleClientSecret) {
+                env["GOOGLE_CLIENT_SECRET"] = clientSecret
+            }
         }
+
+        // Sync RelayState ports so the UI reflects current config
+        state.port = config.port
+        state.hookPort = config.hookPort
+
         proc.environment = env
 
         proc.standardOutput = stdout
