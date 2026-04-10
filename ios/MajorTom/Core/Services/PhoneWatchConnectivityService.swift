@@ -15,6 +15,12 @@ final class PhoneWatchConnectivityService: NSObject {
 
     private var wcSession: WCSession?
 
+    /// Debounce task for coalescing rapid terminal context updates.
+    private var terminalContextTask: Task<Void, Never>?
+
+    /// Latest terminal context payload — coalesced across rapid updates.
+    private var pendingTerminalContext: [String: Any]?
+
     override init() {
         super.init()
     }
@@ -77,6 +83,7 @@ final class PhoneWatchConnectivityService: NSObject {
     ///
     /// Unlike `updateContext` (which replaces the entire `applicationContext`), this
     /// uses `transferUserInfo` so it layers on top of whatever RelayService has set.
+    /// Rapid calls are coalesced with a 500ms debounce to avoid filling the transfer queue.
     func updateTerminalContext(isActive: Bool, tabCount: Int, title: String) {
         guard let session = wcSession, session.activationState == .activated else { return }
 
@@ -86,12 +93,21 @@ final class PhoneWatchConnectivityService: NSObject {
             WatchConnectivityKeys.terminalTitle: title,
         ]
 
-        if session.isReachable {
-            session.sendMessage(payload, replyHandler: nil) { _ in
+        pendingTerminalContext = payload
+        terminalContextTask?.cancel()
+        terminalContextTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            guard let self, let payload = self.pendingTerminalContext else { return }
+            self.pendingTerminalContext = nil
+
+            if session.isReachable {
+                session.sendMessage(payload, replyHandler: nil) { _ in
+                    session.transferUserInfo(payload)
+                }
+            } else {
                 session.transferUserInfo(payload)
             }
-        } else {
-            session.transferUserInfo(payload)
         }
     }
 

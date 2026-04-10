@@ -4,7 +4,7 @@ import Foundation
 /// parsed `HealthData` for the Dashboard view.
 ///
 /// Uses `@Observable` (macOS 14+) and Swift Concurrency — no Combine.
-/// Auto-refreshes every 5 seconds while polling is active.
+/// Auto-refreshes every 10 seconds while polling is active.
 @Observable
 final class RelayClient {
     /// Latest health data from the relay. Defaults to `.offline`.
@@ -20,7 +20,7 @@ final class RelayClient {
     var port: Int = 9090
 
     /// Polling interval in seconds.
-    private let pollInterval: TimeInterval = 5.0
+    private let pollInterval: TimeInterval = 10.0
 
     /// Active polling task — cancelled on `stopPolling()`.
     private var pollingTask: Task<Void, Never>?
@@ -33,6 +33,10 @@ final class RelayClient {
         config.timeoutIntervalForRequest = 3
         config.timeoutIntervalForResource = 5
         self.session = URLSession(configuration: config)
+    }
+
+    deinit {
+        session.invalidateAndCancel()
     }
 
     // MARK: - Polling Lifecycle
@@ -74,9 +78,9 @@ final class RelayClient {
             }
 
             let decoded = try JSONDecoder().decode(HealthData.self, from: data)
-            healthData = decoded
-            isConnected = true
-            lastError = nil
+            if healthData != decoded { healthData = decoded }
+            if !isConnected { isConnected = true }
+            if lastError != nil { lastError = nil }
         } catch is CancellationError {
             // Task cancelled — don't update state
         } catch let error as URLError where error.code == .timedOut || error.code == .cannotConnectToHost {
@@ -89,8 +93,8 @@ final class RelayClient {
     // MARK: - Private
 
     private func markOffline(error: String?) {
-        isConnected = false
-        healthData = HealthData.offline
-        lastError = error
+        if isConnected { isConnected = false }
+        if healthData != .offline { healthData = .offline }
+        if lastError != error { lastError = error }
     }
 }

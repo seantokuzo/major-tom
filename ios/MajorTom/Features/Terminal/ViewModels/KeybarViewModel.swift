@@ -61,7 +61,11 @@ final class KeybarViewModel {
     private var synced = false
 
     /// Debounce task for relay sync.
-    private var syncTask: Task<Void, Never>?
+    /// nonisolated(unsafe) so deinit can cancel without MainActor isolation.
+    nonisolated(unsafe) private var syncTask: Task<Void, Never>?
+
+    /// Tracked task for the relay push request.
+    nonisolated(unsafe) private var relayTask: Task<Void, Never>?
 
     // MARK: - Init
 
@@ -93,6 +97,11 @@ final class KeybarViewModel {
         }
 
         self.selectedThemeId = defaults.string(forKey: Self.themeKey) ?? TerminalTheme.majorTom.id
+    }
+
+    deinit {
+        syncTask?.cancel()
+        relayTask?.cancel()
     }
 
     // MARK: - Relay Sync
@@ -284,7 +293,9 @@ final class KeybarViewModel {
 
         guard let body = try? JSONSerialization.data(withJSONObject: payload) else { return }
 
-        Task {
+        relayTask?.cancel()
+        relayTask = Task {
+            guard !Task.isCancelled else { return }
             do {
                 var request = URLRequest(url: url)
                 request.httpMethod = "PUT"

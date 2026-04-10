@@ -185,9 +185,11 @@
     });
 
     // Terminal input → WebSocket (keyboard data from xterm)
+    // Encode as binary so the relay treats it as PTY input, not a JSON control frame.
+    var encoder = new TextEncoder();
     term.onData(function(data) {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
+        ws.send(encoder.encode(data));
       }
     });
 
@@ -471,7 +473,8 @@
       if (term && ws && ws.readyState === WebSocket.OPEN) {
         // Send directly to the PTY, bypassing xterm input processing
         // to avoid bracket paste mode issues in raw paste.
-        ws.send(text);
+        // Encode as binary so the relay treats it as PTY input.
+        ws.send(new TextEncoder().encode(text));
       }
     },
 
