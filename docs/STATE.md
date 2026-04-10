@@ -15,10 +15,10 @@ Spec: `docs/GROUND-CONTROL.md`
 | 1 — Scaffold & Process Management | DONE | #98 |
 | 2 — Log Viewer | DONE | #100 |
 | 3 — Dashboard | DONE | #102 |
-| 4 — Configuration | DONE | #104 |
+| 4 — Configuration | DONE | #104, #106, #108 |
 | **5 — Security & Polish** | **NEXT** | — |
 
-**Wave 5 scope:** Security panel (connected devices, session revocation), first-run onboarding, menu bar icon status colors, notarization prep.
+**Wave 5 scope:** Security panel (connected devices, session revocation), first-run onboarding, menu bar icon status colors, notarization prep. See `docs/GROUND-CONTROL.md` Wave 5 section.
 
 ### Phase 14 "SwiftTerm" (iOS native terminal)
 
@@ -29,10 +29,10 @@ Spec: `docs/PHASE-14-SWIFTTERM.md`
 | 1 — Basic Terminal Rendering | DONE | #97 |
 | 2 — Keyboard & Input | DONE | #99 |
 | 3 — Multi-Tab Support | DONE | #103 |
-| 4 — Customization & Sync | DONE | #105 |
+| 4 — Customization & Sync | DONE | #105, #107, #108 |
 | **5 — Polish & Integration** | **NEXT** | — |
 
-**Wave 5 scope:** Terminal as default tab, Dynamic Island/Live Activity integration, Watch status, Siri shortcuts, copy/paste mode, orientation transitions, memory leak audit.
+**Wave 5 scope:** Terminal as default tab, Dynamic Island/Live Activity integration, Watch status, Siri shortcuts, copy/paste mode, orientation transitions, memory leak audit. See `docs/PHASE-14-SWIFTTERM.md` Wave 5 section.
 
 ## Prior Phases (all complete)
 
