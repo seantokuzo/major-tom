@@ -15,10 +15,10 @@ Spec: `docs/GROUND-CONTROL.md`
 | 1 — Scaffold & Process Management | DONE | #98 |
 | 2 — Log Viewer | DONE | #100 |
 | 3 — Dashboard | DONE | #102 |
-| **4 — Configuration** | **NEXT** | — |
-| 5 — Security & Polish | TODO | — |
+| 4 — Configuration | DONE | #104 |
+| **5 — Security & Polish** | **NEXT** | — |
 
-**Wave 4 scope:** GUI settings editor (ConfigView), Keychain secrets (OAuth creds, tunnel token), config.json read/write, CloudflareTunnelView, "Apply & Restart" flow.
+**Wave 5 scope:** Security panel (connected devices, session revocation), first-run onboarding, menu bar icon status colors, notarization prep.
 
 ### Phase 14 "SwiftTerm" (iOS native terminal)
 
@@ -29,10 +29,10 @@ Spec: `docs/PHASE-14-SWIFTTERM.md`
 | 1 — Basic Terminal Rendering | DONE | #97 |
 | 2 — Keyboard & Input | DONE | #99 |
 | 3 — Multi-Tab Support | DONE | #103 |
-| **4 — Customization & Sync** | **NEXT** | — |
-| 5 — Polish & Integration | TODO | — |
+| 4 — Customization & Sync | DONE | #105 |
+| **5 — Polish & Integration** | **NEXT** | — |
 
-**Wave 4 scope:** Keybar reorder/customize (KeybarCustomizer), theme picker (TerminalTheme, TerminalSettingsView), font size slider, relay preference sync via `/api/user/preferences`.
+**Wave 5 scope:** Terminal as default tab, Dynamic Island/Live Activity integration, Watch status, Siri shortcuts, copy/paste mode, orientation transitions, memory leak audit.
 
 ## Prior Phases (all complete)
 

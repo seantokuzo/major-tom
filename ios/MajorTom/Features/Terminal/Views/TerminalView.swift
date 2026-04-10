@@ -114,6 +114,12 @@ struct TerminalView: View {
         }
         .task {
             await viewModel.keybarViewModel.syncFromRelay()
+            // Wait for the JS terminal to initialize before applying synced preferences,
+            // otherwise setFontSize/setTheme no-op because `term` is nil in the webview.
+            while !viewModel.isReady {
+                if Task.isCancelled { return }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
             viewModel.applyFontSize(viewModel.keybarViewModel.fontSize)
             viewModel.applyTheme(viewModel.keybarViewModel.selectedTheme)
         }

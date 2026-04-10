@@ -40,7 +40,11 @@ final class ConfigManager {
 
         // Write defaults on first launch so config.json exists on disk
         if !fileExisted {
-            try? save()
+            do {
+                try save()
+            } catch {
+                print("[ConfigManager] Failed to create initial config at \(ConfigManager.configFileURL.path): \(error)")
+            }
         }
     }
 
