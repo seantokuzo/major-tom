@@ -70,10 +70,10 @@ struct ActivityStation: Identifiable {
     }
 }
 
-// MARK: - Station Layout
+// MARK: - Activity Station Layout
 
 /// Pre-defined positions for all activity stations in the office.
-enum StationLayout {
+enum ActivityStationLayout {
 
     static let stations: [ActivityStation] = [
         // Break room stations

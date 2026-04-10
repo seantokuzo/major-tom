@@ -28,7 +28,7 @@ struct ActivityAssignment {
 final class ActivityManager {
 
     /// All activity stations in the office.
-    var stations: [ActivityStation] = StationLayout.stations
+    var stations: [ActivityStation] = ActivityStationLayout.stations
 
     /// Current activity assignments by agent ID.
     private(set) var assignments: [String: ActivityAssignment] = [:]
@@ -132,7 +132,7 @@ final class ActivityManager {
     func reset() {
         stopCycling()
         assignments.removeAll()
-        stations = StationLayout.stations
+        stations = ActivityStationLayout.stations
     }
 
     // MARK: - Display Helpers
