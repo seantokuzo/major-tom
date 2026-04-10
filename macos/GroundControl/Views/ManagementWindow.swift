@@ -21,11 +21,12 @@ enum ManagementSection: String, CaseIterable, Identifiable {
 
 /// Management window with sidebar navigation.
 ///
-/// Dashboard (Wave 3) and Logs (Wave 2) are functional.
-/// Configuration and Security show placeholder content.
+/// Dashboard (Wave 3), Logs (Wave 2), and Configuration (Wave 4) are functional.
+/// Security shows placeholder content.
 struct ManagementWindow: View {
     let relay: RelayProcess
     let logStore: LogStore
+    let configManager: ConfigManager
 
     @State private var selectedSection: ManagementSection = .dashboard
 
@@ -60,11 +61,7 @@ struct ManagementWindow: View {
         case .logs:
             LogView(logStore: logStore)
         case .configuration:
-            placeholderView(
-                icon: ManagementSection.configuration.sfSymbol,
-                title: "Configuration",
-                subtitle: "Port, environment, and startup settings coming soon."
-            )
+            ConfigView(relay: relay, configManager: configManager)
         case .security:
             placeholderView(
                 icon: ManagementSection.security.sfSymbol,

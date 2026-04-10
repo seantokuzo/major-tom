@@ -6,7 +6,14 @@ import SwiftUI
 /// quick links to the PWA, and a management window with live log viewer.
 @main
 struct GroundControlApp: App {
-    @State private var relay = RelayProcess()
+    @State private var configManager = ConfigManager()
+    @State private var relay: RelayProcess
+
+    init() {
+        let cm = ConfigManager()
+        _configManager = State(initialValue: cm)
+        _relay = State(initialValue: RelayProcess(configManager: cm))
+    }
 
     var body: some Scene {
         // Menu bar extra — the primary UI
@@ -16,9 +23,9 @@ struct GroundControlApp: App {
             menuBarLabel
         }
 
-        // Management window — log viewer and management UI
+        // Management window — log viewer, dashboard, and config UI
         Window("Ground Control", id: "management") {
-            ManagementWindow(relay: relay, logStore: relay.logStore)
+            ManagementWindow(relay: relay, logStore: relay.logStore, configManager: configManager)
                 .frame(minWidth: 700, minHeight: 450)
         }
         .defaultSize(width: 900, height: 600)
