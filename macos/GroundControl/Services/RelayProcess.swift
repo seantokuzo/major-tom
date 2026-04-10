@@ -240,8 +240,11 @@ final class RelayProcess {
     // MARK: - Output Handling
 
     /// Partial-line buffer per pipe (data may arrive mid-line).
-    private var stdoutBuffer = ""
-    private var stderrBuffer = ""
+    private var stdoutBuffer = Data()
+    private var stderrBuffer = Data()
+
+    /// Maximum buffer size before forcing a flush (256 KB).
+    private let maxBufferSize = 256 * 1024
 
     private func readPipeAsync(_ pipe: Pipe, label: String) {
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
@@ -249,16 +252,16 @@ final class RelayProcess {
             guard !data.isEmpty else {
                 // Flush any remaining partial-line buffer before removing the handler
                 if let self {
-                    let remainder: String
+                    let remainderData: Data
                     if label == "stdout" {
-                        remainder = self.stdoutBuffer
-                        self.stdoutBuffer = ""
+                        remainderData = self.stdoutBuffer
+                        self.stdoutBuffer = Data()
                     } else {
-                        remainder = self.stderrBuffer
-                        self.stderrBuffer = ""
+                        remainderData = self.stderrBuffer
+                        self.stderrBuffer = Data()
                     }
 
-                    if !remainder.isEmpty {
+                    if !remainderData.isEmpty, let remainder = String(data: remainderData, encoding: .utf8) {
                         DispatchQueue.main.async {
                             self.logStore.append(remainder)
                         }
@@ -267,47 +270,76 @@ final class RelayProcess {
                 handle.readabilityHandler = nil
                 return
             }
-            guard let self, let text = String(data: data, encoding: .utf8) else { return }
+            guard let self else { return }
 
-            // Buffer management — data may arrive as partial lines
-            let buffer: String
+            // Append incoming data to the buffer
             if label == "stdout" {
-                buffer = self.stdoutBuffer + text
+                self.stdoutBuffer.append(data)
             } else {
-                buffer = self.stderrBuffer + text
+                self.stderrBuffer.append(data)
             }
 
-            let lines = buffer.split(separator: "\n", omittingEmptySubsequences: false)
-
-            // If the chunk doesn't end with \n, the last element is a partial line — keep it
-            let hasTrailingNewline = text.hasSuffix("\n")
-            let completeLines: ArraySlice<Substring>
-            let remainder: String
-
-            if hasTrailingNewline {
-                completeLines = lines[...]
-                remainder = ""
-            } else {
-                completeLines = lines.dropLast()
-                remainder = String(lines.last ?? "")
-            }
-
+            let bufferRef: Data
             if label == "stdout" {
-                self.stdoutBuffer = remainder
+                bufferRef = self.stdoutBuffer
             } else {
-                self.stderrBuffer = remainder
+                bufferRef = self.stderrBuffer
             }
 
-            // Feed complete lines into LogStore on the main actor
-            let lineStrings = completeLines.compactMap { line -> String? in
-                let s = String(line)
-                return s.isEmpty ? nil : s
-            }
+            // Force flush if buffer exceeds max size
+            let forceFlush = bufferRef.count > self.maxBufferSize
 
-            if !lineStrings.isEmpty {
-                DispatchQueue.main.async {
-                    for line in lineStrings {
-                        self.logStore.append(line)
+            // Use non-failing decoder — partial UTF-8 sequences get replacement chars
+            // instead of returning nil and stalling the pipeline.
+            let bufferString = String(decoding: bufferRef, as: UTF8.self)
+
+            let newline = UInt8(ascii: "\n")
+            let hasTrailingNewline = bufferRef.last == newline
+
+            if !hasTrailingNewline && !forceFlush {
+                // Split into lines, keep the partial last line in the buffer
+                let lines = bufferString.split(separator: "\n", omittingEmptySubsequences: false)
+                if lines.count <= 1 {
+                    // No complete line yet, keep buffering
+                    return
+                }
+                let completeLines = lines.dropLast()
+                let remainder = String(lines.last ?? "")
+
+                if label == "stdout" {
+                    self.stdoutBuffer = Data(remainder.utf8)
+                } else {
+                    self.stderrBuffer = Data(remainder.utf8)
+                }
+
+                let lineStrings = completeLines.compactMap { line -> String? in
+                    let s = String(line)
+                    return s.isEmpty ? nil : s
+                }
+
+                if !lineStrings.isEmpty {
+                    DispatchQueue.main.async {
+                        for line in lineStrings {
+                            self.logStore.append(line)
+                        }
+                    }
+                }
+            } else {
+                // All data forms complete lines (or force flush)
+                if label == "stdout" {
+                    self.stdoutBuffer = Data()
+                } else {
+                    self.stderrBuffer = Data()
+                }
+
+                let lines = bufferString.split(separator: "\n", omittingEmptySubsequences: true)
+                let lineStrings = lines.map { String($0) }
+
+                if !lineStrings.isEmpty {
+                    DispatchQueue.main.async {
+                        for line in lineStrings {
+                            self.logStore.append(line)
+                        }
                     }
                 }
             }

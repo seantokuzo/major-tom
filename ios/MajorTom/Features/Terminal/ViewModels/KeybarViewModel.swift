@@ -63,6 +63,9 @@ final class KeybarViewModel {
     /// Debounce task for relay sync.
     private var syncTask: Task<Void, Never>?
 
+    /// Tracked task for the relay push request.
+    private var relayTask: Task<Void, Never>?
+
     // MARK: - Init
 
     init(auth: AuthService) {
@@ -284,7 +287,9 @@ final class KeybarViewModel {
 
         guard let body = try? JSONSerialization.data(withJSONObject: payload) else { return }
 
-        Task {
+        relayTask?.cancel()
+        relayTask = Task {
+            guard !Task.isCancelled else { return }
             do {
                 var request = URLRequest(url: url)
                 request.httpMethod = "PUT"

@@ -9,6 +9,7 @@ struct LogView: View {
 
     @State private var autoScroll = true
     @State private var expandedEntries: Set<UUID> = []
+    @State private var prettyJSONCache = PrettyJSONCache()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -56,6 +57,7 @@ struct LogView: View {
                 Button {
                     logStore.clear()
                     expandedEntries.removeAll()
+                    prettyJSONCache.clear()
                 } label: {
                     Image(systemName: "trash")
                         .font(.caption)
@@ -98,23 +100,27 @@ struct LogView: View {
     @ViewBuilder
     private var logList: some View {
         ScrollViewReader { proxy in
-            List(logStore.filteredEntries) { entry in
-                LogRowView(
-                    entry: entry,
-                    isExpanded: expandedEntries.contains(entry.id),
-                    onToggleExpand: {
-                        if expandedEntries.contains(entry.id) {
-                            expandedEntries.remove(entry.id)
-                        } else {
-                            expandedEntries.insert(entry.id)
-                        }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(logStore.filteredEntries) { entry in
+                        LogRowView(
+                            entry: entry,
+                            isExpanded: expandedEntries.contains(entry.id),
+                            prettyJSONCache: prettyJSONCache,
+                            onToggleExpand: {
+                                if expandedEntries.contains(entry.id) {
+                                    expandedEntries.remove(entry.id)
+                                } else {
+                                    expandedEntries.insert(entry.id)
+                                }
+                            }
+                        )
+                        .id(entry.id)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 1)
                     }
-                )
-                .id(entry.id)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
+                }
             }
-            .listStyle(.plain)
             .font(.system(.body, design: .monospaced))
             .onChange(of: logStore.filteredEntries.count) {
                 if autoScroll, let lastEntry = logStore.filteredEntries.last {
@@ -122,9 +128,11 @@ struct LogView: View {
                         proxy.scrollTo(lastEntry.id, anchor: .bottom)
                     }
                 }
+                // Prune cache to match LogStore's ring buffer — evict stale entries
+                let validIds = Set(logStore.entries.map(\.id))
+                prettyJSONCache.prune(keeping: validIds)
             }
             .onChange(of: autoScroll) {
-                // When user re-enables auto-scroll, jump to bottom immediately
                 if autoScroll, let lastEntry = logStore.filteredEntries.last {
                     withAnimation(.easeOut(duration: 0.1)) {
                         proxy.scrollTo(lastEntry.id, anchor: .bottom)
@@ -137,10 +145,55 @@ struct LogView: View {
 
 // MARK: - Log Row
 
+/// Thread-safe cache for pretty-printed JSON strings keyed by log entry ID.
+/// Prunable: call `prune(keeping:)` when LogStore evicts old entries.
+final class PrettyJSONCache {
+    private var cache: [UUID: String] = [:]
+    private let lock = NSLock()
+
+    func get(_ id: UUID, rawJSON: String) -> String {
+        lock.lock()
+        if let cached = cache[id] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        let result: String
+        if let data = rawJSON.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data),
+           let pretty = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
+           let str = String(data: pretty, encoding: .utf8) {
+            result = str
+        } else {
+            result = rawJSON
+        }
+
+        lock.lock()
+        cache[id] = result
+        lock.unlock()
+        return result
+    }
+
+    /// Remove cached entries for IDs no longer in the log store.
+    func prune(keeping validIds: Set<UUID>) {
+        lock.lock()
+        cache = cache.filter { validIds.contains($0.key) }
+        lock.unlock()
+    }
+
+    func clear() {
+        lock.lock()
+        cache.removeAll()
+        lock.unlock()
+    }
+}
+
 /// A single log entry row with timestamp, level badge, message, and expandable JSON.
 private struct LogRowView: View {
     let entry: LogEntry
     let isExpanded: Bool
+    let prettyJSONCache: PrettyJSONCache
     let onToggleExpand: () -> Void
 
     private static let timeFormatter: DateFormatter = {
@@ -201,14 +254,7 @@ private struct LogRowView: View {
     }
 
     private var prettyJSON: String {
-        guard let data = entry.rawJSON.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data),
-              let pretty = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
-              let str = String(data: pretty, encoding: .utf8)
-        else {
-            return entry.rawJSON
-        }
-        return str
+        prettyJSONCache.get(entry.id, rawJSON: entry.rawJSON)
     }
 }
 

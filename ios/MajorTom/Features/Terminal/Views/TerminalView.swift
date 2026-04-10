@@ -35,6 +35,12 @@ struct TerminalView: View {
     /// Toast message for copy/paste feedback.
     @State private var toastMessage: String?
 
+    /// Tracked task for toast auto-dismiss.
+    @State private var toastTask: Task<Void, Never>?
+
+    /// Tracked task for Live Activity updates.
+    @State private var liveActivityTask: Task<Void, Never>?
+
     /// Stable session ID for Live Activity and Watch — doesn't drift with tab switches.
     /// There is one terminal session with multiple tabs inside it; identity is fixed.
     private let terminalSessionId = "terminal-session"
@@ -173,6 +179,10 @@ struct TerminalView: View {
         .onChange(of: viewModel.tabs.count) { _, _ in
             updateWatchTerminalState()
         }
+        .onDisappear {
+            toastTask?.cancel()
+            liveActivityTask?.cancel()
+        }
         .task {
             await viewModel.keybarViewModel.syncFromRelay()
             // Wait for the JS terminal to initialize before applying synced preferences,
@@ -206,8 +216,10 @@ struct TerminalView: View {
 
     private func showToast(_ message: String) {
         toastMessage = message
-        Task { @MainActor in
+        toastTask?.cancel()
+        toastTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
             if toastMessage == message {
                 toastMessage = nil
             }
@@ -218,7 +230,9 @@ struct TerminalView: View {
 
     /// Start or end a Live Activity based on terminal connection state.
     private func updateLiveActivity(for state: TerminalConnectionState) {
-        Task {
+        liveActivityTask?.cancel()
+        liveActivityTask = Task {
+            guard !Task.isCancelled else { return }
             switch state {
             case .connected:
                 let sessionInfo = SessionInfo(

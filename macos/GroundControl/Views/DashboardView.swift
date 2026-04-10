@@ -116,7 +116,6 @@ struct DashboardView: View {
                             .font(.title2)
                             .fontWeight(.semibold)
                             .monospacedDigit()
-                            .contentTransition(.numericText())
                         Text(clients.count == 1 ? "client connected" : "clients connected")
                             .foregroundStyle(.secondary)
                     }
@@ -173,7 +172,6 @@ struct DashboardView: View {
                             .font(.title2)
                             .fontWeight(.semibold)
                             .monospacedDigit()
-                            .contentTransition(.numericText())
                         Text(sessions.count == 1 ? "active session" : "active sessions")
                             .foregroundStyle(.secondary)
                     }

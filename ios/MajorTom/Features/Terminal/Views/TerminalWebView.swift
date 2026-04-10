@@ -29,11 +29,14 @@ struct TerminalWebView: UIViewRepresentable {
         // Disconnect the JS WebSocket cleanly before tearing down
         webView.evaluateJavaScript("if(window.MajorTom && window.MajorTom.disconnect){window.MajorTom.disconnect()}") { _, _ in }
         webView.stopLoading()
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: "majorTom")
-        webView.configuration.userContentController.removeAllUserScripts()
+        let contentController = webView.configuration.userContentController
+        contentController.removeScriptMessageHandler(forName: "majorTom")
+        contentController.removeAllUserScripts()
         webView.navigationDelegate = nil
         // Nil the viewModel's weak reference to prevent stale calls
         coordinator.viewModel.webView = nil
+        // Break WKWebViewConfiguration → WKUserContentController → Coordinator retain cycle
+        webView.configuration.userContentController = WKUserContentController()
     }
 
     func makeUIView(context: Context) -> WKWebView {

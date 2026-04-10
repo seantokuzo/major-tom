@@ -36,6 +36,9 @@ final class LiveActivityManager {
     func startActivity(for session: SessionInfo) async {
         guard isSupported else { return }
 
+        // Prune orphaned snapshots that no longer have an active activity
+        pruneOrphanedSnapshots()
+
         let sessionId = session.sessionId
         let sessionName = session.sessionName
         let workingDir = session.workingDir
@@ -98,6 +101,12 @@ final class LiveActivityManager {
         let sessionIds = Array(activities.keys)
         for sessionId in sessionIds {
             await endActivity(for: sessionId)
+        }
+        // Prune any orphaned snapshots that survived (defensive)
+        let activeIds = Set(activities.keys)
+        let orphanedSnapshotKeys = Array(snapshots.keys.filter { !activeIds.contains($0) })
+        for key in orphanedSnapshotKeys {
+            snapshots.removeValue(forKey: key)
         }
     }
 
@@ -176,6 +185,19 @@ final class LiveActivityManager {
         snapshots[sessionId]!.status = "idle"
         Task {
             await endActivity(for: sessionId)
+        }
+    }
+
+    // MARK: - Private — Cleanup
+
+    /// Remove snapshots that have no corresponding active activity.
+    private func pruneOrphanedSnapshots() {
+        let activeIds = Set(activities.keys)
+        let orphanedKeys = snapshots.keys.filter { !activeIds.contains($0) }
+        for key in orphanedKeys {
+            snapshots.removeValue(forKey: key)
+            debounceTasks[key]?.cancel()
+            debounceTasks.removeValue(forKey: key)
         }
     }
 
