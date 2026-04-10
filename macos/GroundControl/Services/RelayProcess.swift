@@ -203,6 +203,23 @@ final class RelayProcess {
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else {
+                // Flush any remaining partial-line buffer before removing the handler
+                if let self {
+                    let remainder: String
+                    if label == "stdout" {
+                        remainder = self.stdoutBuffer
+                        self.stdoutBuffer = ""
+                    } else {
+                        remainder = self.stderrBuffer
+                        self.stderrBuffer = ""
+                    }
+
+                    if !remainder.isEmpty {
+                        DispatchQueue.main.async {
+                            self.logStore.append(remainder)
+                        }
+                    }
+                }
                 handle.readabilityHandler = nil
                 return
             }

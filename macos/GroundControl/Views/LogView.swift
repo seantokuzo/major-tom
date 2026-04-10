@@ -3,15 +3,12 @@ import SwiftUI
 /// Live log viewer with level filtering, text search, and auto-scroll.
 ///
 /// Displays pino JSON log entries as structured rows with color-coded level badges.
-/// Auto-scrolls to the bottom unless the user scrolls up (pause-on-scroll-up).
+/// Auto-scrolls to the bottom by default; user can toggle via the toolbar button.
 struct LogView: View {
     let logStore: LogStore
 
     @State private var autoScroll = true
     @State private var expandedEntries: Set<UUID> = []
-    /// Tracks the last entry count we auto-scrolled to, so we can detect
-    /// user-initiated scrolls vs. programmatic ones.
-    @State private var lastScrolledCount = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -58,6 +55,7 @@ struct LogView: View {
                 // Clear button
                 Button {
                     logStore.clear()
+                    expandedEntries.removeAll()
                 } label: {
                     Image(systemName: "trash")
                         .font(.caption)
@@ -123,7 +121,6 @@ struct LogView: View {
                     withAnimation(.easeOut(duration: 0.1)) {
                         proxy.scrollTo(lastEntry.id, anchor: .bottom)
                     }
-                    lastScrolledCount = logStore.filteredEntries.count
                 }
             }
             .onChange(of: autoScroll) {

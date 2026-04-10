@@ -24,6 +24,8 @@ enum ManagementSection: String, CaseIterable, Identifiable {
 /// Only the Logs section is functional in Wave 2.
 /// Other sections show placeholder content.
 struct ManagementWindow: View {
+    /// Retained for future sections (Dashboard, Configuration, Security) that need relay state.
+    // swiftlint:disable:next unused_declaration
     let relay: RelayProcess
     let logStore: LogStore
 
