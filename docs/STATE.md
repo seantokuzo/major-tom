@@ -4,7 +4,19 @@
 
 ## Current Phase
 
-Both parallel tracks COMPLETE — all 5 waves shipped for each:
+**QA Phase** complete (PR #111). Next: **Phase "Space Station"** — iOS office revamp.
+Spec: `docs/PHASE-SPACE-STATION.md`
+
+### QA / Performance Phase
+
+| Item | Status | PR |
+|------|--------|----|
+| Wave 1 — Memory fixes (both apps) | DONE | #111 |
+| Wave 2 — Performance optimization | DONE | (covered in #111) |
+| Wave 3 — Manual QA | DONE | — |
+| Terminal binary frame fix | DONE | #111 |
+
+### Prior Tracks (all complete)
 
 ### Ground Control (macOS relay manager)
 
