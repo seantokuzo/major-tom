@@ -113,11 +113,20 @@ final class TerminalViewModel {
         tabs.first(where: { $0.isActive })
     }
 
+    /// Keybar customization and preference sync.
+    var keybarViewModel: KeybarViewModel
+
+    /// The currently selected terminal theme.
+    var selectedTheme: TerminalTheme {
+        keybarViewModel.selectedTheme
+    }
+
     /// Reference to the auth service for relay URL and token.
     private let auth: AuthService
 
     init(auth: AuthService) {
         self.auth = auth
+        self.keybarViewModel = KeybarViewModel(auth: auth)
         // Create the initial default tab.
         let initialTab = TerminalTab(title: "Terminal", isActive: true)
         self.tabs = [initialTab]
@@ -244,6 +253,7 @@ final class TerminalViewModel {
             "relayURL": relayURL,
             "tabId": tabId,
             "theme": themeConfig,
+            "fontSize": keybarViewModel.fontSize,
         ]
         if let token = authToken {
             config["token"] = token
@@ -254,31 +264,9 @@ final class TerminalViewModel {
         return config
     }
 
-    /// Terminal theme matching MajorTom dark theme.
+    /// Terminal theme — driven by KeybarViewModel's selected theme.
     var themeConfig: [String: String] {
-        [
-            "background": "#0d0d12",
-            "foreground": "#e8e8e8",
-            "cursor": "#f2a641",
-            "cursorAccent": "#0d0d12",
-            "selectionBackground": "#f2a64140",
-            "black": "#1a1a24",
-            "red": "#f24d4d",
-            "green": "#4dd97a",
-            "yellow": "#f2cc33",
-            "blue": "#4d8af2",
-            "magenta": "#b84df2",
-            "cyan": "#4dd9d9",
-            "white": "#e8e8e8",
-            "brightBlack": "#666680",
-            "brightRed": "#f27a7a",
-            "brightGreen": "#7ae89e",
-            "brightYellow": "#f2d966",
-            "brightBlue": "#7ab3f2",
-            "brightMagenta": "#cc7af2",
-            "brightCyan": "#7ae8e8",
-            "brightWhite": "#ffffff",
-        ]
+        selectedTheme.asDictionary
     }
 
     // MARK: - Bridge Message Handling
@@ -323,6 +311,24 @@ final class TerminalViewModel {
             self.cols = cols
             self.rows = rows
         }
+    }
+
+    // MARK: - Theme & Font
+
+    /// Apply a theme to the live terminal by calling the JS bridge.
+    func applyTheme(_ theme: TerminalTheme) {
+        guard let webView else { return }
+        guard let data = try? JSONSerialization.data(withJSONObject: theme.asDictionary),
+              let json = String(data: data, encoding: .utf8) else { return }
+        let js = "if(window.MajorTom && window.MajorTom.setTheme){window.MajorTom.setTheme(\(json))}"
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
+    /// Apply a font size to the live terminal by calling the JS bridge.
+    func applyFontSize(_ size: Int) {
+        guard let webView else { return }
+        let js = "if(window.MajorTom && window.MajorTom.setFontSize){window.MajorTom.setFontSize(\(size))}"
+        webView.evaluateJavaScript(js) { _, _ in }
     }
 
     // MARK: - Key Input
