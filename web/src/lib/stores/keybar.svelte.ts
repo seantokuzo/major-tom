@@ -19,6 +19,7 @@ import {
 } from '../shell/keys';
 
 const STORAGE_KEY = 'mt-keybar-config-v1';
+const SYNC_DEBOUNCE_MS = 800;
 
 interface KeybarConfig {
   version: 1;
@@ -96,10 +97,91 @@ class KeybarStore {
   /** Full library for the customize picker. */
   readonly library: KeySpec[] = KEY_LIBRARY;
 
+  /** Whether we've loaded from the relay (prevents double-apply). */
+  private synced = false;
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor() {
     const cfg = loadFromStorage();
     this.accessoryIds = cfg.accessory;
     this.specialtyIds = cfg.specialty;
+  }
+
+  // ── Relay sync ──────────────────────────────────────────────────────
+
+  /**
+   * Pull preferences from the relay and apply if the server has a custom
+   * config. Called once after auth check completes.
+   * Server config wins over local defaults; if local is customized (not
+   * defaults) and server is empty, we push local config up.
+   */
+  async syncFromRelay(): Promise<void> {
+    if (this.synced) return;
+    try {
+      const res = await fetch('/api/user/preferences', { credentials: 'include' });
+      if (!res.ok) {
+        this.synced = true; // permanent: auth/config issue, don't retry
+        return;
+      }
+
+      const prefs = await res.json() as Record<string, unknown>;
+      const remote = prefs.keybarConfig as
+        | { version: number; accessory: string[]; specialty: string[] }
+        | undefined;
+
+      if (remote && Array.isArray(remote.accessory) && remote.accessory.length > 0) {
+        // Server has a config — apply it
+        const accessory = sanitize(remote.accessory);
+        const specialty = sanitize(remote.specialty);
+        if (accessory.length > 0) {
+          this.accessoryIds = accessory;
+          this.specialtyIds = specialty.length > 0 ? specialty : [...DEFAULT_SPECIALTY_KEYS];
+          saveToStorage({ version: 1, accessory: this.accessoryIds, specialty: this.specialtyIds });
+        }
+      } else if (!this.isDefault()) {
+        // Local is customized but server is empty — push local up
+        this.pushToRelay();
+      }
+      this.synced = true;
+    } catch {
+      // Network error — stay with local config, allow retry next effect cycle
+    }
+  }
+
+  /** Check if current config matches defaults */
+  private isDefault(): boolean {
+    return (
+      JSON.stringify(this.accessoryIds) === JSON.stringify(DEFAULT_ACCESSORY_KEYS) &&
+      JSON.stringify(this.specialtyIds) === JSON.stringify(DEFAULT_SPECIALTY_KEYS)
+    );
+  }
+
+  /** Debounced push to relay */
+  private scheduleSyncToRelay(): void {
+    if (this.syncTimer) clearTimeout(this.syncTimer);
+    this.syncTimer = setTimeout(() => {
+      this.syncTimer = null;
+      this.pushToRelay();
+    }, SYNC_DEBOUNCE_MS);
+  }
+
+  /** Push current config to relay (fire-and-forget) */
+  private pushToRelay(): void {
+    const payload = {
+      keybarConfig: {
+        version: 1,
+        accessory: this.accessoryIds,
+        specialty: this.specialtyIds,
+      },
+    };
+    fetch('/api/user/preferences', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(() => {
+      // Network error — local state is still saved, will sync next time
+    });
   }
 
   // ── Accessory row mutators ───────────────────────────────────────────
@@ -174,6 +256,7 @@ class KeybarStore {
       accessory: this.accessoryIds,
       specialty: this.specialtyIds,
     });
+    this.scheduleSyncToRelay();
   }
 }
 

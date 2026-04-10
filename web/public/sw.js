@@ -57,6 +57,22 @@ self.addEventListener('push', (event) => {
     return;
   }
 
+  // ── "Done working" notification ─────────────────────────────
+  // Simple informational notification — no action buttons, auto-dismisses.
+  if (data.type === 'done') {
+    const opts = {
+      body: data.body,
+      icon: '/favicon.svg',
+      badge: '/favicon.svg',
+      tag: 'mt-done',
+      renotify: true,
+      requireInteraction: false,
+      data: data.data || {},
+    };
+    event.waitUntil(self.registration.showNotification(data.title || 'Major Tom', opts));
+    return;
+  }
+
   // ── Action buttons ─────────────────────────────────────────
   // Only attach Allow/Deny actions when the payload carries a real
   // requestId — batched payloads don't, so they'd point at nothing.
