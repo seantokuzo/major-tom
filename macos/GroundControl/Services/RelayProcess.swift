@@ -289,7 +289,9 @@ final class RelayProcess {
             // Force flush if buffer exceeds max size
             let forceFlush = bufferRef.count > self.maxBufferSize
 
-            guard let bufferString = String(data: bufferRef, encoding: .utf8) else { return }
+            // Use non-failing decoder — partial UTF-8 sequences get replacement chars
+            // instead of returning nil and stalling the pipeline.
+            let bufferString = String(decoding: bufferRef, as: UTF8.self)
 
             let newline = UInt8(ascii: "\n")
             let hasTrailingNewline = bufferRef.last == newline

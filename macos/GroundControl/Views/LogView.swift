@@ -128,6 +128,9 @@ struct LogView: View {
                         proxy.scrollTo(lastEntry.id, anchor: .bottom)
                     }
                 }
+                // Prune cache to match LogStore's ring buffer — evict stale entries
+                let validIds = Set(logStore.entries.map(\.id))
+                prettyJSONCache.prune(keeping: validIds)
             }
             .onChange(of: autoScroll) {
                 if autoScroll, let lastEntry = logStore.filteredEntries.last {
@@ -143,6 +146,7 @@ struct LogView: View {
 // MARK: - Log Row
 
 /// Thread-safe cache for pretty-printed JSON strings keyed by log entry ID.
+/// Prunable: call `prune(keeping:)` when LogStore evicts old entries.
 final class PrettyJSONCache {
     private var cache: [UUID: String] = [:]
     private let lock = NSLock()
@@ -169,6 +173,13 @@ final class PrettyJSONCache {
         cache[id] = result
         lock.unlock()
         return result
+    }
+
+    /// Remove cached entries for IDs no longer in the log store.
+    func prune(keeping validIds: Set<UUID>) {
+        lock.lock()
+        cache = cache.filter { validIds.contains($0.key) }
+        lock.unlock()
     }
 
     func clear() {
