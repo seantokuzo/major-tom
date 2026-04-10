@@ -2,9 +2,10 @@ import Foundation
 
 /// Terminal color theme definition for xterm.js.
 ///
-/// Each theme provides the full set of 19 xterm colors used by the JS bridge.
+/// Each theme provides the full set of 21 xterm theme fields: 5 core colors and 16 ANSI colors.
 /// Themes are injected into the WKWebView via `MajorTom.setTheme(theme)` and
-/// persisted by the `KeybarViewModel` preference sync system.
+/// Theme selection is persisted locally via UserDefaults. Cross-device theme
+/// sync is not currently implemented — only keybar and font size sync to the relay.
 struct TerminalTheme: Identifiable, Codable, Equatable, Sendable {
     let id: String
     let name: String
