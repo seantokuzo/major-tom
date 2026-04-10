@@ -9,7 +9,7 @@ struct LogView: View {
 
     @State private var autoScroll = true
     @State private var expandedEntries: Set<UUID> = []
-    private let prettyJSONCache = PrettyJSONCache()
+    @State private var prettyJSONCache = PrettyJSONCache()
 
     var body: some View {
         VStack(spacing: 0) {

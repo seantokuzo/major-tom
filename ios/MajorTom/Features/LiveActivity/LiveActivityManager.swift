@@ -104,7 +104,8 @@ final class LiveActivityManager {
         }
         // Prune any orphaned snapshots that survived (defensive)
         let activeIds = Set(activities.keys)
-        for key in snapshots.keys where !activeIds.contains(key) {
+        let orphanedSnapshotKeys = Array(snapshots.keys.filter { !activeIds.contains($0) })
+        for key in orphanedSnapshotKeys {
             snapshots.removeValue(forKey: key)
         }
     }
@@ -192,7 +193,8 @@ final class LiveActivityManager {
     /// Remove snapshots that have no corresponding active activity.
     private func pruneOrphanedSnapshots() {
         let activeIds = Set(activities.keys)
-        for key in snapshots.keys where !activeIds.contains(key) {
+        let orphanedKeys = snapshots.keys.filter { !activeIds.contains($0) }
+        for key in orphanedKeys {
             snapshots.removeValue(forKey: key)
             debounceTasks[key]?.cancel()
             debounceTasks.removeValue(forKey: key)

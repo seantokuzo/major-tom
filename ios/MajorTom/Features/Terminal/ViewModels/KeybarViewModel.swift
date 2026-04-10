@@ -61,11 +61,10 @@ final class KeybarViewModel {
     private var synced = false
 
     /// Debounce task for relay sync.
-    /// nonisolated(unsafe) so deinit can cancel without MainActor isolation.
-    nonisolated(unsafe) private var syncTask: Task<Void, Never>?
+    private var syncTask: Task<Void, Never>?
 
     /// Tracked task for the relay push request.
-    nonisolated(unsafe) private var relayTask: Task<Void, Never>?
+    private var relayTask: Task<Void, Never>?
 
     // MARK: - Init
 
@@ -97,11 +96,6 @@ final class KeybarViewModel {
         }
 
         self.selectedThemeId = defaults.string(forKey: Self.themeKey) ?? TerminalTheme.majorTom.id
-    }
-
-    deinit {
-        syncTask?.cancel()
-        relayTask?.cancel()
     }
 
     // MARK: - Relay Sync

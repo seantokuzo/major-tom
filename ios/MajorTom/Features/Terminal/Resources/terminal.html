@@ -474,7 +474,7 @@
         // Send directly to the PTY, bypassing xterm input processing
         // to avoid bracket paste mode issues in raw paste.
         // Encode as binary so the relay treats it as PTY input.
-        ws.send(new TextEncoder().encode(text));
+        ws.send(encoder.encode(text));
       }
     },
 
