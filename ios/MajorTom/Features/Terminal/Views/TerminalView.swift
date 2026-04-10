@@ -114,6 +114,8 @@ struct TerminalView: View {
         }
         .task {
             await viewModel.keybarViewModel.syncFromRelay()
+            viewModel.applyFontSize(viewModel.keybarViewModel.fontSize)
+            viewModel.applyTheme(viewModel.keybarViewModel.selectedTheme)
         }
     }
 
@@ -150,6 +152,7 @@ struct TerminalView: View {
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
             }
+            .accessibilityLabel("Terminal settings")
         }
         .padding(.horizontal, MajorTomTheme.Spacing.md)
         .padding(.vertical, MajorTomTheme.Spacing.xs)

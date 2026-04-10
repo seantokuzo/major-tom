@@ -73,6 +73,7 @@ struct KeybarCustomizer: View {
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
+                .environment(\.editMode, .constant(.active))
             }
             .background(MajorTomTheme.Colors.background)
             .navigationTitle("Customize Keys")

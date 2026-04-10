@@ -105,7 +105,7 @@ struct TerminalSettingsView: View {
                 // Preview text
                 Text("AaBbCc 0123 ~/code $")
                     .font(.system(size: CGFloat(keybarViewModel.fontSize), design: .monospaced))
-                    .foregroundStyle(MajorTomTheme.Colors.textPrimary)
+                    .foregroundStyle(Color(hex: keybarViewModel.selectedTheme.foreground) ?? MajorTomTheme.Colors.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(MajorTomTheme.Spacing.sm)
                     .background(Color(hex: keybarViewModel.selectedTheme.background) ?? MajorTomTheme.Colors.background)

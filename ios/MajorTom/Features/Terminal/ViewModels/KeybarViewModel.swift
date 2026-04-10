@@ -5,7 +5,8 @@ import Foundation
 /// On init, loads from UserDefaults (device-local cache). Then async fetches
 /// from the relay's `/api/user/preferences` endpoint — server wins if it has
 /// a config. Local mutations save to UserDefaults immediately and debounce-sync
-/// to the relay (800ms). Network errors are silent; the UI never blocks on sync.
+/// to the relay (800ms). Network errors never block the UI, though sync/push
+/// failures are logged to the console.
 ///
 /// Mirrors the web PWA's `keybar.svelte.ts` + `shell.svelte.ts` sync patterns.
 @Observable
@@ -208,6 +209,8 @@ final class KeybarViewModel {
 
     // MARK: - Theme
 
+    /// Set the active terminal theme. Theme selection is local-only (UserDefaults)
+    /// and not synced to the relay — only keybar layout and font size are synced.
     func setTheme(_ theme: TerminalTheme) {
         guard theme.id != selectedThemeId else { return }
         selectedThemeId = theme.id
