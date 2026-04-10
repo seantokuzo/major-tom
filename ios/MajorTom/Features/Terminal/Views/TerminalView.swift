@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Main terminal view — hosts the WKWebView terminal and manages lifecycle.
 ///
@@ -12,8 +13,13 @@ import SwiftUI
 ///
 /// Wave 4: Settings sheet with theme picker, font size slider, and keybar
 /// customization. Gear icon in the status bar presents TerminalSettingsView.
+///
+/// Wave 5: Copy/paste mode, orientation transitions, Live Activity and Watch
+/// integration. Terminal is now the default tab on launch.
 struct TerminalView: View {
     let auth: AuthService
+    let liveActivityManager: LiveActivityManager
+    let watchConnectivity: PhoneWatchConnectivityService
 
     @State private var viewModel: TerminalViewModel
 
@@ -23,8 +29,19 @@ struct TerminalView: View {
     /// Whether the terminal settings sheet is presented.
     @State private var showSettings = false
 
-    init(auth: AuthService) {
+    /// Whether copy mode is active (long-press to select text).
+    @State private var copyModeActive = false
+
+    /// Toast message for copy/paste feedback.
+    @State private var toastMessage: String?
+
+    /// Current device orientation — used to trigger resize on rotation.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    init(auth: AuthService, liveActivityManager: LiveActivityManager, watchConnectivity: PhoneWatchConnectivityService) {
         self.auth = auth
+        self.liveActivityManager = liveActivityManager
+        self.watchConnectivity = watchConnectivity
         self._viewModel = State(initialValue: TerminalViewModel(auth: auth))
     }
 
@@ -77,6 +94,8 @@ struct TerminalView: View {
                 // visible even when no iOS keyboard is showing (e.g., when the
                 // specialty grid replaces the keyboard). This matches the PWA's
                 // mobile-first layout where the keybar is always on screen.
+                //
+                // Long-press on the keybar area pastes clipboard content.
                 if viewModel.connectionState == .connected || viewModel.isReady {
                     NativeKeybar(
                         onSendBytes: { bytes in
@@ -90,6 +109,9 @@ struct TerminalView: View {
                         specialtyGridVisible: showSpecialtyGrid,
                         keys: viewModel.keybarViewModel.accessoryKeys
                     )
+                    .onLongPressGesture(minimumDuration: 0.5) {
+                        pasteFromClipboard()
+                    }
                 }
             }
         }
@@ -112,6 +134,35 @@ struct TerminalView: View {
             )
             .presentationDetents([.medium, .large])
         }
+        .overlay(alignment: .bottom) {
+            // Toast feedback for copy/paste actions
+            if let message = toastMessage {
+                Text(message)
+                    .font(MajorTomTheme.Typography.caption)
+                    .foregroundStyle(MajorTomTheme.Colors.textPrimary)
+                    .padding(.horizontal, MajorTomTheme.Spacing.md)
+                    .padding(.vertical, MajorTomTheme.Spacing.sm)
+                    .background(MajorTomTheme.Colors.surfaceElevated)
+                    .clipShape(Capsule())
+                    .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                    .padding(.bottom, 80)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .allowsHitTesting(false)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: toastMessage)
+        // Trigger terminal resize on orientation change
+        .onChange(of: horizontalSizeClass) { _, _ in
+            viewModel.triggerResize()
+        }
+        // Wire terminal state into Live Activity on connection changes
+        .onChange(of: viewModel.connectionState) { _, newState in
+            updateLiveActivity(for: newState)
+            updateWatchTerminalState()
+        }
+        .onChange(of: viewModel.terminalTitle) { _, _ in
+            updateWatchTerminalState()
+        }
         .task {
             await viewModel.keybarViewModel.syncFromRelay()
             // Wait for the JS terminal to initialize before applying synced preferences,
@@ -123,6 +174,84 @@ struct TerminalView: View {
             viewModel.applyFontSize(viewModel.keybarViewModel.fontSize)
             viewModel.applyTheme(viewModel.keybarViewModel.selectedTheme)
         }
+    }
+
+    // MARK: - Copy/Paste
+
+    /// Paste clipboard content into the terminal.
+    private func pasteFromClipboard() {
+        guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
+        viewModel.pasteText(text)
+        HapticService.impact(.light)
+        showToast("Pasted")
+    }
+
+    /// Toggle copy mode on the terminal web view.
+    private func toggleCopyMode() {
+        copyModeActive.toggle()
+        viewModel.setCopyMode(copyModeActive)
+        HapticService.impact(.medium)
+        showToast(copyModeActive ? "Copy mode ON" : "Copy mode OFF")
+    }
+
+    private func showToast(_ message: String) {
+        toastMessage = message
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            if toastMessage == message {
+                toastMessage = nil
+            }
+        }
+    }
+
+    // MARK: - Live Activity Integration
+
+    /// Start or end a Live Activity based on terminal connection state.
+    private func updateLiveActivity(for state: TerminalConnectionState) {
+        Task {
+            switch state {
+            case .connected:
+                let sessionInfo = SessionInfo(
+                    sessionId: "terminal-\(viewModel.tabId)",
+                    sessionName: viewModel.terminalTitle,
+                    workingDir: viewModel.terminalTitle
+                )
+                await liveActivityManager.startActivity(for: sessionInfo)
+            case .disconnected:
+                await liveActivityManager.endActivity(for: "terminal-\(viewModel.tabId)")
+            case .error:
+                await liveActivityManager.endActivity(for: "terminal-\(viewModel.tabId)")
+            case .connecting:
+                break
+            }
+        }
+    }
+
+    // MARK: - Watch Integration
+
+    /// Push terminal session state to the Apple Watch via WatchConnectivity.
+    private func updateWatchTerminalState() {
+        let isConnected = viewModel.connectionState == .connected
+        let tabCount = viewModel.tabs.count
+
+        // Build a WatchSession representing the terminal
+        let session = WatchSession(
+            id: "terminal-\(viewModel.tabId)",
+            name: viewModel.terminalTitle,
+            workingDir: viewModel.terminalTitle,
+            status: isConnected ? .active : .idle,
+            agentCount: tabCount,
+            cost: 0,
+            startedAt: isConnected ? Date() : nil
+        )
+
+        watchConnectivity.updateContext(
+            sessions: [session],
+            fleetSummary: nil,
+            isRelayConnected: isConnected,
+            latestToolName: isConnected ? "shell" : nil,
+            latestToolStatus: isConnected ? "active" : nil
+        )
     }
 
     // MARK: - Status Bar
@@ -146,6 +275,30 @@ struct TerminalView: View {
                     .font(MajorTomTheme.Typography.codeFontSmall)
                     .foregroundStyle(MajorTomTheme.Colors.textTertiary)
             }
+
+            // Copy mode toggle
+            Button {
+                toggleCopyMode()
+            } label: {
+                Image(systemName: copyModeActive ? "text.cursor" : "selection.pin.in.out")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(copyModeActive ? MajorTomTheme.Colors.accent : MajorTomTheme.Colors.textSecondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel(copyModeActive ? "Disable copy mode" : "Enable copy mode")
+
+            // Paste button
+            Button {
+                pasteFromClipboard()
+            } label: {
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Paste from clipboard")
 
             // Settings gear
             Button {
@@ -175,6 +328,9 @@ struct TerminalView: View {
         default:
             ZStack {
                 TerminalWebView(viewModel: viewModel)
+                    .onLongPressGesture(minimumDuration: 0.5) {
+                        toggleCopyMode()
+                    }
 
                 if viewModel.didTerminate {
                     recoveryOverlay
@@ -182,6 +338,25 @@ struct TerminalView: View {
 
                 if !viewModel.isReady {
                     loadingOverlay
+                }
+
+                // Copy mode indicator overlay
+                if copyModeActive {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Text("COPY MODE")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(MajorTomTheme.Colors.background)
+                                .padding(.horizontal, MajorTomTheme.Spacing.sm)
+                                .padding(.vertical, 2)
+                                .background(MajorTomTheme.Colors.accent)
+                                .clipShape(Capsule())
+                                .padding(MajorTomTheme.Spacing.sm)
+                        }
+                        Spacer()
+                    }
+                    .allowsHitTesting(false)
                 }
             }
         }

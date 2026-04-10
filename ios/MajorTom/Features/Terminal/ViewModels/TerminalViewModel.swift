@@ -313,6 +313,44 @@ final class TerminalViewModel {
         }
     }
 
+    // MARK: - Copy/Paste
+
+    /// Paste text into the terminal via the JS bridge.
+    func pasteText(_ text: String) {
+        guard let webView else { return }
+        guard let data = try? JSONSerialization.data(withJSONObject: text),
+              let json = String(data: data, encoding: .utf8) else { return }
+        let js = "if(window.MajorTom && window.MajorTom.paste){window.MajorTom.paste(\(json))}"
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
+    /// Enable or disable copy/select mode in the terminal.
+    /// When enabled, touch interactions in xterm select text instead of scrolling.
+    func setCopyMode(_ enabled: Bool) {
+        guard let webView else { return }
+        let js = """
+        if(window.MajorTom && window.MajorTom._term){
+          window.MajorTom._term.options.rightClickSelectsWord = \(enabled);
+          if(\(enabled)){
+            window.MajorTom._term.select(0, window.MajorTom._term.buffer.active.cursorY, window.MajorTom._term.cols);
+          } else {
+            window.MajorTom._term.clearSelection();
+          }
+        }
+        """
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
+    // MARK: - Orientation / Resize
+
+    /// Trigger a terminal resize via the JS bridge (e.g. after orientation change).
+    /// The fit addon recalculates cols/rows based on the new container dimensions.
+    func triggerResize() {
+        guard let webView else { return }
+        let js = "if(window.MajorTom && window.MajorTom.resize){window.MajorTom.resize()}"
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
     // MARK: - Theme & Font
 
     /// Apply a theme to the live terminal by calling the JS bridge.

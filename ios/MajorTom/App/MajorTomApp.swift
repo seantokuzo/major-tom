@@ -5,12 +5,11 @@ struct MajorTomApp: App {
     @State private var relay = RelayService()
     @State private var officeViewModel = OfficeViewModel()
     @State private var auth = AuthService()
-    @State private var sessionStorage = SessionStorageService()
     @State private var notificationService = NotificationService()
     @State private var liveActivityManager = LiveActivityManager()
     @State private var watchConnectivity = PhoneWatchConnectivityService()
     @State private var achievementsViewModel: AchievementsViewModel?
-    @State private var selectedTab: AppTab = .control
+    @State private var selectedTab: AppTab = .terminal
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -96,6 +95,9 @@ struct MajorTomApp: App {
             .onReceive(NotificationCenter.default.publisher(for: .checkAchievementsFromShortcut)) { _ in
                 handleShortcutAction(.checkAchievements)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .openTerminalFromShortcut)) { _ in
+                handleShortcutAction(.openTerminal)
+            }
             // Check for cross-process shortcut actions (Siri / Shortcuts app) on scene phase change
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
@@ -109,15 +111,9 @@ struct MajorTomApp: App {
 
     private var mainTabView: some View {
         TabView(selection: $selectedTab) {
-            ChatView(relay: relay, storage: sessionStorage)
+            TerminalView(auth: auth, liveActivityManager: liveActivityManager, watchConnectivity: watchConnectivity)
                 .tabItem {
-                    Label("Control", systemImage: "terminal")
-                }
-                .tag(AppTab.control)
-
-            TerminalView(auth: auth)
-                .tabItem {
-                    Label("Shell", systemImage: "apple.terminal")
+                    Label("Terminal", systemImage: "apple.terminal")
                 }
                 .tag(AppTab.terminal)
 
@@ -180,7 +176,7 @@ struct MajorTomApp: App {
     private func handleShortcutAction(_ action: ShortcutActionKey.Action) {
         switch action {
         case .startSession:
-            selectedTab = .control
+            selectedTab = .terminal
             Task {
                 if relay.currentSession == nil {
                     try? await relay.startSession()
@@ -189,16 +185,16 @@ struct MajorTomApp: App {
         case .navigateToOffice:
             selectedTab = .office
         case .showCost:
-            selectedTab = .control
+            selectedTab = .terminal
         case .sendPrompt:
-            selectedTab = .control
+            selectedTab = .terminal
             Task {
                 if let text = WidgetDataProvider.consumePendingPrompt() {
                     try? await relay.sendPrompt(text)
                 }
             }
         case .quickApprove:
-            selectedTab = .control
+            selectedTab = .terminal
             Task {
                 // Prefer the approval that the widget/intent snapshot showed, with a safe fallback.
                 let snapshotApprovalId = WidgetDataProvider.consumePendingApprovalId()
@@ -217,6 +213,8 @@ struct MajorTomApp: App {
                     HapticService.approve()
                 }
             }
+        case .openTerminal:
+            selectedTab = .terminal
         case .toggleGodMode:
             Task {
                 guard WidgetDataProvider.consumeGodModeToggle() else { return }
@@ -241,11 +239,11 @@ struct MajorTomApp: App {
 
     private func handleDeepLink(_ deepLink: NotificationDeepLink) {
         if deepLink.isApproval {
-            selectedTab = .control
+            selectedTab = .terminal
         } else if deepLink.isOffice {
             selectedTab = .office
         } else if deepLink.isSession {
-            selectedTab = .control
+            selectedTab = .terminal
         }
         HapticService.impact(.light)
     }
@@ -272,14 +270,14 @@ struct MajorTomApp: App {
             let requestId = pathComponent ?? "latest"
             resolveApproval(requestId: requestId, approved: false)
         case "session":
-            // Navigate to the Control tab for the session.
+            // Navigate to the Terminal tab for the session.
             // If a specific sessionId is provided and differs from the current session,
             // attach to it so the user sees the right session context.
             if let sessionId = pathComponent,
                relay.currentSession?.id != sessionId {
                 Task { try? await relay.attachSession(id: sessionId) }
             }
-            selectedTab = .control
+            selectedTab = .terminal
             HapticService.impact(.light)
         default:
             break
@@ -301,7 +299,7 @@ struct MajorTomApp: App {
             targetId = requestId
         }
 
-        selectedTab = .control
+        selectedTab = .terminal
         Task {
             let decision: ApprovalDecision = approved ? .allow : .deny
             try? await relay.sendApproval(requestId: targetId, decision: decision)
@@ -336,7 +334,6 @@ struct MajorTomApp: App {
 // MARK: - Tab Enum
 
 enum AppTab: Hashable {
-    case control
     case terminal
     case office
     case connect
