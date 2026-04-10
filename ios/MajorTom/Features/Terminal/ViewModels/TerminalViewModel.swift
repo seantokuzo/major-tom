@@ -318,7 +318,7 @@ final class TerminalViewModel {
     /// Paste text into the terminal via the JS bridge.
     func pasteText(_ text: String) {
         guard let webView else { return }
-        guard let data = try? JSONSerialization.data(withJSONObject: text),
+        guard let data = try? JSONEncoder().encode(text),
               let json = String(data: data, encoding: .utf8) else { return }
         let js = "if(window.MajorTom && window.MajorTom.paste){window.MajorTom.paste(\(json))}"
         webView.evaluateJavaScript(js) { _, _ in }

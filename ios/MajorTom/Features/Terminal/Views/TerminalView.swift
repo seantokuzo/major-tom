@@ -35,6 +35,9 @@ struct TerminalView: View {
     /// Toast message for copy/paste feedback.
     @State private var toastMessage: String?
 
+    /// Timestamp when the terminal first connected — set once, reused for Watch/Activity elapsed time.
+    @State private var terminalStartedAt: Date?
+
     /// Current device orientation — used to trigger resize on rotation.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -163,6 +166,9 @@ struct TerminalView: View {
         .onChange(of: viewModel.terminalTitle) { _, _ in
             updateWatchTerminalState()
         }
+        .onChange(of: viewModel.tabs.count) { _, _ in
+            updateWatchTerminalState()
+        }
         .task {
             await viewModel.keybarViewModel.syncFromRelay()
             // Wait for the JS terminal to initialize before applying synced preferences,
@@ -196,7 +202,7 @@ struct TerminalView: View {
 
     private func showToast(_ message: String) {
         toastMessage = message
-        Task {
+        Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
             if toastMessage == message {
                 toastMessage = nil
@@ -214,7 +220,7 @@ struct TerminalView: View {
                 let sessionInfo = SessionInfo(
                     sessionId: "terminal-\(viewModel.tabId)",
                     sessionName: viewModel.terminalTitle,
-                    workingDir: viewModel.terminalTitle
+                    workingDir: "~"
                 )
                 await liveActivityManager.startActivity(for: sessionInfo)
             case .disconnected:
@@ -234,15 +240,22 @@ struct TerminalView: View {
         let isConnected = viewModel.connectionState == .connected
         let tabCount = viewModel.tabs.count
 
+        // Set startedAt once on connect, clear on disconnect.
+        if isConnected && terminalStartedAt == nil {
+            terminalStartedAt = Date()
+        } else if !isConnected {
+            terminalStartedAt = nil
+        }
+
         // Build a WatchSession representing the terminal
         let session = WatchSession(
             id: "terminal-\(viewModel.tabId)",
             name: viewModel.terminalTitle,
-            workingDir: viewModel.terminalTitle,
+            workingDir: "~",
             status: isConnected ? .active : .idle,
             agentCount: tabCount,
             cost: 0,
-            startedAt: isConnected ? Date() : nil
+            startedAt: isConnected ? terminalStartedAt : nil
         )
 
         watchConnectivity.updateContext(
@@ -252,6 +265,15 @@ struct TerminalView: View {
             latestToolName: isConnected ? "shell" : nil,
             latestToolStatus: isConnected ? "active" : nil
         )
+
+        // Keep the Live Activity in sync with title/tab changes.
+        if isConnected {
+            liveActivityManager.updateTerminalSession(
+                sessionId: "terminal-\(viewModel.tabId)",
+                sessionName: viewModel.terminalTitle,
+                tabCount: tabCount
+            )
+        }
     }
 
     // MARK: - Status Bar

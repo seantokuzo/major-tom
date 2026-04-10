@@ -115,4 +115,7 @@ enum WatchConnectivityKeys {
     static let totalCostToday = "totalCostToday"
     static let pendingApprovalCount = "pendingApprovalCount"
     static let activeSessionCount = "activeSessionCount"
+    static let terminalActive = "terminalActive"
+    static let terminalTabCount = "terminalTabCount"
+    static let terminalTitle = "terminalTitle"
 }
