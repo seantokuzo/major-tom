@@ -3,6 +3,7 @@ import type { SessionManager } from '../sessions/session-manager.js';
 import type { FleetManager } from '../fleet/fleet-manager.js';
 import type { HealthMonitor } from '../health/health-monitor.js';
 import { listWindows } from '../utils/tmux-cli.js';
+import { logger } from '../utils/logger.js';
 
 interface HealthDeps {
   sessionManager: SessionManager;
@@ -61,7 +62,15 @@ export function createHealthRoutes(deps: HealthDeps): FastifyPluginAsync {
     // unnecessary. The endpoint is intentionally kept unauthenticated
     // to avoid coupling Ground Control to the relay's session cookie /
     // PIN flow — it's a management tool, not a user-facing client.
-    fastify.get('/api/admin/status', async (_request: FastifyRequest) => {
+    fastify.get('/api/admin/status', async (request: FastifyRequest, reply) => {
+      // Enforce loopback-only access — reject non-localhost requests
+      const clientIp = request.ip;
+      const isLoopback = clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === '::ffff:127.0.0.1';
+      if (!isLoopback) {
+        logger.warn({ ip: clientIp }, 'Rejected non-loopback request to /api/admin/status');
+        return reply.code(403).send({ error: 'Forbidden — loopback only' });
+      }
+
       const sessions = deps.sessionManager.list();
       const mem = process.memoryUsage();
 

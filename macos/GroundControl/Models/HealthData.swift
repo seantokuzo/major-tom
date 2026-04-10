@@ -34,7 +34,9 @@ struct ConnectedClient: Codable, Equatable, Identifiable, Sendable {
 
     /// Human-readable connection duration relative to now.
     var connectionDuration: String {
-        guard let date = ISO8601DateFormatter().date(from: connectedAt) else {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = formatter.date(from: connectedAt) else {
             return "unknown"
         }
         let interval = Date.now.timeIntervalSince(date)

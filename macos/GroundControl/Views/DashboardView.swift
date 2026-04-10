@@ -117,7 +117,7 @@ struct DashboardView: View {
                             .fontWeight(.semibold)
                             .monospacedDigit()
                             .contentTransition(.numericText())
-                        Text(clients.count == 1 ? "connected" : "connected")
+                        Text(clients.count == 1 ? "client connected" : "clients connected")
                             .foregroundStyle(.secondary)
                     }
 
@@ -174,7 +174,7 @@ struct DashboardView: View {
                             .fontWeight(.semibold)
                             .monospacedDigit()
                             .contentTransition(.numericText())
-                        Text(sessions.count == 1 ? "active" : "active")
+                        Text(sessions.count == 1 ? "active session" : "active sessions")
                             .foregroundStyle(.secondary)
                     }
 
@@ -190,7 +190,7 @@ struct DashboardView: View {
                                     Text(session.workDirName)
                                         .font(.callout)
                                         .lineLimit(1)
-                                    Text(session.sessionId.prefix(8) + "...")
+                                    Text(String(session.sessionId.prefix(8)) + "...")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .monospaced()

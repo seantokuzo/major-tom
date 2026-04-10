@@ -53,6 +53,7 @@ final class RelayClient {
     func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
+        markOffline(error: nil)
     }
 
     // MARK: - Fetch

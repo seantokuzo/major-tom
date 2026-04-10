@@ -106,8 +106,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         connectedAt: m.connectedAt,
       })),
     );
-  }).catch(() => {
-    // Defensive — should never happen in practice
+  }).catch((err: unknown) => {
+    logger.warn({ err }, 'Failed to register WebSocket client tracker with health route');
   });
 
   // ── Achievement event wiring ────────────────────────────────
@@ -1848,7 +1848,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       const legacyAuthToken = process.env['AUTH_TOKEN'];
       const isDevMode = process.env['NODE_ENV'] !== 'production';
 
-      const ua = (request.headers['user-agent'] as string | undefined) ?? 'unknown';
+      const rawUserAgent = request.headers['user-agent'];
+      const ua = (Array.isArray(rawUserAgent) ? rawUserAgent[0] : rawUserAgent) ?? 'unknown';
 
       // Legacy token auth: dev-only, if ?token= matches AUTH_TOKEN env var, skip OAuth
       if (isDevMode && queryToken && legacyAuthToken && queryToken === legacyAuthToken) {
