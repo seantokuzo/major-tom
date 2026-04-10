@@ -203,9 +203,13 @@
               <div class="section-empty">No sessions yet</div>
             {:else}
               {#each sessionStateManager.sessionList as entry (entry.sessionId)}
-                <button
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div
                   class="session-item"
                   class:current={entry.sessionId === relay.sessionId}
+                  role="button"
+                  tabindex="0"
                   onclick={() => handleSessionClick(entry.sessionId)}
                 >
                   <div class="session-row-top">
@@ -227,15 +231,14 @@
                         autofocus
                       />
                     {:else}
-                      <!-- svelte-ignore a11y_click_events_have_key_events -->
-                      <!-- svelte-ignore a11y_no_static_element_interactions -->
-                      <span
-                        class="session-name"
-                        ondblclick={(e) => startRename(entry.sessionId, entry.name, e)}
-                        title="Double-click to rename"
-                      >
+                      <span class="session-name">
                         {entry.name}
                       </span>
+                      <button
+                        class="rename-btn"
+                        onclick={(e) => startRename(entry.sessionId, entry.name, e)}
+                        aria-label="Rename session"
+                      >&#9998;</button>
                     {/if}
                     {#if entry.sessionId === relay.sessionId}
                       <span class="current-badge">current</span>
@@ -256,7 +259,7 @@
                       <span class="meta-agents">{entry.agentCount} agent{entry.agentCount !== 1 ? 's' : ''}</span>
                     {/if}
                   </div>
-                </button>
+                </div>
               {/each}
             {/if}
           </div>
@@ -565,6 +568,20 @@
     font-weight: 700;
     line-height: 1;
   }
+
+  .rename-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 0.7rem;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .rename-btn:hover { color: var(--text-primary); background: var(--surface-hover); }
 
   .session-item {
     display: block;

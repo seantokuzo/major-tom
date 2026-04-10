@@ -28,6 +28,7 @@
   import PermissionModeSwitcher from './lib/components/PermissionModeSwitcher.svelte';
   // ApprovalOverlay disabled — approvals stay in TUI, PWA gets notifications only
   import NavigationDrawer from './lib/components/NavigationDrawer.svelte';
+  import { keybarStore } from './lib/stores/keybar.svelte';
   import FleetPanel from './lib/components/FleetPanel.svelte';
   import FleetIndicator from './lib/components/FleetIndicator.svelte';
   import AnalyticsPanel from './lib/components/AnalyticsPanel.svelte';
@@ -88,8 +89,6 @@
   });
 
   // ── Keybar sync — pull config from relay after auth resolves ─
-  import { keybarStore } from './lib/stores/keybar.svelte';
-
   $effect(() => {
     if (relay.authChecked && relay.user) {
       void keybarStore.syncFromRelay();

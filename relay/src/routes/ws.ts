@@ -1659,7 +1659,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       });
 
       // Push notification — "Claude is done working"
-      const sessionName = session?.workingDir?.split('/').pop() ?? result.sessionId.slice(0, 8);
+      const sessionName = session?.workingDir ? basename(session.workingDir) || result.sessionId.slice(0, 8) : result.sessionId.slice(0, 8);
       pushManager.notifyAll({
         type: 'done',
         title: 'Major Tom',
