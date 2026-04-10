@@ -21,15 +21,13 @@ enum ManagementSection: String, CaseIterable, Identifiable {
 
 /// Management window with sidebar navigation.
 ///
-/// Only the Logs section is functional in Wave 2.
-/// Other sections show placeholder content.
+/// Dashboard (Wave 3) and Logs (Wave 2) are functional.
+/// Configuration and Security show placeholder content.
 struct ManagementWindow: View {
-    /// Retained for future sections (Dashboard, Configuration, Security) that need relay state.
-    // swiftlint:disable:next unused_declaration
     let relay: RelayProcess
     let logStore: LogStore
 
-    @State private var selectedSection: ManagementSection = .logs
+    @State private var selectedSection: ManagementSection = .dashboard
 
     var body: some View {
         NavigationSplitView {
@@ -57,14 +55,10 @@ struct ManagementWindow: View {
     @ViewBuilder
     private var detail: some View {
         switch selectedSection {
+        case .dashboard:
+            DashboardView(relay: relay)
         case .logs:
             LogView(logStore: logStore)
-        case .dashboard:
-            placeholderView(
-                icon: ManagementSection.dashboard.sfSymbol,
-                title: "Dashboard",
-                subtitle: "Relay status and metrics coming soon."
-            )
         case .configuration:
             placeholderView(
                 icon: ManagementSection.configuration.sfSymbol,
