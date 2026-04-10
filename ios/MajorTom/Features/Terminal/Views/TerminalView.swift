@@ -35,6 +35,10 @@ struct TerminalView: View {
     /// Toast message for copy/paste feedback.
     @State private var toastMessage: String?
 
+    /// Stable session ID for Live Activity and Watch — doesn't drift with tab switches.
+    /// There is one terminal session with multiple tabs inside it; identity is fixed.
+    private let terminalSessionId = "terminal-session"
+
     /// Timestamp when the terminal first connected — set once, reused for Watch/Activity elapsed time.
     @State private var terminalStartedAt: Date?
 
@@ -218,15 +222,15 @@ struct TerminalView: View {
             switch state {
             case .connected:
                 let sessionInfo = SessionInfo(
-                    sessionId: "terminal-\(viewModel.tabId)",
+                    sessionId: terminalSessionId,
                     sessionName: viewModel.terminalTitle,
                     workingDir: "~"
                 )
                 await liveActivityManager.startActivity(for: sessionInfo)
             case .disconnected:
-                await liveActivityManager.endActivity(for: "terminal-\(viewModel.tabId)")
+                await liveActivityManager.endActivity(for: terminalSessionId)
             case .error:
-                await liveActivityManager.endActivity(for: "terminal-\(viewModel.tabId)")
+                await liveActivityManager.endActivity(for: terminalSessionId)
             case .connecting:
                 break
             }
@@ -247,29 +251,17 @@ struct TerminalView: View {
             terminalStartedAt = nil
         }
 
-        // Build a WatchSession representing the terminal
-        let session = WatchSession(
-            id: "terminal-\(viewModel.tabId)",
-            name: viewModel.terminalTitle,
-            workingDir: "~",
-            status: isConnected ? .active : .idle,
-            agentCount: tabCount,
-            cost: 0,
-            startedAt: isConnected ? terminalStartedAt : nil
-        )
-
-        watchConnectivity.updateContext(
-            sessions: [session],
-            fleetSummary: nil,
-            isRelayConnected: isConnected,
-            latestToolName: isConnected ? "shell" : nil,
-            latestToolStatus: isConnected ? "active" : nil
+        // Send only terminal-specific keys — don't overwrite relay context.
+        watchConnectivity.updateTerminalContext(
+            isActive: isConnected,
+            tabCount: tabCount,
+            title: viewModel.terminalTitle
         )
 
         // Keep the Live Activity in sync with title/tab changes.
         if isConnected {
             liveActivityManager.updateTerminalSession(
-                sessionId: "terminal-\(viewModel.tabId)",
+                sessionId: terminalSessionId,
                 sessionName: viewModel.terminalTitle,
                 tabCount: tabCount
             )
