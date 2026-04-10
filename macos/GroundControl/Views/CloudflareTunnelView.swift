@@ -9,22 +9,19 @@ struct CloudflareTunnelView: View {
 
     @State private var tunnelToken = ""
     @State private var showToken = false
+    @State private var tokenSaveTask: Task<Void, Never>?
 
-    /// Derived status label for the tunnel.
+    /// Derived status label for the tunnel (uses @State to avoid Keychain reads during recomputation).
     private var statusText: String {
         if !configManager.config.cloudflareEnabled {
             return "Disabled"
         }
-        let hasToken = !(configManager.getSecret(ConfigManager.SecretKey.cloudflareToken) ?? "").isEmpty
-            || !tunnelToken.isEmpty
-        return hasToken ? "Token saved" : "Not configured"
+        return !tunnelToken.isEmpty ? "Token saved" : "Not configured"
     }
 
     private var statusColor: Color {
         if !configManager.config.cloudflareEnabled { return .secondary }
-        let hasToken = !(configManager.getSecret(ConfigManager.SecretKey.cloudflareToken) ?? "").isEmpty
-            || !tunnelToken.isEmpty
-        return hasToken ? .green : .orange
+        return !tunnelToken.isEmpty ? .green : .orange
     }
 
     var body: some View {
@@ -81,11 +78,16 @@ struct CloudflareTunnelView: View {
             tunnelToken = configManager.getSecret(ConfigManager.SecretKey.cloudflareToken) ?? ""
         }
         .onChange(of: tunnelToken) {
-            // Persist token changes to Keychain immediately
-            if tunnelToken.isEmpty {
-                configManager.deleteSecret(ConfigManager.SecretKey.cloudflareToken)
-            } else {
-                configManager.setSecret(ConfigManager.SecretKey.cloudflareToken, value: tunnelToken)
+            // Debounce Keychain writes — only persist after 1s of inactivity
+            tokenSaveTask?.cancel()
+            tokenSaveTask = Task {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                if tunnelToken.isEmpty {
+                    configManager.deleteSecret(ConfigManager.SecretKey.cloudflareToken)
+                } else {
+                    configManager.setSecret(ConfigManager.SecretKey.cloudflareToken, value: tunnelToken)
+                }
             }
         }
     }

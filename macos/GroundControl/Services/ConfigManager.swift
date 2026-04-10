@@ -33,9 +33,15 @@ final class ConfigManager {
     // MARK: - Init
 
     init() {
+        let fileExisted = FileManager.default.fileExists(atPath: ConfigManager.configFileURL.path)
         let loaded = ConfigManager.loadFromDisk()
         self.config = loaded
         self.lastSavedConfig = loaded
+
+        // Write defaults on first launch so config.json exists on disk
+        if !fileExisted {
+            try? save()
+        }
     }
 
     // MARK: - Config File I/O
