@@ -101,9 +101,11 @@
   function initTerminal() {
     var theme = config.theme || {};
 
+    var initialFontSize = (config.fontSize && config.fontSize >= 8 && config.fontSize <= 32) ? config.fontSize : 14;
+
     term = new Terminal({
       fontFamily: 'SF Mono, ui-monospace, Menlo, monospace',
-      fontSize: 13,
+      fontSize: initialFontSize,
       cursorBlink: true,
       allowProposedApi: true,
       scrollback: 5000,
@@ -445,6 +447,19 @@
     setTheme: function(theme) {
       if (term) {
         term.options.theme = theme;
+      }
+    },
+
+    /**
+     * Update terminal font size and refit.
+     * @param {number} size - Font size in pixels (8-32)
+     */
+    setFontSize: function(size) {
+      if (term && size >= 8 && size <= 32) {
+        term.options.fontSize = size;
+        if (fitAddon) {
+          try { fitAddon.fit(); } catch (e) { /* ignore */ }
+        }
       }
     },
 

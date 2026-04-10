@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		00C9B06A8AC4D461EBF507D6 /* FleetSessionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45C4E7F8614EBC3A8F2BB5C7 /* FleetSessionRow.swift */; };
 		00D5C37F9BC512C8E0290120 /* GitHubIssuesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4179D89400E69FF84FE744EA /* GitHubIssuesView.swift */; };
+		014B9A0D2E162DF44B93538F /* TerminalSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E330B7013F0151901B3BF271 /* TerminalSettingsView.swift */; };
 		01CF88DD53BD425A8BB52F59 /* OfficeLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2A5F6ECD6AEA9681C140DA3 /* OfficeLayout.swift */; };
 		05C0C742F30E2EDFA11347D0 /* FileContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6DBE8EE08D1C4498E7F3D4 /* FileContextView.swift */; };
 		07F6D478AD81C3549F81ECEB /* ModelDistributionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0C705C7B75FC8AADBDC2F9 /* ModelDistributionView.swift */; };
@@ -24,6 +25,7 @@
 		1ECF57AD1993033DCCF73DB5 /* OfficeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 794D98FF20DC91F49542FE7D /* OfficeViewModel.swift */; };
 		1FB9124E49F11A762382E6A9 /* SpecialtyKeyGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908E6CFCF4E1F5F05D0AE4C3 /* SpecialtyKeyGrid.swift */; };
 		2211645B8B3E1BF5093FE2CD /* MoodEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 579C4AF5EF7599467490F248 /* MoodEngine.swift */; };
+		22A50E5C5D84EFE896C415FF /* KeybarCustomizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D14F27776863DA81864B0F1 /* KeybarCustomizer.swift */; };
 		236F9F1B1379B823DB4FD5DB /* MajorTomWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCBDA7E064D0179C4FD35A17 /* MajorTomWidgetsBundle.swift */; };
 		241AFDC78C513CD9E223E14B /* PromptHistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01A77A2D40CD2418227CFFA /* PromptHistoryViewModel.swift */; };
 		26964C3030E1F083E2CD9348 /* CostChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDAE68402A08DCDB8ACF6CC6 /* CostChartView.swift */; };
@@ -67,6 +69,7 @@
 		682709FF9F9B3B74B4354939 /* ProgressRing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8656C4CC55FCA4FDE0434BE3 /* ProgressRing.swift */; };
 		6842CC155924DD2F8E828C18 /* WebSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C13191C0A248C84CA6959981 /* WebSocketClient.swift */; };
 		688A8874D97CF87B709FC013 /* CharacterGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E176705EB6880868FE05573E /* CharacterGalleryView.swift */; };
+		6894059C83BB1BFF450749C2 /* KeybarViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C42B106DA406C73C9B93D02 /* KeybarViewModel.swift */; };
 		6B85090B7B87D7EDCACEFC85 /* WidgetColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81DAC50CC5B48331EA08A225 /* WidgetColors.swift */; };
 		6BFB6FEFB30CCF68661CADA6 /* AchievementBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0CCFCC6A1C6E9E8DE8AE5A2 /* AchievementBadge.swift */; };
 		6C1C58D6705B5201DC10755F /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6657773292DC21D71241871E /* ChatView.swift */; };
@@ -114,6 +117,7 @@
 		B0C9D2C6266E89D3013542BB /* FleetWorkerCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27113A30A32A3F67614DC533 /* FleetWorkerCard.swift */; };
 		B13516C2AA172411121E901D /* ApprovalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35C91B03433BBF7C8E5EEF21 /* ApprovalView.swift */; };
 		B15C42444B5CD22C9DC12CC6 /* ActiveSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B0B76AD9D8C9446A7C7BA51 /* ActiveSessionsView.swift */; };
+		B20DCD81DEC28F837CDDCE18 /* TerminalTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14709F4508AF70E3A9411DC7 /* TerminalTheme.swift */; };
 		B384AD912E4F5F5AC8F5C0AE /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D7AADF76003BF7A6688FCD0 /* SpeechService.swift */; };
 		B3AFF958EA029C5CCBD0E16F /* ApprovalViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 880169FEDDBE6732F79039AC /* ApprovalViewModel.swift */; };
 		B7F0B7EF40820D1ACBD5720D /* Annotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A36A4C7C1708949F54A7FB29 /* Annotation.swift */; };
@@ -212,6 +216,7 @@
 		11221A86D528743D2A8857BE /* MajorTomDynamicIsland.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomDynamicIsland.swift; sourceTree = "<group>"; };
 		1214D167C32053AA742DF101 /* MajorTomWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomWatchApp.swift; sourceTree = "<group>"; };
 		12F88005107C4A255AA3A9B4 /* NativeKeybar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeKeybar.swift; sourceTree = "<group>"; };
+		14709F4508AF70E3A9411DC7 /* TerminalTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTheme.swift; sourceTree = "<group>"; };
 		1494C1C717DD39A7E7813BF7 /* PermissionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionViewModel.swift; sourceTree = "<group>"; };
 		1681F6A43D64EB007106125F /* terminal.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = terminal.html; sourceTree = "<group>"; };
 		177E95044756377A532D2A5F /* AuditLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditLogView.swift; sourceTree = "<group>"; };
@@ -235,6 +240,7 @@
 		3AC497E5E769C0087E856232 /* ApprovalCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalCard.swift; sourceTree = "<group>"; };
 		3BF2DF38E87E425D2926A8FE /* GitPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitPanelView.swift; sourceTree = "<group>"; };
 		3C243979CB87B28424C0EC73 /* FleetViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetViewModel.swift; sourceTree = "<group>"; };
+		3C42B106DA406C73C9B93D02 /* KeybarViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeybarViewModel.swift; sourceTree = "<group>"; };
 		3DE560D080ED5614FD0F6AFA /* xterm.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = xterm.min.js; sourceTree = "<group>"; };
 		3EFA6BF23E66D2305D236B9B /* TemplateListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateListView.swift; sourceTree = "<group>"; };
 		4179D89400E69FF84FE744EA /* GitHubIssuesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubIssuesView.swift; sourceTree = "<group>"; };
@@ -268,6 +274,7 @@
 		696B3D1600947ADCE81C436C /* StatusGlanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusGlanceView.swift; sourceTree = "<group>"; };
 		6A6B155FB1E10E586EFA12AC /* AgentInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentInspectorView.swift; sourceTree = "<group>"; };
 		6C4FC6C7F8AA0ACAD27D5D54 /* DirectoryPermissionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryPermissionsView.swift; sourceTree = "<group>"; };
+		6D14F27776863DA81864B0F1 /* KeybarCustomizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeybarCustomizer.swift; sourceTree = "<group>"; };
 		6DA07545B6E9F73EED9477FB /* SessionStatusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStatusWidget.swift; sourceTree = "<group>"; };
 		6E56BE06976EFB6DAC4215EE /* VoiceInputButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputButton.swift; sourceTree = "<group>"; };
 		6E652FADA594D09DB757B828 /* SessionCountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCountView.swift; sourceTree = "<group>"; };
@@ -349,6 +356,7 @@
 		E104B2CEBAA36B9B97E254AA /* CloseTabConfirm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloseTabConfirm.swift; sourceTree = "<group>"; };
 		E12E82C2CDBC2751A59C34B6 /* GitStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitStatusView.swift; sourceTree = "<group>"; };
 		E176705EB6880868FE05573E /* CharacterGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterGalleryView.swift; sourceTree = "<group>"; };
+		E330B7013F0151901B3BF271 /* TerminalSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSettingsView.swift; sourceTree = "<group>"; };
 		E659E1885E32B1187E8C3703 /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
 		E7FA07A9DCD7F42613309990 /* SessionTimelineProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTimelineProvider.swift; sourceTree = "<group>"; };
 		E8A12203B4DD9D8C97600EC6 /* ContextChipView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextChipView.swift; sourceTree = "<group>"; };
@@ -451,6 +459,7 @@
 		0F5E1D6D2B523251B35E5320 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				3C42B106DA406C73C9B93D02 /* KeybarViewModel.swift */,
 				689B672DDD255A39492A755E /* TerminalViewModel.swift */,
 			);
 			path = ViewModels;
@@ -737,8 +746,10 @@
 			isa = PBXGroup;
 			children = (
 				E104B2CEBAA36B9B97E254AA /* CloseTabConfirm.swift */,
+				6D14F27776863DA81864B0F1 /* KeybarCustomizer.swift */,
 				12F88005107C4A255AA3A9B4 /* NativeKeybar.swift */,
 				908E6CFCF4E1F5F05D0AE4C3 /* SpecialtyKeyGrid.swift */,
+				E330B7013F0151901B3BF271 /* TerminalSettingsView.swift */,
 				CEE5C5DC2463A313FEDD6406 /* TerminalTabBar.swift */,
 				08B5EA37D9C8CAB62E22FA9E /* TerminalView.swift */,
 				FB1670D9369405523BC6911E /* TerminalWebView.swift */,
@@ -911,6 +922,7 @@
 			children = (
 				44CC6040BB95650DF4152EE8 /* KeySpec.swift */,
 				98BCC0CB0F9FD6AB70872448 /* TerminalTab.swift */,
+				14709F4508AF70E3A9411DC7 /* TerminalTheme.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -1588,6 +1600,8 @@
 				C73A60CB24EFABD14D9C2A2F /* GodModeConfirmation.swift in Sources */,
 				8294293F9EF30CBEED38BFC6 /* HapticService.swift in Sources */,
 				8A47BE851B898A4D0899F183 /* KeySpec.swift in Sources */,
+				22A50E5C5D84EFE896C415FF /* KeybarCustomizer.swift in Sources */,
+				6894059C83BB1BFF450749C2 /* KeybarViewModel.swift in Sources */,
 				36B33910C927C9BBAC0813A7 /* KeychainService.swift in Sources */,
 				E8857FD8E62501F637B7EDA9 /* LiveActivityManager.swift in Sources */,
 				ECE7FC357B702CB405A5F331 /* MajorTomActivity.swift in Sources */,
@@ -1641,8 +1655,10 @@
 				9CD2E53B7E3E03544247C57C /* TemplateEditorView.swift in Sources */,
 				4F038F899716358276CDA57D /* TemplateListView.swift in Sources */,
 				8AF181059859C1E5F1FBEE38 /* TemplateViewModel.swift in Sources */,
+				014B9A0D2E162DF44B93538F /* TerminalSettingsView.swift in Sources */,
 				27B11F1CEE9D5951F2C500F0 /* TerminalTab.swift in Sources */,
 				E147B9996C907362442F395A /* TerminalTabBar.swift in Sources */,
+				B20DCD81DEC28F837CDDCE18 /* TerminalTheme.swift in Sources */,
 				FE62ADBFD8D61511DAA7AC76 /* TerminalView.swift in Sources */,
 				0F30CC544A16BDFDF67FCF16 /* TerminalViewModel.swift in Sources */,
 				D5F7ABD14733BA4E98FE10F9 /* TerminalWebView.swift in Sources */,

@@ -9,6 +9,9 @@ import SwiftUI
 ///
 /// Wave 3: Multi-tab support. The TerminalTabBar sits above the terminal area
 /// and lets users create, switch, and close tmux windows (tabs).
+///
+/// Wave 4: Settings sheet with theme picker, font size slider, and keybar
+/// customization. Gear icon in the status bar presents TerminalSettingsView.
 struct TerminalView: View {
     let auth: AuthService
 
@@ -16,6 +19,9 @@ struct TerminalView: View {
 
     /// Whether the specialty key grid is visible.
     @State private var showSpecialtyGrid = false
+
+    /// Whether the terminal settings sheet is presented.
+    @State private var showSettings = false
 
     init(auth: AuthService) {
         self.auth = auth
@@ -59,7 +65,8 @@ struct TerminalView: View {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 showSpecialtyGrid = false
                             }
-                        }
+                        },
+                        keys: viewModel.keybarViewModel.specialtyKeys
                     )
                 }
 
@@ -80,7 +87,8 @@ struct TerminalView: View {
                                 showSpecialtyGrid.toggle()
                             }
                         },
-                        specialtyGridVisible: showSpecialtyGrid
+                        specialtyGridVisible: showSpecialtyGrid,
+                        keys: viewModel.keybarViewModel.accessoryKeys
                     )
                 }
             }
@@ -92,6 +100,21 @@ struct TerminalView: View {
                 viewModel.confirmCloseTab()
             }
         )
+        .sheet(isPresented: $showSettings) {
+            TerminalSettingsView(
+                keybarViewModel: viewModel.keybarViewModel,
+                onFontSizeChange: { size in
+                    viewModel.applyFontSize(size)
+                },
+                onThemeChange: { theme in
+                    viewModel.applyTheme(theme)
+                }
+            )
+            .presentationDetents([.medium, .large])
+        }
+        .task {
+            await viewModel.keybarViewModel.syncFromRelay()
+        }
     }
 
     // MARK: - Status Bar
@@ -114,6 +137,18 @@ struct TerminalView: View {
                 Text("\(viewModel.cols)x\(viewModel.rows)")
                     .font(MajorTomTheme.Typography.codeFontSmall)
                     .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+            }
+
+            // Settings gear
+            Button {
+                HapticService.buttonTap()
+                showSettings = true
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
         }
         .padding(.horizontal, MajorTomTheme.Spacing.md)
