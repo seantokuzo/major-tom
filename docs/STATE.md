@@ -4,7 +4,7 @@
 
 ## Current Phase
 
-Two parallel tracks running on `main` (no long-lived branches — each wave is a short-lived PR branch):
+Both parallel tracks COMPLETE — all 5 waves shipped for each:
 
 ### Ground Control (macOS relay manager)
 
@@ -16,9 +16,7 @@ Spec: `docs/GROUND-CONTROL.md`
 | 2 — Log Viewer | DONE | #100 |
 | 3 — Dashboard | DONE | #102 |
 | 4 — Configuration | DONE | #104, #106, #108 |
-| **5 — Security & Polish** | **NEXT** | — |
-
-**Wave 5 scope:** Security panel (connected devices, session revocation), first-run onboarding, menu bar icon status colors, notarization prep. See `docs/GROUND-CONTROL.md` Wave 5 section.
+| 5 — Security & Polish | DONE | #109 |
 
 ### Phase 14 "SwiftTerm" (iOS native terminal)
 
@@ -30,9 +28,7 @@ Spec: `docs/PHASE-14-SWIFTTERM.md`
 | 2 — Keyboard & Input | DONE | #99 |
 | 3 — Multi-Tab Support | DONE | #103 |
 | 4 — Customization & Sync | DONE | #105, #107, #108 |
-| **5 — Polish & Integration** | **NEXT** | — |
-
-**Wave 5 scope:** Terminal as default tab, Dynamic Island/Live Activity integration, Watch status, Siri shortcuts, copy/paste mode, orientation transitions, memory leak audit. See `docs/PHASE-14-SWIFTTERM.md` Wave 5 section.
+| 5 — Polish & Integration | DONE | #110 |
 
 ## Prior Phases (all complete)
 
