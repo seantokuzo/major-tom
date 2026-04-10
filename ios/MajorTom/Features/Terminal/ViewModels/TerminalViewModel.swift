@@ -68,10 +68,16 @@ final class TerminalViewModel {
     var connectionState: TerminalConnectionState = .disconnected
 
     /// The active tab ID for the tmux window.
-    var tabId: String = "default"
+    /// Derived from the active tab in the `tabs` array.
+    var tabId: String {
+        activeTab?.tabId ?? "default"
+    }
 
     /// Terminal title (set by xterm title escape sequence).
-    var terminalTitle: String = "Terminal"
+    /// Derived from the active tab's title.
+    var terminalTitle: String {
+        activeTab?.title ?? "Terminal"
+    }
 
     /// Current terminal dimensions.
     var cols: Int = 80
@@ -87,11 +93,106 @@ final class TerminalViewModel {
     /// Set by TerminalWebView's makeUIView; nilled automatically on dealloc.
     weak var webView: WKWebView?
 
+    // MARK: - Multi-Tab State
+
+    /// All open terminal tabs.
+    var tabs: [TerminalTab] = []
+
+    /// The ID of the tab pending close confirmation (when user taps close).
+    var pendingCloseTabId: UUID?
+
+    /// Whether the close-tab confirmation dialog is showing.
+    var showCloseConfirmation: Bool = false
+
+    /// Signals the web view to switch to a new tab (disconnect + reconnect).
+    /// Set by `switchTab(id:)`, consumed by TerminalWebView's `updateUIView`.
+    var pendingTabSwitch: String?
+
+    /// The currently active tab, if any.
+    var activeTab: TerminalTab? {
+        tabs.first(where: { $0.isActive })
+    }
+
     /// Reference to the auth service for relay URL and token.
     private let auth: AuthService
 
     init(auth: AuthService) {
         self.auth = auth
+        // Create the initial default tab.
+        let initialTab = TerminalTab(title: "Terminal", isActive: true)
+        self.tabs = [initialTab]
+    }
+
+    // MARK: - Tab Management
+
+    /// Create a new tab and switch to it.
+    func createTab() {
+        // Deactivate all existing tabs.
+        for i in tabs.indices {
+            tabs[i].isActive = false
+        }
+
+        let newTab = TerminalTab(title: "Terminal", isActive: true)
+        tabs.append(newTab)
+
+        // Signal the web view to connect to the new tab.
+        pendingTabSwitch = newTab.tabId
+    }
+
+    /// Close a tab by its ID.
+    ///
+    /// If the closed tab was active, switches to the nearest neighbor.
+    /// If it was the last tab, creates a fresh one (never zero tabs).
+    func closeTab(id: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+
+        let wasActive = tabs[index].isActive
+        tabs.remove(at: index)
+
+        // Never allow zero tabs — create a fresh one.
+        if tabs.isEmpty {
+            let newTab = TerminalTab(title: "Terminal", isActive: true)
+            tabs.append(newTab)
+            pendingTabSwitch = newTab.tabId
+            return
+        }
+
+        // If the closed tab was active, switch to a neighbor.
+        if wasActive {
+            let newIndex = min(index, tabs.count - 1)
+            tabs[newIndex].isActive = true
+            pendingTabSwitch = tabs[newIndex].tabId
+        }
+    }
+
+    /// Request to close a tab — shows confirmation dialog.
+    func requestCloseTab(id: UUID) {
+        pendingCloseTabId = id
+        showCloseConfirmation = true
+    }
+
+    /// Confirm and execute the pending tab close.
+    func confirmCloseTab() {
+        guard let tabId = pendingCloseTabId else { return }
+        pendingCloseTabId = nil
+        closeTab(id: tabId)
+    }
+
+    /// Switch to a different tab by its ID.
+    func switchTab(id: UUID) {
+        guard let targetIndex = tabs.firstIndex(where: { $0.id == id }) else { return }
+
+        // Already active — nothing to do.
+        if tabs[targetIndex].isActive { return }
+
+        // Deactivate all, activate target.
+        for i in tabs.indices {
+            tabs[i].isActive = false
+        }
+        tabs[targetIndex].isActive = true
+
+        // Signal the web view to disconnect current and connect to the new tab.
+        pendingTabSwitch = tabs[targetIndex].tabId
     }
 
     // MARK: - Relay Configuration
@@ -188,9 +289,16 @@ final class TerminalViewModel {
         case .ready:
             isReady = true
 
-        case .connected(let tabId):
-            self.tabId = tabId
+        case .connected(let connectedTabId):
+            // Update the active tab's tabId if the relay confirmed it.
             connectionState = .connected
+            // Mark the matching tab as connected (relay may echo back the tabId).
+            if let index = tabs.firstIndex(where: { $0.tabId == connectedTabId }) {
+                // Ensure only this tab is active.
+                for i in tabs.indices {
+                    tabs[i].isActive = (i == index)
+                }
+            }
 
         case .disconnected(let code, let reason):
             connectionState = .disconnected
@@ -202,7 +310,11 @@ final class TerminalViewModel {
             HapticService.impact(.light)
 
         case .title(let title):
-            terminalTitle = title.isEmpty ? "Terminal" : title
+            // Update the active tab's title from xterm title escape sequence.
+            let newTitle = title.isEmpty ? "Terminal" : title
+            if let index = tabs.firstIndex(where: { $0.isActive }) {
+                tabs[index].title = newTitle
+            }
 
         case .selection(let text):
             UIPasteboard.general.string = text

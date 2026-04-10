@@ -27,6 +27,7 @@
 		236F9F1B1379B823DB4FD5DB /* MajorTomWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCBDA7E064D0179C4FD35A17 /* MajorTomWidgetsBundle.swift */; };
 		241AFDC78C513CD9E223E14B /* PromptHistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01A77A2D40CD2418227CFFA /* PromptHistoryViewModel.swift */; };
 		26964C3030E1F083E2CD9348 /* CostChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDAE68402A08DCDB8ACF6CC6 /* CostChartView.swift */; };
+		27B11F1CEE9D5951F2C500F0 /* TerminalTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98BCC0CB0F9FD6AB70872448 /* TerminalTab.swift */; };
 		288F12D3D96E0A65C44898AB /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 86E24365BDAFFF829D7D95B8 /* ActivityKit.framework */; };
 		2893EC2341883FD3CB72E6F5 /* MajorTomLiveActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0656AE4C6DEE802350E31BF /* MajorTomLiveActivityView.swift */; };
 		2CD2BE4AF89623E36046AEF2 /* ApprovalRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CAFA24AC1299FAEA55E2C0B /* ApprovalRequest.swift */; };
@@ -76,6 +77,7 @@
 		73C3300EC83340590AE6DEEC /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99396FACEBA85FA298D818E8 /* WidgetKit.framework */; };
 		74BC84A25FAE29C592011D14 /* VoiceInputButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E56BE06976EFB6DAC4215EE /* VoiceInputButton.swift */; };
 		7800B5EFB116E5708F3A6300 /* SessionCostRankingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CFE6DFB18C709862C80D1B4 /* SessionCostRankingView.swift */; };
+		7D680AE80F01D84BF6209698 /* CloseTabConfirm.swift in Sources */ = {isa = PBXBuildFile; fileRef = E104B2CEBAA36B9B97E254AA /* CloseTabConfirm.swift */; };
 		818FA51F81C18CFE08B3C097 /* PairingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526DF9EAD13F47F747C7ACC3 /* PairingViewModel.swift */; };
 		8294293F9EF30CBEED38BFC6 /* HapticService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7794C5813F5964F288D432AD /* HapticService.swift */; };
 		83C02DEBD2B6488A47A08A65 /* ModePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66594811ED284A67510E10AE /* ModePickerView.swift */; };
@@ -146,6 +148,7 @@
 		DAF8846049213892ED759F17 /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AED0FBA701051A3E384D032F /* WatchModels.swift */; };
 		DCB6D7EDF870D5026A60DD40 /* WidgetDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C930886C2C3C06157C3BEAE /* WidgetDataProvider.swift */; };
 		DEC7A03BAD629CB026FDD77F /* DeviceManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B2D2956D7BBBE520D548CED /* DeviceManagementView.swift */; };
+		E147B9996C907362442F395A /* TerminalTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEE5C5DC2463A313FEDD6406 /* TerminalTabBar.swift */; };
 		E33E3AB2F7B8D363195066CE /* Command.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85D1943B475C9654A302EA24 /* Command.swift */; };
 		E4C11D19C5CBC7B5653532FD /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 345B4AA475B96036D85853BA /* Theme.swift */; };
 		E8857FD8E62501F637B7EDA9 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5795954485F00C86256F6533 /* LiveActivityManager.swift */; };
@@ -301,6 +304,7 @@
 		91CC00DFBC23B1D7A0EC631C /* WatchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModels.swift; sourceTree = "<group>"; };
 		944EEB19C6C12FD8F9F43846 /* STATUS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = STATUS.md; sourceTree = "<group>"; };
 		96C1E3AF7CCC785A62706B1F /* MajorTomWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MajorTomWidgets.entitlements; sourceTree = "<group>"; };
+		98BCC0CB0F9FD6AB70872448 /* TerminalTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTab.swift; sourceTree = "<group>"; };
 		99396FACEBA85FA298D818E8 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		9E41011D1A5C03C795509B68 /* MajorTomWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MajorTomWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A198759EB4EA086A9CBF595F /* AchievementsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementsViewModel.swift; sourceTree = "<group>"; };
@@ -330,6 +334,7 @@
 		CC19E99FB3AAD181F192CD3B /* MessageCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageCodec.swift; sourceTree = "<group>"; };
 		CCBDA7E064D0179C4FD35A17 /* MajorTomWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomWidgetsBundle.swift; sourceTree = "<group>"; };
 		CCDB924E236ABFE12B68C803 /* ActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityManager.swift; sourceTree = "<group>"; };
+		CEE5C5DC2463A313FEDD6406 /* TerminalTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTabBar.swift; sourceTree = "<group>"; };
 		CF16084D9274212487A6B7CC /* TokenBreakdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenBreakdownView.swift; sourceTree = "<group>"; };
 		D06F8E498C8D1F63A30D6A5F /* RateLimitSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateLimitSettingsView.swift; sourceTree = "<group>"; };
 		D136B4051E73808BE748883D /* MajorTomWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = MajorTomWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -341,6 +346,7 @@
 		DDAE68402A08DCDB8ACF6CC6 /* CostChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostChartView.swift; sourceTree = "<group>"; };
 		DEEC8301336B2489A2BD0E74 /* xterm.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = xterm.css; sourceTree = "<group>"; };
 		E056D47F9B40C746E3CF4F0A /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		E104B2CEBAA36B9B97E254AA /* CloseTabConfirm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloseTabConfirm.swift; sourceTree = "<group>"; };
 		E12E82C2CDBC2751A59C34B6 /* GitStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitStatusView.swift; sourceTree = "<group>"; };
 		E176705EB6880868FE05573E /* CharacterGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterGalleryView.swift; sourceTree = "<group>"; };
 		E659E1885E32B1187E8C3703 /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
@@ -730,8 +736,10 @@
 		3DE6E199560ED8BF5FFCE9F1 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				E104B2CEBAA36B9B97E254AA /* CloseTabConfirm.swift */,
 				12F88005107C4A255AA3A9B4 /* NativeKeybar.swift */,
 				908E6CFCF4E1F5F05D0AE4C3 /* SpecialtyKeyGrid.swift */,
+				CEE5C5DC2463A313FEDD6406 /* TerminalTabBar.swift */,
 				08B5EA37D9C8CAB62E22FA9E /* TerminalView.swift */,
 				FB1670D9369405523BC6911E /* TerminalWebView.swift */,
 			);
@@ -902,6 +910,7 @@
 			isa = PBXGroup;
 			children = (
 				44CC6040BB95650DF4152EE8 /* KeySpec.swift */,
+				98BCC0CB0F9FD6AB70872448 /* TerminalTab.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -1548,6 +1557,7 @@
 				688A8874D97CF87B709FC013 /* CharacterGalleryView.swift in Sources */,
 				6C1C58D6705B5201DC10755F /* ChatView.swift in Sources */,
 				CFCBB89895F30259222DD268 /* ChatViewModel.swift in Sources */,
+				7D680AE80F01D84BF6209698 /* CloseTabConfirm.swift in Sources */,
 				D919E02E075F0907DC4F66E0 /* CodeBlockView.swift in Sources */,
 				E33E3AB2F7B8D363195066CE /* Command.swift in Sources */,
 				8FB3EDDC5BF48B634AD7D376 /* CommandPaletteView.swift in Sources */,
@@ -1631,6 +1641,8 @@
 				9CD2E53B7E3E03544247C57C /* TemplateEditorView.swift in Sources */,
 				4F038F899716358276CDA57D /* TemplateListView.swift in Sources */,
 				8AF181059859C1E5F1FBEE38 /* TemplateViewModel.swift in Sources */,
+				27B11F1CEE9D5951F2C500F0 /* TerminalTab.swift in Sources */,
+				E147B9996C907362442F395A /* TerminalTabBar.swift in Sources */,
 				FE62ADBFD8D61511DAA7AC76 /* TerminalView.swift in Sources */,
 				0F30CC544A16BDFDF67FCF16 /* TerminalViewModel.swift in Sources */,
 				D5F7ABD14733BA4E98FE10F9 /* TerminalWebView.swift in Sources */,

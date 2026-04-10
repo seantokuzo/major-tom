@@ -6,6 +6,9 @@ import SwiftUI
 /// keyboard with specialty keys (Esc, Tab, Ctrl, arrows). The SpecialtyKeyGrid
 /// slides up as an alternative to the iOS keyboard with function keys, Ctrl
 /// combos, tmux shortcuts, and symbols.
+///
+/// Wave 3: Multi-tab support. The TerminalTabBar sits above the terminal area
+/// and lets users create, switch, and close tmux windows (tabs).
 struct TerminalView: View {
     let auth: AuthService
 
@@ -28,6 +31,20 @@ struct TerminalView: View {
             VStack(spacing: 0) {
                 // Status bar
                 statusBar
+
+                // Tab bar for multi-tab support
+                TerminalTabBar(
+                    tabs: viewModel.tabs,
+                    onSelectTab: { id in
+                        viewModel.switchTab(id: id)
+                    },
+                    onCloseTab: { id in
+                        viewModel.requestCloseTab(id: id)
+                    },
+                    onCreateTab: {
+                        viewModel.createTab()
+                    }
+                )
 
                 // Terminal web view (fills available space)
                 terminalContent
@@ -68,6 +85,13 @@ struct TerminalView: View {
                 }
             }
         }
+        .closeTabConfirmation(
+            isPresented: $viewModel.showCloseConfirmation,
+            tabTitle: viewModel.tabs.first(where: { $0.id == viewModel.pendingCloseTabId })?.title ?? "Terminal",
+            onConfirm: {
+                viewModel.confirmCloseTab()
+            }
+        )
     }
 
     // MARK: - Status Bar

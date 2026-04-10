@@ -84,6 +84,26 @@ struct TerminalWebView: UIViewRepresentable {
         if viewModel.didTerminate {
             viewModel.resetAfterRecovery()
             loadTerminalPage(webView)
+            return
+        }
+
+        // Tab switch: disconnect current WS and connect to the new tabId.
+        if let newTabId = viewModel.pendingTabSwitch {
+            viewModel.pendingTabSwitch = nil
+            viewModel.connectionState = .connecting
+
+            let escaped = newTabId
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "'", with: "\\'")
+
+            // Disconnect current session, update config, reconnect.
+            let js = """
+            if(window.MajorTom){
+              window.MajorTom.disconnect();
+              window.MajorTom.connect({tabId:'\(escaped)'});
+            }
+            """
+            webView.evaluateJavaScript(js) { _, _ in }
         }
     }
 
