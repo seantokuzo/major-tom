@@ -23,6 +23,7 @@ enum ShortcutActionKey {
         case quickApprove
         case toggleGodMode
         case checkAchievements
+        case openTerminal
     }
 
     /// Returns the App Group `UserDefaults` used for cross-process shortcut communication.
@@ -257,6 +258,20 @@ struct CheckAchievementsIntent: AppIntent {
     }
 }
 
+// MARK: - Open Terminal Intent
+
+struct OpenTerminalIntent: AppIntent {
+    static var title: LocalizedStringResource = "Open Terminal"
+    static var description: IntentDescription = "Opens Major Tom directly to the terminal tab"
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        ShortcutActionKey.postAction(.openTerminal)
+        NotificationCenter.default.post(name: .openTerminalFromShortcut, object: nil)
+        return .result()
+    }
+}
+
 // MARK: - App Shortcuts Provider
 
 struct MajorTomShortcutsProvider: AppShortcutsProvider {
@@ -368,6 +383,18 @@ struct MajorTomShortcutsProvider: AppShortcutsProvider {
             shortTitle: "Check Achievements",
             systemImageName: "trophy"
         )
+
+        AppShortcut(
+            intent: OpenTerminalIntent(),
+            phrases: [
+                "Open \(.applicationName) terminal",
+                "Open terminal in \(.applicationName)",
+                "\(.applicationName) shell",
+                "Show terminal in \(.applicationName)"
+            ],
+            shortTitle: "Open Terminal",
+            systemImageName: "apple.terminal"
+        )
     }
 }
 
@@ -381,4 +408,5 @@ extension Notification.Name {
     static let quickApproveFromShortcut = Notification.Name("com.majortom.shortcut.quickApprove")
     static let toggleGodModeFromShortcut = Notification.Name("com.majortom.shortcut.toggleGodMode")
     static let checkAchievementsFromShortcut = Notification.Name("com.majortom.shortcut.checkAchievements")
+    static let openTerminalFromShortcut = Notification.Name("com.majortom.shortcut.openTerminal")
 }

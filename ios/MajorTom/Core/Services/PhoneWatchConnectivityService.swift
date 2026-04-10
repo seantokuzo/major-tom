@@ -73,6 +73,28 @@ final class PhoneWatchConnectivityService: NSObject {
         try? session.updateApplicationContext(context)
     }
 
+    /// Send terminal-specific context to the watch without overwriting relay data.
+    ///
+    /// Unlike `updateContext` (which replaces the entire `applicationContext`), this
+    /// uses `transferUserInfo` so it layers on top of whatever RelayService has set.
+    func updateTerminalContext(isActive: Bool, tabCount: Int, title: String) {
+        guard let session = wcSession, session.activationState == .activated else { return }
+
+        let payload: [String: Any] = [
+            WatchConnectivityKeys.terminalActive: isActive,
+            WatchConnectivityKeys.terminalTabCount: tabCount,
+            WatchConnectivityKeys.terminalTitle: title,
+        ]
+
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil) { _ in
+                session.transferUserInfo(payload)
+            }
+        } else {
+            session.transferUserInfo(payload)
+        }
+    }
+
     /// Forward approval requests to the watch (real-time when reachable).
     func sendApprovalRequests(_ requests: [WatchApprovalRequest]) {
         guard let session = wcSession, session.activationState == .activated else { return }

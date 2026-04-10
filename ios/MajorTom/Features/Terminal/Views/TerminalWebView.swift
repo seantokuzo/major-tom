@@ -17,10 +17,23 @@ struct TerminalWebView: UIViewRepresentable {
     /// WKWebView → userContentController → coordinator retain cycle.
     /// Without this, the Coordinator (and transitively the WKWebView)
     /// leaks every time SwiftUI recreates the view.
+    ///
+    /// Wave 5 memory leak audit:
+    /// - Removes the majorTom message handler (breaks WKScriptMessageHandler retain)
+    /// - Removes all user scripts (breaks WKUserScript references)
+    /// - Nils the navigation delegate (breaks Coordinator ← WKWebView retain)
+    /// - Stops loading to cancel any in-flight requests
+    /// - Nils the ViewModel's weak webView reference
+    /// - Disconnects the JS WebSocket before teardown
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        // Disconnect the JS WebSocket cleanly before tearing down
+        webView.evaluateJavaScript("if(window.MajorTom && window.MajorTom.disconnect){window.MajorTom.disconnect()}") { _, _ in }
+        webView.stopLoading()
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "majorTom")
         webView.configuration.userContentController.removeAllUserScripts()
         webView.navigationDelegate = nil
+        // Nil the viewModel's weak reference to prevent stale calls
+        coordinator.viewModel.webView = nil
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -192,7 +205,9 @@ struct TerminalWebView: UIViewRepresentable {
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
-        private let viewModel: TerminalViewModel
+        /// Exposed (not private) so `dismantleUIView` can nil the viewModel's
+        /// weak webView reference during teardown to prevent stale calls.
+        let viewModel: TerminalViewModel
 
         init(viewModel: TerminalViewModel) {
             self.viewModel = viewModel

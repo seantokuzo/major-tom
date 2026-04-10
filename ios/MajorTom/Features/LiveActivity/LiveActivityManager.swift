@@ -101,6 +101,19 @@ final class LiveActivityManager {
         }
     }
 
+    // MARK: - Terminal Session Events
+
+    /// Update the Live Activity for an active terminal session.
+    /// Called from TerminalView when terminal state changes (title, tab switch, etc.).
+    func updateTerminalSession(sessionId: String, sessionName: String, tabCount: Int) {
+        guard snapshots[sessionId] != nil else { return }
+        snapshots[sessionId]!.sessionName = sessionName
+        snapshots[sessionId]!.status = "active"
+        snapshots[sessionId]!.activeAgents = tabCount
+        snapshots[sessionId]!.latestTool = "shell"
+        debouncedUpdate(for: sessionId)
+    }
+
     // MARK: - Event Handlers
 
     /// Called when an agent spawns in a session.
