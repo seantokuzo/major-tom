@@ -1,5 +1,16 @@
 export type UserRole = 'admin' | 'operator' | 'viewer';
 
+export interface KeybarConfig {
+  version: number;
+  accessory: string[];
+  specialty: string[];
+}
+
+export interface UserPreferences {
+  keybarConfig?: KeybarConfig;
+  fontSize?: number;
+}
+
 export interface User {
   id: string;           // Derived from Google sub claim
   email: string;
@@ -10,6 +21,7 @@ export interface User {
   lastLoginAt: string;  // ISO 8601
   invitedBy?: string;   // userId of who invited them
   allowedPaths?: string[]; // Per-user directory access restrictions (SandboxGuard)
+  preferences?: UserPreferences; // Cross-device synced preferences (keybar layout, font size)
 }
 
 export interface InviteCode {

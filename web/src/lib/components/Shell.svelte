@@ -216,6 +216,7 @@
     min-height: 0;
     background: #0a0a0a;
     color: #e8e8e8;
+    overscroll-behavior: none;
   }
 
   /*

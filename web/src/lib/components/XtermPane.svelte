@@ -376,15 +376,8 @@
     /* xterm needs a positioned container for some addons. */
     position: relative;
     overflow: hidden;
-  }
-
-  /*
-   * In tmux copy mode we own all touch gestures on this pane and translate
-   * them to PTY arrow keys, so disable the browser's native pan gesture
-   * recognition — otherwise iOS would steal the drag for page scrolling
-   * before our pointermove handler gets to drain its accumulator.
-   */
-  .xterm-pane.copy-mode {
+    /* Always prevent browser scroll gestures — xterm handles its own
+       scrollback internally via .xterm-viewport overflow-y: auto. */
     touch-action: none;
   }
 

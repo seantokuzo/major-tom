@@ -20,14 +20,14 @@
   import { OFFICE_VIEWS } from './lib/office/layout';
   import { sessionsStore } from './lib/stores/sessions.svelte';
   import NotificationToggle from './lib/components/NotificationToggle.svelte';
-  import NotificationSettings from './lib/components/NotificationSettings.svelte';
+  // NotificationSettings removed — simple on/off toggle only (in NavigationDrawer)
   import AuthSettings from './lib/components/AuthSettings.svelte';
   import UserMenu from './lib/components/UserMenu.svelte';
   import LoginScreen from './lib/components/LoginScreen.svelte';
   import CharacterGallery from './lib/components/CharacterGallery.svelte';
   import PermissionModeSwitcher from './lib/components/PermissionModeSwitcher.svelte';
-  import ApprovalOverlay from './lib/components/ApprovalOverlay.svelte';
-  import SessionPanel from './lib/components/SessionPanel.svelte';
+  // ApprovalOverlay disabled — approvals stay in TUI, PWA gets notifications only
+  import NavigationDrawer from './lib/components/NavigationDrawer.svelte';
   import FleetPanel from './lib/components/FleetPanel.svelte';
   import FleetIndicator from './lib/components/FleetIndicator.svelte';
   import AnalyticsPanel from './lib/components/AnalyticsPanel.svelte';
@@ -87,6 +87,15 @@
     prevError = error;
   });
 
+  // ── Keybar sync — pull config from relay after auth resolves ─
+  import { keybarStore } from './lib/stores/keybar.svelte';
+
+  $effect(() => {
+    if (relay.authChecked && relay.user) {
+      void keybarStore.syncFromRelay();
+    }
+  });
+
   // ── Office state & tab management ─────────────────────────
 
   type ViewTab = 'chat' | 'shell' | 'office' | 'characters';
@@ -136,6 +145,17 @@
       const name = meta?.workingDirName ?? undefined;
       officeManager.switchTo(sessionId, name);
     });
+  });
+
+  // ── Viewport lock for CLI tab ───────────────────────────────
+  // When the CLI tab is active, lock the viewport so the page never scrolls.
+  // Scroll should only happen inside xterm.js. Other tabs keep normal scroll.
+  $effect(() => {
+    if (activeTab === 'shell') {
+      document.documentElement.classList.add('viewport-lock');
+    } else {
+      document.documentElement.classList.remove('viewport-lock');
+    }
   });
 
   // Lazy rendering: OfficeCanvas is only mounted when activeTab === 'office'
@@ -258,10 +278,8 @@
   });
 </script>
 
-<!-- Phase 13 Wave 2 — fullscreen approval overlay for shell hook intercepts.
-     Mounted outside .app so its fixed-position layer doesn't fight any
-     stacking context inside the app shell. -->
-<ApprovalOverlay />
+<!-- Phase 13 Wave 2 — Approval overlay DISABLED for PWA (QA phase).
+     Approvals stay in the TUI. PWA only receives notifications. -->
 
 <div class="app">
   <header class="header">
@@ -322,7 +340,6 @@
         <span class="header-settings">
           <AuthSettings />
           <NotificationToggle />
-          <NotificationSettings />
         </span>
         <span class="header-indicators">
           <AchievementIndicator />
@@ -338,9 +355,8 @@
         <button
           class="hamburger-btn"
           onclick={() => sessionStateManager.togglePanel()}
-          title="Sessions"
-          aria-label="Toggle session panel"
-          disabled={!relay.isConnected}
+          title="Menu"
+          aria-label="Toggle navigation menu"
         >
           &#9776;
         </button>
@@ -357,9 +373,11 @@
     {/if}
   </header>
   {#if !headerCollapsed}
-    <ConnectionBar />
+    {#if activeTab !== 'shell'}
+      <ConnectionBar />
+    {/if}
     <ConnectionStatus />
-    {#if relay.isConnected && relay.hasSession}
+    {#if activeTab !== 'shell' && relay.isConnected && relay.hasSession}
       <div
         class="mode-row"
         class:mode-row-yolo={relay.permissionMode.mode === 'god' && relay.permissionMode.godSubMode === 'yolo'}
@@ -367,7 +385,9 @@
         <PermissionModeSwitcher />
       </div>
     {/if}
-    <SessionInfo />
+    {#if activeTab !== 'shell'}
+      <SessionInfo />
+    {/if}
   {/if}
 
   {#if activeTab === 'office'}
@@ -429,7 +449,7 @@
     {/if}
   </div>
   <Toast />
-  <SessionPanel />
+  <NavigationDrawer />
   <GitPanel />
   <GitHubPanel />
   <CIDashboardPanel />

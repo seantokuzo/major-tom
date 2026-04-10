@@ -22,6 +22,7 @@ import { createAchievementRoutes } from './routes/achievements.js';
 import { createWsRoute } from './routes/ws.js';
 import { createShellRoute } from './routes/shell.js';
 import { createApiApprovalsRoutes } from './routes/api-approvals.js';
+import { createPreferencesRoutes } from './routes/preferences.js';
 import { tmuxBootstrap, TmuxMissingError, TmuxVersionError } from './adapters/tmux-bootstrap.js';
 
 // Phase 13 Wave 2 — shell-side approval routing
@@ -318,6 +319,12 @@ export async function buildApp(config: AppConfig) {
 
   // Achievement API (auth required)
   await app.register(createAchievementRoutes({ achievementService }));
+
+  // User preferences (cross-device sync — keybar layout, font size)
+  await app.register(createPreferencesRoutes({
+    userRegistry,
+    multiUserEnabled: config.multiUserEnabled,
+  }));
 
   // Shell WebSocket — Phase 13 "The Shell"
   // Eager tmux bootstrap so the first `/shell/:tabId` attach doesn't race.

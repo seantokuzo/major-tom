@@ -1657,6 +1657,15 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
       });
+
+      // Push notification — "Claude is done working"
+      const sessionName = session?.workingDir?.split('/').pop() ?? result.sessionId.slice(0, 8);
+      pushManager.notifyAll({
+        type: 'done',
+        title: 'Major Tom',
+        body: `Claude is done — ${sessionName} ($${result.costUsd.toFixed(4)})`,
+        data: { sessionId: result.sessionId, url: '/' },
+      }, { urgency: 'normal', TTL: 300, topic: 'mt-done' });
     });
 
     fleetManager.on('agent-lifecycle', (event) => {
