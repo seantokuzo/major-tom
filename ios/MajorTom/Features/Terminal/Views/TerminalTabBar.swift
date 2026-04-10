@@ -38,40 +38,42 @@ struct TerminalTabBar: View {
     // MARK: - Tab Button
 
     private func tabButton(for tab: TerminalTab) -> some View {
-        Button {
-            onSelectTab(tab.id)
-        } label: {
-            HStack(spacing: MajorTomTheme.Spacing.xs) {
-                Text(tab.title)
-                    .font(.system(size: 12, weight: tab.isActive ? .semibold : .regular, design: .monospaced))
-                    .foregroundStyle(tab.isActive ? MajorTomTheme.Colors.accent : MajorTomTheme.Colors.textSecondary)
-                    .lineLimit(1)
+        HStack(spacing: MajorTomTheme.Spacing.xs) {
+            Text(tab.title)
+                .font(.system(size: 12, weight: tab.isActive ? .semibold : .regular, design: .monospaced))
+                .foregroundStyle(tab.isActive ? MajorTomTheme.Colors.accent : MajorTomTheme.Colors.textSecondary)
+                .lineLimit(1)
 
-                // Close button
-                Button {
-                    onCloseTab(tab.id)
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(tab.isActive ? MajorTomTheme.Colors.textSecondary : MajorTomTheme.Colors.textTertiary)
-                        .frame(width: 16, height: 16)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+            // Close button
+            Button {
+                onCloseTab(tab.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(tab.isActive ? MajorTomTheme.Colors.textSecondary : MajorTomTheme.Colors.textTertiary)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
             }
-            .padding(.horizontal, MajorTomTheme.Spacing.sm)
-            .padding(.vertical, MajorTomTheme.Spacing.xs)
-            .background(tabBackground(isActive: tab.isActive))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(
-                        tab.isActive ? MajorTomTheme.Colors.accent.opacity(0.4) : Color.clear,
-                        lineWidth: 1
-                    )
-            )
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close \(tab.title)")
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, MajorTomTheme.Spacing.sm)
+        .padding(.vertical, MajorTomTheme.Spacing.xs)
+        .background(tabBackground(isActive: tab.isActive))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .contentShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(
+                    tab.isActive ? MajorTomTheme.Colors.accent.opacity(0.4) : Color.clear,
+                    lineWidth: 1
+                )
+        )
+        .onTapGesture {
+            onSelectTab(tab.id)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(tab.title), tab\(tab.isActive ? ", active" : "")")
     }
 
     // MARK: - New Tab Button
@@ -88,6 +90,8 @@ struct TerminalTabBar: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("New tab")
+        .accessibilityHint("Creates a new terminal tab")
     }
 
     // MARK: - Helpers
