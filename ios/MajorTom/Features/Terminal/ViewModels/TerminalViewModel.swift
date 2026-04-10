@@ -290,11 +290,11 @@ final class TerminalViewModel {
             isReady = true
 
         case .connected(let connectedTabId):
-            // Update the active tab's tabId if the relay confirmed it.
             connectionState = .connected
-            // Mark the matching tab as connected (relay may echo back the tabId).
+            // Activate the tab whose tabId matches the relay-confirmed ID.
+            // The relay echoes back the tabId on successful connection, so
+            // we reconcile by toggling isActive to the matching tab.
             if let index = tabs.firstIndex(where: { $0.tabId == connectedTabId }) {
-                // Ensure only this tab is active.
                 for i in tabs.indices {
                     tabs[i].isActive = (i == index)
                 }
