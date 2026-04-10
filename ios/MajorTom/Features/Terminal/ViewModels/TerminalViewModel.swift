@@ -83,6 +83,10 @@ final class TerminalViewModel {
     /// Whether the web content process has terminated (recoverable).
     var didTerminate: Bool = false
 
+    /// Weak reference to the WKWebView for sending keys from the native keybar.
+    /// Set by TerminalWebView's makeUIView; nilled automatically on dealloc.
+    weak var webView: WKWebView?
+
     /// Reference to the auth service for relay URL and token.
     private let auth: AuthService
 
@@ -207,6 +211,52 @@ final class TerminalViewModel {
             self.cols = cols
             self.rows = rows
         }
+    }
+
+    // MARK: - Key Input
+
+    /// Send raw terminal input to the web terminal via the JS bridge.
+    ///
+    /// This is the primary entry point for the NativeKeybar. The string is
+    /// escaped for safe interpolation into a JavaScript snippet and then
+    /// passed directly to `window.MajorTom._term.input(..., true)` so the
+    /// xterm instance receives the raw bytes without additional key mapping.
+    func sendBytes(_ bytes: String) {
+        guard let webView else { return }
+
+        // Escape the raw input so it can be safely embedded in the injected
+        // JavaScript snippet before passing it through to `term.input()`.
+        let escaped = bytes
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
+
+        // Use term.input() for raw byte injection -- this handles all escape
+        // sequences correctly without the sendKey mapper double-processing them.
+        let js = "if(window.MajorTom && window.MajorTom._term){window.MajorTom._term.input('\(escaped)',true)}"
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
+    /// Send a named special key to the terminal via the JS bridge.
+    /// Uses `MajorTom.sendKey()` which maps key names to escape sequences.
+    func sendSpecialKey(_ key: String, ctrl: Bool = false, alt: Bool = false, shift: Bool = false) {
+        guard let webView else { return }
+
+        // JSON-encode the key name to safely handle any special characters
+        guard let keyData = try? JSONSerialization.data(withJSONObject: key),
+              let encodedKey = String(data: keyData, encoding: .utf8) else {
+            return
+        }
+
+        var parts: [String] = ["key:\(encodedKey)"]
+        if ctrl { parts.append("ctrl:true") }
+        if alt { parts.append("alt:true") }
+        if shift { parts.append("shift:true") }
+
+        let js = "if(window.MajorTom && window.MajorTom.sendKey){window.MajorTom.sendKey({\(parts.joined(separator: ","))})}"
+        webView.evaluateJavaScript(js) { _, _ in }
     }
 
     // MARK: - Lifecycle

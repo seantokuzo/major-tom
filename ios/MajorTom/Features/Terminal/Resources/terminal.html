@@ -472,7 +472,14 @@
       if (term) {
         term.blur();
       }
-    }
+    },
+
+    /**
+     * Direct reference to the xterm instance for raw byte injection from
+     * the native keybar. Swift calls `MajorTom._term.input(bytes, true)`
+     * to bypass the sendKey mapper when escape sequences are pre-computed.
+     */
+    get _term() { return term; }
   };
 
   // ── Init ───────────────────────────────────────────────────────────
