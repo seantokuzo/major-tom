@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Form-based configuration editor for the relay server.
@@ -279,7 +280,7 @@ struct ConfigView: View {
             showSaveSuccess = true
 
             // Hide success message after a moment
-            Task {
+            Task { @MainActor in
                 try? await Task.sleep(for: .seconds(2))
                 showSaveSuccess = false
             }

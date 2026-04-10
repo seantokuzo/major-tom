@@ -6,7 +6,7 @@ import SwiftUI
 /// quick links to the PWA, and a management window with live log viewer.
 @main
 struct GroundControlApp: App {
-    @State private var configManager = ConfigManager()
+    @State private var configManager: ConfigManager
     @State private var relay: RelayProcess
 
     init() {

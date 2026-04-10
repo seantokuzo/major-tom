@@ -117,6 +117,7 @@ final class RelayProcess {
         env["LOG_LEVEL"] = config.logLevel.rawValue
         env["CLAUDE_WORK_DIR"] = config.expandedClaudeWorkDir
         env["MULTI_USER_ENABLED"] = config.multiUserEnabled ? "true" : "false"
+        env["CLOUDFLARE_TUNNEL"] = config.cloudflareEnabled ? "true" : "false"
 
         // Auth mode → relay env vars
         switch config.authMode {
@@ -128,12 +129,16 @@ final class RelayProcess {
             env["AUTH_GOOGLE_ENABLED"] = "false"
         case .google:
             env["AUTH_PIN_ENABLED"] = "false"
-            env["AUTH_GOOGLE_ENABLED"] = "true"
-            if let clientId = configManager.getSecret(ConfigManager.SecretKey.googleClientId) {
-                env["GOOGLE_CLIENT_ID"] = clientId
-            }
-            if let clientSecret = configManager.getSecret(ConfigManager.SecretKey.googleClientSecret) {
-                env["GOOGLE_CLIENT_SECRET"] = clientSecret
+            let clientId = configManager.getSecret(ConfigManager.SecretKey.googleClientId)
+            let clientSecret = configManager.getSecret(ConfigManager.SecretKey.googleClientSecret)
+            let hasCredentials = !(clientId ?? "").isEmpty && !(clientSecret ?? "").isEmpty
+            if hasCredentials {
+                env["AUTH_GOOGLE_ENABLED"] = "true"
+                env["GOOGLE_CLIENT_ID"] = clientId!
+                env["GOOGLE_CLIENT_SECRET"] = clientSecret!
+            } else {
+                env["AUTH_GOOGLE_ENABLED"] = "false"
+                print("[GroundControl] WARNING: Google auth mode selected but client ID or secret is missing — disabling Google auth")
             }
         }
 
