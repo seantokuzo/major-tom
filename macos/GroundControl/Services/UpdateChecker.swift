@@ -7,7 +7,7 @@ import Foundation
 /// Never blocks anything — purely informational.
 @Observable
 final class UpdateChecker {
-    /// Latest available version from GitHub (e.g. "0.2.0"), or nil if up-to-date / unknown.
+    /// Latest available version from GitHub (e.g. "0.2.0"), or nil if unknown / not yet checked.
     private(set) var latestVersion: String?
 
     /// URL of the latest release page, for the user to open in a browser.

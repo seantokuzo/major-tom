@@ -39,10 +39,12 @@ struct GroundControlApp: App {
                             window.makeKeyAndOrderFront(nil)
                             return
                         }
-                        // If the window isn't materialized yet, use notification to
-                        // request it. As a fallback, we send an AppleEvent to open it.
-                        if let url = URL(string: "groundcontrol://onboarding") {
-                            NSWorkspace.shared.open(url)
+                        // If the window isn't materialized yet, iterate all windows
+                        // and bring forward any whose title matches the onboarding
+                        // scene. No custom URL scheme needed.
+                        for window in NSApplication.shared.windows where window.title == "Welcome" {
+                            window.makeKeyAndOrderFront(nil)
+                            return
                         }
                     }
                 }

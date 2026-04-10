@@ -190,13 +190,21 @@ struct SecurityView: View {
     // disabled in the UI.
 
     private func revokeSession(for client: ConnectedClient) async {
-        let url = URL(string: "http://127.0.0.1:\(relay.state.port)/api/admin/revoke")!
+        guard let url = URL(string: "http://127.0.0.1:\(relay.state.port)/api/admin/revoke") else {
+            print("[SecurityView] Revoke failed: invalid URL")
+            return
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: String] = ["ip": client.ip]
-        request.httpBody = try? JSONEncoder().encode(body)
+        do {
+            request.httpBody = try JSONEncoder().encode(body)
+        } catch {
+            print("[SecurityView] Revoke failed: could not encode body — \(error)")
+            return
+        }
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)

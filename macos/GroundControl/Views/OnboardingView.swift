@@ -457,10 +457,16 @@ struct OnboardingView: View {
 
         do {
             try proc.run()
-            proc.waitUntilExit()
-            return proc.terminationStatus == 0
         } catch {
             return false
+        }
+
+        // Use terminationHandler instead of waitUntilExit() to avoid blocking
+        // the main thread (this Task inherits MainActor).
+        return await withCheckedContinuation { continuation in
+            proc.terminationHandler = { process in
+                continuation.resume(returning: process.terminationStatus == 0)
+            }
         }
     }
 
