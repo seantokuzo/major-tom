@@ -91,9 +91,11 @@ struct SpecialtyKeyGrid: View {
         var bytes = key.bytes
 
         if ctrlArmed && bytes.count == 1 {
-            let char = bytes.uppercased().unicodeScalars.first!
-            if char.value >= 65 && char.value <= 90 {
-                bytes = String(UnicodeScalar(char.value - 64)!)
+            if let char = bytes.uppercased().unicodeScalars.first,
+               char.value >= 65,
+               char.value <= 90,
+               let controlScalar = UnicodeScalar(char.value - 64) {
+                bytes = String(controlScalar)
             }
         }
 
@@ -106,6 +108,7 @@ struct SpecialtyKeyGrid: View {
         altArmed = false
 
         onSendBytes(bytes)
+        onDismiss()
     }
 }
 

@@ -46,7 +46,13 @@ struct TerminalView: View {
                     )
                 }
 
-                // Native keybar — always visible when terminal is active
+                // Native keybar — always visible when terminal is active.
+                //
+                // Positioned as a bottom-pinned VStack element (not a keyboard
+                // inputAccessoryView) intentionally: the keybar must remain
+                // visible even when no iOS keyboard is showing (e.g., when the
+                // specialty grid replaces the keyboard). This matches the PWA's
+                // mobile-first layout where the keybar is always on screen.
                 if viewModel.connectionState == .connected || viewModel.isReady {
                     NativeKeybar(
                         onSendBytes: { bytes in

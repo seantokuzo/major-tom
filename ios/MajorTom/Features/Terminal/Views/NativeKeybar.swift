@@ -90,9 +90,11 @@ struct NativeKeybar: View {
 
         if ctrlArmed && bytes.count == 1 {
             // Ctrl+letter -> ASCII control code
-            let char = bytes.uppercased().unicodeScalars.first!
-            if char.value >= 65 && char.value <= 90 { // A-Z
-                bytes = String(UnicodeScalar(char.value - 64)!)
+            if let char = bytes.uppercased().unicodeScalars.first,
+               char.value >= 65,
+               char.value <= 90,
+               let controlScalar = UnicodeScalar(char.value - 64) {
+                bytes = String(controlScalar)
             }
         }
 

@@ -76,10 +76,17 @@ private enum Seq {
 }
 
 /// Build a Ctrl-letter byte (Ctrl+A = 0x01, Ctrl+Z = 0x1A).
+/// Returns the original letter unchanged if it's not A-Z.
 private func ctrlByte(_ letter: Character) -> String {
-    let code = letter.uppercased().unicodeScalars.first!.value
+    guard let scalar = letter.uppercased().unicodeScalars.first else {
+        return String(letter)
+    }
+    let code = scalar.value
     guard code >= 65, code <= 90 else { return String(letter) } // A-Z only
-    return String(UnicodeScalar(code - 64)!)
+    guard let controlScalar = UnicodeScalar(code - 64) else {
+        return String(letter)
+    }
+    return String(controlScalar)
 }
 
 // MARK: - Key Library

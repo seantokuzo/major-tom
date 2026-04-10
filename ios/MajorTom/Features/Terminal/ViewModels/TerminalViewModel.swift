@@ -215,18 +215,17 @@ final class TerminalViewModel {
 
     // MARK: - Key Input
 
-    /// Send raw bytes to the terminal via the JS bridge.
+    /// Send raw terminal input to the web terminal via the JS bridge.
     ///
-    /// This is the primary entry point for the NativeKeybar. The bytes are
-    /// JSON-encoded and passed to `MajorTom.sendKey()` which handles escape
-    /// sequence mapping and writes to the xterm instance.
+    /// This is the primary entry point for the NativeKeybar. The string is
+    /// escaped for safe interpolation into a JavaScript snippet and then
+    /// passed directly to `window.MajorTom._term.input(..., true)` so the
+    /// xterm instance receives the raw bytes without additional key mapping.
     func sendBytes(_ bytes: String) {
         guard let webView else { return }
 
-        // For single printable characters that aren't control codes, use the
-        // simpler `sendKey({key: '...'})` path. For pre-computed escape
-        // sequences (arrows, function keys, ctrl combos), write raw bytes
-        // directly via `term.input()`.
+        // Escape the raw input so it can be safely embedded in the injected
+        // JavaScript snippet before passing it through to `term.input()`.
         let escaped = bytes
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
@@ -245,12 +244,18 @@ final class TerminalViewModel {
     func sendSpecialKey(_ key: String, ctrl: Bool = false, alt: Bool = false, shift: Bool = false) {
         guard let webView else { return }
 
-        var parts: [String] = ["key:'\(key)'"]
+        // JSON-encode the key name to safely handle any special characters
+        guard let keyData = try? JSONSerialization.data(withJSONObject: key),
+              let encodedKey = String(data: keyData, encoding: .utf8) else {
+            return
+        }
+
+        var parts: [String] = ["key:\(encodedKey)"]
         if ctrl { parts.append("ctrl:true") }
         if alt { parts.append("alt:true") }
         if shift { parts.append("shift:true") }
 
-        let js = "MajorTom.sendKey({\(parts.joined(separator: ","))})"
+        let js = "if(window.MajorTom && window.MajorTom.sendKey){window.MajorTom.sendKey({\(parts.joined(separator: ","))})}"
         webView.evaluateJavaScript(js) { _, _ in }
     }
 
