@@ -1660,12 +1660,14 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       // Push notification — "Claude is done working"
       const sessionName = session?.workingDir ? basename(session.workingDir) || result.sessionId.slice(0, 8) : result.sessionId.slice(0, 8);
-      pushManager.notifyAll({
+      void pushManager.notifyAll({
         type: 'done',
         title: 'Major Tom',
         body: `Claude is done — ${sessionName} ($${result.costUsd.toFixed(4)})`,
         data: { sessionId: result.sessionId, url: '/' },
-      }, { urgency: 'normal', TTL: 300, topic: 'mt-done' });
+      }, { urgency: 'normal', TTL: 300, topic: 'mt-done' }).catch((err: unknown) => {
+        logger.error({ err, sessionId: result.sessionId }, 'Failed to send done push notification');
+      });
     });
 
     fleetManager.on('agent-lifecycle', (event) => {

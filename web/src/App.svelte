@@ -90,7 +90,8 @@
 
   // ── Keybar sync — pull config from relay after auth resolves ─
   $effect(() => {
-    if (relay.authChecked && relay.user) {
+    const canSync = relay.authChecked && (!relay.multiUser || Boolean(relay.user));
+    if (canSync) {
       void keybarStore.syncFromRelay();
     }
   });

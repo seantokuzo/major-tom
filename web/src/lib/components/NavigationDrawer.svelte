@@ -203,14 +203,18 @@
               <div class="section-empty">No sessions yet</div>
             {:else}
               {#each sessionStateManager.sessionList as entry (entry.sessionId)}
-                <!-- svelte-ignore a11y_click_events_have_key_events -->
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div
                   class="session-item"
                   class:current={entry.sessionId === relay.sessionId}
                   role="button"
                   tabindex="0"
                   onclick={() => handleSessionClick(entry.sessionId)}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleSessionClick(entry.sessionId);
+                    }
+                  }}
                 >
                   <div class="session-row-top">
                     <span

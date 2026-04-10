@@ -117,10 +117,12 @@ class KeybarStore {
    */
   async syncFromRelay(): Promise<void> {
     if (this.synced) return;
-    this.synced = true;
     try {
       const res = await fetch('/api/user/preferences', { credentials: 'include' });
-      if (!res.ok) return; // 401, 404, etc — fallback to local
+      if (!res.ok) {
+        this.synced = true; // permanent: auth/config issue, don't retry
+        return;
+      }
 
       const prefs = await res.json() as Record<string, unknown>;
       const remote = prefs.keybarConfig as
@@ -140,8 +142,9 @@ class KeybarStore {
         // Local is customized but server is empty — push local up
         this.pushToRelay();
       }
+      this.synced = true;
     } catch {
-      // Network error — stay with local config
+      // Network error — stay with local config, allow retry next effect cycle
     }
   }
 
