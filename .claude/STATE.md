@@ -7,7 +7,8 @@
 
 ## Current Phase
 
-**Phase 11: "The Pipeline"** — ALL WAVES COMPLETE
+**Wave 3 — Two Parallel Tracks** (Phase 14 SwiftTerm + Ground Control)
+Both tracks at Wave 3, independent, zero shared files. Run on separate branches.
 
 ## Strategy
 
@@ -417,6 +418,121 @@
 - [x] CI run monitoring with auto-refresh and job detail
 - [x] All operations sandboxed to session working directory
 
+## Completed — Phase 13: "The Shell"
+
+Phase 13 turned the PWA's main surface into a real tmux-backed terminal. Full spec: `docs/PHASE-13-THE-SHELL.md`.
+
+### Wave 1: PTY Foundation (PRs #89-91)
+- [x] tmux-backed terminal via xterm.js, `node-pty` PTY adapter
+- [x] Env injection (`CLAUDE_CONFIG_DIR`, `MAJOR_TOM_RELAY_PORT`, `MAJOR_TOM_TAB_ID`)
+- [x] Termius-style three-layer soft keyboard (accessory, specialty, customize sheet)
+- [x] Login shell, cwd handling, prompt-line lock
+- [x] Shell tab behind `?shell=1` feature flag (removed in Wave 2.5)
+
+### Wave 2: Approval Routing + Three Modes (PR #92)
+- [x] Three orthogonal routing modes: `local` (TUI owns), `remote` (phone owns, hook blocks), `hybrid` (race)
+- [x] Hook installer — idempotent, sha256 hash-versioned, NEVER touches `~/.claude/`
+- [x] Hook templates: `pretooluse.sh`, `subagent-start.sh` (Wave 2 placeholder)
+- [x] Hook HTTP server on loopback port 9091 (separate from Fastify WS 9090)
+- [x] REST endpoints: `/api/approvals/pending`, `/api/approvals/:id/decision`, `/api/settings/approval-mode`
+- [x] `tool_use_id` dedup between SDK + hook paths
+- [x] Push notification batching, bypass-mode escape hatch, SW action buttons
+
+### Wave 2.5: Shell QA / Mobile Polish (PR #93)
+- [x] CLI tab is now default on every load (feature flag removed)
+- [x] Mobile padding + font zoom, collapsible "Add a key" panel
+- [x] Tab activation redraw via relay control frame + tmux resize wobble
+- [x] Sticky Ctrl latch in shared `keybarModifiers` singleton
+- [x] Default accessory row includes pgup/pgdn/lbracket
+
+### Wave 2.6: Precise tmux session handling (PR #94)
+- [x] Per-attach grouped view sessions (`view-${tabId}-${hex}`) — fixes multi-device attach stomping
+- [x] Tab close: `{type:'kill'}` control frame + REST fallback `POST /shell/:tabId/kill`
+- [x] `CloseTabConfirm.svelte` — native `<dialog>.showModal()` for safe close UX
+- [x] `dispose()` is single source of truth for handle cleanup
+- [x] killWindow/killSession error surfacing with race-recheck
+
+### Wave 2.7: Drag-to-scroll + iOS QuickType suppression (PR #95)
+- [x] Tap-and-drag scroll through tmux copy mode on touch devices
+- [x] Per-tab copy-mode state with toggle dispatch
+- [x] Pointer capture drag handlers (touch-only gate for iPadOS trackpad compat)
+- [x] iOS QuickType bar suppression on xterm helper textarea
+- [x] Visual fix: tmux-scroll button highlight gated on `copyModeActive`
+
+### Wave 3: Sprite Re-Wire (PR #96)
+- [x] SDK adapter: inline `PreToolUse(Task)`, `SubagentStart`, `SubagentStop` hooks on `unstable_v2_createSession`
+- [x] FIFO correlation via `pendingTaskByToolUseId` map (30s TTL GC) recovers task description for sprite labels
+- [x] Deleted old `task_started`/`task_progress`/`task_notification` system-event heuristic — dead
+- [x] PTY shell hooks: new `FleetManager.reportAgentLifecycle()` seam, `/hooks/subagent-stop` endpoint
+- [x] New `subagent-stop.sh` hook template, installer registers `SubagentStop` in `settings.json`
+- [x] Both SDK + PTY paths funnel into `fleetManager.emit('agent-lifecycle')` → ws.ts downstream fanout
+
+### Phase 13 Hard Constraints (still apply)
+1. NEVER touch user's real `~/.claude/` — Major Tom uses `$HOME/.major-tom/claude-config/` via `CLAUDE_CONFIG_DIR`
+2. NEVER use default tmux socket — always `tmux -L major-tom`
+3. Preserve `manual`/`auto`/`delay`/`god` modes (inner dimension) and `local`/`remote`/`hybrid` routing (outer dimension)
+4. iOS frozen at chat model until Phase 14+ (SwiftTerm)
+5. Chat layer preserved as reference implementation for future VSCode chat participant phase
+
 ---
 
-_Last updated: 2026-03-31_
+## What's Next — TWO PARALLEL TRACKS (Wave 3)
+
+PWA + Relay MVP shipped 2026-04-09. Both tracks independent — zero shared files, parallel branches.
+
+### Track 1: Phase 14 "SwiftTerm" — Wave 3: Multi-Tab Support
+**Spec:** `docs/PHASE-14-SWIFTTERM.md` (Wave 3 section)
+**Branch:** `phase-14/swiftterm-wave3`
+**Previous:** Wave 1 (PR #97) + Wave 2 (PR #99) merged — terminal rendering + native keybar working
+
+**Wave 3 deliverables:**
+- `TerminalTabBar.swift` — horizontal scrolling tab bar with + button
+- `CloseTabConfirm.swift` — confirmation sheet for closing tabs with active processes
+- `TerminalViewModel.swift` — extend with multi-tab state management, tab CRUD
+- `TerminalView.swift` — stack tab bar above WKWebView
+
+**Acceptance criteria:**
+- Tab bar shows current tabs with titles
+- "+" button creates new tmux window
+- Tapping a tab switches to that window
+- Close button with confirmation dialog
+- Tab titles update from xterm title sequence
+
+**Known issue:** Widget extension (MajorTomWidgets.appex) fails to install on simulator — "Invalid placeholder attributes" / missing NSExtension in auto-generated Info.plist. App itself works fine without it. Not blocking.
+
+### Track 2: Ground Control — Wave 3: Dashboard
+**Spec:** `docs/GROUND-CONTROL.md` (Wave 3 section)
+**Branch:** `ground-control/wave3-dashboard`
+**Previous:** Wave 1 (PR #98) + Wave 2 (PR #100) merged — menu bar app + log viewer working
+
+**Wave 3 deliverables:**
+- `DashboardView.swift` — overview cards with live data (status, uptime, clients, sessions)
+- `RelayClient.swift` — HTTP client hitting relay's `/api/health` endpoint
+- `HealthData.swift` — parsed health response model
+- `ClientListView.swift` — connected clients list with device info
+- Relay-side: extend `/api/health` with admin metrics (client count, per-client info, node memory)
+
+**Acceptance criteria:**
+- Dashboard shows server status, uptime, port, client count
+- Connected clients list with IP, user agent, connection duration
+- Active sessions with ID, working dir, status
+- Process resource usage (CPU%, memory)
+- Auto-refresh every 5 seconds
+
+**Build notes:** Ground Control uses SwiftPM (`macos/`). Build with `cd macos && swift build`. Uses system node in dev (auto-discovers `relay/dist/server.js` by walking up from cwd). Requires `npm run build` in relay/ first.
+
+### Completed Waves (for reference)
+- **SwiftTerm Wave 1** (PR #97): WKWebView + bundled xterm.js, terminal.html, TerminalView, TerminalWebView, TerminalViewModel
+- **SwiftTerm Wave 2** (PR #99): NativeKeybar.swift, SpecialtyKeyGrid.swift, KeySpec.swift, haptic feedback
+- **Ground Control Wave 1** (PR #98): MenuBarExtra, RelayProcess, NodeBundleManager, start/stop relay
+- **Ground Control Wave 2** (PR #100): ManagementWindow, LogView, LogEntry, LogStore (10k ring buffer, level filtering)
+- **QA Polish** (PR #101): NavigationDrawer, keybar sync, viewport lock, done notification, build.sh
+
+### Deferred Tracks (not scheduled)
+- Phase 12 "Glow Up" — sprite makeover (skipped, still valid)
+- VSCode Chat Bridge — `@major-tom` chat participant (see `docs/FUTURE-PHASE-VSCODE-CHAT-BRIDGE.md`)
+- Tech debt burn-down — 10 open GitHub issues
+
+---
+
+_Last updated: 2026-04-09_
