@@ -4,6 +4,7 @@ import SwiftUI
 /// Menu bar dropdown content for Ground Control.
 struct MenuBarView: View {
     let relay: RelayProcess
+    let updateChecker: UpdateChecker
 
     @Environment(\.openURL) private var openURL
     @Environment(\.openWindow) private var openWindow
@@ -48,6 +49,17 @@ struct MenuBarView: View {
                 .font(.caption)
                 .foregroundStyle(.red)
                 .lineLimit(3)
+        }
+
+        if updateChecker.updateAvailable, let version = updateChecker.latestVersion {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .foregroundStyle(.blue)
+                    .font(.caption2)
+                Text("v\(version) available")
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+            }
         }
     }
 

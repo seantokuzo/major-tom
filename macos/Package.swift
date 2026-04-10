@@ -17,7 +17,7 @@ let package = Package(
                 .product(name: "Collections", package: "swift-collections"),
             ],
             path: "GroundControl",
-            exclude: ["Info.plist"]
+            exclude: ["Info.plist", "GroundControl.entitlements"]
         ),
     ]
 )
