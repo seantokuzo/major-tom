@@ -300,7 +300,8 @@ def main():
         print(f"Source not found: {source_path}")
         sys.exit(1)
 
-    slice_sprite_sheet(source_path, args.name, args.output_dir, args.threshold)
+    if not slice_sprite_sheet(source_path, args.name, args.output_dir, args.threshold):
+        sys.exit(1)
 
 
 if __name__ == "__main__":
