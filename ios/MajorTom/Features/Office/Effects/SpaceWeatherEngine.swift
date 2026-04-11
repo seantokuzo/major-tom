@@ -89,30 +89,9 @@ final class SpaceWeatherEngine {
 
     // MARK: - Visual Effect Builders (SKAction sequences for the scene)
 
-    /// Solar flare: golden wash across the scene + window brightening. Duration ~3-5s.
-    static func solarFlareAction(sceneSize: CGSize) -> SKAction {
-        let flashNode = SKSpriteNode(
-            color: SKColor(red: 1.0, green: 0.85, blue: 0.4, alpha: 0),
-            size: sceneSize
-        )
-        flashNode.position = CGPoint(x: sceneSize.width / 2, y: sceneSize.height / 2)
-        flashNode.zPosition = 90
-        flashNode.name = "solarFlare"
-
-        return SKAction.run {
-            // Actual solar flare effect handled directly in OfficeScene.handleWeatherEvent
-        }
-    }
-
-    /// Meteor shower: bright diagonal streaks. Returns actions to run on the scene.
-    static func meteorStreakAction() -> SKAction {
-        return SKAction.repeat(SKAction.sequence([
-            SKAction.run {
-                // Placeholder — actual streak creation handled in the scene
-            },
-            SKAction.wait(forDuration: 0.4),
-        ]), count: 8)
-    }
+    // Note: solar flare, meteor shower, and nebula effects are implemented
+    // directly in OfficeScene.handleWeatherEvent() with camera-attached overlays.
+    // The action builders below are only used for rumble (camera shake).
 
     /// Station rumble: scene shake effect. Duration ~1-2s.
     static func stationRumbleAction() -> SKAction {

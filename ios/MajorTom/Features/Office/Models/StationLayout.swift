@@ -71,13 +71,15 @@ struct WindowConfig {
 struct DoorConfig: Identifiable {
     let id: String
     let position: CGPoint
-    let isVertical: Bool     // true = slides up/down, false = left/right
+    /// When true, door panels slide left/right (doorway spans vertically, e.g. corridor-to-module).
+    /// When false, door panels slide up/down (doorway spans horizontally, e.g. between side-by-side modules).
+    let isHorizontalSlide: Bool
     let size: CGSize
 
-    init(id: String, position: CGPoint, isVertical: Bool, size: CGSize = CGSize(width: 30, height: 30)) {
+    init(id: String, position: CGPoint, isHorizontalSlide: Bool, size: CGSize = CGSize(width: 30, height: 30)) {
         self.id = id
         self.position = position
-        self.isVertical = isVertical
+        self.isHorizontalSlide = isHorizontalSlide
         self.size = size
     }
 }
@@ -153,7 +155,7 @@ enum StationPalette {
 ///
 /// Station Layout:
 /// ```
-/// ┌────────────────���─────────────────────────────────────────────────┐
+/// ┌────────────────┬────────────────────────────────┬────────────────┐
 /// │  ENGINEERING   │   COMMAND BRIDGE              │ TRAINING BAY   │
 /// │  (reactor)     │   [ws] [ws] [ws]              │ equipment      │
 /// │                │   [ws] [ws] [ws]              ├────────────────│
@@ -284,25 +286,25 @@ enum StationLayout {
     /// Key airlock doors between modules and the corridor.
     static let doors: [DoorConfig] = [
         // Upper deck → corridor connections
-        DoorConfig(id: "eng_corridor", position: CGPoint(x: 130, y: 430), isVertical: true),
-        DoorConfig(id: "bridge_corridor", position: CGPoint(x: 510, y: 430), isVertical: true),
-        DoorConfig(id: "eva_corridor", position: CGPoint(x: 980, y: 430), isVertical: true),
+        DoorConfig(id: "eng_corridor", position: CGPoint(x: 130, y: 430), isHorizontalSlide: true),
+        DoorConfig(id: "bridge_corridor", position: CGPoint(x: 510, y: 430), isHorizontalSlide: true),
+        DoorConfig(id: "eva_corridor", position: CGPoint(x: 980, y: 430), isHorizontalSlide: true),
 
         // Corridor → lower deck connections
-        DoorConfig(id: "corridor_crew", position: CGPoint(x: 130, y: 370), isVertical: true),
-        DoorConfig(id: "corridor_galley", position: CGPoint(x: 390, y: 370), isVertical: true),
-        DoorConfig(id: "corridor_bio", position: CGPoint(x: 690, y: 370), isVertical: true),
-        DoorConfig(id: "corridor_arb", position: CGPoint(x: 1020, y: 370), isVertical: true),
+        DoorConfig(id: "corridor_crew", position: CGPoint(x: 130, y: 370), isHorizontalSlide: true),
+        DoorConfig(id: "corridor_galley", position: CGPoint(x: 390, y: 370), isHorizontalSlide: true),
+        DoorConfig(id: "corridor_bio", position: CGPoint(x: 690, y: 370), isHorizontalSlide: true),
+        DoorConfig(id: "corridor_arb", position: CGPoint(x: 1020, y: 370), isHorizontalSlide: true),
 
         // Horizontal doors between adjacent modules (same deck)
-        DoorConfig(id: "eng_bridge", position: CGPoint(x: 250, y: 595), isVertical: false),
-        DoorConfig(id: "bridge_eva", position: CGPoint(x: 770, y: 500), isVertical: false),
-        DoorConfig(id: "crew_galley", position: CGPoint(x: 250, y: 195), isVertical: false),
-        DoorConfig(id: "galley_bio", position: CGPoint(x: 530, y: 195), isVertical: false),
-        DoorConfig(id: "bio_arb", position: CGPoint(x: 850, y: 195), isVertical: false),
+        DoorConfig(id: "eng_bridge", position: CGPoint(x: 250, y: 595), isHorizontalSlide: false),
+        DoorConfig(id: "bridge_eva", position: CGPoint(x: 770, y: 500), isHorizontalSlide: false),
+        DoorConfig(id: "crew_galley", position: CGPoint(x: 250, y: 195), isHorizontalSlide: false),
+        DoorConfig(id: "galley_bio", position: CGPoint(x: 530, y: 195), isHorizontalSlide: false),
+        DoorConfig(id: "bio_arb", position: CGPoint(x: 850, y: 195), isHorizontalSlide: false),
 
         // Training Bay ↔ EVA Bay internal
-        DoorConfig(id: "training_eva", position: CGPoint(x: 980, y: 580), isVertical: true),
+        DoorConfig(id: "training_eva", position: CGPoint(x: 980, y: 580), isHorizontalSlide: true),
     ]
 
     // MARK: - Helpers

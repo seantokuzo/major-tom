@@ -627,13 +627,13 @@ final class OfficeScene: SKScene {
             container.name = "door_\(door.id)"
 
             let panelSize: CGSize
-            if door.isVertical {
+            if door.isHorizontalSlide {
                 panelSize = CGSize(width: door.size.width / 2 - 1, height: 4)
             } else {
                 panelSize = CGSize(width: 4, height: door.size.height / 2 - 1)
             }
 
-            if door.isVertical {
+            if door.isHorizontalSlide {
                 // Horizontal sliding panels (left/right)
                 let leftDoor = SKSpriteNode(color: StationPalette.hullAccent, size: panelSize)
                 leftDoor.position = CGPoint(x: -panelSize.width / 2 - 0.5, y: 0)
@@ -671,7 +671,7 @@ final class OfficeScene: SKScene {
 
             // Center seam glow
             let seam: SKSpriteNode
-            if door.isVertical {
+            if door.isHorizontalSlide {
                 seam = SKSpriteNode(
                     color: StationPalette.consoleCyan.withAlphaComponent(0.2),
                     size: CGSize(width: 1, height: door.size.height - 4)
@@ -712,15 +712,18 @@ final class OfficeScene: SKScene {
         guard panels.left.action(forKey: "doorOpen") == nil,
               panels.left.action(forKey: "doorAnim") == nil else { return }
 
-        let slideDistance: CGFloat = door.size.width / 2 + 2
         let duration: TimeInterval = 0.3
 
-        if door.isVertical {
-            panels.left.run(SKAction.moveBy(x: -slideDistance / 2, y: 0, duration: duration), withKey: "doorAnim")
-            panels.right.run(SKAction.moveBy(x: slideDistance / 2, y: 0, duration: duration), withKey: "doorAnim")
+        if door.isHorizontalSlide {
+            // Panels slide left/right — distance based on width
+            let slide = door.size.width / 2 + 2
+            panels.left.run(SKAction.moveBy(x: -slide / 2, y: 0, duration: duration), withKey: "doorAnim")
+            panels.right.run(SKAction.moveBy(x: slide / 2, y: 0, duration: duration), withKey: "doorAnim")
         } else {
-            panels.left.run(SKAction.moveBy(x: 0, y: -slideDistance / 2, duration: duration), withKey: "doorAnim")
-            panels.right.run(SKAction.moveBy(x: 0, y: slideDistance / 2, duration: duration), withKey: "doorAnim")
+            // Panels slide up/down — distance based on height
+            let slide = door.size.height / 2 + 2
+            panels.left.run(SKAction.moveBy(x: 0, y: -slide / 2, duration: duration), withKey: "doorAnim")
+            panels.right.run(SKAction.moveBy(x: 0, y: slide / 2, duration: duration), withKey: "doorAnim")
         }
 
         // Mark as open
@@ -734,7 +737,7 @@ final class OfficeScene: SKScene {
 
         let duration: TimeInterval = 0.4
 
-        if door.isVertical {
+        if door.isHorizontalSlide {
             let closedL = CGPoint(x: -(door.size.width / 4 - 0.5) - 0.5, y: 0)
             let closedR = CGPoint(x: (door.size.width / 4 - 0.5) + 0.5, y: 0)
             panels.left.run(SKAction.move(to: closedL, duration: duration), withKey: "doorAnim")
@@ -1228,11 +1231,11 @@ final class OfficeScene: SKScene {
         )
 
         for windowNode in windowNodes {
-            // Far stars: counter-move 30% of camera offset (deep parallax)
+            // Far stars: shift 3% of camera offset (deep, barely moves)
             if let farStars = windowNode.childNode(withName: "//starsFar") {
                 farStars.position = CGPoint(x: cameraOffset.x * 0.03, y: cameraOffset.y * 0.03)
             }
-            // Near stars: counter-move 15% (closer parallax)
+            // Near stars: shift 6% of camera offset (closer, moves more)
             if let nearStars = windowNode.childNode(withName: "//starsNear") {
                 nearStars.position = CGPoint(x: cameraOffset.x * 0.06, y: cameraOffset.y * 0.06)
             }
@@ -1490,6 +1493,7 @@ final class OfficeScene: SKScene {
                 let scaleFactor = prevDist / currentDistance
                 let newScale = max(minCameraScale, min(maxCameraScale, cameraNode.xScale * scaleFactor))
                 cameraNode.setScale(newScale)
+                clampCameraPosition()
             }
             lastPinchDistance = currentDistance
             lastPanLocation = nil  // Cancel any pan
@@ -1557,8 +1561,18 @@ final class OfficeScene: SKScene {
         let minY = halfVisibleHeight - padding
         let maxY = size.height - halfVisibleHeight + padding
 
-        cameraNode.position.x = max(min(cameraNode.position.x, max(maxX, minX)), minX)
-        cameraNode.position.y = max(min(cameraNode.position.y, max(maxY, minY)), minY)
+        // When zoomed out far enough that visible area > scene, center the camera
+        if minX >= maxX {
+            cameraNode.position.x = size.width / 2
+        } else {
+            cameraNode.position.x = max(min(cameraNode.position.x, maxX), minX)
+        }
+
+        if minY >= maxY {
+            cameraNode.position.y = size.height / 2
+        } else {
+            cameraNode.position.y = max(min(cameraNode.position.y, maxY), minY)
+        }
     }
 
     // MARK: - Camera Public API
