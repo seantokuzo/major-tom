@@ -75,30 +75,44 @@ enum CharacterCatalog {
 
         // MARK: Dogs
         CharacterConfig(
-            type: .dachshund,
-            displayName: "Dachshund",
+            type: .elvis,
+            displayName: "Elvis",
             spriteColor: Color(red: 0.75, green: 0.45, blue: 0.20),  // Auburn brown
             breakBehaviors: [.dogCorner, .dogPark, .kitchen],
             needsBlanket: true  // Always needs a blanket at their desk
         ),
         CharacterConfig(
-            type: .cattleDog,
-            displayName: "Cattle Dog",
+            type: .senor,
+            displayName: "Señor",
+            spriteColor: Color(red: 0.65, green: 0.40, blue: 0.18),  // Warm brown
+            breakBehaviors: [.dogCorner, .dogPark, .kitchen],
+            needsBlanket: true
+        ),
+        CharacterConfig(
+            type: .steve,
+            displayName: "Steve",
             spriteColor: Color(red: 0.85, green: 0.35, blue: 0.25),  // Red heeler
             breakBehaviors: [.dogCorner, .dogPark, .gym],
             needsBlanket: false
         ),
         CharacterConfig(
-            type: .schnauzerBlack,
-            displayName: "Black Schnauzer",
+            type: .esteban,
+            displayName: "Esteban",
+            spriteColor: Color(red: 0.80, green: 0.30, blue: 0.22),  // Warm red
+            breakBehaviors: [.dogCorner, .dogPark, .gym],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .hoku,
+            displayName: "Hoku",
             spriteColor: Color(red: 0.15, green: 0.15, blue: 0.20),  // All black
             breakBehaviors: [.dogCorner, .dogPark, .breakRoom],
             needsBlanket: false
         ),
         CharacterConfig(
-            type: .schnauzerPepper,
-            displayName: "Pepper Schnauzer",
-            spriteColor: Color(red: 0.35, green: 0.35, blue: 0.40),  // Salt & pepper (mostly dark)
+            type: .kai,
+            displayName: "Kai",
+            spriteColor: Color(red: 0.35, green: 0.35, blue: 0.40),  // Salt & pepper
             breakBehaviors: [.dogCorner, .dogPark, .breakRoom],
             needsBlanket: false
         ),

@@ -39,7 +39,7 @@ final class AgentSprite: SKSpriteNode {
 
     /// Dog character types for convenience.
     private static let dogTypes: Set<CharacterType> = [
-        .dachshund, .cattleDog, .schnauzerBlack, .schnauzerPepper,
+        .elvis, .senor, .steve, .esteban, .hoku, .kai,
     ]
 
     // MARK: - Initialization

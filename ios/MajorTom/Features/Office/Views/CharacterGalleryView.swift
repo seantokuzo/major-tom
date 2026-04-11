@@ -92,7 +92,7 @@ struct CharacterGalleryView: View {
     private func traitsView(config: CharacterConfig) -> some View {
         HStack(spacing: MajorTomTheme.Spacing.sm) {
             // Type badge
-            let isDog = [CharacterType.dachshund, .cattleDog, .schnauzerBlack, .schnauzerPepper].contains(config.type)
+            let isDog = [CharacterType.elvis, .senor, .steve, .esteban, .hoku, .kai].contains(config.type)
             traitBadge(
                 icon: isDog ? "pawprint.fill" : "person.fill",
                 text: isDog ? "Dog" : "Human",
@@ -154,14 +154,18 @@ struct CharacterGalleryView: View {
             return "Office morale officer. Brings joy, chaos, and occasional whoopee cushions."
         case .frankenstein:
             return "The office wildcard. Bolts included. Surprisingly good at pair programming."
-        case .dachshund:
+        case .elvis:
             return "Long boi. Requires a blanket at all times. Expert at fitting under desks."
-        case .cattleDog:
+        case .senor:
+            return "Elvis's brother. Green hoodie enthusiast. Equally long, equally dramatic."
+        case .steve:
             return "High energy herder. Will round up the team for meetings whether you like it or not."
-        case .schnauzerBlack:
-            return "Distinguished and dignified. The office elder. Judges silently from their corner."
-        case .schnauzerPepper:
-            return "Salt and pepper wisdom. Best beard in the office, no contest."
+        case .esteban:
+            return "Steve's dapper twin. Bow tie mandatory. Herds with sophistication."
+        case .hoku:
+            return "Distinguished and dignified. The station elder. Judges silently from their corner."
+        case .kai:
+            return "Salt and pepper wisdom. Best beard on the station, no contest."
         }
     }
 }
