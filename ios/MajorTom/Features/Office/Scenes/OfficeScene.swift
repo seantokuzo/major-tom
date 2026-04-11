@@ -26,12 +26,15 @@ final class OfficeScene: SKScene {
 
     var themeEngine: ThemeEngine?
     var moodEngine: MoodEngine?
+    var spaceWeatherEngine: SpaceWeatherEngine?
     private var themeOverlay: SKSpriteNode?
+    private var alertOverlay: SKSpriteNode?
     private var lampNodes: [Int: SKShapeNode] = [:]
     private var snowNodes: [SKShapeNode] = []
     private var interactionScanTime: TimeInterval = 0
     private var chattingAgents: Set<String> = []
     private var moodSpeechTime: TimeInterval = 0
+    private var currentAlertState: StationAlertState = .normal
 
     // MARK: - Scene Lifecycle
 
@@ -719,6 +722,15 @@ final class OfficeScene: SKScene {
         addChild(overlay)
         themeOverlay = overlay
 
+        // Alert overlay (red/blue/yellow wash) — separate from theme overlay
+        let alert = SKSpriteNode(color: .clear, size: size)
+        alert.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        alert.zPosition = 6
+        alert.alpha = 0
+        alert.name = "alertOverlay"
+        addChild(alert)
+        alertOverlay = alert
+
         for desk in OfficeLayout.desks {
             let glow = SKShapeNode(circleOfRadius: 20)
             glow.fillColor = StationPalette.consoleCyan.withAlphaComponent(0.08)
@@ -739,6 +751,9 @@ final class OfficeScene: SKScene {
             overlay.color = theme.palette.overlayColor
             overlay.alpha = theme.palette.overlayAlpha
         }
+
+        // Apply alert state to overlay and status strips
+        applyAlertState(theme: theme)
 
         for desk in OfficeLayout.desks {
             guard let lampNode = lampNodes[desk.id] else { continue }
@@ -783,6 +798,193 @@ final class OfficeScene: SKScene {
     private func removeSnowDecorations() {
         snowNodes.forEach { $0.removeFromParent() }
         snowNodes.removeAll()
+    }
+
+    // MARK: - Alert State
+
+    /// Apply alert state to status strips and alert overlay.
+    private func applyAlertState(theme: ThemeEngine) {
+        let newState = theme.alertState
+        guard newState != currentAlertState else { return }
+        currentAlertState = newState
+
+        // Update alert overlay
+        if let alert = alertOverlay {
+            alert.run(SKAction.group([
+                SKAction.colorize(with: theme.alertOverlayColor, colorBlendFactor: 1.0, duration: 0.5),
+                SKAction.fadeAlpha(to: theme.alertOverlayAlpha, duration: 0.5),
+            ]))
+        }
+
+        // Update all status strips
+        let stripColor = theme.alertStripColor
+        for module in StationLayout.modules {
+            if let strip = childNode(withName: "statusStrip_\(module.type.rawValue)") as? SKSpriteNode {
+                strip.removeAllActions()
+                strip.run(SKAction.colorize(with: stripColor, colorBlendFactor: 1.0, duration: 0.3))
+
+                // Pulse speed varies by alert state
+                let (lo, hi, dur): (CGFloat, CGFloat, TimeInterval) = {
+                    switch newState {
+                    case .normal:      return (0.15, 0.35, 2.5)
+                    case .attention:   return (0.2, 0.5, 1.5)
+                    case .alert:       return (0.3, 0.7, 0.6)  // Fast urgent pulse
+                    case .celebration: return (0.2, 0.5, 1.2)
+                    }
+                }()
+                strip.run(SKAction.repeatForever(SKAction.sequence([
+                    SKAction.fadeAlpha(to: lo, duration: dur),
+                    SKAction.fadeAlpha(to: hi, duration: dur),
+                ])))
+            }
+        }
+
+        // Haptic feedback for alert changes
+        switch newState {
+        case .normal:      break
+        case .attention:   HapticService.impact(.light)
+        case .alert:       HapticService.impact(.heavy); HapticService.notification(.warning)
+        case .celebration: HapticService.notification(.success)
+        }
+    }
+
+    // MARK: - Space Weather Events
+
+    /// Handle a space weather event — called by SpaceWeatherEngine callback.
+    func handleWeatherEvent(_ event: SpaceWeatherEvent) {
+        switch event {
+        case .solarFlare:
+            triggerSolarFlare()
+        case .meteorShower:
+            triggerMeteorShower()
+        case .nebulaPassage:
+            triggerNebulaPassage()
+        case .stationRumble:
+            triggerStationRumble()
+        case .commsBurst:
+            triggerCommsBurst()
+        }
+    }
+
+    private func triggerSolarFlare() {
+        // Golden wash across the scene
+        let flash = SKSpriteNode(
+            color: SKColor(red: 1.0, green: 0.85, blue: 0.4, alpha: 0),
+            size: size
+        )
+        flash.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        flash.zPosition = 85
+        addChild(flash)
+
+        flash.run(SKAction.sequence([
+            SKAction.fadeAlpha(to: 0.12, duration: 0.8),
+            SKAction.wait(forDuration: 2.0),
+            SKAction.fadeAlpha(to: 0, duration: 1.5),
+            SKAction.removeFromParent(),
+        ]))
+
+        HapticService.impact(.medium)
+    }
+
+    private func triggerMeteorShower() {
+        // Bright diagonal streaks across the scene
+        for i in 0..<6 {
+            let delay = Double(i) * 0.5
+
+            run(SKAction.sequence([
+                SKAction.wait(forDuration: delay),
+                SKAction.run { [weak self] in
+                    guard let self else { return }
+                    let streak = SKShapeNode()
+                    let path = CGMutablePath()
+                    let startX = CGFloat.random(in: 100...self.size.width)
+                    let startY = CGFloat.random(in: self.size.height * 0.5...self.size.height)
+                    path.move(to: CGPoint(x: startX, y: startY))
+                    path.addLine(to: CGPoint(x: startX - 60, y: startY - 40))
+                    streak.path = path
+                    streak.strokeColor = StationPalette.starWhite.withAlphaComponent(0.7)
+                    streak.lineWidth = 1.5
+                    streak.glowWidth = 3
+                    streak.zPosition = 80
+                    self.addChild(streak)
+
+                    streak.run(SKAction.sequence([
+                        SKAction.fadeOut(withDuration: 0.6),
+                        SKAction.removeFromParent(),
+                    ]))
+                },
+            ]))
+        }
+
+        // Haptic: 3 light taps
+        for i in 0..<3 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.3) {
+                HapticService.impact(.rigid)
+            }
+        }
+    }
+
+    private func triggerNebulaPassage() {
+        // Slowly tint the scene toward a nebula color, then fade back
+        let nebulaOverlay = SKSpriteNode(
+            color: StationPalette.nebulaPink.withAlphaComponent(0.5),
+            size: size
+        )
+        nebulaOverlay.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        nebulaOverlay.zPosition = 84
+        nebulaOverlay.alpha = 0
+        addChild(nebulaOverlay)
+
+        nebulaOverlay.run(SKAction.sequence([
+            SKAction.fadeAlpha(to: 0.04, duration: 10),
+            SKAction.wait(forDuration: 20),
+            SKAction.fadeAlpha(to: 0, duration: 10),
+            SKAction.removeFromParent(),
+        ]))
+    }
+
+    private func triggerStationRumble() {
+        // Scene shake
+        let shakeActions: [SKAction] = (0..<8).flatMap { _ -> [SKAction] in
+            let dx = CGFloat.random(in: -3...3)
+            let dy = CGFloat.random(in: -2...2)
+            return [
+                SKAction.moveBy(x: dx, y: dy, duration: 0.04),
+                SKAction.moveBy(x: -dx, y: -dy, duration: 0.04),
+            ]
+        }
+
+        // Apply shake to all children (poor man's camera shake without SKCameraNode)
+        for child in children {
+            child.run(SKAction.sequence(shakeActions), withKey: "rumble")
+        }
+
+        // Double heavy haptic
+        HapticService.impact(.heavy)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            HapticService.impact(.heavy)
+        }
+    }
+
+    private func triggerCommsBurst() {
+        // Brief static flash on console screens (workstation desks)
+        for desk in OfficeLayout.desks {
+            if let consoleGroup = childNode(withName: "consoleGroup_\(desk.id)") {
+                let flash = SKSpriteNode(
+                    color: SKColor(white: 0.8, alpha: 0.3),
+                    size: CGSize(width: 28, height: 18)
+                )
+                flash.position = CGPoint(x: 0, y: 18) // Monitor position
+                flash.zPosition = 10
+                consoleGroup.addChild(flash)
+
+                flash.run(SKAction.sequence([
+                    SKAction.fadeOut(withDuration: 0.15),
+                    SKAction.removeFromParent(),
+                ]))
+            }
+        }
+        HapticService.impact(.light)
     }
 
     // MARK: - Frame Update

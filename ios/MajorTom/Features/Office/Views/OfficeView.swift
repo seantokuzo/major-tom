@@ -32,6 +32,9 @@ struct OfficeView: View {
         return scene
     }()
 
+    /// Space weather engine for cosmetic atmospheric events.
+    @State private var spaceWeather = SpaceWeatherEngine()
+
     /// Previous agent states for diffing.
     @State private var previousAgentIds: Set<String> = []
     @State private var previousStatuses: [String: AgentStatus] = [:]
@@ -74,6 +77,13 @@ struct OfficeView: View {
                 }
             }
 
+            // Wire space weather engine to the scene
+            scene.spaceWeatherEngine = spaceWeather
+            spaceWeather.onWeatherEvent = { [weak scene] event in
+                scene?.handleWeatherEvent(event)
+            }
+            spaceWeather.start()
+
             // Populate idle sprites if no agents present
             if viewModel.agents.isEmpty {
                 viewModel.populateIdleSprites()
@@ -84,6 +94,7 @@ struct OfficeView: View {
             viewModel.themeEngine.stop()
             viewModel.moodEngine.stop()
             viewModel.activityManager.stopCycling()
+            spaceWeather.stop()
         }
         .onChange(of: viewModel.selectedAgentId) { _, newValue in
             if newValue != nil {
