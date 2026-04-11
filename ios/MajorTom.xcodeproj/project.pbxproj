@@ -111,6 +111,7 @@
 		9FE4BFB91ACE225068E13E8F /* AgentSprite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DD1D371AFD4698EE21925BF /* AgentSprite.swift */; };
 		A1E8F12ACDD9CEC2A18F36C5 /* MajorTomShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01BD6266AD1E8A75F6D43438 /* MajorTomShortcuts.swift */; };
 		AA1B2C3D4E5F6A7B8C9D0E1F /* StationLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2C3D4E5F6A7B8C9D0E1F2A /* StationLayout.swift */; };
+		AA1C2D3E4F607182939D0E1A /* WaypointPathfinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1C2D3E4F607182939D0E1A /* WaypointPathfinder.swift */; };
 		AA2B3C4D5E6F7A8B9C0D1E2F /* SpaceWeatherEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB3C4D5E6F7A8B9C0D1E2F3A /* SpaceWeatherEngine.swift */; };
 		AB9BB40023862AA93CB23025 /* TeamSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EF45D03BFA395EA5065AB84 /* TeamSettingsView.swift */; };
 		AE3ACD3E9CDC7BCA3A6C2FB8 /* ActiveSessionsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E59896B7BF6791883325E2E /* ActiveSessionsWidget.swift */; };
@@ -333,6 +334,7 @@
 		B2F994AD4DF2511035320D9B /* GitBranchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitBranchesView.swift; sourceTree = "<group>"; };
 		B67F68CAC7F1FF23E1890F69 /* StreamingIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingIndicator.swift; sourceTree = "<group>"; };
 		B99FD8B1AB490C5124F962DC /* ApprovalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalView.swift; sourceTree = "<group>"; };
+		BB1C2D3E4F607182939D0E1A /* WaypointPathfinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaypointPathfinder.swift; sourceTree = "<group>"; };
 		BB2C3D4E5F6A7B8C9D0E1F2A /* StationLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationLayout.swift; sourceTree = "<group>"; };
 		BB3C4D5E6F7A8B9C0D1E2F3A /* SpaceWeatherEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceWeatherEngine.swift; sourceTree = "<group>"; };
 		BBDD93D05B7AFEA1D59E6331 /* NotificationSettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsViewModel.swift; sourceTree = "<group>"; };
@@ -788,6 +790,7 @@
 				B2A5F6ECD6AEA9681C140DA3 /* OfficeLayout.swift */,
 				BB2C3D4E5F6A7B8C9D0E1F2A /* StationLayout.swift */,
 				765796A3C1DAD173DB56A1CC /* ThemeEngine.swift */,
+				BB1C2D3E4F607182939D0E1A /* WaypointPathfinder.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -1681,6 +1684,7 @@
 				1FB9124E49F11A762382E6A9 /* SpecialtyKeyGrid.swift in Sources */,
 				B384AD912E4F5F5AC8F5C0AE /* SpeechService.swift in Sources */,
 				AA1B2C3D4E5F6A7B8C9D0E1F /* StationLayout.swift in Sources */,
+				AA1C2D3E4F607182939D0E1A /* WaypointPathfinder.swift in Sources */,
 				CC3D4E5F6A7B8C9D0E1F2A3B /* StationParticleFactory.swift in Sources */,
 				FF6A7B8C9D0E1F2A3B4C5D6E /* StationFurnitureFactory.swift in Sources */,
 				AA2B3C4D5E6F7A8B9C0D1E2F /* SpaceWeatherEngine.swift in Sources */,

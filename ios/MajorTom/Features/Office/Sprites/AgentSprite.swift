@@ -1,6 +1,38 @@
 import SpriteKit
 import UIKit
 
+// MARK: - Helmet Type
+
+/// Helmet overlay variants toggled per station module.
+enum HelmetType {
+    case none
+    case standard   // Safety visor — Engineering, Training Bay
+    case eva        // Full space helmet — EVA Bay
+}
+
+// MARK: - Emote Type
+
+/// Animated emote icons that float above an agent's head.
+enum EmoteType: String {
+    case thought      // 💭
+    case exclamation  // ❗
+    case heart        // ❤️
+    case zzz          // 💤
+    case wrench       // 🔧
+    case star         // ⭐
+
+    var symbol: String {
+        switch self {
+        case .thought:     return "💭"
+        case .exclamation: return "❗"
+        case .heart:       return "❤️"
+        case .zzz:         return "💤"
+        case .wrench:      return "🔧"
+        case .star:        return "⭐"
+        }
+    }
+}
+
 // MARK: - Agent Sprite
 
 /// Sprite for an agent character in the space station scene.
@@ -36,6 +68,15 @@ final class AgentSprite: SKSpriteNode {
 
     /// Current mood for this agent.
     private(set) var currentMood: AgentMood = .neutral
+
+    /// Current helmet type.
+    private(set) var currentHelmet: HelmetType = .none
+
+    /// The helmet overlay node (nil when no helmet).
+    private var helmetNode: SKNode?
+
+    /// The module this agent is currently in (for helmet logic).
+    private(set) var currentModule: ModuleType?
 
     /// Dog character types for convenience.
     private static let dogTypes: Set<CharacterType> = [
@@ -346,6 +387,13 @@ final class AgentSprite: SKSpriteNode {
 
         // Apply mood-specific idle animation override
         applyMoodIdleAnimation(mood)
+
+        // Occasionally show a mood-related emote (30% chance on mood change)
+        if Double.random(in: 0...1) < 0.3 {
+            if let emote = mood.emote {
+                showEmote(emote)
+            }
+        }
     }
 
     /// Apply mood-specific idle animation on top of current state.
@@ -429,6 +477,152 @@ final class AgentSprite: SKSpriteNode {
     func showMoodSpeech() {
         guard let text = currentMood.pickSpeech() else { return }
         showSpeechBubble(text)
+    }
+
+    // MARK: - Helmet Overlay
+
+    /// Set the helmet type, creating or removing the overlay node.
+    func setHelmet(_ type: HelmetType) {
+        guard type != currentHelmet else { return }
+        currentHelmet = type
+
+        // Remove existing helmet
+        helmetNode?.removeFromParent()
+        helmetNode = nil
+
+        let spriteSize = CrewSpriteBuilder.size(for: characterType)
+
+        switch type {
+        case .none:
+            break
+
+        case .standard:
+            // Safety visor — small cyan-tinted rounded rect over the top half of the head
+            let visor = SKShapeNode(rectOf: CGSize(width: spriteSize.width * 0.6, height: spriteSize.height * 0.3), cornerRadius: 4)
+            visor.fillColor = SKColor(red: 0, green: 0.83, blue: 1, alpha: 0.25)
+            visor.strokeColor = SKColor(red: 0, green: 0.83, blue: 1, alpha: 0.6)
+            visor.lineWidth = 1
+            visor.position = CGPoint(x: 0, y: spriteSize.height * 0.18)
+            visor.zPosition = 5
+            bodySprite.addChild(visor)
+            helmetNode = visor
+
+        case .eva:
+            // Full space helmet — dome bubble around the head
+            let dome = SKShapeNode(circleOfRadius: spriteSize.width * 0.42)
+            dome.fillColor = SKColor(red: 0.7, green: 0.85, blue: 1, alpha: 0.15)
+            dome.strokeColor = SKColor(red: 0.7, green: 0.85, blue: 1, alpha: 0.5)
+            dome.lineWidth = 1.5
+            dome.position = CGPoint(x: 0, y: spriteSize.height * 0.12)
+            dome.zPosition = 5
+            // Glass reflection highlight
+            let reflection = SKShapeNode(ellipseOf: CGSize(width: spriteSize.width * 0.2, height: spriteSize.height * 0.12))
+            reflection.fillColor = SKColor(white: 1, alpha: 0.2)
+            reflection.strokeColor = .clear
+            reflection.position = CGPoint(x: -spriteSize.width * 0.1, y: spriteSize.height * 0.08)
+            dome.addChild(reflection)
+            bodySprite.addChild(dome)
+            helmetNode = dome
+        }
+    }
+
+    /// Update the helmet based on which module the agent is in.
+    func updateModule(_ module: ModuleType?) {
+        currentModule = module
+        let helmetType: HelmetType
+        switch module {
+        case .engineering, .trainingBay:
+            helmetType = .standard
+        case .evaBay:
+            helmetType = .eva
+        default:
+            helmetType = .none
+        }
+        setHelmet(helmetType)
+    }
+
+    // MARK: - Emote System
+
+    /// Show an animated emote above the sprite.
+    /// The emote pops in, floats upward, then fades out.
+    func showEmote(_ emote: EmoteType) {
+        // Remove any existing emote
+        childNode(withName: "emote")?.removeFromParent()
+
+        let spriteSize = CrewSpriteBuilder.size(for: characterType)
+
+        let label = SKLabelNode(text: emote.symbol)
+        label.fontSize = 16
+        label.name = "emote"
+        label.position = CGPoint(x: 0, y: spriteSize.height / 2 + 8)
+        label.zPosition = 25
+        label.setScale(0.1)
+        label.alpha = 0
+        addChild(label)
+
+        // Pop in
+        let popIn = SKAction.group([
+            SKAction.scale(to: 1.0, duration: 0.15),
+            SKAction.fadeAlpha(to: 1.0, duration: 0.15),
+        ])
+        popIn.timingMode = .easeOut
+
+        // Hold + gentle float
+        let floatUp = SKAction.moveBy(x: 0, y: 12, duration: 1.2)
+        floatUp.timingMode = .easeOut
+
+        // Fade out
+        let fadeOut = SKAction.group([
+            SKAction.fadeOut(withDuration: 0.4),
+            SKAction.scale(to: 0.6, duration: 0.4),
+        ])
+
+        let sequence = SKAction.sequence([popIn, floatUp, fadeOut, SKAction.removeFromParent()])
+        label.run(sequence)
+    }
+
+    // MARK: - Waypoint Movement
+
+    /// Move along a series of waypoints sequentially.
+    /// Each segment calculates its own duration based on distance for consistent speed.
+    func moveAlongPath(_ waypoints: [CGPoint], speed: CGFloat = 120, completion: (() -> Void)? = nil) {
+        guard !waypoints.isEmpty else {
+            completion?()
+            return
+        }
+
+        removeAction(forKey: "move")
+
+        var actions: [SKAction] = []
+        var current = self.position
+
+        for waypoint in waypoints {
+            let dx = waypoint.x - current.x
+            let dy = waypoint.y - current.y
+            let distance = sqrt(dx * dx + dy * dy)
+            let duration = max(TimeInterval(distance / speed), 0.1)
+
+            // Update facing at the start of each segment
+            let facingUpdate = SKAction.run { [weak self] in
+                guard let self else { return }
+                if abs(dx) > 1 || abs(dy) > 1 {
+                    self.setFacing(FacingDirection.from(dx: dx, dy: dy))
+                }
+            }
+
+            let move = SKAction.move(to: waypoint, duration: duration)
+            move.timingMode = .easeInEaseOut
+
+            actions.append(facingUpdate)
+            actions.append(move)
+            current = waypoint
+        }
+
+        if let completion {
+            actions.append(SKAction.run(completion))
+        }
+
+        run(SKAction.sequence(actions), withKey: "move")
     }
 
 }

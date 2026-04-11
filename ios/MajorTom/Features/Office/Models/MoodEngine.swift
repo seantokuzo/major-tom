@@ -144,6 +144,18 @@ extension AgentMood {
         guard let pool = speechPool, !pool.isEmpty else { return nil }
         return pool.randomElement()
     }
+
+    /// The emote associated with this mood (if any).
+    var emote: EmoteType? {
+        switch self {
+        case .happy:      return .heart
+        case .neutral:    return nil
+        case .focused:    return .thought
+        case .bored:      return .zzz
+        case .frustrated: return .wrench
+        case .excited:    return .exclamation
+        }
+    }
 }
 
 // MARK: - Mood Derivation
