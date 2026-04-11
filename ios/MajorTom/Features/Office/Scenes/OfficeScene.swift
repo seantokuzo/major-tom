@@ -115,6 +115,8 @@ final class OfficeScene: SKScene {
     }
 
     /// Alternating floor panel tiles with subtle shade variation.
+    /// NOTE: Creates individual SKSpriteNodes per tile. Planned migration to SKTileMapNode
+    /// (single draw call) in a follow-up wave for better GPU batching.
     private func renderFloorPanels(in bounds: CGRect, moduleType: ModuleType) {
         let tileSize: CGFloat = 32
         let baseColor = StationPalette.floorColor(for: moduleType)
@@ -336,7 +338,7 @@ final class OfficeScene: SKScene {
         }
     }
 
-    private func createWindowNode(config: WindowConfig, module: StationModule) -> SKNode {
+    private func createWindowNode(config: WindowConfig, module _: StationModule) -> SKNode {
         let container = SKNode()
         container.position = config.position
         container.zPosition = 0.8
@@ -689,68 +691,70 @@ final class OfficeScene: SKScene {
         }
     }
 
-    /// Open/close a door when an agent is near.
+    /// Track open/close state per door to avoid redundant animations.
+    private var openDoorIds: Set<String> = []
+
+    /// Check all doors against all agent positions. A door opens if ANY agent is near.
     func checkDoorProximity(agentPosition: CGPoint) {
         let triggerDistance: CGFloat = 50
 
         for door in StationLayout.doors {
-            let dx = agentPosition.x - door.position.x
-            let dy = agentPosition.y - door.position.y
-            let dist = sqrt(dx * dx + dy * dy)
-
             guard let panels = airlockDoors[door.id] else { continue }
 
-            if dist < triggerDistance {
+            // Check if any agent is near this door
+            let anyAgentNear = agentSprites.values.contains { sprite in
+                let dx = sprite.position.x - door.position.x
+                let dy = sprite.position.y - door.position.y
+                return sqrt(dx * dx + dy * dy) < triggerDistance
+            }
+
+            if anyAgentNear && !openDoorIds.contains(door.id) {
                 openDoor(id: door.id, door: door, panels: panels)
-            } else {
+            } else if !anyAgentNear && openDoorIds.contains(door.id) {
                 closeDoor(id: door.id, door: door, panels: panels)
             }
         }
     }
 
     private func openDoor(id: String, door: DoorConfig, panels: (left: SKSpriteNode, right: SKSpriteNode, top: SKSpriteNode?, bottom: SKSpriteNode?)) {
-        guard panels.left.action(forKey: "doorOpen") == nil,
-              panels.left.action(forKey: "doorAnim") == nil else { return }
-
+        openDoorIds.insert(id)
         let duration: TimeInterval = 0.3
 
         if door.isHorizontalSlide {
-            // Panels slide left/right — distance based on width
             let slide = door.size.width / 2 + 2
-            panels.left.run(SKAction.moveBy(x: -slide / 2, y: 0, duration: duration), withKey: "doorAnim")
-            panels.right.run(SKAction.moveBy(x: slide / 2, y: 0, duration: duration), withKey: "doorAnim")
+            let openL = CGPoint(x: -(slide / 2 + door.size.width / 4), y: 0)
+            let openR = CGPoint(x: slide / 2 + door.size.width / 4, y: 0)
+            panels.left.run(SKAction.move(to: openL, duration: duration), withKey: "doorAnim")
+            panels.right.run(SKAction.move(to: openR, duration: duration), withKey: "doorAnim")
         } else {
-            // Panels slide up/down — distance based on height
             let slide = door.size.height / 2 + 2
-            panels.left.run(SKAction.moveBy(x: 0, y: -slide / 2, duration: duration), withKey: "doorAnim")
-            panels.right.run(SKAction.moveBy(x: 0, y: slide / 2, duration: duration), withKey: "doorAnim")
+            let openL = CGPoint(x: 0, y: -(slide / 2 + door.size.height / 4))
+            let openR = CGPoint(x: 0, y: slide / 2 + door.size.height / 4)
+            panels.left.run(SKAction.move(to: openL, duration: duration), withKey: "doorAnim")
+            panels.right.run(SKAction.move(to: openR, duration: duration), withKey: "doorAnim")
         }
 
-        // Mark as open
-        panels.left.name = "doorPanel_L_open"
         HapticService.impact(.light)
     }
 
     private func closeDoor(id: String, door: DoorConfig, panels: (left: SKSpriteNode, right: SKSpriteNode, top: SKSpriteNode?, bottom: SKSpriteNode?)) {
-        guard panels.left.name == "doorPanel_L_open",
-              panels.left.action(forKey: "doorAnim") == nil else { return }
-
+        guard panels.left.action(forKey: "doorAnim") == nil else { return }
+        openDoorIds.remove(id)
         let duration: TimeInterval = 0.4
 
         if door.isHorizontalSlide {
-            let closedL = CGPoint(x: -(door.size.width / 4 - 0.5) - 0.5, y: 0)
-            let closedR = CGPoint(x: (door.size.width / 4 - 0.5) + 0.5, y: 0)
+            let panelW = door.size.width / 4 - 0.5
+            let closedL = CGPoint(x: -panelW - 0.5, y: 0)
+            let closedR = CGPoint(x: panelW + 0.5, y: 0)
             panels.left.run(SKAction.move(to: closedL, duration: duration), withKey: "doorAnim")
             panels.right.run(SKAction.move(to: closedR, duration: duration), withKey: "doorAnim")
         } else {
-            let panelSize = door.size.height / 2 - 1
-            let closedL = CGPoint(x: 0, y: -panelSize / 2 - 0.5)
-            let closedR = CGPoint(x: 0, y: panelSize / 2 + 0.5)
+            let panelH = door.size.height / 4 - 0.5
+            let closedL = CGPoint(x: 0, y: -panelH - 0.5)
+            let closedR = CGPoint(x: 0, y: panelH + 0.5)
             panels.left.run(SKAction.move(to: closedL, duration: duration), withKey: "doorAnim")
             panels.right.run(SKAction.move(to: closedR, duration: duration), withKey: "doorAnim")
         }
-
-        panels.left.name = "doorPanel_L"
     }
 
     /// Draw the main station airlock (entry/exit).
@@ -1244,11 +1248,10 @@ final class OfficeScene: SKScene {
 
     // MARK: - Door Proximity Check
 
-    /// Check all agent positions against doors each frame.
+    /// Check all doors against all agents once per frame.
     private func updateDoorProximity() {
-        for (_, sprite) in agentSprites {
-            checkDoorProximity(agentPosition: sprite.position)
-        }
+        // Single call checks all doors against all agents internally
+        checkDoorProximity(agentPosition: .zero)
     }
 
     // MARK: - Agent Moods
