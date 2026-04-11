@@ -162,3 +162,5 @@ relay/.pin
 *.orig
 Thumbs.db
 .claude/worktrees/
+
+assets/

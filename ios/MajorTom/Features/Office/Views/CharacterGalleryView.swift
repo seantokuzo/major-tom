@@ -212,18 +212,47 @@ final class CharacterPreviewScene: SKScene {
     override func didMove(to view: SKView) {
         super.didMove(to: view)
 
-        // Build and add a scaled-up version of the pixel art
-        let pixelArt = PixelArtBuilder.build(for: characterType)
-        pixelArt.setScale(3.0) // 3x scale for preview
-        pixelArt.position = CGPoint(x: 0, y: 0)
-        addChild(pixelArt)
+        // Build crew sprite from texture atlas
+        let crewSprite = CrewSpriteBuilder.build(for: characterType, facing: .front)
+        crewSprite.setScale(2.0)
+        crewSprite.position = CGPoint(x: 0, y: 0)
+        addChild(crewSprite)
 
         // Add idle bobbing animation
         let bob = SKAction.sequence([
             SKAction.moveBy(x: 0, y: 4, duration: 0.8),
             SKAction.moveBy(x: 0, y: -4, duration: 0.8),
         ])
-        pixelArt.run(SKAction.repeatForever(bob))
+        crewSprite.run(SKAction.repeatForever(bob))
+
+        // Cycle through facing directions for preview
+        let cycleFacing = SKAction.repeatForever(SKAction.sequence([
+            SKAction.wait(forDuration: 2.0),
+            SKAction.run { [weak self] in
+                guard let self else { return }
+                let tex = CrewSpriteBuilder.texture(for: self.characterType, facing: .right)
+                crewSprite.texture = tex
+            },
+            SKAction.wait(forDuration: 2.0),
+            SKAction.run { [weak self] in
+                guard let self else { return }
+                let tex = CrewSpriteBuilder.texture(for: self.characterType, facing: .back)
+                crewSprite.texture = tex
+            },
+            SKAction.wait(forDuration: 2.0),
+            SKAction.run { [weak self] in
+                guard let self else { return }
+                let tex = CrewSpriteBuilder.texture(for: self.characterType, facing: .left)
+                crewSprite.texture = tex
+            },
+            SKAction.wait(forDuration: 2.0),
+            SKAction.run { [weak self] in
+                guard let self else { return }
+                let tex = CrewSpriteBuilder.texture(for: self.characterType, facing: .front)
+                crewSprite.texture = tex
+            },
+        ]))
+        crewSprite.run(cycleFacing)
     }
 }
 

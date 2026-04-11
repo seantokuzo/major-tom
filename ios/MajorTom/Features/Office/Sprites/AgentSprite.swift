@@ -3,18 +3,21 @@ import UIKit
 
 // MARK: - Agent Sprite
 
-/// Sprite for an agent character in the office scene.
-/// Uses programmatic pixel art built from small colored nodes, differentiated by CharacterType.
+/// Sprite for an agent character in the space station scene.
+/// Uses texture-based rendering from the CrewSprites atlas with directional facing.
 final class AgentSprite: SKSpriteNode {
 
     /// The agent ID this sprite represents (used for tap-to-inspect).
     let agentId: String
 
-    /// The character type determines the pixel art appearance.
+    /// The character type determines the sprite texture set.
     let characterType: CharacterType
 
-    /// The pixel art node tree (child of this sprite).
-    private let pixelArt: SKNode
+    /// The texture-based crew sprite body node.
+    private let bodySprite: SKSpriteNode
+
+    /// Current facing direction.
+    private(set) var facing: FacingDirection = .front
 
     /// The name label node displayed above the sprite.
     private let nameLabel: SKLabelNode
@@ -45,8 +48,8 @@ final class AgentSprite: SKSpriteNode {
         self.agentId = agentId
         self.characterType = characterType
 
-        // Build pixel art for this character
-        pixelArt = PixelArtBuilder.build(for: characterType)
+        // Build texture-based crew sprite
+        bodySprite = CrewSpriteBuilder.build(for: characterType, facing: .front)
 
         // Name label
         nameLabel = SKLabelNode(fontNamed: "Menlo-Bold")
@@ -61,7 +64,7 @@ final class AgentSprite: SKSpriteNode {
         statusDot.strokeColor = .clear
 
         // Mood tint overlay — larger circle behind sprite
-        moodTintNode = SKShapeNode(circleOfRadius: 20)
+        moodTintNode = SKShapeNode(circleOfRadius: 28)
         moodTintNode.fillColor = .clear
         moodTintNode.strokeColor = .clear
         moodTintNode.alpha = 0
@@ -81,31 +84,25 @@ final class AgentSprite: SKSpriteNode {
         speechBubbleBG.lineWidth = 0.5
         speechBubbleBG.alpha = 0
 
-        // Derive sprite size from pixel art's actual bounds
-        let artFrame = pixelArt.calculateAccumulatedFrame()
-        let spriteSize = CGSize(
-            width: max(artFrame.width + 4, 32),
-            height: max(artFrame.height + 4, 32)
-        )
+        let spriteSize = CrewSpriteBuilder.size(for: characterType)
 
         super.init(texture: nil, color: .clear, size: spriteSize)
 
         self.name = "agent_\(agentId)"
-        // Touch handling is done by OfficeScene (for pan/zoom gesture compat)
         self.isUserInteractionEnabled = false
 
         // Add mood tint behind everything
         addChild(moodTintNode)
 
-        // Add pixel art centered on sprite
-        pixelArt.zPosition = 0
-        addChild(pixelArt)
+        // Add body sprite centered
+        bodySprite.zPosition = 0
+        addChild(bodySprite)
 
-        // Position label above sprite (derived from art frame)
+        // Position label above sprite
         nameLabel.position = CGPoint(x: 0, y: spriteSize.height / 2 + 4)
         addChild(nameLabel)
 
-        // Position status dot below sprite (derived from art frame)
+        // Position status dot below sprite
         statusDot.position = CGPoint(x: 0, y: -(spriteSize.height / 2 + 6))
         addChild(statusDot)
 
@@ -172,12 +169,29 @@ final class AgentSprite: SKSpriteNode {
         }
     }
 
+    // MARK: - Facing Direction
+
+    /// Update the sprite's facing direction and swap the body texture.
+    func setFacing(_ direction: FacingDirection) {
+        guard direction != facing else { return }
+        facing = direction
+        CrewSpriteBuilder.updateTexture(bodySprite, type: characterType, facing: direction)
+    }
+
     // MARK: - Movement
 
     /// Animate movement to a target position.
-    /// Simple direct movement — no pathfinding for now.
+    /// Updates facing direction based on the movement vector.
     func moveTo(position: CGPoint, duration: TimeInterval = 1.0, completion: (() -> Void)? = nil) {
         removeAction(forKey: "move")
+
+        // Update facing based on movement direction
+        let dx = position.x - self.position.x
+        let dy = position.y - self.position.y
+        if abs(dx) > 1 || abs(dy) > 1 {
+            setFacing(FacingDirection.from(dx: dx, dy: dy))
+        }
+
         let moveAction = SKAction.move(to: position, duration: duration)
         moveAction.timingMode = .easeInEaseOut
 

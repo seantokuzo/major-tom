@@ -13,7 +13,7 @@ enum AgentStatus: String, CaseIterable {
 
 // MARK: - Character Type
 
-/// The 9 character types available in the office: 5 humans + 4 dogs.
+/// The 11 character types available in the office: 5 humans + 6 dogs.
 enum CharacterType: String, CaseIterable {
     // Humans
     case dev
@@ -24,7 +24,9 @@ enum CharacterType: String, CaseIterable {
 
     // Dogs
     case dachshund
+    case dachshundAlt
     case cattleDog
+    case cattleDogAlt
     case schnauzerBlack
     case schnauzerPepper
 }
