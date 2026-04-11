@@ -11,10 +11,6 @@
 		00D5C37F9BC512C8E0290120 /* GitHubIssuesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4179D89400E69FF84FE744EA /* GitHubIssuesView.swift */; };
 		014B9A0D2E162DF44B93538F /* TerminalSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E330B7013F0151901B3BF271 /* TerminalSettingsView.swift */; };
 		01CF88DD53BD425A8BB52F59 /* OfficeLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2A5F6ECD6AEA9681C140DA3 /* OfficeLayout.swift */; };
-		AA1B2C3D4E5F6A7B8C9D0E1F /* StationLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2C3D4E5F6A7B8C9D0E1F2A /* StationLayout.swift */; };
-		CC3D4E5F6A7B8C9D0E1F2A3B /* StationParticleFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4E5F6A7B8C9D0E1F2A3B4C /* StationParticleFactory.swift */; };
-		FF6A7B8C9D0E1F2A3B4C5D6E /* StationFurnitureFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE7B8C9D0E1F2A3B4C5D6E7F /* StationFurnitureFactory.swift */; };
-		AA2B3C4D5E6F7A8B9C0D1E2F /* SpaceWeatherEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB3C4D5E6F7A8B9C0D1E2F3A /* SpaceWeatherEngine.swift */; };
 		05C0C742F30E2EDFA11347D0 /* FileContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6DBE8EE08D1C4498E7F3D4 /* FileContextView.swift */; };
 		07F6D478AD81C3549F81ECEB /* ModelDistributionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0C705C7B75FC8AADBDC2F9 /* ModelDistributionView.swift */; };
 		092B9B0CD510CE78DD29F4E0 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F703D1C22C55BD94B4CBF35A /* NotificationSettingsView.swift */; };
@@ -114,6 +110,8 @@
 		9F2F95450060416CA67BA3FB /* OfficeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD500881DC6249D63A9E0ACA /* OfficeView.swift */; };
 		9FE4BFB91ACE225068E13E8F /* AgentSprite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DD1D371AFD4698EE21925BF /* AgentSprite.swift */; };
 		A1E8F12ACDD9CEC2A18F36C5 /* MajorTomShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01BD6266AD1E8A75F6D43438 /* MajorTomShortcuts.swift */; };
+		AA1B2C3D4E5F6A7B8C9D0E1F /* StationLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2C3D4E5F6A7B8C9D0E1F2A /* StationLayout.swift */; };
+		AA2B3C4D5E6F7A8B9C0D1E2F /* SpaceWeatherEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB3C4D5E6F7A8B9C0D1E2F3A /* SpaceWeatherEngine.swift */; };
 		AB9BB40023862AA93CB23025 /* TeamSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EF45D03BFA395EA5065AB84 /* TeamSettingsView.swift */; };
 		AE3ACD3E9CDC7BCA3A6C2FB8 /* ActiveSessionsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E59896B7BF6791883325E2E /* ActiveSessionsWidget.swift */; };
 		AECFF1EF021E81589ADBC052 /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FEBD49051DFF465363BBE2B /* Message.swift */; };
@@ -138,6 +136,7 @@
 		C9BB54E28A623F2765BB3A95 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A981C64512EE7700D1A27BAB /* SettingsViewModel.swift */; };
 		C9D6EF3F81D2EB74C1C3C741 /* ConnectionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4862EDC8F8386FEB727657BF /* ConnectionViewModel.swift */; };
 		CBDC742B6AFF453EFD91D131 /* PromptHistoryOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 633B30CEA16034B5B0669A9C /* PromptHistoryOverlay.swift */; };
+		CC3D4E5F6A7B8C9D0E1F2A3B /* StationParticleFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4E5F6A7B8C9D0E1F2A3B4C /* StationParticleFactory.swift */; };
 		CF116C6F7B254D9768A74466 /* AchievementUnlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0253828712684F9194A94060 /* AchievementUnlockView.swift */; };
 		CFCBB89895F30259222DD268 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FA484DB960E122B25A8773F /* ChatViewModel.swift */; };
 		D0DA449E2991ECC5FB29BD1A /* GitLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FF6122D7FFB5D6E1C71F943 /* GitLogView.swift */; };
@@ -179,7 +178,9 @@
 		FD27662CD00A7F829ABC6FA4 /* DangerScoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F013B10B2AA2CD96B19588 /* DangerScoring.swift */; };
 		FE62ADBFD8D61511DAA7AC76 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08B5EA37D9C8CAB62E22FA9E /* TerminalView.swift */; };
 		FF32683BA8C9BFCB454493CB /* SessionCountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E652FADA594D09DB757B828 /* SessionCountView.swift */; };
+		FF6A7B8C9D0E1F2A3B4C5D6E /* StationFurnitureFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE7B8C9D0E1F2A3B4C5D6E7F /* StationFurnitureFactory.swift */; };
 		FFB20C4BF1BD6D83D3404F2B /* StreamingText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D57C1446E7A203616CCE20 /* StreamingText.swift */; };
+		A1B2C3D4E5F60718293A4B5C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D4E5F6071829A1B2C3A4B5C6 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -226,7 +227,7 @@
 		177E95044756377A532D2A5F /* AuditLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditLogView.swift; sourceTree = "<group>"; };
 		1B08AE1A01F5A9974B81ABDC /* GitHubPullRequestsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubPullRequestsView.swift; sourceTree = "<group>"; };
 		1CFE6DFB18C709862C80D1B4 /* SessionCostRankingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCostRankingView.swift; sourceTree = "<group>"; };
-		2155A4D6123944C4CDE2BEE8 /* MajorTom.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MajorTom.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2155A4D6123944C4CDE2BEE8 /* Major Tom.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Major Tom.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		21F681FC6A3D7B14792DDC15 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		27113A30A32A3F67614DC533 /* FleetWorkerCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetWorkerCard.swift; sourceTree = "<group>"; };
 		28F93EA76007AD19338D6B61 /* PhoneWatchConnectivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneWatchConnectivityService.swift; sourceTree = "<group>"; };
@@ -307,10 +308,6 @@
 		880169FEDDBE6732F79039AC /* ApprovalViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalViewModel.swift; sourceTree = "<group>"; };
 		8CAFA24AC1299FAEA55E2C0B /* ApprovalRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalRequest.swift; sourceTree = "<group>"; };
 		8D7AADF76003BF7A6688FCD0 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
-		BB2C3D4E5F6A7B8C9D0E1F2A /* StationLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationLayout.swift; sourceTree = "<group>"; };
-		DD4E5F6A7B8C9D0E1F2A3B4C /* StationParticleFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationParticleFactory.swift; sourceTree = "<group>"; };
-		EE7B8C9D0E1F2A3B4C5D6E7F /* StationFurnitureFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationFurnitureFactory.swift; sourceTree = "<group>"; };
-		BB3C4D5E6F7A8B9C0D1E2F3A /* SpaceWeatherEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceWeatherEngine.swift; sourceTree = "<group>"; };
 		8DD1D371AFD4698EE21925BF /* AgentSprite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSprite.swift; sourceTree = "<group>"; };
 		8F59C4F19749D9B73D2CAE96 /* AchievementCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementCard.swift; sourceTree = "<group>"; };
 		8F85361488C64454BCBD8D03 /* AutoApprovalBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoApprovalBadge.swift; sourceTree = "<group>"; };
@@ -336,6 +333,8 @@
 		B2F994AD4DF2511035320D9B /* GitBranchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitBranchesView.swift; sourceTree = "<group>"; };
 		B67F68CAC7F1FF23E1890F69 /* StreamingIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingIndicator.swift; sourceTree = "<group>"; };
 		B99FD8B1AB490C5124F962DC /* ApprovalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalView.swift; sourceTree = "<group>"; };
+		BB2C3D4E5F6A7B8C9D0E1F2A /* StationLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationLayout.swift; sourceTree = "<group>"; };
+		BB3C4D5E6F7A8B9C0D1E2F3A /* SpaceWeatherEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceWeatherEngine.swift; sourceTree = "<group>"; };
 		BBDD93D05B7AFEA1D59E6331 /* NotificationSettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsViewModel.swift; sourceTree = "<group>"; };
 		BC0B8C7069C99E830703066D /* ToolMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolMessageView.swift; sourceTree = "<group>"; };
 		BD500881DC6249D63A9E0ACA /* OfficeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeView.swift; sourceTree = "<group>"; };
@@ -353,12 +352,13 @@
 		CEE5C5DC2463A313FEDD6406 /* TerminalTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTabBar.swift; sourceTree = "<group>"; };
 		CF16084D9274212487A6B7CC /* TokenBreakdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenBreakdownView.swift; sourceTree = "<group>"; };
 		D06F8E498C8D1F63A30D6A5F /* RateLimitSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateLimitSettingsView.swift; sourceTree = "<group>"; };
-		D136B4051E73808BE748883D /* MajorTomWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = MajorTomWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D136B4051E73808BE748883D /* MajorTomWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MajorTomWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		D23AB94034A1FEDA8FDC0C0A /* FleetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetModels.swift; sourceTree = "<group>"; };
 		D7AE4280FD7BB7D618CCA3A8 /* TemplateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateViewModel.swift; sourceTree = "<group>"; };
 		D8F913C8B009238B21ECFCD4 /* CommandPaletteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPaletteView.swift; sourceTree = "<group>"; };
 		D91A9F673395FFFDE1E3A220 /* MarkdownText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownText.swift; sourceTree = "<group>"; };
 		DD4376AA8403B07A3FD58ECF /* AchievementsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementsListView.swift; sourceTree = "<group>"; };
+		DD4E5F6A7B8C9D0E1F2A3B4C /* StationParticleFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationParticleFactory.swift; sourceTree = "<group>"; };
 		DDAE68402A08DCDB8ACF6CC6 /* CostChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostChartView.swift; sourceTree = "<group>"; };
 		DEEC8301336B2489A2BD0E74 /* xterm.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = xterm.css; sourceTree = "<group>"; };
 		E056D47F9B40C746E3CF4F0A /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
@@ -372,6 +372,7 @@
 		E95A53D48D5BEC57C156BCD9 /* CodeBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeBlockView.swift; sourceTree = "<group>"; };
 		EB6DBE8EE08D1C4498E7F3D4 /* FileContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileContextView.swift; sourceTree = "<group>"; };
 		EC2DDB367FB9D1034575BBC5 /* WidgetData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetData.swift; sourceTree = "<group>"; };
+		EE7B8C9D0E1F2A3B4C5D6E7F /* StationFurnitureFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationFurnitureFactory.swift; sourceTree = "<group>"; };
 		EED2588E6AC0CAC99D86B35F /* WatchConnectivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectivityService.swift; sourceTree = "<group>"; };
 		F01A77A2D40CD2418227CFFA /* PromptHistoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptHistoryViewModel.swift; sourceTree = "<group>"; };
 		F03B0FF2B39E3FA0F97CA66E /* SessionRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRowView.swift; sourceTree = "<group>"; };
@@ -384,6 +385,7 @@
 		F85ECCC15DEF41F8228EB53F /* Presence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Presence.swift; sourceTree = "<group>"; };
 		FB0BDFAA07B3FB4B94141664 /* WidgetDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataService.swift; sourceTree = "<group>"; };
 		FB1670D9369405523BC6911E /* TerminalWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalWebView.swift; sourceTree = "<group>"; };
+		D4E5F6071829A1B2C3A4B5C6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -402,7 +404,7 @@
 		00EBF36EF8823CBEA092949A /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				2155A4D6123944C4CDE2BEE8 /* MajorTom.app */,
+				2155A4D6123944C4CDE2BEE8 /* Major Tom.app */,
 				9E41011D1A5C03C795509B68 /* MajorTomWatch.app */,
 				D136B4051E73808BE748883D /* MajorTomWidgets.appex */,
 			);
@@ -530,16 +532,6 @@
 				2C930886C2C3C06157C3BEAE /* WidgetDataProvider.swift */,
 			);
 			path = Widgets;
-			sourceTree = "<group>";
-		};
-		EE5F6A7B8C9D0E1F2A3B4C5D /* Effects */ = {
-			isa = PBXGroup;
-			children = (
-				DD4E5F6A7B8C9D0E1F2A3B4C /* StationParticleFactory.swift */,
-				EE7B8C9D0E1F2A3B4C5D6E7F /* StationFurnitureFactory.swift */,
-				BB3C4D5E6F7A8B9C0D1E2F3A /* SpaceWeatherEngine.swift */,
-			);
-			path = Effects;
 			sourceTree = "<group>";
 		};
 		1BF75AA0800A3C72B67D050E /* Office */ = {
@@ -684,6 +676,7 @@
 		37AE361BC47FFA5B5542D8AF /* MajorTom */ = {
 			isa = PBXGroup;
 			children = (
+				D4E5F6071829A1B2C3A4B5C6 /* Assets.xcassets */,
 				38D4AF8F275C55801B696EC0 /* Info.plist */,
 				A22D078EA1DE5077E7DCE757 /* App */,
 				14D264EE95E6A3A2AB3E4A5A /* Core */,
@@ -1373,6 +1366,16 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		EE5F6A7B8C9D0E1F2A3B4C5D /* Effects */ = {
+			isa = PBXGroup;
+			children = (
+				DD4E5F6A7B8C9D0E1F2A3B4C /* StationParticleFactory.swift */,
+				EE7B8C9D0E1F2A3B4C5D6E7F /* StationFurnitureFactory.swift */,
+				BB3C4D5E6F7A8B9C0D1E2F3A /* SpaceWeatherEngine.swift */,
+			);
+			path = Effects;
+			sourceTree = "<group>";
+		};
 		F4CC29694F42E4B5FD57C761 /* Components */ = {
 			isa = PBXGroup;
 			children = (
@@ -1450,7 +1453,7 @@
 			packageProductDependencies = (
 			);
 			productName = MajorTom;
-			productReference = 2155A4D6123944C4CDE2BEE8 /* MajorTom.app */;
+			productReference = 2155A4D6123944C4CDE2BEE8 /* Major Tom.app */;
 			productType = "com.apple.product-type.application";
 		};
 		1D494ABB3D630BF9E0170060 /* MajorTomWidgets */ = {
@@ -1498,11 +1501,9 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					0F467BB7A12BEE96B6C65CF5 = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 					1D494ABB3D630BF9E0170060 = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 					466CF4A3CC1BD1A5FFC19FC3 = {
@@ -1537,6 +1538,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D4E5F60718293A4B5C /* Assets.xcassets in Resources */,
 				3F5D30750D5451D281E3E246 /* STATUS.md in Resources */,
 				5202349150346F7BABF87BC7 /* terminal.html in Resources */,
 				3DC3F97C0E915D4328BA3D23 /* xterm-addon-fit.min.js in Resources */,
@@ -1791,6 +1793,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 4B8499Z59P;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MajorTom/Info.plist;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
@@ -1878,11 +1881,16 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = MajorTomWidgets/MajorTomWidgets.entitlements;
+				DEVELOPMENT_TEAM = 4B8499Z59P;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MajorTomWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Major Tom Widgets";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../../Frameworks @executable_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+					"@executable_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.majortom.app.widgets;
 				PRODUCT_NAME = MajorTomWidgets;
 				SDKROOT = iphoneos;
@@ -1898,6 +1906,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 4B8499Z59P;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MajorTom/Info.plist;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
@@ -1926,11 +1935,16 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = MajorTomWidgets/MajorTomWidgets.entitlements;
+				DEVELOPMENT_TEAM = 4B8499Z59P;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MajorTomWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Major Tom Widgets";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../../Frameworks @executable_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+					"@executable_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.majortom.app.widgets;
 				PRODUCT_NAME = MajorTomWidgets;
 				SDKROOT = iphoneos;
