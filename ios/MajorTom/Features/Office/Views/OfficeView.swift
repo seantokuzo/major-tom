@@ -27,7 +27,7 @@ struct OfficeView: View {
     @State private var activeSheet: OfficeSheetType?
     @State private var scene: OfficeScene = {
         let scene = OfficeScene()
-        scene.size = CGSize(width: OfficeLayout.sceneWidth, height: OfficeLayout.sceneHeight)
+        scene.size = CGSize(width: StationLayout.sceneWidth, height: StationLayout.sceneHeight)
         scene.scaleMode = .aspectFit
         return scene
     }()

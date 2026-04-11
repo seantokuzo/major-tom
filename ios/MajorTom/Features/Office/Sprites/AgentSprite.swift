@@ -91,7 +91,8 @@ final class AgentSprite: SKSpriteNode {
         super.init(texture: nil, color: .clear, size: spriteSize)
 
         self.name = "agent_\(agentId)"
-        self.isUserInteractionEnabled = true
+        // Touch handling is done by OfficeScene (for pan/zoom gesture compat)
+        self.isUserInteractionEnabled = false
 
         // Add mood tint behind everything
         addChild(moodTintNode)
@@ -416,11 +417,4 @@ final class AgentSprite: SKSpriteNode {
         showSpeechBubble(text)
     }
 
-    // MARK: - Touch Handling
-
-    /// Tap detection — forwards to the scene for agent selection.
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let scene = scene as? OfficeScene else { return }
-        scene.agentTapped(agentId: agentId)
-    }
 }

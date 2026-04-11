@@ -65,6 +65,23 @@ struct WindowConfig {
     let size: CGSize         // Window frame size
 }
 
+// MARK: - Door Config
+
+/// An airlock door between modules or at station entry.
+struct DoorConfig: Identifiable {
+    let id: String
+    let position: CGPoint
+    let isVertical: Bool     // true = slides up/down, false = left/right
+    let size: CGSize
+
+    init(id: String, position: CGPoint, isVertical: Bool, size: CGSize = CGSize(width: 30, height: 30)) {
+        self.id = id
+        self.position = position
+        self.isVertical = isVertical
+        self.size = size
+    }
+}
+
 // MARK: - Station Module
 
 /// A module aboard the space station — replaces OfficeArea for rendering.
@@ -109,6 +126,10 @@ enum StationPalette {
     static let starWhite      = SKColor(red: 1, green: 0.992, blue: 0.941, alpha: 1)     // #FFFDF0
     static let planetSurface  = SKColor(red: 0.482, green: 0.420, blue: 0.290, alpha: 1) // #7B6B4A
 
+    // -- Corridor --
+    static let corridorFloor  = SKColor(red: 0.12, green: 0.13, blue: 0.18, alpha: 1)    // Dark corridor
+    static let guideLightDim  = SKColor(red: 0.0, green: 0.5, blue: 0.7, alpha: 0.15)    // Floor guide
+
     // -- Per-module floor accent tints (subtle variation so modules feel distinct) --
     static func floorColor(for module: ModuleType) -> SKColor {
         switch module {
@@ -127,116 +148,161 @@ enum StationPalette {
 // MARK: - Station Layout
 
 /// The complete spatial layout of Space Station Major Tom.
+/// Scene size: 1200×800 (expanded from 800×600 for camera zoom).
 /// All coordinates are in SpriteKit scene points (origin bottom-left).
 ///
 /// Station Layout:
 /// ```
-/// ┌───────────────────────────────────────────────────┐
-/// │ ENGINEERING  │       COMMAND BRIDGE                │
-/// │  (reactor)   │  [ws] [ws] [ws]                    │
-/// │              │  [ws] [ws] [ws]                    │
-/// │              │  [ws] [ws]         [tactical]      │
-/// │──────────────┤                                    │
-/// │ CREW QUARTERS├────────────────────────────────────│
-/// │  bunks/media │  GALLEY       │  BIO-DOME          │
-/// │              │  dispensers   │  glass dome/plants  │
-/// │──────────────┼──────────────┼─────────────────────│
-/// │ TRAINING BAY │  ARBORETUM   │  EVA BAY            │
-/// │  equipment   │  trees/grass │  airlock/suits      │
-/// └──────────────┴──────────────┴─────────────────────┘
+/// ┌────────────────���─────────────────────────────────────────────────┐
+/// │  ENGINEERING   │   COMMAND BRIDGE              │ TRAINING BAY   │
+/// │  (reactor)     │   [ws] [ws] [ws]              │ equipment      │
+/// │                │   [ws] [ws] [ws]              ├────────────────│
+/// │                │   [ws] [ws]    [tactical]     │ EVA BAY        │
+/// │────────────────┤                               │ suits/airlock  │
+/// │═══ CORRIDOR ═══════════════════════════════════════════════════ │
+/// │────────────────┤                               │                │
+/// │  CREW QUARTERS │   GALLEY        │  BIO-DOME   │  ARBORETUM    │
+/// │  bunks/media   │   dispensers    │  glass dome  │  trees/grass  │
+/// │  lounge        │   counter       │  plants      │  water        │
+/// └────────────────┴────────────────┴──────────────┴───────────────┘
 /// ```
 enum StationLayout {
 
-    /// Scene dimensions (same as legacy OfficeLayout for backward compat)
-    static let sceneWidth: CGFloat = 800
-    static let sceneHeight: CGFloat = 600
+    /// Scene dimensions — expanded for camera zoom detail
+    static let sceneWidth: CGFloat = 1200
+    static let sceneHeight: CGFloat = 800
 
-    /// The station airlock — entry/exit point for agents
-    static let airlockPosition = CGPoint(x: 750, y: 500)
+    /// Corridor band connecting upper and lower decks
+    static let corridorBounds = CGRect(x: 20, y: 370, width: 1160, height: 60)
+
+    /// The station airlock — entry/exit point for agents (right side of Command Bridge)
+    static let airlockPosition = CGPoint(x: 760, y: 600)
+
+    // MARK: - Camera Defaults
+
+    static let cameraCenter = CGPoint(x: sceneWidth / 2, y: sceneHeight / 2)
+    static let defaultCameraScale: CGFloat = 1.0
+    static let minCameraScale: CGFloat = 0.4   // Max zoom in
+    static let maxCameraScale: CGFloat = 1.3   // Max zoom out
 
     // MARK: - Modules
 
     static let modules: [StationModule] = [
+        // -- Upper Deck (y: 430–760) --
         StationModule(
             type: .commandBridge,
-            bounds: CGRect(x: 200, y: 300, width: 600, height: 300),
+            bounds: CGRect(x: 260, y: 430, width: 500, height: 330),
             capacity: 8,
             windows: [
                 // Large viewport windows along the top wall — the showpiece
-                WindowConfig(position: CGPoint(x: 420, y: 585), size: CGSize(width: 100, height: 24)),
-                WindowConfig(position: CGPoint(x: 600, y: 585), size: CGSize(width: 80, height: 24)),
+                WindowConfig(position: CGPoint(x: 420, y: 745), size: CGSize(width: 120, height: 24)),
+                WindowConfig(position: CGPoint(x: 620, y: 745), size: CGSize(width: 100, height: 24)),
                 // Side viewport on the right wall
-                WindowConfig(position: CGPoint(x: 790, y: 470), size: CGSize(width: 16, height: 64)),
+                WindowConfig(position: CGPoint(x: 752, y: 600), size: CGSize(width: 16, height: 80)),
             ]
         ),
         StationModule(
             type: .engineering,
-            bounds: CGRect(x: 0, y: 400, width: 200, height: 200),
+            bounds: CGRect(x: 20, y: 430, width: 220, height: 330),
             capacity: 1,
             windows: [
                 // Left wall viewport
-                WindowConfig(position: CGPoint(x: 8, y: 500), size: CGSize(width: 16, height: 60)),
-            ]
-        ),
-        StationModule(
-            type: .crewQuarters,
-            bounds: CGRect(x: 0, y: 200, width: 200, height: 200),
-            capacity: 4,
-            windows: [
-                // Left wall viewport — agents stargaze through this
-                WindowConfig(position: CGPoint(x: 8, y: 310), size: CGSize(width: 16, height: 60)),
-                WindowConfig(position: CGPoint(x: 8, y: 240), size: CGSize(width: 16, height: 40)),
-            ]
-        ),
-        StationModule(
-            type: .galley,
-            bounds: CGRect(x: 200, y: 100, width: 250, height: 200),
-            capacity: 3,
-            windows: [
-                // Small galley porthole
-                WindowConfig(position: CGPoint(x: 325, y: 290), size: CGSize(width: 50, height: 16)),
-            ]
-        ),
-        StationModule(
-            type: .bioDome,
-            bounds: CGRect(x: 450, y: 100, width: 350, height: 200),
-            capacity: 4,
-            windows: [
-                // Bio-Dome "glass dome" — LARGE observation window across the top
-                WindowConfig(position: CGPoint(x: 625, y: 290), size: CGSize(width: 240, height: 18)),
-                // Side viewport
-                WindowConfig(position: CGPoint(x: 790, y: 200), size: CGSize(width: 16, height: 70)),
+                WindowConfig(position: CGPoint(x: 28, y: 600), size: CGSize(width: 16, height: 80)),
+                // Top wall viewport
+                WindowConfig(position: CGPoint(x: 130, y: 745), size: CGSize(width: 80, height: 20)),
             ]
         ),
         StationModule(
             type: .trainingBay,
-            bounds: CGRect(x: 0, y: 0, width: 250, height: 100),
+            bounds: CGRect(x: 780, y: 590, width: 400, height: 170),
             capacity: 3,
             windows: [
-                // Left wall observation window
-                WindowConfig(position: CGPoint(x: 8, y: 50), size: CGSize(width: 16, height: 55)),
-            ]
-        ),
-        StationModule(
-            type: .arboretum,
-            bounds: CGRect(x: 250, y: 0, width: 250, height: 100),
-            capacity: 4,
-            windows: [
-                // Large floor-level window (looking down at space below)
-                WindowConfig(position: CGPoint(x: 375, y: 10), size: CGSize(width: 140, height: 16)),
+                // Right wall observation window
+                WindowConfig(position: CGPoint(x: 1172, y: 675), size: CGSize(width: 16, height: 80)),
+                // Top wall window
+                WindowConfig(position: CGPoint(x: 980, y: 745), size: CGSize(width: 100, height: 20)),
             ]
         ),
         StationModule(
             type: .evaBay,
-            bounds: CGRect(x: 500, y: 0, width: 300, height: 100),
+            bounds: CGRect(x: 780, y: 430, width: 400, height: 140),
             capacity: 2,
             windows: [
                 // Large EVA observation window — can see station hull
-                WindowConfig(position: CGPoint(x: 660, y: 10), size: CGSize(width: 120, height: 16)),
-                // Side viewport
-                WindowConfig(position: CGPoint(x: 790, y: 50), size: CGSize(width: 16, height: 55)),
+                WindowConfig(position: CGPoint(x: 1000, y: 438), size: CGSize(width: 160, height: 16)),
+                // Right wall viewport
+                WindowConfig(position: CGPoint(x: 1172, y: 500), size: CGSize(width: 16, height: 60)),
             ]
         ),
+
+        // -- Lower Deck (y: 20–370) --
+        StationModule(
+            type: .crewQuarters,
+            bounds: CGRect(x: 20, y: 20, width: 220, height: 350),
+            capacity: 4,
+            windows: [
+                // Left wall viewport — agents stargaze through this
+                WindowConfig(position: CGPoint(x: 28, y: 230), size: CGSize(width: 16, height: 80)),
+                WindowConfig(position: CGPoint(x: 28, y: 100), size: CGSize(width: 16, height: 50)),
+            ]
+        ),
+        StationModule(
+            type: .galley,
+            bounds: CGRect(x: 260, y: 20, width: 260, height: 350),
+            capacity: 3,
+            windows: [
+                // Bottom wall porthole
+                WindowConfig(position: CGPoint(x: 390, y: 28), size: CGSize(width: 60, height: 16)),
+            ]
+        ),
+        StationModule(
+            type: .bioDome,
+            bounds: CGRect(x: 540, y: 20, width: 300, height: 350),
+            capacity: 4,
+            windows: [
+                // Bio-Dome "glass dome" — LARGE observation window across the top
+                WindowConfig(position: CGPoint(x: 690, y: 355), size: CGSize(width: 240, height: 20)),
+                // Right side viewport
+                WindowConfig(position: CGPoint(x: 832, y: 200), size: CGSize(width: 16, height: 90)),
+            ]
+        ),
+        StationModule(
+            type: .arboretum,
+            bounds: CGRect(x: 860, y: 20, width: 320, height: 350),
+            capacity: 4,
+            windows: [
+                // Large floor-level window (looking down at space below)
+                WindowConfig(position: CGPoint(x: 1020, y: 28), size: CGSize(width: 180, height: 16)),
+                // Right wall viewport
+                WindowConfig(position: CGPoint(x: 1172, y: 200), size: CGSize(width: 16, height: 80)),
+            ]
+        ),
+    ]
+
+    // MARK: - Airlock Doors
+
+    /// Key airlock doors between modules and the corridor.
+    static let doors: [DoorConfig] = [
+        // Upper deck → corridor connections
+        DoorConfig(id: "eng_corridor", position: CGPoint(x: 130, y: 430), isVertical: true),
+        DoorConfig(id: "bridge_corridor", position: CGPoint(x: 510, y: 430), isVertical: true),
+        DoorConfig(id: "eva_corridor", position: CGPoint(x: 980, y: 430), isVertical: true),
+
+        // Corridor → lower deck connections
+        DoorConfig(id: "corridor_crew", position: CGPoint(x: 130, y: 370), isVertical: true),
+        DoorConfig(id: "corridor_galley", position: CGPoint(x: 390, y: 370), isVertical: true),
+        DoorConfig(id: "corridor_bio", position: CGPoint(x: 690, y: 370), isVertical: true),
+        DoorConfig(id: "corridor_arb", position: CGPoint(x: 1020, y: 370), isVertical: true),
+
+        // Horizontal doors between adjacent modules (same deck)
+        DoorConfig(id: "eng_bridge", position: CGPoint(x: 250, y: 595), isVertical: false),
+        DoorConfig(id: "bridge_eva", position: CGPoint(x: 770, y: 500), isVertical: false),
+        DoorConfig(id: "crew_galley", position: CGPoint(x: 250, y: 195), isVertical: false),
+        DoorConfig(id: "galley_bio", position: CGPoint(x: 530, y: 195), isVertical: false),
+        DoorConfig(id: "bio_arb", position: CGPoint(x: 850, y: 195), isVertical: false),
+
+        // Training Bay ↔ EVA Bay internal
+        DoorConfig(id: "training_eva", position: CGPoint(x: 980, y: 580), isVertical: true),
     ]
 
     // MARK: - Helpers
@@ -262,5 +328,10 @@ enum StationLayout {
         modules.flatMap { module in
             module.windows.map { (module: module, window: $0) }
         }
+    }
+
+    /// Check if a point is in the corridor.
+    static func isInCorridor(_ point: CGPoint) -> Bool {
+        corridorBounds.contains(point)
     }
 }
