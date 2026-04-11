@@ -529,16 +529,7 @@ final class AgentSprite: SKSpriteNode {
     /// Update the helmet based on which module the agent is in.
     func updateModule(_ module: ModuleType?) {
         currentModule = module
-        let helmetType: HelmetType
-        switch module {
-        case .engineering, .trainingBay:
-            helmetType = .standard
-        case .evaBay:
-            helmetType = .eva
-        default:
-            helmetType = .none
-        }
-        setHelmet(helmetType)
+        setHelmet(WaypointPathfinder.helmetType(for: module))
     }
 
     // MARK: - Emote System

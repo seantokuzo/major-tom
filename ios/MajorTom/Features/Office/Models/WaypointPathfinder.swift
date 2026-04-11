@@ -3,51 +3,66 @@ import CoreGraphics
 // MARK: - Waypoint Pathfinder
 
 /// Generates waypoint paths through the space station's door network.
-/// Replaces direct-line movement with door → corridor → door routing.
+/// All topology is derived from `StationLayout.doors` — no hardcoded coordinates.
 enum WaypointPathfinder {
 
-    // MARK: - Module Adjacency Graph
+    // MARK: - Derived Topology
 
-    /// Connections between modules via doors.
-    /// Each entry maps a module to its neighbors and the door position between them.
+    /// Map from door ID prefix to module type.
+    private static let prefixToModule: [String: ModuleType] = [
+        "eng": .engineering,
+        "bridge": .commandBridge,
+        "eva": .evaBay,
+        "training": .trainingBay,
+        "crew": .crewQuarters,
+        "galley": .galley,
+        "bio": .bioDome,
+        "arb": .arboretum,
+    ]
+
+    /// Parse a door ID (e.g., "eng_corridor") into the two endpoints.
+    /// Returns nil for the corridor side (corridor is not a ModuleType).
+    private static func parseDoorId(_ id: String) -> (ModuleType?, ModuleType?) {
+        let parts = id.split(separator: "_").map(String.init)
+        guard parts.count == 2 else { return (nil, nil) }
+        return (prefixToModule[parts[0]], prefixToModule[parts[1]])
+    }
+
+    /// Direct module-to-module adjacency (excludes corridor connections).
     private static let adjacency: [ModuleType: [(neighbor: ModuleType, doorPosition: CGPoint)]] = {
         var graph: [ModuleType: [(neighbor: ModuleType, doorPosition: CGPoint)]] = [:]
         for module in ModuleType.allCases {
             graph[module] = []
         }
 
-        func addEdge(_ a: ModuleType, _ b: ModuleType, door: CGPoint) {
-            graph[a, default: []].append((b, door))
-            graph[b, default: []].append((a, door))
+        for door in StationLayout.doors {
+            let (a, b) = parseDoorId(door.id)
+            // Both sides must be modules (not corridor)
+            guard let modA = a, let modB = b else { continue }
+            graph[modA, default: []].append((modB, door.position))
+            graph[modB, default: []].append((modA, door.position))
         }
-
-        // Direct module-to-module doors (same deck)
-        addEdge(.engineering, .commandBridge, door: CGPoint(x: 250, y: 595))
-        addEdge(.commandBridge, .evaBay, door: CGPoint(x: 770, y: 500))
-        addEdge(.trainingBay, .evaBay, door: CGPoint(x: 980, y: 580))
-        addEdge(.crewQuarters, .galley, door: CGPoint(x: 250, y: 195))
-        addEdge(.galley, .bioDome, door: CGPoint(x: 530, y: 195))
-        addEdge(.bioDome, .arboretum, door: CGPoint(x: 850, y: 195))
 
         return graph
     }()
 
-    /// Doors from modules to the corridor.
-    /// Upper deck modules connect at y=430, lower deck at y=370.
-    private static let corridorDoors: [ModuleType: CGPoint] = [
-        // Upper deck → corridor
-        .engineering:   CGPoint(x: 130, y: 430),
-        .commandBridge: CGPoint(x: 510, y: 430),
-        .evaBay:        CGPoint(x: 980, y: 430),
-        // Lower deck → corridor
-        .crewQuarters:  CGPoint(x: 130, y: 370),
-        .galley:        CGPoint(x: 390, y: 370),
-        .bioDome:       CGPoint(x: 690, y: 370),
-        .arboretum:     CGPoint(x: 1020, y: 370),
-    ]
+    /// Doors connecting modules to the corridor (one side is "corridor").
+    private static let corridorDoors: [ModuleType: CGPoint] = {
+        var map: [ModuleType: CGPoint] = [:]
+        for door in StationLayout.doors {
+            let (a, b) = parseDoorId(door.id)
+            // One side is a module, the other is nil (corridor)
+            if let module = a, b == nil {
+                map[module] = door.position
+            } else if let module = b, a == nil {
+                map[module] = door.position
+            }
+        }
+        return map
+    }()
 
-    /// The corridor's vertical center for horizontal traversal.
-    private static let corridorY: CGFloat = 400
+    /// Corridor vertical center, derived from StationLayout.
+    private static let corridorY: CGFloat = StationLayout.corridorBounds.midY
 
     // MARK: - Public API
 
@@ -76,14 +91,21 @@ enum WaypointPathfinder {
         return buildCorridorPath(from: srcMod, to: tgtMod, target: target)
     }
 
+    /// Determine the helmet type appropriate for a given module.
+    static func helmetType(for module: ModuleType?) -> HelmetType {
+        switch module {
+        case .engineering, .trainingBay: return .standard
+        case .evaBay: return .eva
+        default: return .none
+        }
+    }
+
     // MARK: - Private Helpers
 
-    /// Find the door position for a direct connection between two modules.
     private static func findDirectDoor(from: ModuleType, to: ModuleType) -> CGPoint? {
         adjacency[from]?.first(where: { $0.neighbor == to })?.doorPosition
     }
 
-    /// Find a path through one intermediate module (e.g., Eng → Bridge door, Bridge → EVA door).
     private static func findOneHopPath(from src: ModuleType, to tgt: ModuleType) -> [CGPoint]? {
         guard let srcNeighbors = adjacency[src] else { return nil }
         for (mid, doorA) in srcNeighbors {
@@ -94,21 +116,16 @@ enum WaypointPathfinder {
         return nil
     }
 
-    /// Build a path through the corridor for cross-deck travel.
     private static func buildCorridorPath(from src: ModuleType, to tgt: ModuleType, target: CGPoint) -> [CGPoint] {
         var waypoints: [CGPoint] = []
 
-        // Step 1: Walk to the source module's corridor door
-        // If no corridor door (e.g., Training Bay), find a neighbor that has one
-        let srcCorridorEntry = findCorridorEntry(for: src)
-        waypoints.append(contentsOf: srcCorridorEntry.waypoints)
+        let srcEntry = findCorridorEntry(for: src)
+        waypoints.append(contentsOf: srcEntry.waypoints)
 
-        // Step 2: Traverse corridor horizontally to the target's corridor door
-        let tgtCorridorExit = findCorridorExit(for: tgt)
+        let tgtExit = findCorridorExit(for: tgt)
 
-        // Walk along corridor center
-        let corridorStart = CGPoint(x: srcCorridorEntry.corridorX, y: corridorY)
-        let corridorEnd = CGPoint(x: tgtCorridorExit.corridorX, y: corridorY)
+        let corridorStart = CGPoint(x: srcEntry.corridorX, y: corridorY)
+        let corridorEnd = CGPoint(x: tgtExit.corridorX, y: corridorY)
 
         if abs(corridorStart.x - corridorEnd.x) > 5 {
             waypoints.append(corridorStart)
@@ -117,65 +134,53 @@ enum WaypointPathfinder {
             waypoints.append(corridorStart)
         }
 
-        // Step 3: Exit corridor into target module
-        waypoints.append(contentsOf: tgtCorridorExit.waypoints)
+        waypoints.append(contentsOf: tgtExit.waypoints)
         waypoints.append(target)
 
         return waypoints
     }
 
-    /// Find how to get from a module into the corridor.
     private static func findCorridorEntry(for module: ModuleType) -> (waypoints: [CGPoint], corridorX: CGFloat) {
-        // Module has a direct corridor door
         if let door = corridorDoors[module] {
             return ([door], door.x)
         }
 
-        // Training Bay: go through EVA Bay's corridor door
-        if module == .trainingBay {
-            let evaDoor = CGPoint(x: 980, y: 580)  // training_eva door
-            let evaCorridor = corridorDoors[.evaBay]!
-            return ([evaDoor, evaCorridor], evaCorridor.x)
+        // No direct corridor door — route through a neighbor that has one
+        if let neighbors = adjacency[module] {
+            for (neighbor, doorPos) in neighbors {
+                if let corridorDoor = corridorDoors[neighbor] {
+                    return ([doorPos, corridorDoor], corridorDoor.x)
+                }
+            }
         }
 
-        // Fallback: use nearest corridor door by X position
+        // Fallback: nearest corridor door
         let moduleBounds = StationLayout.module(for: module)?.bounds ?? .zero
-        let moduleCenter = CGPoint(x: moduleBounds.midX, y: moduleBounds.midY)
-        let nearest = corridorDoors.min(by: {
-            abs($0.value.x - moduleCenter.x) < abs($1.value.x - moduleCenter.x)
-        })!
+        let cx = moduleBounds.midX
+        guard let nearest = corridorDoors.min(by: { abs($0.value.x - cx) < abs($1.value.x - cx) }) else {
+            return ([CGPoint(x: cx, y: corridorY)], cx)
+        }
         return ([nearest.value], nearest.value.x)
     }
 
-    /// Find how to get from the corridor into a target module.
     private static func findCorridorExit(for module: ModuleType) -> (waypoints: [CGPoint], corridorX: CGFloat) {
         if let door = corridorDoors[module] {
             return ([door], door.x)
         }
 
-        // Training Bay: exit through EVA Bay's corridor door, then through training_eva door
-        if module == .trainingBay {
-            let evaCorridor = corridorDoors[.evaBay]!
-            let evaDoor = CGPoint(x: 980, y: 580)
-            return ([evaCorridor, evaDoor], evaCorridor.x)
+        if let neighbors = adjacency[module] {
+            for (neighbor, doorPos) in neighbors {
+                if let corridorDoor = corridorDoors[neighbor] {
+                    return ([corridorDoor, doorPos], corridorDoor.x)
+                }
+            }
         }
 
         let moduleBounds = StationLayout.module(for: module)?.bounds ?? .zero
-        let moduleCenter = CGPoint(x: moduleBounds.midX, y: moduleBounds.midY)
-        let nearest = corridorDoors.min(by: {
-            abs($0.value.x - moduleCenter.x) < abs($1.value.x - moduleCenter.x)
-        })!
-        return ([nearest.value], nearest.value.x)
-    }
-
-    // MARK: - Module Detection
-
-    /// Determine the helmet type appropriate for a given module.
-    static func helmetType(for module: ModuleType?) -> HelmetType {
-        switch module {
-        case .engineering, .trainingBay: return .standard
-        case .evaBay: return .eva
-        default: return .none
+        let cx = moduleBounds.midX
+        guard let nearest = corridorDoors.min(by: { abs($0.value.x - cx) < abs($1.value.x - cx) }) else {
+            return ([CGPoint(x: cx, y: corridorY)], cx)
         }
+        return ([nearest.value], nearest.value.x)
     }
 }
