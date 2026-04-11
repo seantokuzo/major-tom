@@ -5,6 +5,12 @@ import Foundation
 ///
 /// Spawns `node server.js` with the bundled (or system) Node binary,
 /// handles graceful shutdown via SIGTERM, and tracks process state.
+///
+/// All lifecycle methods (`start`, `stop`, `restart`) and the termination/
+/// restart handlers are pinned to `@MainActor` so that mutations to the
+/// `@Observable` state don't race with SwiftUI observation. The pipe reader
+/// stays non-isolated because `FileHandle.readabilityHandler` fires on a
+/// background dispatch thread.
 @Observable
 final class RelayProcess {
     private(set) var state = RelayState()
@@ -71,6 +77,7 @@ final class RelayProcess {
 
     // MARK: - Lifecycle
 
+    @MainActor
     func start() async {
         // Starting manually cancels any pending auto-restart.
         pendingRestartTask?.cancel()
@@ -121,6 +128,7 @@ final class RelayProcess {
 
     /// Wait for the relay's `/health` endpoint to return 200, then start the
     /// Cloudflare tunnel if it is enabled in config and has a token.
+    @MainActor
     private func startTunnelIfConfigured() async {
         guard configManager.config.cloudflareEnabled else { return }
 
@@ -152,7 +160,11 @@ final class RelayProcess {
     /// zombie-process health monitoring.
     func waitForRelayReady(timeout: TimeInterval = 15.0) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
-        let url = URL(string: "http://127.0.0.1:\(state.port)/health")!
+        // Guard against a malformed/hand-edited port value in config.json. An
+        // invalid port would force-unwrap-crash the app; instead just bail.
+        guard let url = URL(string: "http://127.0.0.1:\(state.port)/health") else {
+            return false
+        }
         var request = URLRequest(url: url)
         request.timeoutInterval = 2.0
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
@@ -172,6 +184,7 @@ final class RelayProcess {
         return false
     }
 
+    @MainActor
     func stop() async {
         guard state.canStop else { return }
 
@@ -216,6 +229,7 @@ final class RelayProcess {
         state.processState = .idle
     }
 
+    @MainActor
     func restart() async {
         await stop()
         // Brief pause to let the port release
@@ -288,13 +302,17 @@ final class RelayProcess {
         readPipeAsync(stdout, label: "stdout")
         readPipeAsync(stderr, label: "stderr")
 
-        // Watch for unexpected termination
+        // Watch for unexpected termination. The block runs on the main queue
+        // but the observer API hands us a @Sendable closure, so hop through
+        // an explicit main-actor Task before touching @MainActor state.
         terminationObserver = NotificationCenter.default.addObserver(
             forName: Process.didTerminateNotification,
             object: proc,
             queue: .main
         ) { [weak self] _ in
-            self?.handleTermination()
+            Task { @MainActor [weak self] in
+                self?.handleTermination()
+            }
         }
 
         try proc.run()
@@ -306,6 +324,7 @@ final class RelayProcess {
         print("[GroundControl] Relay started (PID: \(proc.processIdentifier)) on port \(state.port)")
     }
 
+    @MainActor
     private func handleTermination() {
         guard let proc = process else { return }
 
@@ -359,6 +378,7 @@ final class RelayProcess {
 
     /// Schedule an auto-restart task with exponential backoff. Cancellable via
     /// `pendingRestartTask?.cancel()` (called from stop()/start()).
+    @MainActor
     private func scheduleAutoRestart(previousExitCode: Int32) {
         let nextAttempt = state.restartCount + 1
         let delay = backoffDelay(forAttempt: nextAttempt)
@@ -372,15 +392,18 @@ final class RelayProcess {
         appendGroundControlLog(level: .warn, message: message)
 
         pendingRestartTask?.cancel()
-        pendingRestartTask = Task { [weak self] in
+        // Run the restart body on the main actor so state mutations in
+        // start()/launchProcess() observe the MainActor isolation expected by
+        // an @Observable class. Without @MainActor, mutating state.* from an
+        // unstructured Task can race with SwiftUI's observation bookkeeping.
+        pendingRestartTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
             guard let self else { return }
-            // Only proceed if we're still waiting for this restart. A user
-            // could have called stop() during the sleep, which cancels this
-            // Task — but check defensively in case state changed otherwise.
-            let stillRestarting = await MainActor.run { self.state.isRestarting }
-            guard stillRestarting else { return }
+            // Only proceed if we're still waiting for this restart. stop()
+            // cancels this Task during its sleep; this guard catches any
+            // other state transition that raced with us.
+            guard self.state.isRestarting else { return }
             await self.start()
         }
     }
@@ -390,6 +413,7 @@ final class RelayProcess {
     /// Start a periodic task that polls /health. After `healthCheckFailureThreshold`
     /// consecutive failures, sends SIGTERM to the relay — the termination
     /// observer then routes through the normal auto-restart path.
+    @MainActor
     private func startHealthMonitor() {
         stopHealthMonitor()
         healthMonitorTask = Task { [weak self] in
@@ -436,6 +460,7 @@ final class RelayProcess {
     }
 
     /// Cancel the periodic health monitor task (called from stop()).
+    @MainActor
     private func stopHealthMonitor() {
         healthMonitorTask?.cancel()
         healthMonitorTask = nil
@@ -444,14 +469,26 @@ final class RelayProcess {
     /// Signal an unresponsive relay. We deliberately do NOT set state to
     /// .stopping — we want handleTermination to treat this as an unexpected
     /// crash and kick off auto-restart.
+    @MainActor
     private func killUnresponsiveRelay() {
         guard let proc = process, proc.isRunning else { return }
-        kill(proc.processIdentifier, SIGTERM)
-        // Give the relay 2s to respond to SIGTERM, then escalate to SIGKILL.
-        Task { [weak self] in
+
+        // Capture the exact process we just SIGTERM'd. After the 2s delay the
+        // auto-restart path may have spawned a new child — we must not escalate
+        // SIGKILL against the replacement.
+        let signaledProcess = proc
+        let signaledPID = proc.processIdentifier
+        kill(signaledPID, SIGTERM)
+
+        Task { [weak self, weak signaledProcess] in
             try? await Task.sleep(for: .seconds(2))
-            guard let self, let proc = self.process, proc.isRunning else { return }
-            kill(proc.processIdentifier, SIGKILL)
+            guard let self,
+                  let signaledProcess,
+                  let currentProcess = self.process,
+                  currentProcess === signaledProcess,
+                  currentProcess.isRunning
+            else { return }
+            kill(signaledPID, SIGKILL)
         }
     }
 

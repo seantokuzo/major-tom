@@ -16,6 +16,11 @@ struct CloudflareTunnelView: View {
     @State private var testResult: TestResult?
     @State private var isTesting = false
 
+    /// Cached result of `TunnelProcess.findCloudflared()`. The fallback path
+    /// spawns `/usr/bin/which` synchronously, so we must not re-evaluate on
+    /// every view recomputation (any field edit triggers one).
+    @State private var cloudflaredInstalled = true
+
     private enum TestResult: Equatable {
         case success(statusCode: Int)
         case failure(String)
@@ -56,10 +61,6 @@ struct CloudflareTunnelView: View {
         case .error:
             return .red
         }
-    }
-
-    private var cloudflaredInstalled: Bool {
-        TunnelProcess.findCloudflared() != nil
     }
 
     var body: some View {
@@ -168,6 +169,12 @@ struct CloudflareTunnelView: View {
         }
         .onAppear {
             tunnelToken = configManager.getSecret(ConfigManager.SecretKey.cloudflareToken) ?? ""
+            // Probe for cloudflared once. `findCloudflared` may spawn `which`
+            // synchronously, so hop off the main thread for the discovery.
+            Task.detached {
+                let found = TunnelProcess.findCloudflared() != nil
+                await MainActor.run { self.cloudflaredInstalled = found }
+            }
         }
         .onChange(of: tunnelToken) {
             // Debounce Keychain writes — only persist after 1s of inactivity

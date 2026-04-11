@@ -8,6 +8,10 @@ import Foundation
 /// using the same exponential-backoff strategy as `RelayProcess`, and pipes
 /// stdout/stderr into the shared `LogStore` so tunnel events appear in the
 /// Ground Control log viewer.
+///
+/// Same isolation story as `RelayProcess`: lifecycle methods are `@MainActor`
+/// so state mutations are race-free; the pipe reader runs non-isolated since
+/// `FileHandle.readabilityHandler` lives on a background dispatch thread.
 @Observable
 final class TunnelProcess {
     /// Tunnel lifecycle state — mirrors `RelayState.ProcessState` loosely but
@@ -122,6 +126,7 @@ final class TunnelProcess {
     // MARK: - Lifecycle
 
     /// Start the tunnel with the given token. Does nothing if already running.
+    @MainActor
     func start(token: String) async {
         // Starting manually cancels any pending auto-restart.
         pendingRestartTask?.cancel()
@@ -153,6 +158,7 @@ final class TunnelProcess {
     }
 
     /// Stop the tunnel. Cancels any pending auto-restart.
+    @MainActor
     func stop() async {
         pendingRestartTask?.cancel()
         pendingRestartTask = nil
@@ -204,7 +210,9 @@ final class TunnelProcess {
             object: proc,
             queue: .main
         ) { [weak self] _ in
-            self?.handleTermination()
+            Task { @MainActor [weak self] in
+                self?.handleTermination()
+            }
         }
 
         try proc.run()
@@ -216,6 +224,7 @@ final class TunnelProcess {
         appendGroundControlLog(level: .info, message: "Cloudflare tunnel started (PID: \(proc.processIdentifier))")
     }
 
+    @MainActor
     private func handleTermination() {
         guard let proc = process else { return }
         let status = proc.terminationStatus
@@ -257,6 +266,7 @@ final class TunnelProcess {
         return min(raw, maxRestartDelay)
     }
 
+    @MainActor
     private func scheduleAutoRestart(previousExitCode: Int32) {
         guard let token = activeToken else {
             state = .error("Lost tunnel token — cannot auto-restart")
@@ -274,15 +284,13 @@ final class TunnelProcess {
         appendGroundControlLog(level: .warn, message: message)
 
         pendingRestartTask?.cancel()
-        pendingRestartTask = Task { [weak self] in
+        // Run the restart body on the main actor so state mutations inside
+        // start(token:)/launchProcess() don't race with SwiftUI observation.
+        pendingRestartTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
             guard let self else { return }
-            let stillRestarting = await MainActor.run {
-                if case .restarting = self.state { return true }
-                return false
-            }
-            guard stillRestarting else { return }
+            guard case .restarting = self.state else { return }
             await self.start(token: token)
         }
     }
@@ -328,25 +336,95 @@ final class TunnelProcess {
 
     // MARK: - Output Handling
 
+    /// Per-pipe partial-line buffers. cloudflared output can split mid-line
+    /// across Data chunks; we hold the tail until the next newline arrives so
+    /// no log output is dropped.
+    private var stdoutBuffer = Data()
+    private var stderrBuffer = Data()
+    private let pipeBufferLock = NSLock()
+
     /// Stream pipe data into the log store as plain-text INFO entries.
     /// cloudflared emits human-readable lines, not JSON — LogEntry.parse()
     /// falls back to plain-text INFO which is what we want.
+    ///
+    /// Buffers partial lines so a chunk that ends mid-line doesn't get flushed
+    /// early, and uses `String(decoding:as:)` so partial UTF-8 sequences get
+    /// replacement chars instead of being dropped.
     private func readPipeAsync(_ pipe: Pipe, label: String) {
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
+            guard let self else { return }
+
+            // EOF — flush any remainder and detach the handler.
             guard !data.isEmpty else {
+                let remainder: Data = {
+                    self.pipeBufferLock.lock()
+                    defer { self.pipeBufferLock.unlock() }
+                    if label == "cloudflared-stdout" {
+                        let r = self.stdoutBuffer
+                        self.stdoutBuffer = Data()
+                        return r
+                    } else {
+                        let r = self.stderrBuffer
+                        self.stderrBuffer = Data()
+                        return r
+                    }
+                }()
+                if !remainder.isEmpty {
+                    let line = String(decoding: remainder, as: UTF8.self)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !line.isEmpty {
+                        DispatchQueue.main.async {
+                            self.logStore.append("[cloudflared] \(line)")
+                        }
+                    }
+                }
                 handle.readabilityHandler = nil
                 return
             }
-            guard let self else { return }
-            guard let text = String(data: data, encoding: .utf8) else { return }
-            let lines = text.split(whereSeparator: { $0.isNewline })
-                .map { String($0) }
-                .filter { !$0.isEmpty }
+
+            // Append, split on newlines, retain the trailing remainder.
+            let linesToEmit: [String] = {
+                self.pipeBufferLock.lock()
+                defer { self.pipeBufferLock.unlock() }
+
+                if label == "cloudflared-stdout" {
+                    self.stdoutBuffer.append(data)
+                } else {
+                    self.stderrBuffer.append(data)
+                }
+
+                let buffer: Data = label == "cloudflared-stdout"
+                    ? self.stdoutBuffer
+                    : self.stderrBuffer
+
+                // Non-failing decode — partial UTF-8 sequences get replacement
+                // chars instead of returning nil and stalling the pipeline.
+                let decoded = String(decoding: buffer, as: UTF8.self)
+                let endsWithNewline = buffer.last == UInt8(ascii: "\n")
+                let parts = decoded.split(separator: "\n", omittingEmptySubsequences: false)
+
+                if endsWithNewline {
+                    if label == "cloudflared-stdout" {
+                        self.stdoutBuffer = Data()
+                    } else {
+                        self.stderrBuffer = Data()
+                    }
+                    return parts.map(String.init).filter { !$0.isEmpty }
+                } else {
+                    let remainder = parts.last.map(String.init) ?? ""
+                    if label == "cloudflared-stdout" {
+                        self.stdoutBuffer = Data(remainder.utf8)
+                    } else {
+                        self.stderrBuffer = Data(remainder.utf8)
+                    }
+                    return parts.dropLast().map(String.init).filter { !$0.isEmpty }
+                }
+            }()
+
+            guard !linesToEmit.isEmpty else { return }
             DispatchQueue.main.async {
-                for line in lines {
-                    // Prefix so tunnel logs are distinguishable from relay
-                    // logs in the management log viewer.
+                for line in linesToEmit {
                     self.logStore.append("[cloudflared] \(line)")
                 }
             }
