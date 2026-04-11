@@ -41,8 +41,7 @@ enum CrewSpriteBuilder {
     static let dogSpriteSize = CGSize(width: 56, height: 48)
 
     private static let dogTypes: Set<CharacterType> = [
-        .dachshund, .dachshundAlt, .cattleDog, .cattleDogAlt,
-        .schnauzerBlack, .schnauzerPepper,
+        .elvis, .senor, .steve, .esteban, .hoku, .kai,
     ]
 
     // MARK: - Public API

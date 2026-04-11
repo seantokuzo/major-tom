@@ -1397,8 +1397,10 @@ final class OfficeScene: SKScene {
         let seatPos = CGPoint(x: OfficeLayout.desks[deskIndex].position.x, y: OfficeLayout.desks[deskIndex].position.y - 20)
         sprite.stopAnimations()
         sprite.updateStatus(.walking)
-        sprite.moveTo(position: seatPos, duration: 1.5) {
+        let waypoints = WaypointPathfinder.findPath(from: sprite.position, to: seatPos)
+        sprite.moveAlongPath(waypoints) {
             sprite.updateStatus(.working)
+            sprite.updateModule(.commandBridge)
             sprite.startWorkAnimation()
         }
     }
@@ -1408,8 +1410,11 @@ final class OfficeScene: SKScene {
         let position = OfficeLayout.randomPosition(in: areaType)
         sprite.updateStatus(.walking)
         sprite.stopAnimations()
-        sprite.moveTo(position: position, duration: 2.0) {
+        let waypoints = WaypointPathfinder.findPath(from: sprite.position, to: position)
+        sprite.moveAlongPath(waypoints) {
             sprite.updateStatus(.idle)
+            let arrivedModule = StationLayout.module(at: position)?.type
+            sprite.updateModule(arrivedModule)
             sprite.startIdleAnimation()
         }
     }
@@ -1423,8 +1428,11 @@ final class OfficeScene: SKScene {
         )
         sprite.updateStatus(.walking)
         sprite.stopAnimations()
-        sprite.moveTo(position: targetPos, duration: 1.5) {
+        let waypoints = WaypointPathfinder.findPath(from: sprite.position, to: targetPos)
+        sprite.moveAlongPath(waypoints) {
             sprite.updateStatus(.idle)
+            let arrivedModule = StationLayout.module(at: targetPos)?.type
+            sprite.updateModule(arrivedModule)
             sprite.startStationAnimation(stationType: stationType)
         }
     }
@@ -1433,13 +1441,17 @@ final class OfficeScene: SKScene {
         guard let sprite = agentSprites[id] else { return }
         sprite.updateStatus(.leaving)
         sprite.stopAnimations()
-        sprite.moveTo(position: OfficeLayout.doorPosition, duration: 1.5)
+        let waypoints = WaypointPathfinder.findPath(from: sprite.position, to: OfficeLayout.doorPosition)
+        sprite.moveAlongPath(waypoints) {
+            sprite.updateModule(nil)
+        }
     }
 
     func celebrateAgent(id: String) {
         guard let sprite = agentSprites[id] else { return }
         sprite.updateStatus(.celebrating)
         sprite.startCelebrationAnimation()
+        sprite.showEmote(.star)
         broadcastCelebration(sourceId: id)
     }
 
