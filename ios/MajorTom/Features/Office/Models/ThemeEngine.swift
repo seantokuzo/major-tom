@@ -46,19 +46,68 @@ struct SeasonalOverlay {
     let holiday: Bool
 }
 
+// MARK: - Station Alert State
+
+/// Station-wide alert state driven by agent events.
+enum StationAlertState: String {
+    case normal       // All clear — green status strips
+    case attention    // Agent idle >5min or error — yellow strips, subtle pulse
+    case alert        // Approval needed — red strips, red haze, strong haptic
+    case celebration  // Task completed — blue glow wave
+}
+
 // MARK: - Theme Engine
 
-/// Manages office visual themes based on real clock time and calendar month.
-/// Updates every 30 seconds to smoothly transition between time-of-day palettes.
+/// Manages station visual themes. In space it's always "night" —
+/// the palette is driven by station operational state (alerts) rather than time-of-day.
+/// Seasonal overlays kept for holiday decorations.
 @Observable
 final class ThemeEngine {
 
     // MARK: - State
 
-    private(set) var timeOfDay: TimeOfDay = .day
+    private(set) var timeOfDay: TimeOfDay = .night
     private(set) var season: Season = .spring
-    private(set) var palette: ThemePalette = ThemeEngine.dayPalette
+    private(set) var palette: ThemePalette = ThemeEngine.nightPalette
     private(set) var seasonal: SeasonalOverlay = ThemeEngine.springSeasonal
+
+    /// Current station alert state.
+    private(set) var alertState: StationAlertState = .normal
+
+    /// Set the alert state. The scene reads this to update status strips + overlay.
+    func setAlertState(_ state: StationAlertState) {
+        alertState = state
+    }
+
+    /// Color for status strips based on alert state.
+    var alertStripColor: SKColor {
+        switch alertState {
+        case .normal:      return StationPalette.consoleSuccess
+        case .attention:   return StationPalette.statusIdle
+        case .alert:       return StationPalette.consoleDanger
+        case .celebration: return StationPalette.consoleCyan
+        }
+    }
+
+    /// Overlay tint for alert state.
+    var alertOverlayColor: SKColor {
+        switch alertState {
+        case .normal:      return .clear
+        case .attention:   return StationPalette.statusIdle
+        case .alert:       return StationPalette.consoleDanger
+        case .celebration: return StationPalette.consoleCyan
+        }
+    }
+
+    /// Overlay alpha for alert state.
+    var alertOverlayAlpha: CGFloat {
+        switch alertState {
+        case .normal:      return 0
+        case .attention:   return 0.04
+        case .alert:       return 0.08
+        case .celebration: return 0.05
+        }
+    }
 
     /// Stable star positions (generated once)
     let stars: [(x: CGFloat, y: CGFloat, size: CGFloat, brightness: CGFloat)] = {
@@ -211,9 +260,10 @@ final class ThemeEngine {
 
     func update() {
         let now = Date()
-        timeOfDay = Self.currentTimeOfDay(now)
+        // In space it's always "night" — no day/night cycle
+        timeOfDay = .night
         season = Self.currentSeason(now)
-        palette = Self.palettes[timeOfDay] ?? Self.dayPalette
+        palette = Self.nightPalette
 
         var s = Self.seasonalOverlays[season] ?? Self.springSeasonal
         if season == .winter && Self.isHolidaySeason(now) {

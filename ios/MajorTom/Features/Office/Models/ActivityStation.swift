@@ -36,13 +36,13 @@ struct ActivityStation: Identifiable {
         self.capacity = capacity
 
         switch type {
-        case .pingPong: self.label = "Ping Pong"
-        case .coffeeMachine: self.label = "Coffee"
-        case .waterCooler: self.label = "Water Cooler"
-        case .arcade: self.label = "Arcade"
-        case .yoga: self.label = "Yoga"
-        case .nap: self.label = "Nap Zone"
-        case .whiteboard: self.label = "Whiteboard"
+        case .pingPong: self.label = "Zero-G Court"
+        case .coffeeMachine: self.label = "Bev Synth"
+        case .waterCooler: self.label = "Hydration"
+        case .arcade: self.label = "Holo-Game"
+        case .yoga: self.label = "Med Pod"
+        case .nap: self.label = "Sleep Pod"
+        case .whiteboard: self.label = "Holo-Projector"
         }
     }
 
@@ -70,25 +70,31 @@ struct ActivityStation: Identifiable {
     }
 }
 
-// MARK: - Station Layout
+// MARK: - Activity Station Layout
 
-/// Pre-defined positions for all activity stations in the office.
-enum StationLayout {
+/// Pre-defined positions for all activity stations in the 1200×800 station layout.
+enum ActivityStationLayout {
 
     static let stations: [ActivityStation] = [
-        // Break room stations
-        ActivityStation(type: .pingPong, position: CGPoint(x: 60, y: 350), capacity: 2),
-        ActivityStation(type: .arcade, position: CGPoint(x: 150, y: 280), capacity: 1),
+        // Training Bay — Zero-G Ball Court (was: Ping Pong in Break Room)
+        ActivityStation(type: .pingPong, position: CGPoint(x: 900, y: 660), capacity: 2),
 
-        // Kitchen stations
-        ActivityStation(type: .coffeeMachine, position: CGPoint(x: 280, y: 220), capacity: 1),
-        ActivityStation(type: .waterCooler, position: CGPoint(x: 380, y: 220), capacity: 2),
+        // Crew Quarters — Holo-Game Terminal (was: Arcade in Break Room)
+        ActivityStation(type: .arcade, position: CGPoint(x: 100, y: 150), capacity: 1),
 
-        // Chill zone stations (in dog corner area)
-        ActivityStation(type: .yoga, position: CGPoint(x: 550, y: 220), capacity: 2),
-        ActivityStation(type: .nap, position: CGPoint(x: 700, y: 180), capacity: 2),
+        // Galley — Beverage Synthesizer (was: Coffee Machine in Kitchen)
+        ActivityStation(type: .coffeeMachine, position: CGPoint(x: 330, y: 120), capacity: 1),
 
-        // Main floor station
-        ActivityStation(type: .whiteboard, position: CGPoint(x: 720, y: 400), capacity: 2),
+        // Galley — Hydration Station (was: Water Cooler in Kitchen)
+        ActivityStation(type: .waterCooler, position: CGPoint(x: 440, y: 120), capacity: 2),
+
+        // Bio-Dome — Meditation Pod (was: Yoga in Dog Corner)
+        ActivityStation(type: .yoga, position: CGPoint(x: 680, y: 120), capacity: 2),
+
+        // Crew Quarters — Sleep Pod (was: Nap in Dog Corner)
+        ActivityStation(type: .nap, position: CGPoint(x: 100, y: 260), capacity: 2),
+
+        // Command Bridge — Holo-Projector (was: Whiteboard on Main Floor)
+        ActivityStation(type: .whiteboard, position: CGPoint(x: 700, y: 500), capacity: 2),
     ]
 }

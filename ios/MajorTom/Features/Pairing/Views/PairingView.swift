@@ -1,5 +1,26 @@
 import SwiftUI
 
+// MARK: - Server Presets
+
+enum ServerPreset: String, CaseIterable, Identifiable {
+    case cloudflare = "majortom.seantokuzodevtunnel.space"
+    case tailscale  = "100.69.151.117:9090"
+    case lan        = "192.168.1.210:9090"
+    case localhost   = "localhost:9090"
+
+    var id: String { rawValue }
+    var address: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .cloudflare: return "☁️ Tunnel"
+        case .tailscale:  return "🔒 Tailscale"
+        case .lan:        return "📡 LAN"
+        case .localhost:   return "💻 Local"
+        }
+    }
+}
+
 struct PairingView: View {
     @State private var viewModel: PairingViewModel
 
@@ -15,9 +36,12 @@ struct PairingView: View {
 
             // Logo area
             VStack(spacing: MajorTomTheme.Spacing.md) {
-                Image(systemName: "antenna.radiowaves.left.and.right")
-                    .font(.system(size: 48))
-                    .foregroundStyle(MajorTomTheme.Colors.accent)
+                Image("MajorTomLogo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 100, height: 100)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .shadow(color: MajorTomTheme.Colors.accent.opacity(0.4), radius: 12, y: 4)
 
                 Text("Major Tom")
                     .font(.system(.largeTitle, design: .monospaced, weight: .bold))
@@ -49,6 +73,35 @@ struct PairingView: View {
                     .onSubmit {
                         Task { await viewModel.fetchAuthMethods() }
                     }
+
+                // Preset server picker
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: MajorTomTheme.Spacing.sm) {
+                        ForEach(ServerPreset.allCases) { preset in
+                            Button {
+                                HapticService.impact(.light)
+                                viewModel.serverAddress = preset.address
+                                Task { await viewModel.fetchAuthMethods() }
+                            } label: {
+                                Text(preset.label)
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(
+                                        viewModel.serverAddress == preset.address
+                                            ? MajorTomTheme.Colors.background
+                                            : MajorTomTheme.Colors.textSecondary
+                                    )
+                                    .padding(.horizontal, MajorTomTheme.Spacing.sm)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        viewModel.serverAddress == preset.address
+                                            ? MajorTomTheme.Colors.accent
+                                            : MajorTomTheme.Colors.surfaceElevated
+                                    )
+                                    .clipShape(Capsule())
+                            }
+                        }
+                    }
+                }
             }
             .padding(.horizontal, MajorTomTheme.Spacing.xxl)
 

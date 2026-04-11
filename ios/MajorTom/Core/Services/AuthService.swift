@@ -24,7 +24,7 @@ final class AuthService {
     var authState: AuthState = .unpaired
     /// Session cookie value obtained from PIN login (used for WebSocket auth).
     var sessionCookie: String?
-    var serverURL: String = "localhost:9090"
+    var serverURL: String = "majortom.seantokuzodevtunnel.space"
     /// User ID from the relay (populated after login).
     var userId: String?
     /// User role from the relay (populated after login).

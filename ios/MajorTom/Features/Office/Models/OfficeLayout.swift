@@ -42,101 +42,53 @@ struct OfficeArea: Identifiable {
 // MARK: - Office Layout
 
 /// The complete spatial layout of the office.
-/// All coordinates are in SpriteKit scene points.
-///
-/// Visual layout (Meta/Silicon Valley tech campus vibe):
-/// ```
-/// ┌─────────────────────────────────────────────────┐
-/// │  SERVER ROOM  │         MAIN FLOOR              │
-/// │  (orchestr.)  │  [desk] [desk] [desk]           │
-/// │  [desk]       │  [desk] [desk] [desk]           │
-/// │               │  [desk] [desk]                  │
-/// │───────────────┤                                 │
-/// │  BREAK ROOM   ├─────────────────────────────────│
-/// │  couches/tv   │  KITCHEN    │  DOG CORNER       │
-/// │               │  snacks     │  beds/bowls       │
-/// │───────────────┼─────────────┼───────────────────│
-/// │  GYM          │  DOG PARK   │  ROLLERCOASTER    │
-/// │  treadmills   │  play area  │  wheeee           │
-/// └───────────────┴─────────────┴───────────────────┘
-/// ```
+/// All coordinates are in SpriteKit scene points (origin bottom-left).
+/// Expanded to 1200×800 for the Space Station camera zoom system.
 struct OfficeLayout {
-    /// Scene dimensions
-    static let sceneWidth: CGFloat = 800
-    static let sceneHeight: CGFloat = 600
+    /// Scene dimensions — matches StationLayout
+    static let sceneWidth: CGFloat = 1200
+    static let sceneHeight: CGFloat = 800
 
-    /// The entry point where agents appear and leave
-    static let doorPosition = CGPoint(x: 750, y: 500)
+    /// The entry point where agents appear and leave (Command Bridge right side)
+    static let doorPosition = CGPoint(x: 760, y: 600)
 
     // MARK: - Areas
 
+    /// Legacy area bounds — mapped to StationLayout module positions.
     static let areas: [OfficeArea] = [
-        OfficeArea(
-            type: .mainFloor,
-            name: "Main Floor",
-            bounds: CGRect(x: 200, y: 300, width: 600, height: 300),
-            capacity: 8
-        ),
-        OfficeArea(
-            type: .serverRoom,
-            name: "Server Room",
-            bounds: CGRect(x: 0, y: 400, width: 200, height: 200),
-            capacity: 1
-        ),
-        OfficeArea(
-            type: .breakRoom,
-            name: "Break Room",
-            bounds: CGRect(x: 0, y: 200, width: 200, height: 200),
-            capacity: 4
-        ),
-        OfficeArea(
-            type: .kitchen,
-            name: "Kitchen",
-            bounds: CGRect(x: 200, y: 100, width: 250, height: 200),
-            capacity: 3
-        ),
-        OfficeArea(
-            type: .dogCorner,
-            name: "Dog Corner",
-            bounds: CGRect(x: 450, y: 100, width: 350, height: 200),
-            capacity: 4
-        ),
-        OfficeArea(
-            type: .gym,
-            name: "Gym",
-            bounds: CGRect(x: 0, y: 0, width: 250, height: 100),
-            capacity: 3
-        ),
-        OfficeArea(
-            type: .dogPark,
-            name: "Dog Park",
-            bounds: CGRect(x: 250, y: 0, width: 250, height: 100),
-            capacity: 4
-        ),
-        OfficeArea(
-            type: .rollercoaster,
-            name: "Rollercoaster",
-            bounds: CGRect(x: 500, y: 0, width: 300, height: 100),
-            capacity: 2
-        ),
+        OfficeArea(type: .mainFloor, name: "Main Floor",
+                   bounds: CGRect(x: 260, y: 430, width: 500, height: 330), capacity: 8),
+        OfficeArea(type: .serverRoom, name: "Server Room",
+                   bounds: CGRect(x: 20, y: 430, width: 220, height: 330), capacity: 1),
+        OfficeArea(type: .breakRoom, name: "Break Room",
+                   bounds: CGRect(x: 20, y: 20, width: 220, height: 350), capacity: 4),
+        OfficeArea(type: .kitchen, name: "Kitchen",
+                   bounds: CGRect(x: 260, y: 20, width: 260, height: 350), capacity: 3),
+        OfficeArea(type: .dogCorner, name: "Dog Corner",
+                   bounds: CGRect(x: 540, y: 20, width: 300, height: 350), capacity: 4),
+        OfficeArea(type: .dogPark, name: "Dog Park",
+                   bounds: CGRect(x: 860, y: 20, width: 320, height: 350), capacity: 4),
+        OfficeArea(type: .gym, name: "Gym",
+                   bounds: CGRect(x: 780, y: 590, width: 400, height: 170), capacity: 3),
+        OfficeArea(type: .rollercoaster, name: "Rollercoaster",
+                   bounds: CGRect(x: 780, y: 430, width: 400, height: 140), capacity: 2),
     ]
 
     // MARK: - Desks
 
-    /// 8 desks arranged in a grid on the main floor.
-    /// Positions are in SpriteKit coordinates (origin bottom-left).
+    /// 8 desks arranged in the Command Bridge module (x: 260-760, y: 430-760).
     static let desks: [Desk] = [
         // Row 1 (top row, 3 desks)
-        Desk(id: 0, position: CGPoint(x: 300, y: 520)),
-        Desk(id: 1, position: CGPoint(x: 450, y: 520)),
-        Desk(id: 2, position: CGPoint(x: 600, y: 520)),
+        Desk(id: 0, position: CGPoint(x: 370, y: 700)),
+        Desk(id: 1, position: CGPoint(x: 510, y: 700)),
+        Desk(id: 2, position: CGPoint(x: 650, y: 700)),
         // Row 2 (middle row, 3 desks)
-        Desk(id: 3, position: CGPoint(x: 300, y: 440)),
-        Desk(id: 4, position: CGPoint(x: 450, y: 440)),
-        Desk(id: 5, position: CGPoint(x: 600, y: 440)),
+        Desk(id: 3, position: CGPoint(x: 370, y: 610)),
+        Desk(id: 4, position: CGPoint(x: 510, y: 610)),
+        Desk(id: 5, position: CGPoint(x: 650, y: 610)),
         // Row 3 (bottom row, 2 desks)
-        Desk(id: 6, position: CGPoint(x: 300, y: 360)),
-        Desk(id: 7, position: CGPoint(x: 450, y: 360)),
+        Desk(id: 6, position: CGPoint(x: 370, y: 520)),
+        Desk(id: 7, position: CGPoint(x: 510, y: 520)),
     ]
 
     // MARK: - Helpers
