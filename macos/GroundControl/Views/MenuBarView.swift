@@ -134,6 +134,10 @@ struct MenuBarView: View {
             Image(systemName: "circle.fill")
                 .foregroundStyle(.yellow)
                 .font(.caption2)
+        case .restarting:
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .foregroundStyle(.orange)
+                .font(.caption2)
         case .error:
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)

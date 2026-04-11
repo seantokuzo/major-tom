@@ -228,6 +228,8 @@ struct DashboardView: View {
             "Stopped"
         case .error(let msg):
             "Error: \(msg)"
+        case .restarting(let attempt):
+            "Restarting (attempt \(attempt)/5)..."
         }
     }
 
@@ -245,6 +247,8 @@ struct DashboardView: View {
         case .running:
             relayClient.isConnected ? .green : .yellow
         case .starting, .stopping:
+            .yellow
+        case .restarting:
             .yellow
         case .idle:
             .gray

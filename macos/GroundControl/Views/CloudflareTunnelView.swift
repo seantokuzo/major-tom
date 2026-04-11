@@ -3,25 +3,63 @@ import SwiftUI
 /// Cloudflare Tunnel configuration section.
 ///
 /// Toggle to enable/disable, token stored in Keychain (masked by default),
-/// and a status indicator.
+/// optional tunnel name (display-only), live tunnel status from TunnelProcess,
+/// and a "Test Tunnel" button that probes the relay's /health endpoint.
 struct CloudflareTunnelView: View {
+    let relay: RelayProcess
     @Bindable var configManager: ConfigManager
 
     @State private var tunnelToken = ""
     @State private var showToken = false
     @State private var tokenSaveTask: Task<Void, Never>?
 
-    /// Derived status label for the tunnel (uses @State to avoid Keychain reads during recomputation).
+    @State private var testResult: TestResult?
+    @State private var isTesting = false
+
+    private enum TestResult: Equatable {
+        case success(statusCode: Int)
+        case failure(String)
+    }
+
+    // MARK: - Derived status
+
     private var statusText: String {
         if !configManager.config.cloudflareEnabled {
             return "Disabled"
         }
-        return !tunnelToken.isEmpty ? "Token saved" : "Not configured"
+        // Prefer live process state over static "token saved" when enabled.
+        switch relay.tunnel.state {
+        case .idle:
+            return tunnelToken.isEmpty ? "No token" : "Idle (waiting for relay)"
+        case .starting:
+            return "Starting..."
+        case .running:
+            return "Running"
+        case .stopping:
+            return "Stopping..."
+        case .restarting(let attempt):
+            return "Restarting (attempt \(attempt)/5)..."
+        case .error(let msg):
+            return msg
+        }
     }
 
     private var statusColor: Color {
         if !configManager.config.cloudflareEnabled { return .secondary }
-        return !tunnelToken.isEmpty ? .green : .orange
+        switch relay.tunnel.state {
+        case .idle:
+            return tunnelToken.isEmpty ? .orange : .gray
+        case .starting, .stopping, .restarting:
+            return .yellow
+        case .running:
+            return .green
+        case .error:
+            return .red
+        }
+    }
+
+    private var cloudflaredInstalled: Bool {
+        TunnelProcess.findCloudflared() != nil
     }
 
     var body: some View {
@@ -39,11 +77,29 @@ struct CloudflareTunnelView: View {
                         Text(statusText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
 
                 if configManager.config.cloudflareEnabled {
                     Divider()
+
+                    if !cloudflaredInstalled {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("cloudflared not found — install with ") +
+                            Text("`brew install cloudflared`").font(.body.monospaced())
+                        }
+                        .font(.caption)
+                    }
+
+                    LabeledContent("Tunnel Name") {
+                        TextField("major-tom", text: $configManager.config.cloudflareTunnelName)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 300)
+                    }
 
                     LabeledContent("Tunnel Token") {
                         HStack(spacing: 4) {
@@ -64,6 +120,42 @@ struct CloudflareTunnelView: View {
                             }
                             .buttonStyle(.borderless)
                             .help(showToken ? "Hide" : "Reveal")
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        Button {
+                            Task { await testTunnel() }
+                        } label: {
+                            if isTesting {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Text("Test Tunnel")
+                            }
+                        }
+                        .disabled(isTesting || !relay.state.isRunning)
+                        .help(relay.state.isRunning
+                              ? "Probe the relay /health endpoint"
+                              : "Start the relay first")
+
+                        if let testResult {
+                            switch testResult {
+                            case .success(let code):
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                    Text("OK (HTTP \(code))")
+                                }
+                                .font(.caption)
+                            case .failure(let msg):
+                                HStack(spacing: 4) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.red)
+                                    Text(msg)
+                                        .lineLimit(2)
+                                }
+                                .font(.caption)
+                            }
                         }
                     }
 
@@ -89,6 +181,41 @@ struct CloudflareTunnelView: View {
                     configManager.setSecret(ConfigManager.SecretKey.cloudflareToken, value: tunnelToken)
                 }
             }
+        }
+    }
+
+    // MARK: - Actions
+
+    /// Probe the relay's local `/health` endpoint. This validates that the
+    /// relay is reachable on its configured port — which is the first thing
+    /// that has to be true before the tunnel can forward traffic.
+    private func testTunnel() async {
+        isTesting = true
+        testResult = nil
+        defer { isTesting = false }
+
+        guard let url = URL(string: "http://127.0.0.1:\(relay.state.port)/health") else {
+            testResult = .failure("Invalid URL")
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5.0
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse {
+                if http.statusCode == 200 {
+                    testResult = .success(statusCode: http.statusCode)
+                } else {
+                    testResult = .failure("HTTP \(http.statusCode)")
+                }
+            } else {
+                testResult = .failure("No HTTP response")
+            }
+        } catch {
+            testResult = .failure(error.localizedDescription)
         }
     }
 }
