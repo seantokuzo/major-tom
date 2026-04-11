@@ -154,6 +154,10 @@ struct CharacterGalleryView: View {
             return "Office morale officer. Brings joy, chaos, and occasional whoopee cushions."
         case .frankenstein:
             return "The office wildcard. Bolts included. Surprisingly good at pair programming."
+        case .dwight:
+            return "Assistant to the Regional Manager. Bears. Beets. Battlestar Galactica."
+        case .michael:
+            return "World's Best Boss. That's what the mug says, and he bought it himself."
         case .elvis:
             return "Long boi. Requires a blanket at all times. Expert at fitting under desks."
         case .senor:

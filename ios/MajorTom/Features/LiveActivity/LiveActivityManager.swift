@@ -89,7 +89,7 @@ final class LiveActivityManager {
 
         await activity.end(
             .init(state: finalState, staleDate: nil),
-            dismissalPolicy: .after(.now + 300)  // Keep on Lock Screen for 5 min
+            dismissalPolicy: .after(.now + 30)  // Keep on Lock Screen for 30s
         )
 
         activities.removeValue(forKey: sessionId)

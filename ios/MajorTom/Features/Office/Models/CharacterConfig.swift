@@ -72,6 +72,20 @@ enum CharacterCatalog {
             breakBehaviors: [.breakRoom, .gym, .rollercoaster],
             needsBlanket: false
         ),
+        CharacterConfig(
+            type: .dwight,
+            displayName: "Dwight",
+            spriteColor: Color(red: 0.75, green: 0.65, blue: 0.20),  // Mustard yellow tie
+            breakBehaviors: [.breakRoom, .gym, .kitchen],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .michael,
+            displayName: "Michael",
+            spriteColor: Color(red: 0.25, green: 0.30, blue: 0.55),  // Navy suit
+            breakBehaviors: [.breakRoom, .kitchen, .rollercoaster],
+            needsBlanket: false
+        ),
 
         // MARK: Dogs
         CharacterConfig(
