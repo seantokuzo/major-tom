@@ -125,7 +125,6 @@
 		B7F0B7EF40820D1ACBD5720D /* Annotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A36A4C7C1708949F54A7FB29 /* Annotation.swift */; };
 		B9CFDC96DCA82CD435DD595A /* AchievementDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67A72007588F923516F48711 /* AchievementDetailView.swift */; };
 		BA5A66BBDF281BB44ECE265A /* SessionStatusWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA07545B6E9F73EED9477FB /* SessionStatusWidget.swift */; };
-		BB6D1475199DE9F8814F33DE /* PixelArtBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7152E60188E13153CF4B5C85 /* PixelArtBuilder.swift */; };
 		CC7E2586A1B3C4D5E6F70891 /* CrewSpriteBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD8F3697B2C4D5E6F7081902 /* CrewSpriteBuilder.swift */; };
 		BD4DE18F7D89A6E7BE778875 /* CharacterConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49975C50EF000FB470E30360 /* CharacterConfig.swift */; };
 		BF6D1C0B63D35D14E62F514B /* MajorTomApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF1FCD49533EE6197E807D1 /* MajorTomApp.swift */; };
@@ -287,7 +286,6 @@
 		6ED47D05EBAEFF05755F1CF6 /* SessionListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListViewModel.swift; sourceTree = "<group>"; };
 		6EF58FBAC8341407F9E3E7A0 /* RelayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayService.swift; sourceTree = "<group>"; };
 		70D288C1139CE55F81CA6B84 /* xterm-addon-fit.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "xterm-addon-fit.min.js"; sourceTree = "<group>"; };
-		7152E60188E13153CF4B5C85 /* PixelArtBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelArtBuilder.swift; sourceTree = "<group>"; };
 		DD8F3697B2C4D5E6F7081902 /* CrewSpriteBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrewSpriteBuilder.swift; sourceTree = "<group>"; };
 		735C53A97B86E2331E03A4F0 /* DelayCountdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelayCountdownView.swift; sourceTree = "<group>"; };
 		73D57C1446E7A203616CCE20 /* StreamingText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingText.swift; sourceTree = "<group>"; };
@@ -838,7 +836,6 @@
 			children = (
 				8DD1D371AFD4698EE21925BF /* AgentSprite.swift */,
 				DD8F3697B2C4D5E6F7081902 /* CrewSpriteBuilder.swift */,
-				7152E60188E13153CF4B5C85 /* PixelArtBuilder.swift */,
 			);
 			path = Sprites;
 			sourceTree = "<group>";
@@ -1664,7 +1661,6 @@
 				105DA16D4A98B26952BC1756 /* PermissionModeView.swift in Sources */,
 				508D62FEA85292B273E3D167 /* PermissionViewModel.swift in Sources */,
 				3F2C8C3720ABDE4346DD4010 /* PhoneWatchConnectivityService.swift in Sources */,
-				BB6D1475199DE9F8814F33DE /* PixelArtBuilder.swift in Sources */,
 				CC7E2586A1B3C4D5E6F70891 /* CrewSpriteBuilder.swift in Sources */,
 				47C0B72FD01DBA3CFCDFA14A /* Presence.swift in Sources */,
 				682709FF9F9B3B74B4354939 /* ProgressRing.swift in Sources */,
