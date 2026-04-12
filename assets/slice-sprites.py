@@ -31,7 +31,13 @@ DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "ios" / "MajorTom" / "Assets.xcassets" / "Cr
 
 
 def remove_background(img: Image.Image, threshold: int = 220) -> Image.Image:
-    """Remove near-white and near-gray backgrounds by making them transparent."""
+    """Remove background by making it transparent.
+
+    Supports:
+    - Green screen (#00FF00) backgrounds — primary method for new sprites
+    - Near-white and near-gray backgrounds — legacy fallback
+    - Already-transparent backgrounds — pass through
+    """
     img = img.convert("RGBA")
     pixels = img.load()
     w, h = img.size
@@ -41,6 +47,11 @@ def remove_background(img: Image.Image, threshold: int = 220) -> Image.Image:
             r, g, b, a = pixels[x, y]
 
             if a < 10:
+                pixels[x, y] = (0, 0, 0, 0)
+                continue
+
+            # Green screen removal (#00FF00 and nearby greens)
+            if g > 200 and r < 80 and b < 80:
                 pixels[x, y] = (0, 0, 0, 0)
                 continue
 
