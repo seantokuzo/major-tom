@@ -1695,38 +1695,75 @@ final class OfficeScene: SKScene {
 
     // MARK: - Snap Scrolling
 
-    /// Swipe UP (in view) → show upper rooms (higher Y in SpriteKit)
-    private func handleSwipeUp() {
-        switch currentSnapPosition {
-        case .col1Bottom: snapTo(.col1Top)
-        case .col2Bottom: snapTo(.col2Top)
-        case .col1Top, .col2Top: break  // Already at top
-        }
+    // MARK: - Camera Position Helpers
+
+    /// The X center for column 1.
+    private var col1CenterX: CGFloat { StationLayout.col1X + StationLayout.roomWidth / 2 }
+    /// The X center for column 2.
+    private var col2CenterX: CGFloat { StationLayout.col2X + StationLayout.roomWidth / 2 }
+    /// The X midpoint between columns (threshold for determining current column).
+    private var columnMidX: CGFloat { (col1CenterX + col2CenterX) / 2 }
+    /// Whether camera is currently in column 1.
+    private var isInCol1: Bool { cameraNode.position.x < columnMidX }
+
+    /// Camera Y for showing rows N and N+1 (N=0 is top).
+    private func pairCenterY(topRow: Int) -> CGFloat {
+        let rh = StationLayout.roomHeight
+        let ch = StationLayout.corridorHeight
+        let topOfPair = StationLayout.sceneHeight - CGFloat(topRow) * (rh + ch)
+        return topOfPair - rh - ch / 2
     }
 
-    /// Swipe DOWN (in view) → show lower rooms (lower Y in SpriteKit)
-    private func handleSwipeDown() {
-        switch currentSnapPosition {
-        case .col1Top: snapTo(.col1Bottom)
-        case .col2Top: snapTo(.col2Bottom)
-        case .col1Bottom, .col2Bottom: break  // Already at bottom
+    /// The topmost Y the camera can meaningfully be (rows 0+1).
+    private var topPairY: CGFloat { pairCenterY(topRow: 0) }
+    /// The bottommost Y the camera can meaningfully be (rows 2+3).
+    private var bottomPairY: CGFloat { pairCenterY(topRow: 2) }
+    /// The middle Y (rows 1+2).
+    private var midPairY: CGFloat { pairCenterY(topRow: 1) }
+
+    /// Swipe UP → reveal upper rooms (move camera Y up by one row pair step)
+    private func handleSwipeUp() {
+        let currentY = cameraNode.position.y
+        let currentX = cameraNode.position.x
+
+        // Find next higher Y position
+        let targetY: CGFloat
+        if currentY < midPairY - 50 {
+            targetY = midPairY   // bottom → mid
+        } else if currentY < topPairY - 50 {
+            targetY = topPairY   // mid → top
+        } else {
+            return // Already at top
         }
+        snapToCenter(CGPoint(x: currentX, y: targetY))
+    }
+
+    /// Swipe DOWN → reveal lower rooms (move camera Y down by one row pair step)
+    private func handleSwipeDown() {
+        let currentY = cameraNode.position.y
+        let currentX = cameraNode.position.x
+
+        let targetY: CGFloat
+        if currentY > midPairY + 50 {
+            targetY = midPairY     // top → mid
+        } else if currentY > bottomPairY + 50 {
+            targetY = bottomPairY  // mid → bottom
+        } else {
+            return // Already at bottom
+        }
+        snapToCenter(CGPoint(x: currentX, y: targetY))
     }
 
     /// Swipe LEFT → switch to column 2, preserving current Y position
     private func handleSwipeLeft() {
-        let currentX = cameraNode.position.x
-        guard currentX < 620 else { return } // Already in col2
-        let target = CGPoint(x: 940, y: cameraNode.position.y)
-        snapToCenter(target)
+        guard isInCol1 else { return }
+        snapToCenter(CGPoint(x: col2CenterX, y: cameraNode.position.y))
     }
 
     /// Swipe RIGHT → switch to column 1, preserving current Y position
     private func handleSwipeRight() {
-        let currentX = cameraNode.position.x
-        guard currentX > 620 else { return } // Already in col1
-        let target = CGPoint(x: 300, y: cameraNode.position.y)
-        snapToCenter(target)
+        guard !isInCol1 else { return }
+        snapToCenter(CGPoint(x: col1CenterX, y: cameraNode.position.y))
     }
 
     /// Animate camera to the given snap position. Resets scale to default.
