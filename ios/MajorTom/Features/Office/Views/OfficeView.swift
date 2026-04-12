@@ -25,10 +25,11 @@ struct OfficeView: View {
     var relay: RelayService?
 
     @State private var activeSheet: OfficeSheetType?
+    @State private var showMiniMap = false
     @State private var scene: OfficeScene = {
         let scene = OfficeScene()
         scene.size = CGSize(width: StationLayout.sceneWidth, height: StationLayout.sceneHeight)
-        scene.scaleMode = .aspectFit
+        scene.scaleMode = .aspectFill
         return scene
     }()
 
@@ -52,6 +53,11 @@ struct OfficeView: View {
             VStack {
                 topBar
                 Spacer()
+            }
+
+            // Mini-map overlay (shown on long-press of MAP button)
+            if showMiniMap {
+                miniMapOverlay
             }
         }
         .onAppear {
@@ -184,35 +190,139 @@ struct OfficeView: View {
                     .glassBackground()
             }
 
-            // Mini-map placeholder
-            miniMapPlaceholder
+            // Mini-map button (long press to open overlay)
+            miniMapButton
         }
         .padding(MajorTomTheme.Spacing.md)
     }
 
-    /// Placeholder for the mini-map concept.
-    private var miniMapPlaceholder: some View {
+    /// Mini-map button that opens the full overlay on long press.
+    private var miniMapButton: some View {
         VStack(spacing: 2) {
             Text("MAP")
                 .font(.system(.caption2, design: .monospaced, weight: .bold))
                 .foregroundStyle(MajorTomTheme.Colors.textTertiary)
 
-            // Tiny colored rectangles representing office areas
+            // Tiny 2×4 grid preview
             HStack(spacing: 1) {
-                Rectangle().fill(Color(red: 0.15, green: 0.20, blue: 0.25))
-                Rectangle().fill(Color(red: 0.18, green: 0.18, blue: 0.22))
+                miniMapTinyColumn(types: [.commandBridge, .engineering, .crewQuarters, .galley])
+                miniMapTinyColumn(types: [.bioDome, .arboretum, .trainingBay, .evaBay])
             }
-            .frame(width: 50, height: 15)
-
-            HStack(spacing: 1) {
-                Rectangle().fill(Color(red: 0.22, green: 0.18, blue: 0.20))
-                Rectangle().fill(Color(red: 0.20, green: 0.20, blue: 0.18))
-                Rectangle().fill(Color(red: 0.20, green: 0.18, blue: 0.15))
-            }
-            .frame(width: 50, height: 12)
+            .frame(width: 36, height: 48)
         }
         .padding(MajorTomTheme.Spacing.xs)
         .glassBackground()
+        .onLongPressGesture(minimumDuration: 0.4) {
+            HapticService.impact(.medium)
+            showMiniMap = true
+        }
+    }
+
+    /// Tiny column for the mini-map button preview.
+    private func miniMapTinyColumn(types: [ModuleType]) -> some View {
+        VStack(spacing: 1) {
+            ForEach(types, id: \.rawValue) { moduleType in
+                Rectangle()
+                    .fill(Color(uiColor: StationPalette.floorColor(for: moduleType)))
+                    .cornerRadius(1)
+            }
+        }
+    }
+
+    // MARK: - Mini-Map Overlay
+
+    /// Full-screen mini-map overlay showing the 2×4 station grid.
+    /// Tapping a room pair navigates there and dismisses the overlay.
+    private var miniMapOverlay: some View {
+        ZStack {
+            // Semi-transparent backdrop
+            Color.black.opacity(0.75)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    showMiniMap = false
+                }
+
+            VStack(spacing: 16) {
+                Text("STATION MAP")
+                    .font(.system(.headline, design: .monospaced, weight: .bold))
+                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+
+                // 2×4 grid of rooms — tap any room to navigate
+                HStack(spacing: 8) {
+                    // Column 1 (top to bottom = row 0 to row 3)
+                    VStack(spacing: 4) {
+                        miniMapRoom(.commandBridge, column: 0, row: 0)
+                        miniMapRoom(.engineering, column: 0, row: 1)
+                        miniMapRoom(.crewQuarters, column: 0, row: 2)
+                        miniMapRoom(.galley, column: 0, row: 3)
+                    }
+                    // Column 2
+                    VStack(spacing: 4) {
+                        miniMapRoom(.bioDome, column: 1, row: 0)
+                        miniMapRoom(.arboretum, column: 1, row: 1)
+                        miniMapRoom(.trainingBay, column: 1, row: 2)
+                        miniMapRoom(.evaBay, column: 1, row: 3)
+                    }
+                }
+
+                Text("Tap a room to navigate")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+            }
+        }
+        .transition(.opacity)
+    }
+
+    /// Camera center for showing two adjacent rows. Derives X from column,
+    /// Y from row pair midpoints using StationLayout dimensions.
+    private func cameraCenter(column: Int, tappedRow: Int) -> CGPoint {
+        let colX = column == 0 ? StationLayout.col1X : StationLayout.col2X
+        let x = colX + StationLayout.roomWidth / 2
+
+        // Each row is roomHeight + corridorHeight. Row pair midpoint:
+        // rows N and N+1 → midY between bottom of N+1 and top of N
+        let rh = StationLayout.roomHeight
+        let ch = StationLayout.corridorHeight
+
+        // Tapped room becomes the top room, show it + the row below
+        // Exception: last row (3) → show rows 2+3 instead
+        let effectiveRow = min(tappedRow, 2) // Clamp so row 3 maps to pair 2+3
+
+        // Row 0 is at top (highest Y). Row pair N starts at:
+        // topY = sceneHeight - (N * (rh + ch))
+        // bottomY = topY - 2*rh - ch
+        // midY = (topY + bottomY) / 2 = topY - rh - ch/2
+        let topOfPair = StationLayout.sceneHeight - CGFloat(effectiveRow) * (rh + ch)
+        let pairY = topOfPair - rh - ch / 2
+
+        return CGPoint(x: x, y: pairY)
+    }
+
+    /// A single room cell in the mini-map overlay.
+    private func miniMapRoom(_ moduleType: ModuleType, column: Int, row: Int) -> some View {
+        return Button {
+            let center = cameraCenter(column: column, tappedRow: row)
+            scene.snapToCenter(center)
+            showMiniMap = false
+        } label: {
+            VStack(spacing: 2) {
+                Text(moduleType.displayName)
+                    .font(.system(.caption2, design: .monospaced, weight: .medium))
+                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(width: 140, height: 60)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(uiColor: StationPalette.floorColor(for: moduleType)))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Scene Sync

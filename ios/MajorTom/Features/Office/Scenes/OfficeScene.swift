@@ -32,12 +32,16 @@ final class OfficeScene: SKScene {
     private let minCameraScale = StationLayout.minCameraScale
     private let maxCameraScale = StationLayout.maxCameraScale
 
-    // Touch tracking for pan/zoom gestures
-    private var lastPanLocation: CGPoint?
+    // Snap scrolling state
+    private var currentSnapPosition: SnapPosition = .col1Top
+    private var isSnapAnimating = false  // Prevent input during animation
+
+    // Touch tracking for swipe/pinch/tap gestures
     private var lastPinchDistance: CGFloat?
     private var touchStartTime: TimeInterval = 0
-    private var touchStartLocation: CGPoint = .zero
-    private var isPanning = false
+    private var touchStartLocation: CGPoint = .zero  // In scene coordinates
+    private var touchStartViewLocation: CGPoint = .zero  // In view coordinates
+    private let swipeThreshold: CGFloat = 50  // Minimum swipe distance to trigger snap
 
     // MARK: - Theme & Mood
 
@@ -59,18 +63,19 @@ final class OfficeScene: SKScene {
         super.didMove(to: view)
         backgroundColor = StationPalette.deepSpace
         size = CGSize(width: StationLayout.sceneWidth, height: StationLayout.sceneHeight)
-        scaleMode = .aspectFit
+        scaleMode = .aspectFill
         anchorPoint = CGPoint(x: 0, y: 0)
 
         // Enable multi-touch for pinch zoom
         view.isMultipleTouchEnabled = true
 
-        // Setup camera
+        // Setup camera — start at col1_top snap position
         cameraNode = SKCameraNode()
-        cameraNode.position = StationLayout.cameraCenter
+        cameraNode.position = StationLayout.snapCenter(for: .col1Top)
         cameraNode.setScale(StationLayout.defaultCameraScale)
         addChild(cameraNode)
         camera = cameraNode
+        currentSnapPosition = .col1Top
 
         renderStationHull()
         renderCorridor()
@@ -280,49 +285,47 @@ final class OfficeScene: SKScene {
 
     // MARK: - Corridor Rendering
 
-    /// Render the corridor strip connecting upper and lower decks.
+    /// Render all 6 corridor strips (3 per column) connecting vertically-adjacent rooms.
     private func renderCorridor() {
-        let bounds = StationLayout.corridorBounds
+        for bounds in StationLayout.corridors {
+            // Corridor floor — darker, industrial
+            renderFloorPanels(in: bounds, moduleType: .engineering)
 
-        // Corridor floor — darker, industrial
-        renderFloorPanels(in: bounds, moduleType: .engineering)
+            // Guide lights along the corridor
+            let lightSpacing: CGFloat = 80
+            for x in stride(from: bounds.minX + 40, to: bounds.maxX - 30, by: lightSpacing) {
+                let light = SKSpriteNode(
+                    color: StationPalette.guideLightDim,
+                    size: CGSize(width: 20, height: 3)
+                )
+                light.position = CGPoint(x: x, y: bounds.midY)
+                light.zPosition = 0.8
+                addChild(light)
 
-        // Guide lights along the corridor
-        let lightSpacing: CGFloat = 60
-        for x in stride(from: bounds.minX + 30, to: bounds.maxX - 20, by: lightSpacing) {
-            let light = SKSpriteNode(
-                color: StationPalette.guideLightDim,
-                size: CGSize(width: 20, height: 3)
-            )
-            light.position = CGPoint(x: x, y: bounds.midY)
-            light.zPosition = 0.8
-            addChild(light)
+                light.run(SKAction.repeatForever(SKAction.sequence([
+                    SKAction.fadeAlpha(to: 0.05, duration: 2.0),
+                    SKAction.fadeAlpha(to: 0.2, duration: 2.0),
+                ])))
+            }
 
-            light.run(SKAction.repeatForever(SKAction.sequence([
-                SKAction.fadeAlpha(to: 0.05, duration: 2.0),
-                SKAction.fadeAlpha(to: 0.2, duration: 2.0),
-            ])))
-        }
+            // Corridor walls (top and bottom edges)
+            let wallColor = StationPalette.hullPrimary.withAlphaComponent(0.6)
+            let topWall = SKSpriteNode(color: wallColor, size: CGSize(width: bounds.width, height: 2))
+            topWall.position = CGPoint(x: bounds.midX, y: bounds.maxY)
+            topWall.zPosition = 1
+            addChild(topWall)
 
-        // Corridor walls (top and bottom edges)
-        let wallColor = StationPalette.hullPrimary.withAlphaComponent(0.6)
-        let topWall = SKSpriteNode(color: wallColor, size: CGSize(width: bounds.width, height: 2))
-        topWall.position = CGPoint(x: bounds.midX, y: bounds.maxY)
-        topWall.zPosition = 1
-        addChild(topWall)
+            let bottomWall = SKSpriteNode(color: wallColor, size: CGSize(width: bounds.width, height: 2))
+            bottomWall.position = CGPoint(x: bounds.midX, y: bounds.minY)
+            bottomWall.zPosition = 1
+            addChild(bottomWall)
 
-        let bottomWall = SKSpriteNode(color: wallColor, size: CGSize(width: bounds.width, height: 2))
-        bottomWall.position = CGPoint(x: bounds.midX, y: bounds.minY)
-        bottomWall.zPosition = 1
-        addChild(bottomWall)
-
-        // "CORRIDOR" labels at intervals
-        for x: CGFloat in [250, 600, 950] {
+            // "CORRIDOR" label centered
             let label = SKLabelNode(fontNamed: "Menlo")
             label.text = "CORRIDOR"
             label.fontSize = 6
             label.fontColor = StationPalette.ambientPanel.withAlphaComponent(0.25)
-            label.position = CGPoint(x: x, y: bounds.midY - 3)
+            label.position = CGPoint(x: bounds.midX, y: bounds.midY - 3)
             label.zPosition = 0.9
             addChild(label)
         }
@@ -405,13 +408,14 @@ final class OfficeScene: SKScene {
 
     // MARK: - Module Furniture
 
-    /// Place signature furniture in each module using StationLayout bounds.
+    /// Place texture-based furniture in each module using StationLayout bounds.
     private func renderModuleFurniture() {
         renderCommandBridgeFurniture()
         renderEngineeringFurniture()
         renderCrewQuartersFurniture()
         renderGalleyFurniture()
         renderBioDomeFurniture()
+        renderArboretumFurniture()
         renderTrainingBayFurniture()
         renderEVABayFurniture()
     }
@@ -420,11 +424,28 @@ final class OfficeScene: SKScene {
         guard let module = StationLayout.module(for: .commandBridge) else { return }
         let bounds = module.bounds
 
-        // Tactical display on the upper-right wall
+        // Captain's chair — center-upper area of the bridge
+        let chair = StationFurnitureFactory.captainsChair()
+        chair.position = CGPoint(x: bounds.midX, y: bounds.maxY - 100)
+        chair.zPosition = 3
+        addChild(chair)
+
+        // Tactical display — upper wall
         let tactical = StationFurnitureFactory.tacticalDisplay()
-        tactical.position = CGPoint(x: bounds.maxX - 50, y: bounds.maxY - 50)
+        tactical.position = CGPoint(x: bounds.midX, y: bounds.maxY - 40)
         tactical.zPosition = 3
         addChild(tactical)
+
+        // Status screens flanking the bridge
+        let status1 = StationFurnitureFactory.statusScreen()
+        status1.position = CGPoint(x: bounds.minX + 60, y: bounds.maxY - 60)
+        status1.zPosition = 3
+        addChild(status1)
+
+        let status2 = StationFurnitureFactory.statusScreen()
+        status2.position = CGPoint(x: bounds.maxX - 60, y: bounds.maxY - 60)
+        status2.zPosition = 3
+        addChild(status2)
 
         addWallStatusPanels(in: bounds, count: 4)
     }
@@ -435,47 +456,72 @@ final class OfficeScene: SKScene {
 
         // REACTOR CORE — centerpiece
         let reactor = StationFurnitureFactory.reactorCore()
-        reactor.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        reactor.position = CGPoint(x: bounds.midX, y: bounds.midY + 40)
         reactor.zPosition = 3
         addChild(reactor)
 
-        // Power panels on the right wall
-        let panel1 = StationFurnitureFactory.powerPanel()
-        panel1.position = CGPoint(x: bounds.maxX - 25, y: bounds.midY + 40)
+        // Control panels flanking the reactor
+        let panel1 = StationFurnitureFactory.controlPanel()
+        panel1.position = CGPoint(x: bounds.minX + 80, y: bounds.midY + 120)
         panel1.zPosition = 3
         addChild(panel1)
 
-        let panel2 = StationFurnitureFactory.powerPanel()
-        panel2.position = CGPoint(x: bounds.maxX - 25, y: bounds.midY - 40)
+        let panel2 = StationFurnitureFactory.controlPanel()
+        panel2.position = CGPoint(x: bounds.maxX - 80, y: bounds.midY + 120)
         panel2.zPosition = 3
         addChild(panel2)
+
+        // Tool rack on the left-lower
+        let tools = StationFurnitureFactory.toolRack()
+        tools.position = CGPoint(x: bounds.minX + 60, y: bounds.midY - 120)
+        tools.zPosition = 3
+        addChild(tools)
+
+        // Storage crate on the right-lower
+        let crate = StationFurnitureFactory.storageCrate()
+        crate.position = CGPoint(x: bounds.maxX - 60, y: bounds.midY - 120)
+        crate.zPosition = 3
+        addChild(crate)
     }
 
     private func renderCrewQuartersFurniture() {
         guard let module = StationLayout.module(for: .crewQuarters) else { return }
         let bounds = module.bounds
 
-        // Bunks
-        let bunk1 = StationFurnitureFactory.bunkBed(color: SKColor(red: 0.20, green: 0.25, blue: 0.45, alpha: 1))
-        bunk1.position = CGPoint(x: bounds.midX + 20, y: bounds.maxY - 60)
+        // Bunks — 2 along upper wall (room is narrower now)
+        let bunk1 = StationFurnitureFactory.bunkBed()
+        bunk1.position = CGPoint(x: bounds.minX + 100, y: bounds.maxY - 80)
         bunk1.zPosition = 3
         addChild(bunk1)
 
-        let bunk2 = StationFurnitureFactory.bunkBed(color: SKColor(red: 0.35, green: 0.20, blue: 0.30, alpha: 1))
-        bunk2.position = CGPoint(x: bounds.midX + 20, y: bounds.maxY - 100)
+        let bunk2 = StationFurnitureFactory.bunkBed()
+        bunk2.position = CGPoint(x: bounds.maxX - 100, y: bounds.maxY - 80)
         bunk2.zPosition = 3
         addChild(bunk2)
 
-        let bunk3 = StationFurnitureFactory.bunkBed(color: SKColor(red: 0.20, green: 0.35, blue: 0.30, alpha: 1))
-        bunk3.position = CGPoint(x: bounds.midX + 20, y: bounds.maxY - 140)
+        // Bunk 3 along upper-mid
+        let bunk3 = StationFurnitureFactory.bunkBed()
+        bunk3.position = CGPoint(x: bounds.midX, y: bounds.maxY - 180)
         bunk3.zPosition = 3
         addChild(bunk3)
 
-        // Media screen
+        // Couch in the lounge area
+        let couch = StationFurnitureFactory.couch()
+        couch.position = CGPoint(x: bounds.midX - 80, y: bounds.midY - 60)
+        couch.zPosition = 3
+        addChild(couch)
+
+        // Media screen on right wall area
         let media = StationFurnitureFactory.mediaScreen()
-        media.position = CGPoint(x: bounds.maxX - 25, y: bounds.midY + 10)
+        media.position = CGPoint(x: bounds.maxX - 70, y: bounds.midY)
         media.zPosition = 3
         addChild(media)
+
+        // Floor lamp
+        let lamp = StationFurnitureFactory.floorLampOn()
+        lamp.position = CGPoint(x: bounds.midX + 120, y: bounds.midY - 100)
+        lamp.zPosition = 3
+        addChild(lamp)
 
         addWallStatusPanels(in: bounds, count: 2)
     }
@@ -484,30 +530,28 @@ final class OfficeScene: SKScene {
         guard let module = StationLayout.module(for: .galley) else { return }
         let bounds = module.bounds
 
-        // Food dispensers
+        // Food dispensers along the upper wall
         let disp1 = StationFurnitureFactory.foodDispenser()
-        disp1.position = CGPoint(x: bounds.minX + 40, y: bounds.maxY - 50)
+        disp1.position = CGPoint(x: bounds.minX + 100, y: bounds.maxY - 70)
         disp1.zPosition = 3
         addChild(disp1)
 
         let disp2 = StationFurnitureFactory.foodDispenser()
-        disp2.position = CGPoint(x: bounds.minX + 80, y: bounds.maxY - 50)
+        disp2.position = CGPoint(x: bounds.minX + 220, y: bounds.maxY - 70)
         disp2.zPosition = 3
         addChild(disp2)
 
-        // Counter
-        let counter = StationFurnitureFactory.counter()
-        counter.position = CGPoint(x: bounds.midX + 20, y: bounds.midY - 10)
-        counter.zPosition = 3
-        addChild(counter)
+        // Coffee machine
+        let coffee = StationFurnitureFactory.coffeeMachine()
+        coffee.position = CGPoint(x: bounds.maxX - 100, y: bounds.maxY - 70)
+        coffee.zPosition = 3
+        addChild(coffee)
 
-        // Seating
-        for i in 0..<3 {
-            let chair = StationFurnitureFactory.chair()
-            chair.position = CGPoint(x: bounds.midX + CGFloat(i - 1) * 22 + 20, y: bounds.midY - 30)
-            chair.zPosition = 3
-            addChild(chair)
-        }
+        // Dining table in center-lower
+        let table = StationFurnitureFactory.diningTable()
+        table.position = CGPoint(x: bounds.midX, y: bounds.midY - 40)
+        table.zPosition = 3
+        addChild(table)
 
         addWallStatusPanels(in: bounds, count: 2)
     }
@@ -516,33 +560,39 @@ final class OfficeScene: SKScene {
         guard let module = StationLayout.module(for: .bioDome) else { return }
         let bounds = module.bounds
 
-        // Plants / trees
-        let tree1 = StationFurnitureFactory.plant(size: 1.3)
-        tree1.position = CGPoint(x: bounds.minX + 60, y: bounds.midY + 10)
+        // Trees
+        let tree1 = StationFurnitureFactory.tree()
+        tree1.position = CGPoint(x: bounds.minX + 100, y: bounds.midY + 80)
         tree1.zPosition = 3
         addChild(tree1)
 
-        let tree2 = StationFurnitureFactory.plant(size: 1.0)
-        tree2.position = CGPoint(x: bounds.midX + 30, y: bounds.midY + 20)
+        let tree2 = StationFurnitureFactory.tree()
+        tree2.position = CGPoint(x: bounds.maxX - 100, y: bounds.midY + 80)
         tree2.zPosition = 3
         addChild(tree2)
 
-        let tree3 = StationFurnitureFactory.plant(size: 0.8)
-        tree3.position = CGPoint(x: bounds.maxX - 60, y: bounds.midY - 10)
-        tree3.zPosition = 3
-        addChild(tree3)
-
-        // Water feature
+        // Water feature — center
         let water = StationFurnitureFactory.waterFeature()
-        water.position = CGPoint(x: bounds.midX - 20, y: bounds.minY + 45)
+        water.position = CGPoint(x: bounds.midX, y: bounds.midY - 60)
         water.zPosition = 3
         addChild(water)
 
+        // Office plants
+        let plant1 = StationFurnitureFactory.officePlant()
+        plant1.position = CGPoint(x: bounds.midX - 120, y: bounds.midY - 120)
+        plant1.zPosition = 3
+        addChild(plant1)
+
+        let plant2 = StationFurnitureFactory.officePlant()
+        plant2.position = CGPoint(x: bounds.midX + 120, y: bounds.midY - 120)
+        plant2.zPosition = 3
+        addChild(plant2)
+
         // Grow-light panels on ceiling
-        for x in stride(from: bounds.minX + 40, to: bounds.maxX - 30, by: 70) {
+        for x in stride(from: bounds.minX + 60, to: bounds.maxX - 40, by: 100) {
             let light = SKSpriteNode(
                 color: SKColor(red: 0.6, green: 0.3, blue: 0.8, alpha: 0.15),
-                size: CGSize(width: 30, height: 4)
+                size: CGSize(width: 35, height: 4)
             )
             light.position = CGPoint(x: x, y: bounds.maxY - 20)
             light.zPosition = 2
@@ -555,20 +605,66 @@ final class OfficeScene: SKScene {
         }
     }
 
+    private func renderArboretumFurniture() {
+        guard let module = StationLayout.module(for: .arboretum) else { return }
+        let bounds = module.bounds
+
+        // Tree — center upper
+        let tree = StationFurnitureFactory.tree()
+        tree.position = CGPoint(x: bounds.midX, y: bounds.midY + 100)
+        tree.zPosition = 3
+        addChild(tree)
+
+        // Park benches
+        let bench1 = StationFurnitureFactory.parkBench()
+        bench1.position = CGPoint(x: bounds.minX + 100, y: bounds.midY - 60)
+        bench1.zPosition = 3
+        addChild(bench1)
+
+        let bench2 = StationFurnitureFactory.parkBench()
+        bench2.position = CGPoint(x: bounds.maxX - 100, y: bounds.midY - 60)
+        bench2.zPosition = 3
+        addChild(bench2)
+
+        // Pond
+        let pond = StationFurnitureFactory.pond()
+        pond.position = CGPoint(x: bounds.midX + 100, y: bounds.midY + 20)
+        pond.zPosition = 3
+        addChild(pond)
+
+        // Office plant
+        let plant = StationFurnitureFactory.officePlant()
+        plant.position = CGPoint(x: bounds.minX + 70, y: bounds.midY + 120)
+        plant.zPosition = 3
+        addChild(plant)
+    }
+
     private func renderTrainingBayFurniture() {
         guard let module = StationLayout.module(for: .trainingBay) else { return }
         let bounds = module.bounds
 
-        // Exercise equipment
-        let equip1 = StationFurnitureFactory.exerciseEquipment()
-        equip1.position = CGPoint(x: bounds.minX + 50, y: bounds.midY)
-        equip1.zPosition = 3
-        addChild(equip1)
+        // Treadmills — stacked vertically in narrower room
+        let treadmill1 = StationFurnitureFactory.treadmill()
+        treadmill1.position = CGPoint(x: bounds.minX + 120, y: bounds.midY + 80)
+        treadmill1.zPosition = 3
+        addChild(treadmill1)
 
-        let equip2 = StationFurnitureFactory.exerciseEquipment()
-        equip2.position = CGPoint(x: bounds.minX + 110, y: bounds.midY)
-        equip2.zPosition = 3
-        addChild(equip2)
+        let treadmill2 = StationFurnitureFactory.treadmill()
+        treadmill2.position = CGPoint(x: bounds.minX + 120, y: bounds.midY - 40)
+        treadmill2.zPosition = 3
+        addChild(treadmill2)
+
+        // Weight rack
+        let weights = StationFurnitureFactory.weightRack()
+        weights.position = CGPoint(x: bounds.maxX - 120, y: bounds.midY + 80)
+        weights.zPosition = 3
+        addChild(weights)
+
+        // Equipment locker
+        let locker = StationFurnitureFactory.equipmentLocker()
+        locker.position = CGPoint(x: bounds.maxX - 80, y: bounds.midY - 80)
+        locker.zPosition = 3
+        addChild(locker)
 
         addWallStatusPanels(in: bounds, count: 2)
     }
@@ -577,21 +673,38 @@ final class OfficeScene: SKScene {
         guard let module = StationLayout.module(for: .evaBay) else { return }
         let bounds = module.bounds
 
-        // Space suit racks
+        // Space suit racks — 3 arranged vertically in narrower room
         let suit1 = StationFurnitureFactory.spaceSuitRack()
-        suit1.position = CGPoint(x: bounds.minX + 50, y: bounds.midY + 5)
+        suit1.position = CGPoint(x: bounds.minX + 100, y: bounds.midY + 80)
         suit1.zPosition = 3
         addChild(suit1)
 
         let suit2 = StationFurnitureFactory.spaceSuitRack()
-        suit2.position = CGPoint(x: bounds.minX + 95, y: bounds.midY + 5)
+        suit2.position = CGPoint(x: bounds.midX, y: bounds.midY + 80)
         suit2.zPosition = 3
         addChild(suit2)
 
         let suit3 = StationFurnitureFactory.spaceSuitRack()
-        suit3.position = CGPoint(x: bounds.minX + 140, y: bounds.midY + 5)
+        suit3.position = CGPoint(x: bounds.maxX - 100, y: bounds.midY + 80)
         suit3.zPosition = 3
         addChild(suit3)
+
+        // Storage crates — lower area
+        let crate1 = StationFurnitureFactory.storageCrate()
+        crate1.position = CGPoint(x: bounds.minX + 150, y: bounds.midY - 100)
+        crate1.zPosition = 3
+        addChild(crate1)
+
+        let crate2 = StationFurnitureFactory.storageCrate()
+        crate2.position = CGPoint(x: bounds.maxX - 150, y: bounds.midY - 100)
+        crate2.zPosition = 3
+        addChild(crate2)
+
+        // Status screen
+        let status = StationFurnitureFactory.statusScreen()
+        status.position = CGPoint(x: bounds.midX, y: bounds.maxY - 50)
+        status.zPosition = 3
+        addChild(status)
 
         addWallStatusPanels(in: bounds, count: 2)
     }
@@ -600,14 +713,17 @@ final class OfficeScene: SKScene {
 
     private func renderDesks() {
         for desk in OfficeLayout.desks {
-            let console = StationFurnitureFactory.workstationConsole()
+            // Alternate desk textures for visual variety
+            let console: SKSpriteNode = desk.id % 2 == 0
+                ? StationFurnitureFactory.workstationDesk()
+                : StationFurnitureFactory.workstationDesk2()
             console.position = desk.position
             console.zPosition = 3
             console.name = "consoleGroup_\(desk.id)"
             addChild(console)
 
             // Invisible hit-target for desk highlighting
-            let hitNode = SKShapeNode(rectOf: CGSize(width: 44, height: 20), cornerRadius: 2)
+            let hitNode = SKShapeNode(rectOf: CGSize(width: 100, height: 70), cornerRadius: 2)
             hitNode.fillColor = .clear
             hitNode.strokeColor = .clear
             hitNode.position = desk.position
@@ -1191,9 +1307,9 @@ final class OfficeScene: SKScene {
             if let consoleGroup = childNode(withName: "consoleGroup_\(desk.id)") {
                 let flash = SKSpriteNode(
                     color: SKColor(white: 0.8, alpha: 0.3),
-                    size: CGSize(width: 28, height: 18)
+                    size: CGSize(width: 80, height: 50)
                 )
-                flash.position = CGPoint(x: 0, y: 18)
+                flash.position = CGPoint(x: 0, y: 20)
                 flash.zPosition = 10
                 consoleGroup.addChild(flash)
 
@@ -1473,10 +1589,11 @@ final class OfficeScene: SKScene {
         }
     }
 
-    // MARK: - Touch Handling (Camera Pan/Zoom/Tap)
+    // MARK: - Touch Handling (Snap Scroll / Pinch Zoom / Tap)
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let view else { return }
+        guard !isSnapAnimating else { return }
 
         if let allTouches = event?.allTouches, allTouches.count >= 2 {
             // Two fingers → start pinch zoom
@@ -1484,21 +1601,20 @@ final class OfficeScene: SKScene {
             let p1 = touchArray[0].location(in: view)
             let p2 = touchArray[1].location(in: view)
             lastPinchDistance = hypot(p1.x - p2.x, p1.y - p2.y)
-            isPanning = false
         } else if let touch = touches.first {
-            // Single finger → potential pan or tap
+            // Single finger → potential swipe or tap
             touchStartTime = CACurrentMediaTime()
             touchStartLocation = touch.location(in: self)
-            lastPanLocation = touch.location(in: view)
-            isPanning = false
+            touchStartViewLocation = touch.location(in: view)
         }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let view else { return }
+        guard !isSnapAnimating else { return }
 
         if let allTouches = event?.allTouches, allTouches.count >= 2 {
-            // Pinch zoom
+            // Pinch zoom — keep for detail viewing
             let touchArray = Array(allTouches)
             let p1 = touchArray[0].location(in: view)
             let p2 = touchArray[1].location(in: view)
@@ -1508,34 +1624,53 @@ final class OfficeScene: SKScene {
                 let scaleFactor = prevDist / currentDistance
                 let newScale = max(minCameraScale, min(maxCameraScale, cameraNode.xScale * scaleFactor))
                 cameraNode.setScale(newScale)
-                clampCameraPosition()
             }
             lastPinchDistance = currentDistance
-            lastPanLocation = nil  // Cancel any pan
-        } else if let touch = touches.first, let lastPos = lastPanLocation {
-            // Pan
-            let currentPos = touch.location(in: view)
-            let dx = currentPos.x - lastPos.x
-            let dy = currentPos.y - lastPos.y
-
-            if !isPanning && hypot(dx, dy) > 5 {
-                isPanning = true
-            }
-
-            if isPanning {
-                // Move camera opposite to finger, scaled by current zoom
-                cameraNode.position.x -= dx * cameraNode.xScale
-                cameraNode.position.y += dy * cameraNode.xScale  // SpriteKit Y is inverted from UIKit
-                clampCameraPosition()
-                lastPanLocation = currentPos
-            }
         }
+        // Single finger moves are tracked but NOT applied as pan — swipe direction computed on touchesEnded
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard !isSnapAnimating else {
+            lastPinchDistance = nil
+            return
+        }
+
+        guard let touch = touches.first, let view else {
+            lastPinchDistance = nil
+            return
+        }
+
+        let endViewLocation = touch.location(in: view)
         let elapsed = CACurrentMediaTime() - touchStartTime
 
-        if !isPanning && elapsed < 0.3 {
+        // Calculate swipe distance in view coordinates
+        let dx = endViewLocation.x - touchStartViewLocation.x
+        let dy = endViewLocation.y - touchStartViewLocation.y
+        let swipeDistance = hypot(dx, dy)
+
+        if swipeDistance > swipeThreshold {
+            // Determine dominant swipe direction
+            if abs(dx) > abs(dy) {
+                // Horizontal swipe — switch columns
+                if dx > 0 {
+                    // Swipe RIGHT → move to left column (or stay)
+                    handleSwipeRight()
+                } else {
+                    // Swipe LEFT → move to right column (or stay)
+                    handleSwipeLeft()
+                }
+            } else {
+                // Vertical swipe — natural scroll direction (like scrolling a webpage)
+                // Finger moves DOWN (dy > 0) → reveal upper rooms (handleSwipeUp moves camera up)
+                // Finger moves UP (dy < 0) → reveal lower rooms (handleSwipeDown moves camera down)
+                if dy > 0 {
+                    handleSwipeUp()
+                } else {
+                    handleSwipeDown()
+                }
+            }
+        } else if elapsed < 0.3 {
             // Short tap → check for agent hit
             let location = touchStartLocation
             let hitNodes = nodes(at: location)
@@ -1544,7 +1679,6 @@ final class OfficeScene: SKScene {
                     onAgentTapped?(agentSprite.agentId)
                     break
                 }
-                // Check if parent is an AgentSprite (tap on child node like pixel art)
                 if let parent = node.parent as? AgentSprite {
                     onAgentTapped?(parent.agentId)
                     break
@@ -1552,42 +1686,131 @@ final class OfficeScene: SKScene {
             }
         }
 
-        lastPanLocation = nil
         lastPinchDistance = nil
-        isPanning = false
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        lastPanLocation = nil
         lastPinchDistance = nil
-        isPanning = false
     }
 
-    /// Clamp camera position to keep station visible.
-    private func clampCameraPosition() {
-        let scale = cameraNode.xScale
-        let halfVisibleWidth = (size.width * scale) / 2
-        let halfVisibleHeight = (size.height * scale) / 2
+    // MARK: - Snap Scrolling
 
-        // Allow panning slightly beyond station edges
-        let padding: CGFloat = 100
-        let minX = halfVisibleWidth - padding
-        let maxX = size.width - halfVisibleWidth + padding
-        let minY = halfVisibleHeight - padding
-        let maxY = size.height - halfVisibleHeight + padding
+    // MARK: - Camera Position Helpers
 
-        // When zoomed out far enough that visible area > scene, center the camera
-        if minX >= maxX {
-            cameraNode.position.x = size.width / 2
+    /// The X center for column 1.
+    private var col1CenterX: CGFloat { StationLayout.col1X + StationLayout.roomWidth / 2 }
+    /// The X center for column 2.
+    private var col2CenterX: CGFloat { StationLayout.col2X + StationLayout.roomWidth / 2 }
+    /// The X midpoint between columns (threshold for determining current column).
+    private var columnMidX: CGFloat { (col1CenterX + col2CenterX) / 2 }
+    /// Whether camera is currently in column 1.
+    private var isInCol1: Bool { cameraNode.position.x < columnMidX }
+
+    /// Camera Y for showing rows N and N+1 (N=0 is top).
+    private func pairCenterY(topRow: Int) -> CGFloat {
+        let rh = StationLayout.roomHeight
+        let ch = StationLayout.corridorHeight
+        let topOfPair = StationLayout.sceneHeight - CGFloat(topRow) * (rh + ch)
+        return topOfPair - rh - ch / 2
+    }
+
+    /// The topmost Y the camera can meaningfully be (rows 0+1).
+    private var topPairY: CGFloat { pairCenterY(topRow: 0) }
+    /// The bottommost Y the camera can meaningfully be (rows 2+3).
+    private var bottomPairY: CGFloat { pairCenterY(topRow: 2) }
+    /// The middle Y (rows 1+2).
+    private var midPairY: CGFloat { pairCenterY(topRow: 1) }
+
+    /// Swipe UP → reveal upper rooms (move camera Y up by one row pair step)
+    private func handleSwipeUp() {
+        let currentY = cameraNode.position.y
+        let currentX = cameraNode.position.x
+
+        // Find next higher Y position
+        let targetY: CGFloat
+        if currentY < midPairY - 50 {
+            targetY = midPairY   // bottom → mid
+        } else if currentY < topPairY - 50 {
+            targetY = topPairY   // mid → top
         } else {
-            cameraNode.position.x = max(min(cameraNode.position.x, maxX), minX)
+            return // Already at top
         }
+        snapToCenter(CGPoint(x: currentX, y: targetY))
+    }
 
-        if minY >= maxY {
-            cameraNode.position.y = size.height / 2
+    /// Swipe DOWN → reveal lower rooms (move camera Y down by one row pair step)
+    private func handleSwipeDown() {
+        let currentY = cameraNode.position.y
+        let currentX = cameraNode.position.x
+
+        let targetY: CGFloat
+        if currentY > midPairY + 50 {
+            targetY = midPairY     // top → mid
+        } else if currentY > bottomPairY + 50 {
+            targetY = bottomPairY  // mid → bottom
         } else {
-            cameraNode.position.y = max(min(cameraNode.position.y, maxY), minY)
+            return // Already at bottom
         }
+        snapToCenter(CGPoint(x: currentX, y: targetY))
+    }
+
+    /// Swipe LEFT → switch to column 2, preserving current Y position
+    private func handleSwipeLeft() {
+        guard isInCol1 else { return }
+        snapToCenter(CGPoint(x: col2CenterX, y: cameraNode.position.y))
+    }
+
+    /// Swipe RIGHT → switch to column 1, preserving current Y position
+    private func handleSwipeRight() {
+        guard !isInCol1 else { return }
+        snapToCenter(CGPoint(x: col1CenterX, y: cameraNode.position.y))
+    }
+
+    /// Animate camera to the given snap position. Resets scale to default.
+    private func snapTo(_ position: SnapPosition) {
+        guard !isSnapAnimating else { return }
+        isSnapAnimating = true
+        currentSnapPosition = position
+
+        let target = StationLayout.snapCenter(for: position)
+        let moveAction = SKAction.move(to: target, duration: 0.3)
+        moveAction.timingMode = .easeInEaseOut
+        let scaleAction = SKAction.scale(to: StationLayout.defaultCameraScale, duration: 0.3)
+        scaleAction.timingMode = .easeInEaseOut
+
+        cameraNode.run(SKAction.group([moveAction, scaleAction])) { [weak self] in
+            self?.isSnapAnimating = false
+        }
+        HapticService.impact(.light)
+    }
+
+    /// Public snap API for mini-map overlay to call.
+    func snapToPosition(_ position: SnapPosition) {
+        snapTo(position)
+    }
+
+    /// Snap camera to an arbitrary center point (for mini-map free selection).
+    func snapToCenter(_ center: CGPoint) {
+        guard !isSnapAnimating else { return }
+        isSnapAnimating = true
+
+        // Find closest snap position for tracking
+        let snapPositions = SnapPosition.allCases
+        currentSnapPosition = snapPositions.min(by: {
+            let a = StationLayout.snapCenter(for: $0)
+            let b = StationLayout.snapCenter(for: $1)
+            return hypot(a.x - center.x, a.y - center.y) < hypot(b.x - center.x, b.y - center.y)
+        }) ?? .col1Top
+
+        let moveAction = SKAction.move(to: center, duration: 0.3)
+        moveAction.timingMode = .easeInEaseOut
+        let scaleAction = SKAction.scale(to: StationLayout.defaultCameraScale, duration: 0.3)
+        scaleAction.timingMode = .easeInEaseOut
+
+        cameraNode.run(SKAction.group([moveAction, scaleAction])) { [weak self] in
+            self?.isSnapAnimating = false
+        }
+        HapticService.impact(.light)
     }
 
     // MARK: - Camera Public API
@@ -1595,6 +1818,11 @@ final class OfficeScene: SKScene {
     /// Zoom level for external UI (0 = max zoom in, 1 = default, higher = zoomed out).
     var currentZoomLevel: CGFloat {
         cameraNode.xScale
+    }
+
+    /// The current snap position for external UI (e.g., mini-map).
+    var activeSnapPosition: SnapPosition {
+        currentSnapPosition
     }
 
     /// Smoothly move camera to a position.
@@ -1608,13 +1836,15 @@ final class OfficeScene: SKScene {
         cameraNode.run(SKAction.scale(to: clamped, duration: duration))
     }
 
-    /// Reset camera to default position and zoom.
+    /// Reset camera to default snap position and zoom.
     func resetCamera(animated: Bool = true) {
-        let duration: TimeInterval = animated ? 0.5 : 0
-        cameraNode.run(SKAction.group([
-            SKAction.move(to: StationLayout.cameraCenter, duration: duration),
-            SKAction.scale(to: StationLayout.defaultCameraScale, duration: duration),
-        ]))
+        if animated {
+            snapTo(.col1Top)
+        } else {
+            cameraNode.position = StationLayout.snapCenter(for: .col1Top)
+            cameraNode.setScale(StationLayout.defaultCameraScale)
+            currentSnapPosition = .col1Top
+        }
     }
 
     // MARK: - Legacy Touch Forwarding (kept for compatibility)

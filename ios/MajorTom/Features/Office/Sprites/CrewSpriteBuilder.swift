@@ -35,10 +35,11 @@ enum CrewSpriteBuilder {
 
     /// The default display size for crew sprites in the scene.
     /// Source art is ~400px, scaled down to this size by SpriteKit.
-    static let spriteSize = CGSize(width: 48, height: 48)
+    /// Sized at 80×80 for the 1240×2620 two-column grid station layout.
+    static let spriteSize = CGSize(width: 80, height: 80)
 
-    /// Dog types get a wider frame since they're horizontal in side views.
-    static let dogSpriteSize = CGSize(width: 56, height: 48)
+    /// Dog types use the same 80×80 frame in the new layout.
+    static let dogSpriteSize = CGSize(width: 80, height: 80)
 
     private static let dogTypes: Set<CharacterType> = [
         .elvis, .senor, .steve, .esteban, .hoku, .kai,

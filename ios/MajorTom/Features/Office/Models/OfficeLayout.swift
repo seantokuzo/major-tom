@@ -43,52 +43,53 @@ struct OfficeArea: Identifiable {
 
 /// The complete spatial layout of the office.
 /// All coordinates are in SpriteKit scene points (origin bottom-left).
-/// Expanded to 1200×800 for the Space Station camera zoom system.
+/// Updated for the 1240×2620 two-column × four-row grid layout.
 struct OfficeLayout {
     /// Scene dimensions — matches StationLayout
-    static let sceneWidth: CGFloat = 1200
-    static let sceneHeight: CGFloat = 800
+    static let sceneWidth: CGFloat = 1240
+    static let sceneHeight: CGFloat = 2620
 
-    /// The entry point where agents appear and leave (Command Bridge right side)
-    static let doorPosition = CGPoint(x: 760, y: 600)
+    /// The entry point where agents appear and leave (Command Bridge airlock)
+    static let doorPosition = CGPoint(x: 300, y: 2500)
 
     // MARK: - Areas
 
-    /// Legacy area bounds — mapped to StationLayout module positions.
+    /// Legacy area bounds — mapped to StationLayout module positions (2×4 grid).
     static let areas: [OfficeArea] = [
+        // Column 1
         OfficeArea(type: .mainFloor, name: "Main Floor",
-                   bounds: CGRect(x: 260, y: 430, width: 500, height: 330), capacity: 8),
+                   bounds: CGRect(x: 0, y: 1980, width: 600, height: 640), capacity: 8),
         OfficeArea(type: .serverRoom, name: "Server Room",
-                   bounds: CGRect(x: 20, y: 430, width: 220, height: 330), capacity: 1),
+                   bounds: CGRect(x: 0, y: 1320, width: 600, height: 640), capacity: 1),
         OfficeArea(type: .breakRoom, name: "Break Room",
-                   bounds: CGRect(x: 20, y: 20, width: 220, height: 350), capacity: 4),
+                   bounds: CGRect(x: 0, y: 660, width: 600, height: 640), capacity: 4),
         OfficeArea(type: .kitchen, name: "Kitchen",
-                   bounds: CGRect(x: 260, y: 20, width: 260, height: 350), capacity: 3),
+                   bounds: CGRect(x: 0, y: 0, width: 600, height: 640), capacity: 3),
+        // Column 2
         OfficeArea(type: .dogCorner, name: "Dog Corner",
-                   bounds: CGRect(x: 540, y: 20, width: 300, height: 350), capacity: 4),
+                   bounds: CGRect(x: 640, y: 1980, width: 600, height: 640), capacity: 4),
         OfficeArea(type: .dogPark, name: "Dog Park",
-                   bounds: CGRect(x: 860, y: 20, width: 320, height: 350), capacity: 4),
+                   bounds: CGRect(x: 640, y: 1320, width: 600, height: 640), capacity: 4),
         OfficeArea(type: .gym, name: "Gym",
-                   bounds: CGRect(x: 780, y: 590, width: 400, height: 170), capacity: 3),
+                   bounds: CGRect(x: 640, y: 660, width: 600, height: 640), capacity: 3),
         OfficeArea(type: .rollercoaster, name: "Rollercoaster",
-                   bounds: CGRect(x: 780, y: 430, width: 400, height: 140), capacity: 2),
+                   bounds: CGRect(x: 640, y: 0, width: 600, height: 640), capacity: 2),
     ]
 
     // MARK: - Desks
 
-    /// 8 desks arranged in the Command Bridge module (x: 260-760, y: 430-760).
+    /// 8 desks arranged in the Command Bridge module (col1, row 0: x=0–600, y=1980–2620).
     static let desks: [Desk] = [
-        // Row 1 (top row, 3 desks)
-        Desk(id: 0, position: CGPoint(x: 370, y: 700)),
-        Desk(id: 1, position: CGPoint(x: 510, y: 700)),
-        Desk(id: 2, position: CGPoint(x: 650, y: 700)),
-        // Row 2 (middle row, 3 desks)
-        Desk(id: 3, position: CGPoint(x: 370, y: 610)),
-        Desk(id: 4, position: CGPoint(x: 510, y: 610)),
-        Desk(id: 5, position: CGPoint(x: 650, y: 610)),
-        // Row 3 (bottom row, 2 desks)
-        Desk(id: 6, position: CGPoint(x: 370, y: 520)),
-        Desk(id: 7, position: CGPoint(x: 510, y: 520)),
+        // Row 1 (upper row, 4 desks nicely spaced within 600w room)
+        Desk(id: 0, position: CGPoint(x: 100, y: 2450)),
+        Desk(id: 1, position: CGPoint(x: 220, y: 2450)),
+        Desk(id: 2, position: CGPoint(x: 380, y: 2450)),
+        Desk(id: 3, position: CGPoint(x: 500, y: 2450)),
+        // Row 2 (lower row, 4 desks)
+        Desk(id: 4, position: CGPoint(x: 100, y: 2250)),
+        Desk(id: 5, position: CGPoint(x: 220, y: 2250)),
+        Desk(id: 6, position: CGPoint(x: 380, y: 2250)),
+        Desk(id: 7, position: CGPoint(x: 500, y: 2250)),
     ]
 
     // MARK: - Helpers

@@ -72,29 +72,29 @@ struct ActivityStation: Identifiable {
 
 // MARK: - Activity Station Layout
 
-/// Pre-defined positions for all activity stations in the 1200×800 station layout.
+/// Pre-defined positions for all activity stations in the 1240×2620 grid layout.
 enum ActivityStationLayout {
 
     static let stations: [ActivityStation] = [
-        // Training Bay — Zero-G Ball Court (was: Ping Pong in Break Room)
-        ActivityStation(type: .pingPong, position: CGPoint(x: 900, y: 660), capacity: 2),
+        // Training Bay (col2, row 2: x=640–1240, y=660–1300) — Zero-G Ball Court
+        ActivityStation(type: .pingPong, position: CGPoint(x: 850, y: 1000), capacity: 2),
 
-        // Crew Quarters — Holo-Game Terminal (was: Arcade in Break Room)
-        ActivityStation(type: .arcade, position: CGPoint(x: 100, y: 150), capacity: 1),
+        // Crew Quarters (col1, row 2: x=0–600, y=660–1300) — Holo-Game Terminal
+        ActivityStation(type: .arcade, position: CGPoint(x: 200, y: 900), capacity: 1),
 
-        // Galley — Beverage Synthesizer (was: Coffee Machine in Kitchen)
-        ActivityStation(type: .coffeeMachine, position: CGPoint(x: 330, y: 120), capacity: 1),
+        // Galley (col1, row 3: x=0–600, y=0–640) — Beverage Synthesizer
+        ActivityStation(type: .coffeeMachine, position: CGPoint(x: 200, y: 300), capacity: 1),
 
-        // Galley — Hydration Station (was: Water Cooler in Kitchen)
-        ActivityStation(type: .waterCooler, position: CGPoint(x: 440, y: 120), capacity: 2),
+        // Galley (col1, row 3: x=0–600, y=0–640) — Hydration Station
+        ActivityStation(type: .waterCooler, position: CGPoint(x: 400, y: 300), capacity: 2),
 
-        // Bio-Dome — Meditation Pod (was: Yoga in Dog Corner)
-        ActivityStation(type: .yoga, position: CGPoint(x: 680, y: 120), capacity: 2),
+        // Bio-Dome (col2, row 0: x=640–1240, y=1980–2620) — Meditation Pod
+        ActivityStation(type: .yoga, position: CGPoint(x: 850, y: 2200), capacity: 2),
 
-        // Crew Quarters — Sleep Pod (was: Nap in Dog Corner)
-        ActivityStation(type: .nap, position: CGPoint(x: 100, y: 260), capacity: 2),
+        // Crew Quarters (col1, row 2: x=0–600, y=660–1300) — Sleep Pod
+        ActivityStation(type: .nap, position: CGPoint(x: 400, y: 1100), capacity: 2),
 
-        // Command Bridge — Holo-Projector (was: Whiteboard on Main Floor)
-        ActivityStation(type: .whiteboard, position: CGPoint(x: 700, y: 500), capacity: 2),
+        // Command Bridge (col1, row 0: x=0–600, y=1980–2620) — Holo-Projector
+        ActivityStation(type: .whiteboard, position: CGPoint(x: 500, y: 2100), capacity: 2),
     ]
 }
