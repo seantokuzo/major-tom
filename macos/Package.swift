@@ -17,7 +17,9 @@ let package = Package(
                 .product(name: "Collections", package: "swift-collections"),
             ],
             path: "GroundControl",
-            exclude: ["Info.plist", "GroundControl.entitlements"]
+            // Assets/ holds the AppIcon.icns that scripts/build-app.sh copies
+            // straight into the .app bundle — SwiftPM shouldn't embed it.
+            exclude: ["Info.plist", "GroundControl.entitlements", "Assets"]
         ),
     ]
 )
