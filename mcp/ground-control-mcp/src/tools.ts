@@ -8,7 +8,7 @@ import { z } from "zod";
 const DEFAULT_BASE_URL = "http://127.0.0.1:9092";
 
 function getBaseUrl(): string {
-  return process.env.GROUND_CONTROL_URL || DEFAULT_BASE_URL;
+  return (process.env.GROUND_CONTROL_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");
 }
 
 interface ControlResponse {
@@ -32,17 +32,31 @@ async function controlRequest(
     opts.body = JSON.stringify(body);
   }
 
-  const res = await fetch(url, opts);
-  const text = await res.text();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
 
-  let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(text);
-  } catch {
-    parsed = { raw: text };
-  }
+    const res = await fetch(url, { ...opts, signal: controller.signal });
+    const text = await res.text();
 
-  return { status: res.status, body: parsed };
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = { raw: text };
+    }
+
+    return { status: res.status, body: parsed };
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(
+        "Ground Control did not respond within 10s \u2014 is it running?"
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ---------------------------------------------------------------------------

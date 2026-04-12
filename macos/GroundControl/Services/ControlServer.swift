@@ -18,6 +18,11 @@ final class ControlServer {
     private let port: UInt16
     private let queue = DispatchQueue(label: "com.majortom.groundcontrol.control-server")
 
+    /// Maximum allowed size for a single request buffer (1 MB). Connections that
+    /// exceed this without delivering a complete HTTP request are terminated with
+    /// a 413 response to prevent memory exhaustion from misbehaving clients.
+    private static let maxBufferSize = 1_048_576
+
     /// Timestamp when the control server started (used for uptime calculation).
     private var startTime: Date?
 
@@ -120,6 +125,13 @@ final class ControlServer {
 
             if let data {
                 self.connectionBuffers[connID, default: Data()].append(data)
+            }
+
+            // Guard against unbounded buffer growth — reject oversized requests
+            if let currentSize = self.connectionBuffers[connID]?.count, currentSize > Self.maxBufferSize {
+                self.connectionBuffers.removeValue(forKey: connID)
+                self.sendResponse(connection: connection, status: 413, body: ["error": "Request too large"])
+                return
             }
 
             guard let buffer = self.connectionBuffers[connID] else {

@@ -62,13 +62,14 @@ struct GroundControlApp: App {
     init() {
         let cm = ConfigManager()
         let rp = RelayProcess(configManager: cm)
-        _configManager = State(initialValue: cm)
-        _relay = State(initialValue: rp)
-        _controlServer = State(initialValue: ControlServer(
+        let cs = ControlServer(
             port: UInt16(exactly: cm.config.controlPort) ?? 9092,
             relay: rp,
             configManager: cm
-        ))
+        )
+        _configManager = State(initialValue: cm)
+        _relay = State(initialValue: rp)
+        _controlServer = State(initialValue: cs)
         _showOnboarding = State(initialValue: !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding"))
 
         // Start checking for updates at launch so the menu bar can show availability
@@ -78,6 +79,10 @@ struct GroundControlApp: App {
         // Sync Login Item state with config — handles drift if the user
         // toggled the Login Item from System Settings independently.
         LoginItemManager.syncWithConfig(launchAtLogin: cm.config.launchAtLogin)
+
+        // Start the control API server immediately so it is available at launch,
+        // not deferred until the menu bar popover is first opened.
+        cs.start()
     }
 
     var body: some Scene {
@@ -132,8 +137,6 @@ struct GroundControlApp: App {
         var body: some View {
             MenuBarView(relay: relay, updateChecker: updateChecker)
                 .onAppear {
-                    // Start the control API server for MCP bridge access
-                    controlServer.start()
                     // Open onboarding window on first launch.
                     if showOnboarding {
                         NSApplication.shared.activate(ignoringOtherApps: true)
