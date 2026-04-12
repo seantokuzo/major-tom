@@ -14,7 +14,7 @@ enum BreakDestination: String, CaseIterable {
 
 // MARK: - Character Config
 
-/// Static configuration for each of the 9 character types.
+/// Static configuration for each character type.
 /// Defines display properties and behavior options.
 struct CharacterConfig: Identifiable {
     let type: CharacterType
@@ -32,11 +32,11 @@ struct CharacterConfig: Identifiable {
 
 // MARK: - Character Catalog
 
-/// The full catalog of all 9 character configurations.
+/// The full catalog of all character configurations.
 enum CharacterCatalog {
 
     static let all: [CharacterConfig] = [
-        // MARK: Humans
+        // MARK: Original Crew
         CharacterConfig(
             type: .dev,
             displayName: "Developer",
@@ -83,6 +83,115 @@ enum CharacterCatalog {
             type: .michael,
             displayName: "Michael",
             spriteColor: Color(red: 0.25, green: 0.30, blue: 0.55),  // Navy suit
+            breakBehaviors: [.breakRoom, .kitchen, .rollercoaster],
+            needsBlanket: false
+        ),
+
+        // MARK: New Crew
+        CharacterConfig(
+            type: .alienDiplomat,
+            displayName: "Alien Diplomat",
+            spriteColor: Color(red: 0.60, green: 0.90, blue: 0.70),  // Mint green
+            breakBehaviors: [.breakRoom, .kitchen],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .backendEngineer,
+            displayName: "Backend Engineer",
+            spriteColor: Color(red: 0.40, green: 0.55, blue: 0.80),  // Steel blue
+            breakBehaviors: [.breakRoom, .kitchen, .gym],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .botanist,
+            displayName: "Botanist",
+            spriteColor: Color(red: 0.45, green: 0.75, blue: 0.35),  // Plant green
+            breakBehaviors: [.breakRoom, .kitchen],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .captain,
+            displayName: "Captain",
+            spriteColor: Color(red: 0.20, green: 0.25, blue: 0.50),  // Navy blue coat
+            breakBehaviors: [.breakRoom, .kitchen],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .chef,
+            displayName: "Space Chef",
+            spriteColor: Color(red: 0.95, green: 0.95, blue: 0.95),  // Chef white
+            breakBehaviors: [.breakRoom, .kitchen],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .claudimusPrime,
+            displayName: "Claudimus Prime",
+            spriteColor: Color(red: 0.70, green: 0.75, blue: 0.85),  // Silver/blue
+            breakBehaviors: [.breakRoom, .gym],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .doctor,
+            displayName: "Doctor",
+            spriteColor: Color(red: 0.90, green: 0.95, blue: 0.95),  // White with teal
+            breakBehaviors: [.breakRoom, .kitchen],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .frontendDev,
+            displayName: "Frontend Dev",
+            spriteColor: Color(red: 0.85, green: 0.50, blue: 0.90),  // Purple/magenta
+            breakBehaviors: [.breakRoom, .kitchen, .gym],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .hacker,
+            displayName: "Hacker",
+            spriteColor: Color(red: 0.20, green: 0.85, blue: 0.30),  // Neon green
+            breakBehaviors: [.breakRoom, .gym],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .mechanic,
+            displayName: "Mechanic",
+            spriteColor: Color(red: 0.90, green: 0.55, blue: 0.20),  // Orange jumpsuit
+            breakBehaviors: [.breakRoom, .kitchen, .gym],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .pilot,
+            displayName: "Pilot",
+            spriteColor: Color(red: 0.25, green: 0.45, blue: 0.30),  // Dark green flight suit
+            breakBehaviors: [.breakRoom, .kitchen, .gym],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .security,
+            displayName: "Security Officer",
+            spriteColor: Color(red: 0.30, green: 0.30, blue: 0.35),  // Dark charcoal
+            breakBehaviors: [.breakRoom, .gym],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .tpm,
+            displayName: "TPM",
+            spriteColor: Color(red: 0.55, green: 0.45, blue: 0.70),  // Professional purple
+            breakBehaviors: [.breakRoom, .kitchen],
+            needsBlanket: false
+        ),
+
+        // MARK: Celebrities
+        CharacterConfig(
+            type: .kendrick,
+            displayName: "Kendrick",
+            spriteColor: Color(red: 0.85, green: 0.65, blue: 0.20),  // Gold
+            breakBehaviors: [.breakRoom, .kitchen, .gym],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .prince,
+            displayName: "Prince",
+            spriteColor: Color(red: 0.55, green: 0.20, blue: 0.80),  // Purple
             breakBehaviors: [.breakRoom, .kitchen, .rollercoaster],
             needsBlanket: false
         ),
