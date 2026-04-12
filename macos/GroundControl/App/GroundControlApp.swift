@@ -55,13 +55,20 @@ struct GroundControlApp: App {
 
     @State private var configManager: ConfigManager
     @State private var relay: RelayProcess
+    @State private var controlServer: ControlServer
     @State private var updateChecker = UpdateChecker()
     @State private var showOnboarding: Bool
 
     init() {
         let cm = ConfigManager()
+        let rp = RelayProcess(configManager: cm)
         _configManager = State(initialValue: cm)
-        _relay = State(initialValue: RelayProcess(configManager: cm))
+        _relay = State(initialValue: rp)
+        _controlServer = State(initialValue: ControlServer(
+            port: UInt16(cm.config.controlPort),
+            relay: rp,
+            configManager: cm
+        ))
         _showOnboarding = State(initialValue: !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding"))
 
         // Start checking for updates at launch so the menu bar can show availability
@@ -78,6 +85,7 @@ struct GroundControlApp: App {
         MenuBarExtra {
             MenuBarExtraContent(
                 relay: relay,
+                controlServer: controlServer,
                 updateChecker: updateChecker,
                 showOnboarding: showOnboarding
             )
@@ -115,6 +123,7 @@ struct GroundControlApp: App {
     /// so the Dock-reopen notification can be routed into SwiftUI's scene API.
     private struct MenuBarExtraContent: View {
         let relay: RelayProcess
+        let controlServer: ControlServer
         let updateChecker: UpdateChecker
         let showOnboarding: Bool
 
@@ -123,6 +132,8 @@ struct GroundControlApp: App {
         var body: some View {
             MenuBarView(relay: relay, updateChecker: updateChecker)
                 .onAppear {
+                    // Start the control API server for MCP bridge access
+                    controlServer.start()
                     // Open onboarding window on first launch.
                     if showOnboarding {
                         NSApplication.shared.activate(ignoringOtherApps: true)
