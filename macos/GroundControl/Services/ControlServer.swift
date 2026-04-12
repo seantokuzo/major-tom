@@ -23,6 +23,10 @@ final class ControlServer {
 
     // MARK: - Dependencies (injected from app)
 
+    /// Per-connection buffer for accumulating TCP frames until a complete HTTP
+    /// request has been received (headers + body).
+    private var connectionBuffers: [ObjectIdentifier: Data] = [:]
+
     private weak var relay: RelayProcess?
     private weak var configManager: ConfigManager?
 
@@ -51,14 +55,20 @@ final class ControlServer {
             nwListener.stateUpdateHandler = { [weak self] state in
                 switch state {
                 case .ready:
-                    self?.isRunning = true
-                    self?.startTime = Date()
+                    Task { @MainActor [weak self] in
+                        self?.isRunning = true
+                        self?.startTime = Date()
+                    }
                     print("[ControlServer] Listening on 127.0.0.1:\(self?.port ?? 0)")
                 case .failed(let error):
                     print("[ControlServer] Failed: \(error)")
-                    self?.isRunning = false
+                    Task { @MainActor [weak self] in
+                        self?.isRunning = false
+                    }
                 case .cancelled:
-                    self?.isRunning = false
+                    Task { @MainActor [weak self] in
+                        self?.isRunning = false
+                    }
                 default:
                     break
                 }
@@ -85,14 +95,65 @@ final class ControlServer {
     // MARK: - Connection Handling
 
     private func handleConnection(_ connection: NWConnection) {
+        let connID = ObjectIdentifier(connection)
+        connectionBuffers[connID] = Data()
         connection.start(queue: queue)
+        receiveMore(connection: connection, connID: connID)
+    }
 
-        // Read the full HTTP request (up to 64KB should be plenty for control API)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, _, error in
-            guard let self, let data, error == nil else {
+    /// Accumulates TCP frames into `connectionBuffers` until a full HTTP
+    /// request (headers + optional body based on Content-Length) is available,
+    /// then dispatches to `routeRequest`.
+    private func receiveMore(connection: NWConnection, connID: ObjectIdentifier) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+            guard let self else {
                 connection.cancel()
                 return
             }
+
+            if let data {
+                self.connectionBuffers[connID, default: Data()].append(data)
+            }
+
+            guard let buffer = self.connectionBuffers[connID],
+                  let requestString = String(data: buffer, encoding: .utf8) else {
+                if isComplete || error != nil {
+                    self.connectionBuffers.removeValue(forKey: connID)
+                    connection.cancel()
+                }
+                return
+            }
+
+            // Wait until we have the full headers (terminated by \r\n\r\n)
+            guard let headerEnd = requestString.range(of: "\r\n\r\n") else {
+                if isComplete || error != nil {
+                    self.connectionBuffers.removeValue(forKey: connID)
+                    connection.cancel()
+                } else {
+                    self.receiveMore(connection: connection, connID: connID)
+                }
+                return
+            }
+
+            // If Content-Length is present, wait for the full body too
+            let headerSection = String(requestString[..<headerEnd.lowerBound])
+            if let clLine = headerSection.components(separatedBy: "\r\n")
+                .first(where: { $0.lowercased().hasPrefix("content-length:") }),
+               let clValue = Int(clLine.split(separator: ":").last?.trimmingCharacters(in: .whitespaces) ?? "") {
+                let bodyStart = requestString[headerEnd.upperBound...]
+                if bodyStart.utf8.count < clValue {
+                    if isComplete || error != nil {
+                        self.connectionBuffers.removeValue(forKey: connID)
+                        connection.cancel()
+                    } else {
+                        self.receiveMore(connection: connection, connID: connID)
+                    }
+                    return
+                }
+            }
+
+            // Full request received — clean up buffer and process
+            self.connectionBuffers.removeValue(forKey: connID)
 
             // Validate loopback — defense in depth beyond the bind
             if let endpoint = connection.currentPath?.remoteEndpoint,
@@ -105,12 +166,7 @@ final class ControlServer {
                 }
             }
 
-            guard let requestString = String(data: data, encoding: .utf8) else {
-                self.sendResponse(connection: connection, status: 400, body: ["error": "Invalid request"])
-                return
-            }
-
-            self.routeRequest(requestString, rawData: data, connection: connection)
+            self.routeRequest(requestString, rawData: buffer, connection: connection)
         }
     }
 
@@ -301,7 +357,16 @@ final class ControlServer {
 
         // Parse query parameters
         let params = parseQueryString(queryString)
-        let count = Int(params["count"] ?? "") ?? 100
+        let count: Int
+        if let countString = params["count"] {
+            guard let parsedCount = Int(countString), (1...1000).contains(parsedCount) else {
+                sendResponse(connection: connection, status: 400, body: ["error": "Invalid count; expected integer in range 1...1000"])
+                return
+            }
+            count = parsedCount
+        } else {
+            count = 100
+        }
         let level = params["level"]
         let since = params["since"].flatMap { Double($0) }.map { Date(timeIntervalSince1970: $0) }
 
@@ -446,45 +511,48 @@ final class ControlServer {
             return
         }
 
-        // Apply updates to config fields
+        // Apply updates to a copy — only commit to configManager on successful validation
+        var updatedConfig = configManager.config
         if let port = updates["port"] as? Int {
-            configManager.config.port = port
+            updatedConfig.port = port
         }
         if let hookPort = updates["hookPort"] as? Int {
-            configManager.config.hookPort = hookPort
+            updatedConfig.hookPort = hookPort
         }
         if let authModeStr = updates["authMode"] as? String, let authMode = AuthMode(rawValue: authModeStr) {
-            configManager.config.authMode = authMode
+            updatedConfig.authMode = authMode
         }
         if let multiUser = updates["multiUserEnabled"] as? Bool {
-            configManager.config.multiUserEnabled = multiUser
+            updatedConfig.multiUserEnabled = multiUser
         }
         if let workDir = updates["claudeWorkDir"] as? String {
-            configManager.config.claudeWorkDir = workDir
+            updatedConfig.claudeWorkDir = workDir
         }
         if let logLevelStr = updates["logLevel"] as? String, let logLevel = LogLevel(rawValue: logLevelStr) {
-            configManager.config.logLevel = logLevel
+            updatedConfig.logLevel = logLevel
         }
         if let cfEnabled = updates["cloudflareEnabled"] as? Bool {
-            configManager.config.cloudflareEnabled = cfEnabled
+            updatedConfig.cloudflareEnabled = cfEnabled
         }
         if let tunnelName = updates["cloudflareTunnelName"] as? String {
-            configManager.config.cloudflareTunnelName = tunnelName
+            updatedConfig.cloudflareTunnelName = tunnelName
         }
         if let autoStart = updates["autoStart"] as? Bool {
-            configManager.config.autoStart = autoStart
+            updatedConfig.autoStart = autoStart
         }
 
-        // Validate before saving
-        let validation = configManager.config.validate()
+        // Validate the copy before mutating the live config
+        let validation = updatedConfig.validate()
         guard validation.isValid else {
             var errors: [String: String] = [:]
             if let portErr = validation.portError { errors["port"] = portErr }
             if let hookErr = validation.hookPortError { errors["hookPort"] = hookErr }
+            if let controlPortErr = validation.controlPortError { errors["controlPort"] = controlPortErr }
             sendResponse(connection: connection, status: 400, body: ["error": "Validation failed", "details": errors])
             return
         }
 
+        configManager.config = updatedConfig
         do {
             try configManager.save()
             sendResponse(connection: connection, status: 200, body: [

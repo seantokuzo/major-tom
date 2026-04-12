@@ -65,7 +65,7 @@ struct GroundControlApp: App {
         _configManager = State(initialValue: cm)
         _relay = State(initialValue: rp)
         _controlServer = State(initialValue: ControlServer(
-            port: UInt16(cm.config.controlPort),
+            port: UInt16(exactly: cm.config.controlPort) ?? 9092,
             relay: rp,
             configManager: cm
         ))
