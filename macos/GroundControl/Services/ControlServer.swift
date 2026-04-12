@@ -101,9 +101,16 @@ final class ControlServer {
         receiveMore(connection: connection, connID: connID)
     }
 
+    /// Byte sequence for HTTP header terminator `\r\n\r\n`.
+    private static let headerTerminator = Data([0x0D, 0x0A, 0x0D, 0x0A])
+
     /// Accumulates TCP frames into `connectionBuffers` until a full HTTP
     /// request (headers + optional body based on Content-Length) is available,
     /// then dispatches to `routeRequest`.
+    ///
+    /// Header terminator detection operates at the byte/Data level so that
+    /// a multibyte UTF-8 character split across TCP frames doesn't stall the
+    /// connection (String decoding is deferred until the full payload is ready).
     private func receiveMore(connection: NWConnection, connID: ObjectIdentifier) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             guard let self else {
@@ -115,8 +122,7 @@ final class ControlServer {
                 self.connectionBuffers[connID, default: Data()].append(data)
             }
 
-            guard let buffer = self.connectionBuffers[connID],
-                  let requestString = String(data: buffer, encoding: .utf8) else {
+            guard let buffer = self.connectionBuffers[connID] else {
                 if isComplete || error != nil {
                     self.connectionBuffers.removeValue(forKey: connID)
                     connection.cancel()
@@ -124,8 +130,9 @@ final class ControlServer {
                 return
             }
 
-            // Wait until we have the full headers (terminated by \r\n\r\n)
-            guard let headerEnd = requestString.range(of: "\r\n\r\n") else {
+            // Search for header terminator at the byte level — avoids UTF-8
+            // decode failures when multibyte characters are split across frames.
+            guard let terminatorRange = buffer.range(of: Self.headerTerminator) else {
                 if isComplete || error != nil {
                     self.connectionBuffers.removeValue(forKey: connID)
                     connection.cancel()
@@ -135,13 +142,16 @@ final class ControlServer {
                 return
             }
 
-            // If Content-Length is present, wait for the full body too
-            let headerSection = String(requestString[..<headerEnd.lowerBound])
-            if let clLine = headerSection.components(separatedBy: "\r\n")
+            // If Content-Length is present, wait for the full body too.
+            // Parse the header bytes to find the value.
+            let headerBytes = buffer[buffer.startIndex..<terminatorRange.lowerBound]
+            let bodyStartIndex = terminatorRange.upperBound
+            if let headerString = String(data: headerBytes, encoding: .utf8),
+               let clLine = headerString.components(separatedBy: "\r\n")
                 .first(where: { $0.lowercased().hasPrefix("content-length:") }),
                let clValue = Int(clLine.split(separator: ":").last?.trimmingCharacters(in: .whitespaces) ?? "") {
-                let bodyStart = requestString[headerEnd.upperBound...]
-                if bodyStart.utf8.count < clValue {
+                let bodyLength = buffer.count - bodyStartIndex
+                if bodyLength < clValue {
                     if isComplete || error != nil {
                         self.connectionBuffers.removeValue(forKey: connID)
                         connection.cancel()
@@ -152,7 +162,12 @@ final class ControlServer {
                 }
             }
 
-            // Full request received — clean up buffer and process
+            // Full request received — decode to String, clean up buffer and process.
+            guard let requestString = String(data: buffer, encoding: .utf8) else {
+                self.connectionBuffers.removeValue(forKey: connID)
+                self.sendResponse(connection: connection, status: 400, body: ["error": "Invalid UTF-8 in request"])
+                return
+            }
             self.connectionBuffers.removeValue(forKey: connID)
 
             // Validate loopback — defense in depth beyond the bind
@@ -328,20 +343,21 @@ final class ControlServer {
             return
         }
 
-        guard configManager.config.cloudflareEnabled else {
-            sendResponse(connection: connection, status: 400, body: ["error": "Cloudflare tunnel not enabled in config"])
-            return
-        }
+        Task { @MainActor [weak self] in
+            let config = configManager.config
+            guard config.cloudflareEnabled else {
+                self?.sendResponse(connection: connection, status: 400, body: ["error": "Cloudflare tunnel not enabled in config"])
+                return
+            }
 
-        guard let token = configManager.getSecret(ConfigManager.SecretKey.cloudflareToken),
-              !token.isEmpty else {
-            sendResponse(connection: connection, status: 400, body: ["error": "Cloudflare tunnel token not configured"])
-            return
-        }
+            guard let token = configManager.getSecret(ConfigManager.SecretKey.cloudflareToken),
+                  !token.isEmpty else {
+                self?.sendResponse(connection: connection, status: 400, body: ["error": "Cloudflare tunnel token not configured"])
+                return
+            }
 
-        Task { @MainActor in
             await relay.tunnel.start(token: token)
-            self.sendResponse(connection: connection, status: 200, body: ["ok": true, "state": "starting"])
+            self?.sendResponse(connection: connection, status: 200, body: ["ok": true, "state": "starting"])
         }
     }
 
@@ -451,33 +467,35 @@ final class ControlServer {
                 return
             }
 
-            // Snapshot entries from main actor would be ideal, but the timer
-            // fires on our serial queue. We snapshot just the suffix we need.
-            let entries = relay.logStore.entries
-            let newEntries = entries.filter { $0.timestamp > lastSeenTimestamp }
-            guard !newEntries.isEmpty else { return }
+            // Snapshot entries on @MainActor — Deque isn't thread-safe.
+            // Use a Task to hop to main, snapshot, then send SSE events.
+            Task { @MainActor in
+                let entries = Array(relay.logStore.entries)
+                let newEntries = entries.filter { $0.timestamp > lastSeenTimestamp }
+                guard !newEntries.isEmpty else { return }
 
-            lastSeenTimestamp = newEntries.last!.timestamp
+                lastSeenTimestamp = newEntries.last!.timestamp
 
-            for entry in newEntries {
-                let eventData: [String: Any] = [
-                    "timestamp": entry.timestamp.timeIntervalSince1970,
-                    "level": entry.level.displayName.lowercased(),
-                    "message": entry.message,
-                ]
+                for entry in newEntries {
+                    let eventData: [String: Any] = [
+                        "timestamp": entry.timestamp.timeIntervalSince1970,
+                        "level": entry.level.displayName.lowercased(),
+                        "message": entry.message,
+                    ]
 
-                guard let jsonData = try? JSONSerialization.data(withJSONObject: eventData),
-                      let jsonStr = String(data: jsonData, encoding: .utf8) else { continue }
+                    guard let jsonData = try? JSONSerialization.data(withJSONObject: eventData),
+                          let jsonStr = String(data: jsonData, encoding: .utf8) else { continue }
 
-                let sseEvent = "data: \(jsonStr)\n\n"
-                guard let eventBytes = sseEvent.data(using: .utf8) else { continue }
+                    let sseEvent = "data: \(jsonStr)\n\n"
+                    guard let eventBytes = sseEvent.data(using: .utf8) else { continue }
 
-                connection.send(content: eventBytes, completion: .contentProcessed { error in
-                    if error != nil {
-                        timer.cancel()
-                        connection.cancel()
-                    }
-                })
+                    connection.send(content: eventBytes, completion: .contentProcessed { error in
+                        if error != nil {
+                            timer.cancel()
+                            connection.cancel()
+                        }
+                    })
+                }
             }
         }
 
@@ -535,67 +553,76 @@ final class ControlServer {
             return
         }
 
-        // Apply updates to a copy — only commit to configManager on successful validation
-        var updatedConfig = configManager.config
-        let previousControlPort = updatedConfig.controlPort
+        Task { [weak self] in
+            guard let self else { return }
 
-        if let port = updates["port"] as? Int {
-            updatedConfig.port = port
-        }
-        if let hookPort = updates["hookPort"] as? Int {
-            updatedConfig.hookPort = hookPort
-        }
-        if let controlPort = updates["controlPort"] as? Int {
-            updatedConfig.controlPort = controlPort
-        }
-        if let authModeStr = updates["authMode"] as? String, let authMode = AuthMode(rawValue: authModeStr) {
-            updatedConfig.authMode = authMode
-        }
-        if let multiUser = updates["multiUserEnabled"] as? Bool {
-            updatedConfig.multiUserEnabled = multiUser
-        }
-        if let workDir = updates["claudeWorkDir"] as? String {
-            updatedConfig.claudeWorkDir = workDir
-        }
-        if let logLevelStr = updates["logLevel"] as? String, let logLevel = LogLevel(rawValue: logLevelStr) {
-            updatedConfig.logLevel = logLevel
-        }
-        if let cfEnabled = updates["cloudflareEnabled"] as? Bool {
-            updatedConfig.cloudflareEnabled = cfEnabled
-        }
-        if let tunnelName = updates["cloudflareTunnelName"] as? String {
-            updatedConfig.cloudflareTunnelName = tunnelName
-        }
-        if let autoStart = updates["autoStart"] as? Bool {
-            updatedConfig.autoStart = autoStart
-        }
+            // Snapshot initial config on @MainActor — ConfigManager is @Observable
+            // and bound to SwiftUI on main actor
+            let initialConfig = await MainActor.run { configManager.config }
+            var updatedConfig = initialConfig
+            let previousControlPort = updatedConfig.controlPort
 
-        // Validate the copy before mutating the live config
-        let validation = updatedConfig.validate()
-        guard validation.isValid else {
-            var errors: [String: String] = [:]
-            if let portErr = validation.portError { errors["port"] = portErr }
-            if let hookErr = validation.hookPortError { errors["hookPort"] = hookErr }
-            if let controlPortErr = validation.controlPortError { errors["controlPort"] = controlPortErr }
-            sendResponse(connection: connection, status: 400, body: ["error": "Validation failed", "details": errors])
-            return
-        }
-
-        configManager.config = updatedConfig
-        do {
-            try configManager.save()
-            let controlPortChanged = updatedConfig.controlPort != previousControlPort
-            var responseBody: [String: Any] = [
-                "ok": true,
-                "message": "Config updated — restart relay to apply changes",
-            ]
-            if controlPortChanged {
-                responseBody["requiresRestart"] = true
-                responseBody["message"] = "Config updated — restart Ground Control to apply control port change, restart relay for other changes"
+            if let port = updates["port"] as? Int {
+                updatedConfig.port = port
             }
-            sendResponse(connection: connection, status: 200, body: responseBody)
-        } catch {
-            sendResponse(connection: connection, status: 500, body: ["error": "Failed to save config: \(error.localizedDescription)"])
+            if let hookPort = updates["hookPort"] as? Int {
+                updatedConfig.hookPort = hookPort
+            }
+            if let controlPort = updates["controlPort"] as? Int {
+                updatedConfig.controlPort = controlPort
+            }
+            if let authModeStr = updates["authMode"] as? String, let authMode = AuthMode(rawValue: authModeStr) {
+                updatedConfig.authMode = authMode
+            }
+            if let multiUser = updates["multiUserEnabled"] as? Bool {
+                updatedConfig.multiUserEnabled = multiUser
+            }
+            if let workDir = updates["claudeWorkDir"] as? String {
+                updatedConfig.claudeWorkDir = workDir
+            }
+            if let logLevelStr = updates["logLevel"] as? String, let logLevel = LogLevel(rawValue: logLevelStr) {
+                updatedConfig.logLevel = logLevel
+            }
+            if let cfEnabled = updates["cloudflareEnabled"] as? Bool {
+                updatedConfig.cloudflareEnabled = cfEnabled
+            }
+            if let tunnelName = updates["cloudflareTunnelName"] as? String {
+                updatedConfig.cloudflareTunnelName = tunnelName
+            }
+            if let autoStart = updates["autoStart"] as? Bool {
+                updatedConfig.autoStart = autoStart
+            }
+
+            // Validate the copy before mutating the live config
+            let validation = updatedConfig.validate()
+            guard validation.isValid else {
+                var errors: [String: String] = [:]
+                if let portErr = validation.portError { errors["port"] = portErr }
+                if let hookErr = validation.hookPortError { errors["hookPort"] = hookErr }
+                if let controlPortErr = validation.controlPortError { errors["controlPort"] = controlPortErr }
+                self.sendResponse(connection: connection, status: 400, body: ["error": "Validation failed", "details": errors])
+                return
+            }
+
+            // Assign back + save on @MainActor
+            do {
+                try await MainActor.run {
+                    configManager.config = updatedConfig
+                    try configManager.save()
+                }
+                let controlPortChanged = updatedConfig.controlPort != previousControlPort
+                var responseBody: [String: Any] = [
+                    "ok": true,
+                    "message": "Config updated — restart relay to apply changes",
+                ]
+                if controlPortChanged {
+                    responseBody["requiresRestart"] = true
+                    responseBody["message"] = "Config updated — restart Ground Control to apply control port change, restart relay for other changes"
+                }
+                self.sendResponse(connection: connection, status: 200, body: responseBody)
+            } catch {
+                self.sendResponse(connection: connection, status: 500, body: ["error": "Failed to save config: \(error.localizedDescription)"])
+            }
         }
     }
 
