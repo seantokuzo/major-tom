@@ -52,9 +52,25 @@ struct NodeBundleManager {
 
     // MARK: - Bundled (production)
 
+    /// Check whether we're running from a fully-bundled .app (as opposed to
+    /// a `swift run` / Xcode debug session). A bundled app has Node + relay
+    /// staged inside Contents/Resources/ by build-app.sh.
+    static var isBundledApp: Bool {
+        guard let resourceURL = Bundle.main.resourceURL else { return false }
+        let nodeURL = resourceURL.appendingPathComponent("node/node")
+        let relayURL = resourceURL.appendingPathComponent("relay/server.js")
+        return FileManager.default.fileExists(atPath: nodeURL.path)
+            && FileManager.default.fileExists(atPath: relayURL.path)
+    }
+
     private static func tryBundledPaths() -> BundlePaths? {
-        guard let nodeURL = Bundle.main.url(forResource: "node", withExtension: nil, subdirectory: "node"),
-              let relayURL = Bundle.main.url(forResource: "server", withExtension: "js", subdirectory: "relay-dist")
+        guard let resourceURL = Bundle.main.resourceURL else { return nil }
+
+        let nodeURL = resourceURL.appendingPathComponent("node/node")
+        let relayURL = resourceURL.appendingPathComponent("relay/server.js")
+
+        guard FileManager.default.fileExists(atPath: nodeURL.path),
+              FileManager.default.fileExists(atPath: relayURL.path)
         else {
             return nil
         }

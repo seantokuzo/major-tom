@@ -4,16 +4,23 @@
 # plus the node-pty native addon for app bundle embedding.
 #
 # Usage: ./bundle-relay.sh [output-dir]
-#   output-dir: where to place relay dist files (default: ./build/relay-dist)
+#   output-dir: where to place relay dist files (default: ./build/relay)
 #
 # Requires: npm, node
+#
+# Output includes:
+#   server.js          — Relay entry point
+#   package.json       — For Node.js module resolution
+#   node_modules/      — Production dependencies only (devDeps pruned)
+#   node-pty/          — Native PTY addon
+#   scripts/           — Hook templates (if present)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}/../.."
 RELAY_DIR="${PROJECT_ROOT}/relay"
-OUTPUT_DIR="${1:-${SCRIPT_DIR}/../build/relay-dist}"
+OUTPUT_DIR="${1:-${SCRIPT_DIR}/../build/relay}"
 
 echo "=== Ground Control: Bundle Relay Server ==="
 
@@ -87,7 +94,7 @@ fi
 echo "Installing production node_modules (--omit=dev)..."
 cp "${RELAY_DIR}/package.json" "${OUTPUT_DIR}/package.json"
 cp "${RELAY_DIR}/package-lock.json" "${OUTPUT_DIR}/package-lock.json" 2>/dev/null || true
-(cd "${OUTPUT_DIR}" && npm ci --omit=dev --ignore-scripts 2>/dev/null || npm install --omit=dev --ignore-scripts)
+(cd "${OUTPUT_DIR}" && npm ci --omit=dev 2>/dev/null || npm install --omit=dev)
 
 echo ""
 echo "Relay dist staged at: ${OUTPUT_DIR}"

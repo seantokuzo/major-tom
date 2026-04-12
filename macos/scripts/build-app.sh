@@ -75,6 +75,23 @@ if [ ! -f "${SOURCE_BINARY}" ]; then
     exit 1
 fi
 
+# ── Bundle Node.js + Relay ────────────────────────────────────────────────
+# Stage Node.js binary and relay dist into intermediate directories, then
+# copy into the .app Resources. This keeps the bundlers reusable outside
+# the build-app flow.
+
+STAGED_NODE="${BUILD_DIR}/staged-node"
+STAGED_RELAY="${BUILD_DIR}/staged-relay"
+
+echo "==> bundling Node.js binary"
+"${SCRIPT_DIR}/bundle-node.sh" --strip "${STAGED_NODE}"
+
+echo ""
+echo "==> bundling relay dist"
+"${SCRIPT_DIR}/bundle-relay.sh" "${STAGED_RELAY}"
+
+echo ""
+
 # ── Assemble bundle ───────────────────────────────────────────────────────
 echo "==> assembling ${APP_DIR}"
 rm -rf "${APP_DIR}"
@@ -88,6 +105,15 @@ cp "${INFO_PLIST_SRC}" "${CONTENTS_DIR}/Info.plist"
 # Classic PkgInfo — `APPL` for app, `????` for unspecified creator. macOS
 # still checks this file for some Launch Services edge cases.
 printf 'APPL????' > "${CONTENTS_DIR}/PkgInfo"
+
+# ── Embed bundled Node.js + Relay into Resources ─────────────────────────
+echo "==> embedding Node.js binary into Resources/node/"
+mkdir -p "${RESOURCES_DIR}/node"
+cp "${STAGED_NODE}/node" "${RESOURCES_DIR}/node/node"
+chmod +x "${RESOURCES_DIR}/node/node"
+
+echo "==> embedding relay dist into Resources/relay/"
+cp -R "${STAGED_RELAY}" "${RESOURCES_DIR}/relay"
 
 # ── Icon ──────────────────────────────────────────────────────────────────
 if [ -f "${ICON_SRC}" ]; then

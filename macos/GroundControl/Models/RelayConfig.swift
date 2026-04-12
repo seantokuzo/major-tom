@@ -49,6 +49,8 @@ struct RelayConfig: Equatable {
     /// itself, so this field is informational.
     var cloudflareTunnelName: String
     var autoStart: Bool
+    /// Whether to register as a Login Item so the app launches at system startup.
+    var launchAtLogin: Bool
 
     /// Sensible defaults for a fresh install.
     static let defaults = RelayConfig(
@@ -60,7 +62,8 @@ struct RelayConfig: Equatable {
         logLevel: .info,
         cloudflareEnabled: false,
         cloudflareTunnelName: "",
-        autoStart: true
+        autoStart: true,
+        launchAtLogin: false
     )
 
     // MARK: - Validation
@@ -111,6 +114,7 @@ extension RelayConfig: Codable {
     private enum CodingKeys: String, CodingKey {
         case port, hookPort, authMode, multiUserEnabled, claudeWorkDir
         case logLevel, cloudflareEnabled, cloudflareTunnelName, autoStart
+        case launchAtLogin
     }
 
     init(from decoder: Decoder) throws {
@@ -124,6 +128,8 @@ extension RelayConfig: Codable {
         self.cloudflareEnabled = try c.decode(Bool.self, forKey: .cloudflareEnabled)
         self.cloudflareTunnelName = try c.decodeIfPresent(String.self, forKey: .cloudflareTunnelName) ?? ""
         self.autoStart = try c.decode(Bool.self, forKey: .autoStart)
+        // Backfill: older configs won't have this field
+        self.launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -137,5 +143,6 @@ extension RelayConfig: Codable {
         try c.encode(cloudflareEnabled, forKey: .cloudflareEnabled)
         try c.encode(cloudflareTunnelName, forKey: .cloudflareTunnelName)
         try c.encode(autoStart, forKey: .autoStart)
+        try c.encode(launchAtLogin, forKey: .launchAtLogin)
     }
 }

@@ -212,6 +212,9 @@ struct ConfigView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("Auto-start relay on app launch", isOn: $configManager.config.autoStart)
                     .help("Automatically start the relay server when Ground Control launches")
+
+                Toggle("Launch at login", isOn: $configManager.config.launchAtLogin)
+                    .help("Open Ground Control automatically when you log in to your Mac")
             }
             .padding(8)
         }
@@ -277,6 +280,10 @@ struct ConfigView: View {
         do {
             try configManager.save()
             saveSecrets()
+
+            // Apply Login Item state on save (not on toggle)
+            LoginItemManager.setEnabled(configManager.config.launchAtLogin)
+
             showSaveSuccess = true
 
             // Hide success message after a moment
