@@ -61,6 +61,11 @@ final class TunnelProcess {
     private var activeToken: String?
     private var lastSuccessfulStart: Date?
 
+    /// Memoized result of `findCloudflared`. Populated lazily on first
+    /// successful lookup so auto-restart attempts don't re-spawn `which`.
+    /// Reset when we detect the binary has moved/disappeared.
+    private var cachedCloudflaredURL: URL?
+
     // MARK: - Tuning
 
     private let shutdownTimeout: TimeInterval = 5.0
@@ -85,17 +90,21 @@ final class TunnelProcess {
         "/usr/bin/cloudflared",            // System (rare)
     ]
 
-    /// Resolve the path to `cloudflared`, checking known locations first then
-    /// falling back to `which` with an augmented PATH.
-    static func findCloudflared() -> URL? {
+    /// Check the well-known install paths without spawning any subprocess.
+    /// Cheap enough to call from MainActor — just a few filesystem stats.
+    static func findCloudflaredInKnownPaths() -> URL? {
         for path in knownBinaryPaths {
             if FileManager.default.isExecutableFile(atPath: path) {
                 return URL(fileURLWithPath: path)
             }
         }
+        return nil
+    }
 
-        // Fallback: which(1) with Homebrew paths added — GUI-launched apps
-        // often have a minimal PATH.
+    /// Slow fallback — spawns `/usr/bin/which cloudflared` with an augmented
+    /// PATH (GUI-launched apps often have a minimal PATH). This MUST NOT be
+    /// called from MainActor; it blocks until the child process exits.
+    static func findCloudflaredViaWhich() -> URL? {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/which")
         proc.arguments = ["cloudflared"]
@@ -121,6 +130,40 @@ final class TunnelProcess {
         } catch {
             return nil
         }
+    }
+
+    /// Resolve the path to `cloudflared`. Checks known locations inline
+    /// (fast), and only falls back to `which` off the main actor to avoid
+    /// blocking the UI. Retained for callers (like `CloudflareTunnelView`)
+    /// that already hop off main via `Task.detached`.
+    static func findCloudflared() -> URL? {
+        if let known = findCloudflaredInKnownPaths() { return known }
+        return findCloudflaredViaWhich()
+    }
+
+    /// Main-actor-friendly resolver: returns the cached URL if still valid,
+    /// otherwise checks known paths inline and hops off-main for the `which`
+    /// fallback. Updates the cache on success.
+    @MainActor
+    private func resolveCloudflared() async -> URL? {
+        // Re-validate the cache — the binary may have been moved/deleted.
+        if let cached = cachedCloudflaredURL,
+           FileManager.default.isExecutableFile(atPath: cached.path) {
+            return cached
+        }
+        cachedCloudflaredURL = nil
+
+        // Fast path: inline known-path check.
+        if let known = Self.findCloudflaredInKnownPaths() {
+            cachedCloudflaredURL = known
+            return known
+        }
+
+        // Slow path: hop off main so `/usr/bin/which` can run synchronously
+        // without stalling the UI.
+        let resolved = await Task.detached { Self.findCloudflaredViaWhich() }.value
+        cachedCloudflaredURL = resolved
+        return resolved
     }
 
     // MARK: - Lifecycle
@@ -149,7 +192,7 @@ final class TunnelProcess {
             return
         }
 
-        guard let binary = Self.findCloudflared() else {
+        guard let binary = await resolveCloudflared() else {
             state = .error(TunnelError.cloudflaredNotFound.localizedDescription)
             return
         }
