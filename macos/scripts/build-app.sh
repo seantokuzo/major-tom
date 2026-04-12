@@ -130,7 +130,7 @@ if [ "${INSTALL}" -eq 1 ]; then
     if [ -d "${TARGET}" ]; then
         # Don't blindly nuke — quit any running instance first so we don't
         # overwrite a live process's files.
-        osascript -e 'tell application "GroundControl" to quit' 2>/dev/null || true
+        osascript -e 'tell application id "com.majortom.groundcontrol" to quit' 2>/dev/null || true
         sleep 0.5
         rm -rf "${TARGET}"
     fi
