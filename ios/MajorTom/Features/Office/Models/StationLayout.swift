@@ -353,16 +353,25 @@ enum StationLayout {
 
     // MARK: - Airlock Doors
 
-    /// Doors between vertically adjacent rooms (one door per corridor, 6 total).
+    /// Doors between rooms (vertical within columns + horizontal cross-column connectors).
     static let doors: [DoorConfig] = [
-        // Column 1 doors
+        // Column 1 vertical doors
         DoorConfig(id: "galley_crew", position: CGPoint(x: 300, y: 650), isHorizontalSlide: true),
         DoorConfig(id: "crew_engineering", position: CGPoint(x: 300, y: 1310), isHorizontalSlide: true),
         DoorConfig(id: "engineering_bridge", position: CGPoint(x: 300, y: 1970), isHorizontalSlide: true),
-        // Column 2 doors
+        // Column 2 vertical doors
         DoorConfig(id: "eva_training", position: CGPoint(x: 940, y: 650), isHorizontalSlide: true),
         DoorConfig(id: "training_arboretum", position: CGPoint(x: 940, y: 1310), isHorizontalSlide: true),
         DoorConfig(id: "arboretum_biodome", position: CGPoint(x: 940, y: 1970), isHorizontalSlide: true),
+        // Cross-column connectors (through the 40-unit gap between columns)
+        // Row 0: Command Bridge ↔ Bio-Dome
+        DoorConfig(id: "bridge_biodome", position: CGPoint(x: 620, y: 2300), isHorizontalSlide: false),
+        // Row 1: Engineering ↔ Arboretum
+        DoorConfig(id: "engineering_arboretum", position: CGPoint(x: 620, y: 1640), isHorizontalSlide: false),
+        // Row 2: Crew Quarters ↔ Training Bay
+        DoorConfig(id: "crew_training", position: CGPoint(x: 620, y: 980), isHorizontalSlide: false),
+        // Row 3: Galley ↔ EVA Bay
+        DoorConfig(id: "galley_eva", position: CGPoint(x: 620, y: 320), isHorizontalSlide: false),
     ]
 
     // MARK: - Helpers

@@ -285,7 +285,7 @@ final class OfficeScene: SKScene {
 
     // MARK: - Corridor Rendering
 
-    /// Render all 7 corridor strips connecting vertically-stacked rooms.
+    /// Render all 6 corridor strips (3 per column) connecting vertically-adjacent rooms.
     private func renderCorridor() {
         for bounds in StationLayout.corridors {
             // Corridor floor — darker, industrial
@@ -1662,8 +1662,8 @@ final class OfficeScene: SKScene {
                 }
             } else {
                 // Vertical swipe — natural scroll direction (like scrolling a webpage)
-                // Swipe UP (finger moves up, dy < 0) → content scrolls up → show lower rooms
-                // Swipe DOWN (finger moves down, dy > 0) → content scrolls down → show upper rooms
+                // Finger moves DOWN (dy > 0) → reveal upper rooms (handleSwipeUp moves camera up)
+                // Finger moves UP (dy < 0) → reveal lower rooms (handleSwipeDown moves camera down)
                 if dy > 0 {
                     handleSwipeUp()
                 } else {

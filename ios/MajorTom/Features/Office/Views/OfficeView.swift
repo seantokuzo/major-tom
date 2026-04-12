@@ -26,7 +26,6 @@ struct OfficeView: View {
 
     @State private var activeSheet: OfficeSheetType?
     @State private var showMiniMap = false
-    @State private var miniMapDragPosition: SnapPosition? = nil
     @State private var scene: OfficeScene = {
         let scene = OfficeScene()
         scene.size = CGSize(width: StationLayout.sceneWidth, height: StationLayout.sceneHeight)
@@ -274,21 +273,27 @@ struct OfficeView: View {
         .transition(.opacity)
     }
 
-    /// Camera center Y for showing two adjacent rows.
-    /// Row pair midpoints: rows 0+1 → 1970, rows 1+2 → 1310, rows 2+3 → 650
+    /// Camera center for showing two adjacent rows. Derives X from column,
+    /// Y from row pair midpoints using StationLayout dimensions.
     private func cameraCenter(column: Int, tappedRow: Int) -> CGPoint {
-        let x: CGFloat = column == 0 ? 300 : 940
+        let colX = column == 0 ? StationLayout.col1X : StationLayout.col2X
+        let x = colX + StationLayout.roomWidth / 2
+
+        // Each row is roomHeight + corridorHeight. Row pair midpoint:
+        // rows N and N+1 → midY between bottom of N+1 and top of N
+        let rh = StationLayout.roomHeight
+        let ch = StationLayout.corridorHeight
 
         // Tapped room becomes the top room, show it + the row below
         // Exception: last row (3) → show rows 2+3 instead
-        let pairY: CGFloat
-        switch tappedRow {
-        case 0: pairY = 1970   // rows 0+1
-        case 1: pairY = 1310   // rows 1+2
-        case 2: pairY = 650    // rows 2+3
-        case 3: pairY = 650    // rows 2+3 (last row = show it as bottom)
-        default: pairY = 1970
-        }
+        let effectiveRow = min(tappedRow, 2) // Clamp so row 3 maps to pair 2+3
+
+        // Row 0 is at top (highest Y). Row pair N starts at:
+        // topY = sceneHeight - (N * (rh + ch))
+        // bottomY = topY - 2*rh - ch
+        // midY = (topY + bottomY) / 2 = topY - rh - ch/2
+        let topOfPair = StationLayout.sceneHeight - CGFloat(effectiveRow) * (rh + ch)
+        let pairY = topOfPair - rh - ch / 2
 
         return CGPoint(x: x, y: pairY)
     }
