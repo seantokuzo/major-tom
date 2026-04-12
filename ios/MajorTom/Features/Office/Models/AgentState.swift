@@ -13,9 +13,9 @@ enum AgentStatus: String, CaseIterable {
 
 // MARK: - Character Type
 
-/// The 13 character types available in the station: 7 humans + 6 dogs.
+/// All character types available in the station: crew, celebrities, and dogs.
 enum CharacterType: String, CaseIterable {
-    // Humans
+    // MARK: Original Crew
     case dev
     case officeWorker
     case pm
@@ -24,7 +24,26 @@ enum CharacterType: String, CaseIterable {
     case dwight         // Dwight Schrute — The Office
     case michael        // Michael Scott — The Office
 
-    // Dogs (named after the real dogs)
+    // MARK: New Crew
+    case alienDiplomat
+    case backendEngineer
+    case botanist
+    case captain
+    case chef
+    case claudimusPrime // Ship's android
+    case doctor
+    case frontendDev
+    case hacker
+    case mechanic
+    case pilot
+    case security
+    case tpm
+
+    // MARK: Celebrities
+    case kendrick       // Kendrick Lamar
+    case prince         // Prince
+
+    // MARK: Dogs (named after the real dogs)
     case elvis          // Dachshund in space suit
     case senor          // Dachshund alt (green hoodie)
     case steve          // Cattle dog in space suit
