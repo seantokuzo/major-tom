@@ -10,6 +10,8 @@ final class RelayState {
         case running
         case stopping
         case error(String)
+        /// Relay crashed and is waiting to auto-restart. `attempt` is 1-based.
+        case restarting(attempt: Int)
     }
 
     var processState: ProcessState = .idle
@@ -17,10 +19,22 @@ final class RelayState {
     var hookPort: Int = 9091
     var clientCount: Int = 0
 
+    /// Total number of auto-restart attempts since the last successful long-lived run.
+    /// Reset to 0 when the process stays up past the "healthy" window.
+    var restartCount: Int = 0
+
+    /// Timestamp of the last auto-restart attempt (nil if never restarted this session).
+    var lastRestartAt: Date?
+
     // MARK: - Computed Properties
 
     var isRunning: Bool {
         processState == .running
+    }
+
+    var isRestarting: Bool {
+        if case .restarting = processState { return true }
+        return false
     }
 
     var canStart: Bool {
@@ -28,12 +42,23 @@ final class RelayState {
         case .idle, .error:
             return true
         default:
+            // `canStart` excludes `.restarting` so button-driven callers see
+            // "already starting" — but `RelayProcess.start()` has an internal
+            // `|| isRestarting` escape that lets a manual start cancel the
+            // pending auto-restart and launch immediately. Same applies to
+            // the transitional states .starting / .running / .stopping.
             return false
         }
     }
 
     var canStop: Bool {
-        processState == .running
+        switch processState {
+        case .running, .restarting:
+            // Allow stop during auto-restart wait so the user can cancel the retry.
+            return true
+        default:
+            return false
+        }
     }
 
     var statusText: String {
@@ -48,6 +73,8 @@ final class RelayState {
             return "Relay Stopping..."
         case .error(let message):
             return "Error: \(message)"
+        case .restarting(let attempt):
+            return "Relay Restarting (attempt \(attempt)/5)..."
         }
     }
 
@@ -55,7 +82,7 @@ final class RelayState {
         switch processState {
         case .idle, .stopping:
             return "gray"
-        case .starting:
+        case .starting, .restarting:
             return "yellow"
         case .running:
             return "green"

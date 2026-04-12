@@ -83,6 +83,7 @@ struct GroundControlApp: App {
     /// - Green: relay running
     /// - Red: relay error
     /// - Yellow: starting/stopping
+    /// - Orange: restarting (auto-recovery pending)
     /// - Gray (no overlay): relay stopped
     @ViewBuilder
     private var menuBarLabel: some View {
@@ -99,6 +100,10 @@ struct GroundControlApp: App {
             Image(systemName: "antenna.radiowaves.left.and.right")
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(.yellow, .primary)
+        case .restarting:
+            Image(systemName: "antenna.radiowaves.left.and.right")
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.orange, .primary)
         case .idle:
             Image(systemName: "antenna.radiowaves.left.and.right")
         }

@@ -228,6 +228,8 @@ struct DashboardView: View {
             "Stopped"
         case .error(let msg):
             "Error: \(msg)"
+        case .restarting(let attempt):
+            "Restarting (attempt \(attempt)/5)..."
         }
     }
 
@@ -246,6 +248,10 @@ struct DashboardView: View {
             relayClient.isConnected ? .green : .yellow
         case .starting, .stopping:
             .yellow
+        case .restarting:
+            // Match MenuBarView / GroundControlApp menu bar icon so the
+            // "auto-recovering" signal is visually distinct from plain start/stop.
+            .orange
         case .idle:
             .gray
         case .error:

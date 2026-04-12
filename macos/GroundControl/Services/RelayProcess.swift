@@ -5,6 +5,12 @@ import Foundation
 ///
 /// Spawns `node server.js` with the bundled (or system) Node binary,
 /// handles graceful shutdown via SIGTERM, and tracks process state.
+///
+/// All lifecycle methods (`start`, `stop`, `restart`) and the termination/
+/// restart handlers are pinned to `@MainActor` so that mutations to the
+/// `@Observable` state don't race with SwiftUI observation. The pipe reader
+/// stays non-isolated because `FileHandle.readabilityHandler` fires on a
+/// background dispatch thread.
 @Observable
 final class RelayProcess {
     private(set) var state = RelayState()
@@ -15,6 +21,10 @@ final class RelayProcess {
     /// Config manager providing relay settings and Keychain secrets.
     let configManager: ConfigManager
 
+    /// Cloudflare tunnel child process. Shares this RelayProcess's LogStore so
+    /// tunnel stdout/stderr shows up in the same log viewer.
+    let tunnel: TunnelProcess
+
     private var process: Process?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
@@ -23,10 +33,48 @@ final class RelayProcess {
     /// Grace period before SIGKILL after SIGTERM (seconds).
     private let shutdownTimeout: TimeInterval = 5.0
 
+    // MARK: - Auto-Restart State
+
+    /// When the current process was launched. Used to decide whether a run was
+    /// "healthy" (stayed alive past the reset threshold) before crashing.
+    private var lastSuccessfulStart: Date?
+
+    /// Pending auto-restart task, if one is scheduled. Cancelled when the user
+    /// calls `stop()` or manually starts the relay.
+    private var pendingRestartTask: Task<Void, Never>?
+
+    /// Fire-and-forget task that waits for /health then starts the tunnel.
+    /// Cancelled on `stop()` so a user who aborts during the wait doesn't
+    /// end up with a tunnel pointing at a dead relay.
+    private var tunnelStartupTask: Task<Void, Never>?
+
+    /// Max consecutive auto-restart attempts before giving up with an error.
+    private let maxRestartAttempts = 5
+
+    /// A run that stays alive longer than this is considered healthy and resets
+    /// the restart counter on the next crash.
+    private let healthyRunThreshold: TimeInterval = 30.0
+
+    /// Upper bound on backoff delay (seconds).
+    private let maxRestartDelay: TimeInterval = 30.0
+
+    // MARK: - Health Monitoring
+
+    /// Periodic /health probe task. Kills the relay if it becomes unresponsive.
+    private var healthMonitorTask: Task<Void, Never>?
+
+    /// How often to hit /health while the relay is running.
+    private let healthCheckInterval: TimeInterval = 30.0
+
+    /// Number of consecutive failures allowed before we treat the process as a
+    /// zombie and send SIGTERM (which triggers the normal auto-restart path).
+    private let healthCheckFailureThreshold = 3
+
     // MARK: - Init
 
     init(configManager: ConfigManager = ConfigManager()) {
         self.configManager = configManager
+        self.tunnel = TunnelProcess(logStore: logStore)
         // Sync RelayState ports from config
         self.state.port = configManager.config.port
         self.state.hookPort = configManager.config.hookPort
@@ -34,8 +82,14 @@ final class RelayProcess {
 
     // MARK: - Lifecycle
 
+    @MainActor
     func start() async {
-        guard state.canStart else { return }
+        // Starting manually cancels any pending auto-restart.
+        pendingRestartTask?.cancel()
+        pendingRestartTask = nil
+
+        // Allow starting from .idle, .error, or an in-flight .restarting wait.
+        guard state.canStart || state.isRestarting else { return }
 
         state.processState = .starting
 
@@ -55,19 +109,123 @@ final class RelayProcess {
 
             try launchProcess(paths: paths)
             state.processState = .running
+            lastSuccessfulStart = Date()
 
             if paths.isDevelopment {
                 print("[GroundControl] Running in DEVELOPMENT mode")
                 print("[GroundControl] Node: \(paths.nodeBinary.path)")
                 print("[GroundControl] Relay: \(paths.relayEntry.path)")
             }
+
+            // Kick off the tunnel (best-effort, in the background) once the
+            // relay is confirmed listening. We don't block `start()` on this
+            // since the UI should show "Running" as soon as the process is up.
+            // Stored so `stop()` can cancel an in-flight /health wait.
+            tunnelStartupTask?.cancel()
+            tunnelStartupTask = Task { @MainActor [weak self] in
+                await self?.startTunnelIfConfigured()
+            }
+
+            // Start the zombie-process health monitor.
+            startHealthMonitor()
         } catch {
             state.processState = .error(error.localizedDescription)
         }
     }
 
+    /// Wait for the relay's `/health` endpoint to return 200, then start the
+    /// Cloudflare tunnel if it is enabled in config and has a token.
+    @MainActor
+    private func startTunnelIfConfigured() async {
+        guard configManager.config.cloudflareEnabled else { return }
+
+        // Wait for the relay to actually be listening before bringing up the
+        // tunnel — otherwise cloudflared will open with a broken origin.
+        let ready = await waitForRelayReady(timeout: 15.0)
+
+        // Bail if the user stopped the relay (or this task was cancelled)
+        // while we were polling /health — don't leave cloudflared pointing
+        // at a dead origin.
+        if Task.isCancelled { return }
+        guard state.processState == .running else { return }
+
+        guard ready else {
+            appendGroundControlLog(
+                level: .warn,
+                message: "Relay port \(state.port) not ready — skipping tunnel start"
+            )
+            return
+        }
+
+        guard let token = configManager.getSecret(ConfigManager.SecretKey.cloudflareToken),
+              !token.isEmpty else {
+            appendGroundControlLog(
+                level: .warn,
+                message: "Cloudflare tunnel enabled but no token in Keychain — skipping"
+            )
+            return
+        }
+
+        await tunnel.start(token: token)
+    }
+
+    /// Poll `http://127.0.0.1:<port>/health` every 500ms until it returns 200
+    /// or the timeout elapses. Used both for tunnel-start gating and (future)
+    /// zombie-process health monitoring.
+    func waitForRelayReady(timeout: TimeInterval = 15.0) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        // Guard against a malformed/hand-edited port value in config.json. An
+        // invalid port would force-unwrap-crash the app; instead just bail.
+        guard let url = URL(string: "http://127.0.0.1:\(state.port)/health") else {
+            return false
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2.0
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+
+        while Date() < deadline {
+            if Task.isCancelled { return false }
+            do {
+                let (_, response) = try await URLSession.shared.data(for: request)
+                if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                    return true
+                }
+            } catch {
+                // Not ready yet — keep polling.
+            }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        return false
+    }
+
+    @MainActor
     func stop() async {
-        guard state.canStop, let proc = process else { return }
+        guard state.canStop else { return }
+
+        // Stop the zombie monitor — we don't want it killing the relay during
+        // a graceful shutdown.
+        stopHealthMonitor()
+
+        // Cancel any in-flight tunnel startup wait so it can't race with
+        // stop() and bring up cloudflared against the dying origin.
+        tunnelStartupTask?.cancel()
+        tunnelStartupTask = nil
+
+        // Stopping cancels any pending auto-restart and resets the counter.
+        pendingRestartTask?.cancel()
+        pendingRestartTask = nil
+        state.restartCount = 0
+        state.lastRestartAt = nil
+
+        // Tear down the tunnel first so cloudflared doesn't thrash
+        // reconnecting to a dying origin.
+        await tunnel.stop()
+
+        // If we were only in .restarting (no live process), just go idle.
+        guard let proc = process else {
+            state.processState = .idle
+            return
+        }
 
         state.processState = .stopping
 
@@ -90,10 +248,14 @@ final class RelayProcess {
         state.processState = .idle
     }
 
+    @MainActor
     func restart() async {
         await stop()
         // Brief pause to let the port release
         try? await Task.sleep(for: .milliseconds(500))
+        // Manual restart — clear any carryover auto-restart state.
+        state.restartCount = 0
+        state.lastRestartAt = nil
         await start()
     }
 
@@ -159,13 +321,17 @@ final class RelayProcess {
         readPipeAsync(stdout, label: "stdout")
         readPipeAsync(stderr, label: "stderr")
 
-        // Watch for unexpected termination
+        // Watch for unexpected termination. The block runs on the main queue
+        // but the observer API hands us a @Sendable closure, so hop through
+        // an explicit main-actor Task before touching @MainActor state.
         terminationObserver = NotificationCenter.default.addObserver(
             forName: Process.didTerminateNotification,
             object: proc,
             queue: .main
         ) { [weak self] _ in
-            self?.handleTermination()
+            Task { @MainActor [weak self] in
+                self?.handleTermination()
+            }
         }
 
         try proc.run()
@@ -177,24 +343,211 @@ final class RelayProcess {
         print("[GroundControl] Relay started (PID: \(proc.processIdentifier)) on port \(state.port)")
     }
 
+    @MainActor
     private func handleTermination() {
         guard let proc = process else { return }
 
         let status = proc.terminationStatus
 
+        // Any termination ends the old health monitor — the next start() will
+        // spawn a fresh one if we auto-restart.
+        stopHealthMonitor()
+
         // If we're in .stopping state, this is expected — stop() handles the cleanup
         if state.processState == .stopping { return }
 
-        // Unexpected termination
-        if status != 0 {
-            state.processState = .error("Process exited with code \(status)")
-            print("[GroundControl] Relay exited unexpectedly (code: \(status))")
-        } else {
-            state.processState = .idle
-            print("[GroundControl] Relay exited cleanly")
+        // If the last run was "healthy" (stayed alive past the threshold),
+        // reset the restart counter before evaluating the next attempt.
+        if let started = lastSuccessfulStart,
+           Date().timeIntervalSince(started) > healthyRunThreshold {
+            state.restartCount = 0
         }
 
+        // Clean exit — go idle, clear restart state.
+        if status == 0 {
+            state.processState = .idle
+            state.restartCount = 0
+            state.lastRestartAt = nil
+            print("[GroundControl] Relay exited cleanly")
+            cleanup()
+            return
+        }
+
+        // Unexpected crash — try to auto-restart if we're under the cap.
+        print("[GroundControl] Relay exited unexpectedly (code: \(status))")
         cleanup()
+
+        if state.restartCount >= maxRestartAttempts {
+            let msg = "Relay crashed \(maxRestartAttempts) times — check logs"
+            state.processState = .error(msg)
+            appendGroundControlLog(level: .error, message: msg)
+            return
+        }
+
+        scheduleAutoRestart(previousExitCode: status)
+    }
+
+    /// Compute exponential backoff delay for attempt `n` (1-based):
+    /// 1s → 2s → 4s → 8s → 16s (capped at `maxRestartDelay`).
+    private func backoffDelay(forAttempt attempt: Int) -> TimeInterval {
+        let exponent = max(0, attempt - 1)
+        let raw = pow(2.0, Double(exponent))
+        return min(raw, maxRestartDelay)
+    }
+
+    /// Schedule an auto-restart task with exponential backoff. Cancellable via
+    /// `pendingRestartTask?.cancel()` (called from stop()/start()).
+    @MainActor
+    private func scheduleAutoRestart(previousExitCode: Int32) {
+        let nextAttempt = state.restartCount + 1
+        let delay = backoffDelay(forAttempt: nextAttempt)
+
+        state.restartCount = nextAttempt
+        state.lastRestartAt = Date()
+        state.processState = .restarting(attempt: nextAttempt)
+
+        let message = "Relay crashed (exit \(previousExitCode)) — restarting in \(Int(delay))s (attempt \(nextAttempt)/\(maxRestartAttempts))"
+        print("[GroundControl] \(message)")
+        appendGroundControlLog(level: .warn, message: message)
+
+        pendingRestartTask?.cancel()
+        // Run the restart body on the main actor so state mutations in
+        // start()/launchProcess() observe the MainActor isolation expected by
+        // an @Observable class. Without @MainActor, mutating state.* from an
+        // unstructured Task can race with SwiftUI's observation bookkeeping.
+        pendingRestartTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            guard let self else { return }
+            // Only proceed if we're still waiting for this restart. stop()
+            // cancels this Task during its sleep; this guard catches any
+            // other state transition that raced with us.
+            guard self.state.isRestarting else { return }
+            await self.start()
+        }
+    }
+
+    // MARK: - Zombie Health Monitor
+
+    /// Start a periodic task that polls /health. After `healthCheckFailureThreshold`
+    /// consecutive failures, sends SIGTERM to the relay — the termination
+    /// observer then routes through the normal auto-restart path.
+    @MainActor
+    private func startHealthMonitor() {
+        stopHealthMonitor()
+        healthMonitorTask = Task { [weak self] in
+            var consecutiveFailures = 0
+
+            while !Task.isCancelled {
+                // Sleep first so the initial startup has time to bind the port
+                // before we start counting failures.
+                try? await Task.sleep(for: .seconds(self?.healthCheckInterval ?? 30.0))
+                guard !Task.isCancelled, let self else { return }
+
+                // Only probe when the relay is in the running state — if we're
+                // already mid-restart or shutting down, skip.
+                let running = await MainActor.run { self.state.processState == .running }
+                guard running else { continue }
+
+                let ok = await self.probeHealth()
+                if ok {
+                    consecutiveFailures = 0
+                } else {
+                    consecutiveFailures += 1
+                    let failureCount = consecutiveFailures
+                    let threshold = self.healthCheckFailureThreshold
+                    await MainActor.run {
+                        self.appendGroundControlLog(
+                            level: .warn,
+                            message: "Relay health check failed (\(failureCount)/\(threshold))"
+                        )
+                    }
+
+                    if failureCount >= threshold {
+                        await MainActor.run {
+                            self.appendGroundControlLog(
+                                level: .error,
+                                message: "Relay unresponsive — sending SIGTERM to trigger auto-restart"
+                            )
+                            self.killUnresponsiveRelay()
+                        }
+                        return // Task exits; next start() will spawn a new one.
+                    }
+                }
+            }
+        }
+    }
+
+    /// Cancel the periodic health monitor task (called from stop()).
+    @MainActor
+    private func stopHealthMonitor() {
+        healthMonitorTask?.cancel()
+        healthMonitorTask = nil
+    }
+
+    /// Signal an unresponsive relay. We deliberately do NOT set state to
+    /// .stopping — we want handleTermination to treat this as an unexpected
+    /// crash and kick off auto-restart.
+    @MainActor
+    private func killUnresponsiveRelay() {
+        guard let proc = process, proc.isRunning else { return }
+
+        // Capture the exact process we just SIGTERM'd. After the 2s delay the
+        // auto-restart path may have spawned a new child — we must not escalate
+        // SIGKILL against the replacement.
+        let signaledProcess = proc
+        let signaledPID = proc.processIdentifier
+        kill(signaledPID, SIGTERM)
+
+        // Hop back to MainActor before reading `self.process` so we don't
+        // race with start/stop/cleanup on lifecycle state.
+        Task { [weak self, weak signaledProcess] in
+            try? await Task.sleep(for: .seconds(2))
+            await MainActor.run {
+                guard let self,
+                      let signaledProcess,
+                      let currentProcess = self.process,
+                      currentProcess === signaledProcess,
+                      currentProcess.isRunning
+                else { return }
+                kill(signaledPID, SIGKILL)
+            }
+        }
+    }
+
+    /// One-shot /health probe. Returns true on HTTP 200.
+    private func probeHealth() async -> Bool {
+        let port = await MainActor.run { self.state.port }
+        guard let url = URL(string: "http://127.0.0.1:\(port)/health") else { return false }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5.0
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                return true
+            }
+            return false
+        } catch {
+            return false
+        }
+    }
+
+    /// Emit a synthesized pino-style log line so internal GroundControl events
+    /// (restarts, tunnel lifecycle, etc.) show up in the LogStore with the
+    /// right level and color.
+    private func appendGroundControlLog(level: LogEntry.LogLevel, message: String) {
+        let timeMs = Int(Date().timeIntervalSince1970 * 1000)
+        // Escape message for JSON embedding — cover the characters that matter
+        // for a one-line status string (no newlines expected in our messages).
+        let escaped = message
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let line = "{\"level\":\(level.rawValue),\"time\":\(timeMs),\"name\":\"ground-control\",\"msg\":\"\(escaped)\"}"
+        DispatchQueue.main.async { [weak self] in
+            self?.logStore.append(line)
+        }
     }
 
     private func cleanup() {
@@ -388,6 +741,9 @@ final class RelayProcess {
 
     deinit {
         // Best-effort cleanup if the object is destroyed while running
+        pendingRestartTask?.cancel()
+        healthMonitorTask?.cancel()
+        tunnelStartupTask?.cancel()
         if let proc = process, proc.isRunning {
             kill(proc.processIdentifier, SIGTERM)
         }

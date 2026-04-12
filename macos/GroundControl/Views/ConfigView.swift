@@ -31,7 +31,7 @@ struct ConfigView: View {
                 directoriesSection
                 featuresSection
                 startupSection
-                CloudflareTunnelView(configManager: configManager)
+                CloudflareTunnelView(relay: relay, configManager: configManager)
 
                 Divider()
                 actionButtons
