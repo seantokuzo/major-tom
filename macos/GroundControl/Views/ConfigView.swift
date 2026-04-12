@@ -212,6 +212,12 @@ struct ConfigView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("Auto-start relay on app launch", isOn: $configManager.config.autoStart)
                     .help("Automatically start the relay server when Ground Control launches")
+
+                Toggle("Launch at login", isOn: $configManager.config.launchAtLogin)
+                    .help("Open Ground Control automatically when you log in to your Mac")
+                    .onChange(of: configManager.config.launchAtLogin) { _, newValue in
+                        LoginItemManager.setEnabled(newValue)
+                    }
             }
             .padding(8)
         }

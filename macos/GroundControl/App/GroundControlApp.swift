@@ -67,6 +67,10 @@ struct GroundControlApp: App {
         // Start checking for updates at launch so the menu bar can show availability
         // even if the user never opens the Management window.
         updateChecker.startChecking()
+
+        // Sync Login Item state with config — handles drift if the user
+        // toggled the Login Item from System Settings independently.
+        LoginItemManager.syncWithConfig(launchAtLogin: cm.config.launchAtLogin)
     }
 
     var body: some Scene {
