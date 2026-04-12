@@ -42,8 +42,11 @@ final class RelayState {
         case .idle, .error:
             return true
         default:
-            // While restarting, starting is a no-op (auto-restart timer is pending).
-            // Users can `stop()` to cancel the retry.
+            // `canStart` excludes `.restarting` so button-driven callers see
+            // "already starting" — but `RelayProcess.start()` has an internal
+            // `|| isRestarting` escape that lets a manual start cancel the
+            // pending auto-restart and launch immediately. Same applies to
+            // the transitional states .starting / .running / .stopping.
             return false
         }
     }

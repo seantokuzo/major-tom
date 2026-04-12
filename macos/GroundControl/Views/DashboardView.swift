@@ -249,7 +249,9 @@ struct DashboardView: View {
         case .starting, .stopping:
             .yellow
         case .restarting:
-            .yellow
+            // Match MenuBarView / GroundControlApp menu bar icon so the
+            // "auto-recovering" signal is visually distinct from plain start/stop.
+            .orange
         case .idle:
             .gray
         case .error:

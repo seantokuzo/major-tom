@@ -132,7 +132,16 @@ final class TunnelProcess {
         pendingRestartTask?.cancel()
         pendingRestartTask = nil
 
-        guard canStart else { return }
+        // Allow starting from .idle, .error, or from inside an auto-restart
+        // wait. `canStart` excludes `.restarting` so that external callers
+        // can't blow up a pending auto-restart — but the auto-restart task
+        // itself needs to relaunch cloudflared from this state.
+        switch state {
+        case .idle, .error, .restarting:
+            break
+        case .starting, .running, .stopping:
+            return
+        }
 
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -191,12 +200,18 @@ final class TunnelProcess {
         let stderr = Pipe()
 
         proc.executableURL = binary
-        proc.arguments = ["tunnel", "--no-autoupdate", "run", "--token", token]
+        // Deliberately NOT passing the token via `--token <token>` — argv is
+        // world-readable on macOS via `ps` / Activity Monitor, which would
+        // leak the Keychain secret. cloudflared supports `TUNNEL_TOKEN` as an
+        // env var; the child's environment is per-process and not visible to
+        // other users' tools.
+        proc.arguments = ["tunnel", "--no-autoupdate", "run"]
 
         // Minimal environment — pass through HOME and PATH so cloudflared can
-        // find its config/credentials directories.
+        // find its config/credentials directories; inject TUNNEL_TOKEN.
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + (env["PATH"] ?? "/usr/bin:/bin")
+        env["TUNNEL_TOKEN"] = token
         proc.environment = env
 
         proc.standardOutput = stdout

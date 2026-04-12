@@ -43,6 +43,11 @@ final class RelayProcess {
     /// calls `stop()` or manually starts the relay.
     private var pendingRestartTask: Task<Void, Never>?
 
+    /// Fire-and-forget task that waits for /health then starts the tunnel.
+    /// Cancelled on `stop()` so a user who aborts during the wait doesn't
+    /// end up with a tunnel pointing at a dead relay.
+    private var tunnelStartupTask: Task<Void, Never>?
+
     /// Max consecutive auto-restart attempts before giving up with an error.
     private let maxRestartAttempts = 5
 
@@ -115,7 +120,9 @@ final class RelayProcess {
             // Kick off the tunnel (best-effort, in the background) once the
             // relay is confirmed listening. We don't block `start()` on this
             // since the UI should show "Running" as soon as the process is up.
-            Task { [weak self] in
+            // Stored so `stop()` can cancel an in-flight /health wait.
+            tunnelStartupTask?.cancel()
+            tunnelStartupTask = Task { @MainActor [weak self] in
                 await self?.startTunnelIfConfigured()
             }
 
@@ -135,6 +142,13 @@ final class RelayProcess {
         // Wait for the relay to actually be listening before bringing up the
         // tunnel — otherwise cloudflared will open with a broken origin.
         let ready = await waitForRelayReady(timeout: 15.0)
+
+        // Bail if the user stopped the relay (or this task was cancelled)
+        // while we were polling /health — don't leave cloudflared pointing
+        // at a dead origin.
+        if Task.isCancelled { return }
+        guard state.processState == .running else { return }
+
         guard ready else {
             appendGroundControlLog(
                 level: .warn,
@@ -191,6 +205,11 @@ final class RelayProcess {
         // Stop the zombie monitor — we don't want it killing the relay during
         // a graceful shutdown.
         stopHealthMonitor()
+
+        // Cancel any in-flight tunnel startup wait so it can't race with
+        // stop() and bring up cloudflared against the dying origin.
+        tunnelStartupTask?.cancel()
+        tunnelStartupTask = nil
 
         // Stopping cancels any pending auto-restart and resets the counter.
         pendingRestartTask?.cancel()
@@ -480,15 +499,19 @@ final class RelayProcess {
         let signaledPID = proc.processIdentifier
         kill(signaledPID, SIGTERM)
 
+        // Hop back to MainActor before reading `self.process` so we don't
+        // race with start/stop/cleanup on lifecycle state.
         Task { [weak self, weak signaledProcess] in
             try? await Task.sleep(for: .seconds(2))
-            guard let self,
-                  let signaledProcess,
-                  let currentProcess = self.process,
-                  currentProcess === signaledProcess,
-                  currentProcess.isRunning
-            else { return }
-            kill(signaledPID, SIGKILL)
+            await MainActor.run {
+                guard let self,
+                      let signaledProcess,
+                      let currentProcess = self.process,
+                      currentProcess === signaledProcess,
+                      currentProcess.isRunning
+                else { return }
+                kill(signaledPID, SIGKILL)
+            }
         }
     }
 
@@ -720,6 +743,7 @@ final class RelayProcess {
         // Best-effort cleanup if the object is destroyed while running
         pendingRestartTask?.cancel()
         healthMonitorTask?.cancel()
+        tunnelStartupTask?.cancel()
         if let proc = process, proc.isRunning {
             kill(proc.processIdentifier, SIGTERM)
         }
