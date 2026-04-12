@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 #
-# bundle-node.sh — Downloads Node.js v22 LTS binary for macOS arm64
+# bundle-node.sh — Downloads Node.js v22 LTS binary for macOS
 # and stages just the `node` executable for app bundle embedding.
 #
-# Usage: ./bundle-node.sh [--strip] [output-dir]
-#   --strip     Strip debug symbols from the node binary (~8-10MB savings)
-#   output-dir: where to place the node binary (default: ./build/node)
+# Usage: ./bundle-node.sh [--strip] [--arch=arm64|x64] [output-dir]
+#   --strip         Strip debug symbols from the node binary (~8-10MB savings)
+#   --arch=ARCH     Override detected architecture (arm64 or x64)
+#   output-dir:     where to place the node binary (default: ./build/node)
 #
 # Idempotent: skips download if the cached tarball already exists.
 # Verifies SHA256 hash after download to prevent supply-chain attacks.
@@ -13,14 +14,42 @@
 set -euo pipefail
 
 NODE_VERSION="22.16.0"
-ARCH="arm64"
 PLATFORM="darwin"
+
+# Detect host architecture (accept --arch override)
+ARCH=""
+for arg in "$@"; do
+    case "$arg" in
+        --arch=*) ARCH="${arg#--arch=}" ;;
+    esac
+done
+
+if [[ -z "${ARCH}" ]]; then
+    RAW_ARCH="$(uname -m)"
+    case "${RAW_ARCH}" in
+        x86_64)  ARCH="x64" ;;
+        arm64)   ARCH="arm64" ;;
+        *)
+            echo "ERROR: unsupported architecture '${RAW_ARCH}'" >&2
+            exit 1
+            ;;
+    esac
+fi
 TARBALL="node-v${NODE_VERSION}-${PLATFORM}-${ARCH}.tar.gz"
 DOWNLOAD_URL="https://nodejs.org/dist/v${NODE_VERSION}/${TARBALL}"
 
-# SHA256 hash of the official tarball (from https://nodejs.org/dist/v22.16.0/SHASUMS256.txt)
+# SHA256 hashes of the official tarballs (from https://nodejs.org/dist/v22.16.0/SHASUMS256.txt)
 # Updated when NODE_VERSION changes.
-EXPECTED_SHA256="1d7f34ec4c03e12d8b33481e5c4560432d7dc31a0ef3ff5a4d9a8ada7cf6ecc9"
+declare -A SHA256_HASHES=(
+    [arm64]="1d7f34ec4c03e12d8b33481e5c4560432d7dc31a0ef3ff5a4d9a8ada7cf6ecc9"
+    [x64]="838d400f7e66c804e5d11e2ecb61d6e9e878611146baff69d6a2def3cc23f4ac"
+)
+
+EXPECTED_SHA256="${SHA256_HASHES[${ARCH}]:-}"
+if [[ -z "${EXPECTED_SHA256}" ]]; then
+    echo "ERROR: no known SHA256 hash for arch '${ARCH}'" >&2
+    exit 1
+fi
 
 # Directories
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,6 +61,7 @@ OUTPUT_DIR=""
 for arg in "$@"; do
     case "$arg" in
         --strip) STRIP_BINARY=1 ;;
+        --arch=*) ;; # already handled above
         *)
             if [[ -z "${OUTPUT_DIR}" ]]; then
                 OUTPUT_DIR="$arg"
@@ -93,9 +123,12 @@ if [[ "${STRIP_BINARY}" -eq 1 ]]; then
     echo "Stripped: ${BEFORE_SIZE} -> ${AFTER_SIZE} bytes (saved ~${SAVED}MB)"
 fi
 
-# Verify — the binary might be a different architecture than the build host
-# (e.g., arm64 binary built on x86_64 CI), so don't fail if we can't run it.
-NODE_BUNDLED_VERSION=$("${OUTPUT_DIR}/node" --version 2>/dev/null) || NODE_BUNDLED_VERSION="(cross-arch — cannot verify)"
+# Verify — fail early if the binary can't execute on this host
+NODE_BUNDLED_VERSION=$("${OUTPUT_DIR}/node" --version 2>/dev/null) || {
+    echo "ERROR: bundled node binary failed to execute — architecture mismatch?" >&2
+    echo "  Host arch: $(uname -m), downloaded arch: ${ARCH}" >&2
+    exit 1
+}
 FINAL_SIZE=$(stat -f%z "${OUTPUT_DIR}/node" 2>/dev/null || stat --printf="%s" "${OUTPUT_DIR}/node" 2>/dev/null)
 FINAL_MB=$(( FINAL_SIZE / 1024 / 1024 ))
 echo "Bundled node binary: ${OUTPUT_DIR}/node (${NODE_BUNDLED_VERSION}, ${FINAL_MB}MB)"

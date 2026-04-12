@@ -215,9 +215,6 @@ struct ConfigView: View {
 
                 Toggle("Launch at login", isOn: $configManager.config.launchAtLogin)
                     .help("Open Ground Control automatically when you log in to your Mac")
-                    .onChange(of: configManager.config.launchAtLogin) { _, newValue in
-                        LoginItemManager.setEnabled(newValue)
-                    }
             }
             .padding(8)
         }
@@ -283,6 +280,10 @@ struct ConfigView: View {
         do {
             try configManager.save()
             saveSecrets()
+
+            // Apply Login Item state on save (not on toggle)
+            LoginItemManager.setEnabled(configManager.config.launchAtLogin)
+
             showSaveSuccess = true
 
             // Hide success message after a moment

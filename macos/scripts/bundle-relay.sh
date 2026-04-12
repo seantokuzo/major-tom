@@ -94,7 +94,7 @@ fi
 echo "Installing production node_modules (--omit=dev)..."
 cp "${RELAY_DIR}/package.json" "${OUTPUT_DIR}/package.json"
 cp "${RELAY_DIR}/package-lock.json" "${OUTPUT_DIR}/package-lock.json" 2>/dev/null || true
-(cd "${OUTPUT_DIR}" && npm ci --omit=dev --ignore-scripts 2>/dev/null || npm install --omit=dev --ignore-scripts)
+(cd "${OUTPUT_DIR}" && npm ci --omit=dev 2>/dev/null || npm install --omit=dev)
 
 echo ""
 echo "Relay dist staged at: ${OUTPUT_DIR}"

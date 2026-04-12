@@ -43,8 +43,8 @@ enum LoginItemManager {
             // Config says enabled but not registered — register it
             setEnabled(true)
 
-        case (false, .enabled):
-            // Config says disabled but it's registered — unregister it
+        case (false, .enabled), (false, .requiresApproval):
+            // Config says disabled but it's registered or pending — unregister it
             setEnabled(false)
 
         default:
