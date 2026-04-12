@@ -129,6 +129,227 @@ CRITICAL RULES — violating ANY of these means the image must be regenerated:
 
 ---
 
+### [ ] Alien Diplomat — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
+### [ ] Backend Engineer — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
+### [ ] Botanist — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
+### [ ] Captain — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
+### [ ] Chef — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
+### [ ] Claudimus Prime — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
+### [ ] Doctor — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
+### [ ] Frontend Dev — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
+### [ ] Hacker — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
+### [ ] Mechanic — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
+### [ ] Pilot — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
+### [ ] Security — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
+### [ ] TPM — Walk Frame
+
+I'm uploading this character's idle sprite sheet. Generate a MATCHING walk cycle version of this EXACT same character — same outfit, same colors, same proportions — but with legs in a mid-stride walking pose (one leg forward, one leg back). The character should look like they are actively walking/stepping.
+
+32×32 pixel art. 4 views in a 2×2 grid on a single image: walk-front (top-left), walk-back (top-right), walk-left (bottom-left), walk-right (bottom-right). Each view clearly separated with empty space between them. Style: Stardew Valley / Shovel Knight — flat solid color blocks, ZERO gradients.
+
+CRITICAL RULES — violating ANY of these means the image must be regenerated:
+1. EVERY edge must be a hard 90-degree pixel step. ZERO anti-aliasing. ZERO edge smoothing. If you zoom in, each pixel boundary should be a sharp staircase, never a gradient.
+2. Background MUST be perfectly transparent (PNG alpha = 0). No white, no gray, no gradient, no subtle tint.
+3. NO ground shadow. NO drop shadow. NO ambient occlusion under the character. The character floats on pure transparency.
+4. ALL shading must be done with FLAT solid color blocks — like Stardew Valley or Shovel Knight. Never use gradients or soft brushes.
+5. NO glow effects, NO bloom, NO light halos around any part of the sprite.
+6. The 4 views must be on a single canvas, clearly separated with empty space between them.
+7. The character must be IDENTICAL to the reference — same clothes, same colors, same face — only the legs change to a walking pose.
+
+---
+
 ## Dogs
 
 > Dogs are trickier — walking means legs spread further apart, body stays low and horizontal.
