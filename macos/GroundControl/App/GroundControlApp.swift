@@ -55,13 +55,21 @@ struct GroundControlApp: App {
 
     @State private var configManager: ConfigManager
     @State private var relay: RelayProcess
+    @State private var controlServer: ControlServer
     @State private var updateChecker = UpdateChecker()
     @State private var showOnboarding: Bool
 
     init() {
         let cm = ConfigManager()
+        let rp = RelayProcess(configManager: cm)
+        let cs = ControlServer(
+            port: UInt16(exactly: cm.config.controlPort) ?? 9092,
+            relay: rp,
+            configManager: cm
+        )
         _configManager = State(initialValue: cm)
-        _relay = State(initialValue: RelayProcess(configManager: cm))
+        _relay = State(initialValue: rp)
+        _controlServer = State(initialValue: cs)
         _showOnboarding = State(initialValue: !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding"))
 
         // Start checking for updates at launch so the menu bar can show availability
@@ -71,6 +79,10 @@ struct GroundControlApp: App {
         // Sync Login Item state with config — handles drift if the user
         // toggled the Login Item from System Settings independently.
         LoginItemManager.syncWithConfig(launchAtLogin: cm.config.launchAtLogin)
+
+        // Start the control API server immediately so it is available at launch,
+        // not deferred until the menu bar popover is first opened.
+        cs.start()
     }
 
     var body: some Scene {
@@ -78,6 +90,7 @@ struct GroundControlApp: App {
         MenuBarExtra {
             MenuBarExtraContent(
                 relay: relay,
+                controlServer: controlServer,
                 updateChecker: updateChecker,
                 showOnboarding: showOnboarding
             )
@@ -115,6 +128,7 @@ struct GroundControlApp: App {
     /// so the Dock-reopen notification can be routed into SwiftUI's scene API.
     private struct MenuBarExtraContent: View {
         let relay: RelayProcess
+        let controlServer: ControlServer
         let updateChecker: UpdateChecker
         let showOnboarding: Bool
 

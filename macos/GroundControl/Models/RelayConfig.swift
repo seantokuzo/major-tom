@@ -51,6 +51,8 @@ struct RelayConfig: Equatable {
     var autoStart: Bool
     /// Whether to register as a Login Item so the app launches at system startup.
     var launchAtLogin: Bool
+    /// Port for the local HTTP control API (MCP bridge talks to this).
+    var controlPort: Int
 
     /// Sensible defaults for a fresh install.
     static let defaults = RelayConfig(
@@ -63,7 +65,8 @@ struct RelayConfig: Equatable {
         cloudflareEnabled: false,
         cloudflareTunnelName: "",
         autoStart: true,
-        launchAtLogin: false
+        launchAtLogin: false,
+        controlPort: 9092
     )
 
     // MARK: - Validation
@@ -72,9 +75,10 @@ struct RelayConfig: Equatable {
     struct ValidationResult {
         var portError: String?
         var hookPortError: String?
+        var controlPortError: String?
 
         var isValid: Bool {
-            portError == nil && hookPortError == nil
+            portError == nil && hookPortError == nil && controlPortError == nil
         }
     }
 
@@ -90,8 +94,16 @@ struct RelayConfig: Equatable {
             result.hookPortError = "Hook port must be between 1024 and 65535"
         }
 
+        if controlPort < 1024 || controlPort > 65535 {
+            result.controlPortError = "Control port must be between 1024 and 65535"
+        }
+
         if result.portError == nil && result.hookPortError == nil && port == hookPort {
             result.hookPortError = "Hook port must differ from relay port"
+        }
+
+        if result.controlPortError == nil && (controlPort == port || controlPort == hookPort) {
+            result.controlPortError = "Control port must differ from relay and hook ports"
         }
 
         return result
@@ -115,6 +127,7 @@ extension RelayConfig: Codable {
         case port, hookPort, authMode, multiUserEnabled, claudeWorkDir
         case logLevel, cloudflareEnabled, cloudflareTunnelName, autoStart
         case launchAtLogin
+        case controlPort
     }
 
     init(from decoder: Decoder) throws {
@@ -130,6 +143,7 @@ extension RelayConfig: Codable {
         self.autoStart = try c.decode(Bool.self, forKey: .autoStart)
         // Backfill: older configs won't have this field
         self.launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
+        self.controlPort = try c.decodeIfPresent(Int.self, forKey: .controlPort) ?? 9092
     }
 
     func encode(to encoder: Encoder) throws {
@@ -144,5 +158,6 @@ extension RelayConfig: Codable {
         try c.encode(cloudflareTunnelName, forKey: .cloudflareTunnelName)
         try c.encode(autoStart, forKey: .autoStart)
         try c.encode(launchAtLogin, forKey: .launchAtLogin)
+        try c.encode(controlPort, forKey: .controlPort)
     }
 }
