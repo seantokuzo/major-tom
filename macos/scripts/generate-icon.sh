@@ -3,8 +3,9 @@
 # generate-icon.sh — Render a placeholder AppIcon.icns for Ground Control.
 #
 # Uses a small Swift program to draw the `antenna.radiowaves.left.and.right`
-# SF Symbol onto a gradient background at the six sizes macOS expects in an
-# iconset, then runs `iconutil -c icns` to produce the final .icns file.
+# SF Symbol onto a gradient background at five logical icon sizes (16, 32,
+# 128, 256, 512), each rendered at @1x and @2x, then runs `iconutil -c icns`
+# to produce the final .icns file.
 #
 # Output: macos/GroundControl/Assets/AppIcon.icns
 #
@@ -17,8 +18,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MACOS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ASSETS_DIR="${MACOS_DIR}/GroundControl/Assets"
-ICONSET_DIR="$(mktemp -d)/AppIcon.iconset"
+TMPDIR_ROOT="$(mktemp -d)"
+ICONSET_DIR="${TMPDIR_ROOT}/AppIcon.iconset"
 OUTPUT_ICNS="${ASSETS_DIR}/AppIcon.icns"
+
+# Clean up temp dirs on exit — both the iconset and the Swift renderer.
+trap 'rm -rf "${TMPDIR_ROOT}" "${RENDERER:-}"' EXIT
 
 mkdir -p "${ASSETS_DIR}" "${ICONSET_DIR}"
 
@@ -28,7 +33,6 @@ echo "==> rendering icon PNGs via swift"
 # would work but a scratch file gives us proper error reporting and keeps the
 # program readable.
 RENDERER="$(mktemp -t gc-icon-renderer-XXXXXX).swift"
-trap 'rm -f "${RENDERER}"' EXIT
 
 cat > "${RENDERER}" <<'SWIFT_EOF'
 import AppKit
@@ -89,11 +93,13 @@ func renderIcon(pixelSize: Int, to url: URL) throws {
     let clip = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
     clip.addClip()
 
-    let gradient = NSGradient(colors: [
+    guard let gradient = NSGradient(colors: [
         NSColor(calibratedRed: 0.11, green: 0.13, blue: 0.32, alpha: 1.0),  // deep indigo
         NSColor(calibratedRed: 0.23, green: 0.52, blue: 0.86, alpha: 1.0),  // mid blue
         NSColor(calibratedRed: 0.36, green: 0.82, blue: 0.98, alpha: 1.0),  // cyan
-    ])!
+    ]) else {
+        throw NSError(domain: "icon", code: 5, userInfo: [NSLocalizedDescriptionKey: "gradient creation failed"])
+    }
     gradient.draw(in: rect, angle: 270)
 
     // 4. Antenna SF Symbol, tinted white and centered.

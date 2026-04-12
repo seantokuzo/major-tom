@@ -12,7 +12,7 @@ import SwiftUI
 final class GroundControlAppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(
         _ sender: NSApplication,
-        hasVisibleWindows flag: Bool
+        hasVisibleWindows _: Bool
     ) -> Bool {
         // If the management window is already open, just activate us.
         NSApp.activate(ignoringOtherApps: true)

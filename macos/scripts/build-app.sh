@@ -16,7 +16,7 @@
 # Idempotent: rebuilding overwrites macos/build/GroundControl.app in place.
 # The --install step replaces /Applications/GroundControl.app if present.
 #
-# Requires: Xcode command line tools (swift, codesign, iconutil, sips).
+# Requires: Xcode command line tools (swift, codesign, iconutil).
 
 set -euo pipefail
 
@@ -67,8 +67,9 @@ cd "${MACOS_DIR}"
 echo "==> swift build -c ${CONFIG}"
 swift build -c "${CONFIG}"
 
-SWIFT_BIN_DIR="$(swift build -c "${CONFIG}" --show-bin-path)"
-SOURCE_BINARY="${SWIFT_BIN_DIR}/${EXEC_NAME}"
+# Derive the binary path directly — avoids a second `swift build` invocation
+# just for `--show-bin-path` (which is mostly a no-op but still slow).
+SOURCE_BINARY="${MACOS_DIR}/.build/${CONFIG}/${EXEC_NAME}"
 if [ ! -f "${SOURCE_BINARY}" ]; then
     echo "error: built binary not found at ${SOURCE_BINARY}" >&2
     exit 1
