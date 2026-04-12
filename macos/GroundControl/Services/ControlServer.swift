@@ -235,47 +235,55 @@ final class ControlServer {
             return
         }
 
-        let relayStateStr: String
-        let relayRunning: Bool
-        switch relay.state.processState {
-        case .idle: relayStateStr = "idle"; relayRunning = false
-        case .starting: relayStateStr = "starting"; relayRunning = false
-        case .running: relayStateStr = "running"; relayRunning = true
-        case .stopping: relayStateStr = "stopping"; relayRunning = false
-        case .error(let msg): relayStateStr = "error: \(msg)"; relayRunning = false
-        case .restarting(let attempt): relayStateStr = "restarting (attempt \(attempt))"; relayRunning = false
+        Task { [weak self] in
+            // Snapshot relay state on @MainActor to avoid data races
+            let body: [String: Any] = await MainActor.run {
+                let relayStateStr: String
+                let relayRunning: Bool
+                switch relay.state.processState {
+                case .idle: relayStateStr = "idle"; relayRunning = false
+                case .starting: relayStateStr = "starting"; relayRunning = false
+                case .running: relayStateStr = "running"; relayRunning = true
+                case .stopping: relayStateStr = "stopping"; relayRunning = false
+                case .error(let msg): relayStateStr = "error: \(msg)"; relayRunning = false
+                case .restarting(let attempt): relayStateStr = "restarting (attempt \(attempt))"; relayRunning = false
+                }
+
+                let tunnelStateStr: String
+                switch relay.tunnel.state {
+                case .idle: tunnelStateStr = "idle"
+                case .starting: tunnelStateStr = "starting"
+                case .running: tunnelStateStr = "running"
+                case .stopping: tunnelStateStr = "stopping"
+                case .error(let msg): tunnelStateStr = "error: \(msg)"
+                case .restarting(let attempt): tunnelStateStr = "restarting (attempt \(attempt))"
+                }
+
+                var result: [String: Any] = [
+                    "relay": [
+                        "state": relayStateStr,
+                        "running": relayRunning,
+                        "port": relay.state.port,
+                        "hookPort": relay.state.hookPort,
+                        "restartCount": relay.state.restartCount,
+                    ] as [String: Any],
+                    "tunnel": [
+                        "state": tunnelStateStr,
+                        "running": relay.tunnel.isRunning,
+                        "restartCount": relay.tunnel.restartCount,
+                    ] as [String: Any],
+                ]
+
+                if let start = self?.startTime {
+                    result["uptime"] = Date().timeIntervalSince(start)
+                }
+
+                return result
+            }
+
+            guard let self else { return }
+            self.sendResponse(connection: connection, status: 200, body: body)
         }
-
-        let tunnelStateStr: String
-        switch relay.tunnel.state {
-        case .idle: tunnelStateStr = "idle"
-        case .starting: tunnelStateStr = "starting"
-        case .running: tunnelStateStr = "running"
-        case .stopping: tunnelStateStr = "stopping"
-        case .error(let msg): tunnelStateStr = "error: \(msg)"
-        case .restarting(let attempt): tunnelStateStr = "restarting (attempt \(attempt))"
-        }
-
-        var body: [String: Any] = [
-            "relay": [
-                "state": relayStateStr,
-                "running": relayRunning,
-                "port": relay.state.port,
-                "hookPort": relay.state.hookPort,
-                "restartCount": relay.state.restartCount,
-            ] as [String: Any],
-            "tunnel": [
-                "state": tunnelStateStr,
-                "running": relay.tunnel.isRunning,
-                "restartCount": relay.tunnel.restartCount,
-            ] as [String: Any],
-        ]
-
-        if let start = startTime {
-            body["uptime"] = Date().timeIntervalSince(start)
-        }
-
-        sendResponse(connection: connection, status: 200, body: body)
     }
 
     private func handleRelayStart(connection: NWConnection) {
@@ -370,35 +378,42 @@ final class ControlServer {
         let level = params["level"]
         let since = params["since"].flatMap { Double($0) }.map { Date(timeIntervalSince1970: $0) }
 
-        let entries = relay.logStore.entries
-        var filtered = Array(entries)
+        Task { [weak self] in
+            // Snapshot entries on @MainActor — Deque isn't thread-safe
+            let entries = await MainActor.run {
+                Array(relay.logStore.entries)
+            }
+            guard let self else { return }
 
-        // Filter by timestamp if provided
-        if let sinceDate = since {
-            filtered = filtered.filter { $0.timestamp >= sinceDate }
+            var filtered = entries
+
+            // Filter by timestamp if provided
+            if let sinceDate = since {
+                filtered = filtered.filter { $0.timestamp >= sinceDate }
+            }
+
+            // Filter by level if provided
+            if let levelStr = level, let pinoLevel = self.pinoLevelFromString(levelStr) {
+                filtered = filtered.filter { $0.level.rawValue >= pinoLevel }
+            }
+
+            // Take last N entries
+            let clamped = min(count, filtered.count)
+            let result = Array(filtered.suffix(clamped))
+
+            let logEntries: [[String: Any]] = result.map { entry in
+                [
+                    "timestamp": entry.timestamp.timeIntervalSince1970,
+                    "level": entry.level.displayName.lowercased(),
+                    "message": entry.message,
+                ]
+            }
+
+            self.sendResponse(connection: connection, status: 200, body: [
+                "count": logEntries.count,
+                "entries": logEntries,
+            ])
         }
-
-        // Filter by level if provided
-        if let levelStr = level, let pinoLevel = pinoLevelFromString(levelStr) {
-            filtered = filtered.filter { $0.level.rawValue >= pinoLevel }
-        }
-
-        // Take last N entries
-        let clamped = min(count, filtered.count)
-        let result = Array(filtered.suffix(clamped))
-
-        let logEntries: [[String: Any]] = result.map { entry in
-            [
-                "timestamp": entry.timestamp.timeIntervalSince1970,
-                "level": entry.level.displayName.lowercased(),
-                "message": entry.message,
-            ]
-        }
-
-        sendResponse(connection: connection, status: 200, body: [
-            "count": logEntries.count,
-            "entries": logEntries,
-        ])
     }
 
     private func handleLogStream(connection: NWConnection) {
@@ -423,8 +438,9 @@ final class ControlServer {
         })
 
         // Poll for new log entries every 500ms and send as SSE events.
-        // Track the last-seen entry count to only send new entries.
-        var lastSeenCount = relay.logStore.entries.count
+        // Track by last-seen timestamp instead of count — ring buffer eviction
+        // causes count to plateau, which would silently stop streaming.
+        var lastSeenTimestamp: Date = Date()
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + .milliseconds(500), repeating: .milliseconds(500))
@@ -435,11 +451,13 @@ final class ControlServer {
                 return
             }
 
-            let currentCount = relay.logStore.entries.count
-            guard currentCount > lastSeenCount else { return }
+            // Snapshot entries from main actor would be ideal, but the timer
+            // fires on our serial queue. We snapshot just the suffix we need.
+            let entries = relay.logStore.entries
+            let newEntries = entries.filter { $0.timestamp > lastSeenTimestamp }
+            guard !newEntries.isEmpty else { return }
 
-            let newEntries = Array(relay.logStore.entries.suffix(currentCount - lastSeenCount))
-            lastSeenCount = currentCount
+            lastSeenTimestamp = newEntries.last!.timestamp
 
             for entry in newEntries {
                 let eventData: [String: Any] = [
@@ -482,21 +500,27 @@ final class ControlServer {
             return
         }
 
-        let config = configManager.config
-        let body: [String: Any] = [
-            "port": config.port,
-            "hookPort": config.hookPort,
-            "authMode": config.authMode.rawValue,
-            "multiUserEnabled": config.multiUserEnabled,
-            "claudeWorkDir": config.claudeWorkDir,
-            "logLevel": config.logLevel.rawValue,
-            "cloudflareEnabled": config.cloudflareEnabled,
-            "cloudflareTunnelName": config.cloudflareTunnelName,
-            "autoStart": config.autoStart,
-            "controlPort": self.port,
-        ]
+        Task { [weak self] in
+            guard let self else { return }
+            // Snapshot config on @MainActor to avoid racing with SwiftUI edits
+            let body: [String: Any] = await MainActor.run {
+                let config = configManager.config
+                return [
+                    "port": config.port,
+                    "hookPort": config.hookPort,
+                    "authMode": config.authMode.rawValue,
+                    "multiUserEnabled": config.multiUserEnabled,
+                    "claudeWorkDir": config.claudeWorkDir,
+                    "logLevel": config.logLevel.rawValue,
+                    "cloudflareEnabled": config.cloudflareEnabled,
+                    "cloudflareTunnelName": config.cloudflareTunnelName,
+                    "autoStart": config.autoStart,
+                    "controlPort": config.controlPort,
+                ]
+            }
 
-        sendResponse(connection: connection, status: 200, body: body)
+            self.sendResponse(connection: connection, status: 200, body: body)
+        }
     }
 
     private func handlePatchConfig(body: String?, connection: NWConnection) {
@@ -513,11 +537,16 @@ final class ControlServer {
 
         // Apply updates to a copy — only commit to configManager on successful validation
         var updatedConfig = configManager.config
+        let previousControlPort = updatedConfig.controlPort
+
         if let port = updates["port"] as? Int {
             updatedConfig.port = port
         }
         if let hookPort = updates["hookPort"] as? Int {
             updatedConfig.hookPort = hookPort
+        }
+        if let controlPort = updates["controlPort"] as? Int {
+            updatedConfig.controlPort = controlPort
         }
         if let authModeStr = updates["authMode"] as? String, let authMode = AuthMode(rawValue: authModeStr) {
             updatedConfig.authMode = authMode
@@ -555,10 +584,16 @@ final class ControlServer {
         configManager.config = updatedConfig
         do {
             try configManager.save()
-            sendResponse(connection: connection, status: 200, body: [
+            let controlPortChanged = updatedConfig.controlPort != previousControlPort
+            var responseBody: [String: Any] = [
                 "ok": true,
                 "message": "Config updated — restart relay to apply changes",
-            ])
+            ]
+            if controlPortChanged {
+                responseBody["requiresRestart"] = true
+                responseBody["message"] = "Config updated — restart Ground Control to apply control port change, restart relay for other changes"
+            }
+            sendResponse(connection: connection, status: 200, body: responseBody)
         } catch {
             sendResponse(connection: connection, status: 500, body: ["error": "Failed to save config: \(error.localizedDescription)"])
         }

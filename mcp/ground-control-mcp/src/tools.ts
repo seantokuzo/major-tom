@@ -345,6 +345,13 @@ export function registerTools(server: McpServer): void {
         .boolean()
         .optional()
         .describe("Auto-start relay on app launch"),
+      controlPort: z
+        .number()
+        .int()
+        .min(1024)
+        .max(65535)
+        .optional()
+        .describe("Control API port (requires Ground Control restart to take effect)"),
     },
     async (params) => {
       try {

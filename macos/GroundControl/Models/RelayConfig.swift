@@ -102,8 +102,7 @@ struct RelayConfig: Equatable {
             result.hookPortError = "Hook port must differ from relay port"
         }
 
-        let allPorts = [port, hookPort, controlPort]
-        if result.controlPortError == nil && Set(allPorts).count != allPorts.count {
+        if result.controlPortError == nil && (controlPort == port || controlPort == hookPort) {
             result.controlPortError = "Control port must differ from relay and hook ports"
         }
 
