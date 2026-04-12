@@ -1,6 +1,49 @@
 import AppKit
 import SwiftUI
 
+/// `NSApplicationDelegate` that hooks the Dock-reopen event.
+///
+/// With `LSUIElement = true`, Ground Control has no persistent Dock icon
+/// while running — but the user can still drag the `.app` to the Dock as a
+/// launcher shortcut. When they click that Dock icon and we're already
+/// running, macOS calls `applicationShouldHandleReopen(_:hasVisibleWindows:)`.
+/// We open the Management window in response so the click feels like
+/// "show me the dashboard" instead of doing nothing.
+final class GroundControlAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows _: Bool
+    ) -> Bool {
+        // If the management window is already open, just activate us.
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Raise any existing management window, or ask SwiftUI to open one
+        // by name (the Window scene below declares id "management").
+        if let existing = NSApp.windows.first(where: { $0.identifier?.rawValue == "management" }) {
+            existing.makeKeyAndOrderFront(nil)
+        } else {
+            // Posting an NSEvent-free URL via Launch Services would work but
+            // is overkill; the supported SwiftUI path is `openWindow`, which
+            // we can't call from an AppDelegate. The cleanest fallback is
+            // the URL scheme `x-swiftui-window://` — but since we haven't
+            // registered one, we emit a notification that `GroundControlApp`
+            // observes to trigger `openWindow(id:)` from the scene body.
+            NotificationCenter.default.post(name: .openManagementWindow, object: nil)
+        }
+
+        // Returning true tells AppKit "we handled the reopen, don't run
+        // default behavior" (which for LSUIElement apps is a no-op anyway).
+        return true
+    }
+}
+
+extension Notification.Name {
+    /// Posted by the app delegate when the user clicks the Dock icon of a
+    /// running instance. `GroundControlApp` listens for this and opens the
+    /// management window via the SwiftUI environment.
+    static let openManagementWindow = Notification.Name("com.majortom.groundcontrol.openManagementWindow")
+}
+
 /// Ground Control — macOS menu bar app for managing the Major Tom relay server.
 ///
 /// Lives in the menu bar (no dock icon, LSUIElement = true). Provides start/stop/restart
@@ -8,6 +51,8 @@ import SwiftUI
 /// config, and security panel. Shows a first-run onboarding wizard on initial launch.
 @main
 struct GroundControlApp: App {
+    @NSApplicationDelegateAdaptor(GroundControlAppDelegate.self) private var appDelegate
+
     @State private var configManager: ConfigManager
     @State private var relay: RelayProcess
     @State private var updateChecker = UpdateChecker()
@@ -27,27 +72,11 @@ struct GroundControlApp: App {
     var body: some Scene {
         // Menu bar extra — the primary UI
         MenuBarExtra {
-            MenuBarView(relay: relay, updateChecker: updateChecker)
-                .onAppear {
-                    // Open onboarding window on first launch. MenuBarExtra.onAppear is
-                    // the earliest point where we can use EnvironmentValues in the scene.
-                    if showOnboarding {
-                        NSApplication.shared.activate(ignoringOtherApps: true)
-                        // Open onboarding via NSApp since @Environment(\.openWindow)
-                        // is not available in @main App structs.
-                        for window in NSApplication.shared.windows where window.identifier?.rawValue == "onboarding" {
-                            window.makeKeyAndOrderFront(nil)
-                            return
-                        }
-                        // If the window isn't materialized yet, iterate all windows
-                        // and bring forward any whose title matches the onboarding
-                        // scene. No custom URL scheme needed.
-                        for window in NSApplication.shared.windows where window.title == "Welcome" {
-                            window.makeKeyAndOrderFront(nil)
-                            return
-                        }
-                    }
-                }
+            MenuBarExtraContent(
+                relay: relay,
+                updateChecker: updateChecker,
+                showOnboarding: showOnboarding
+            )
         } label: {
             menuBarLabel
         }
@@ -76,6 +105,40 @@ struct GroundControlApp: App {
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
+    }
+
+    /// Menu bar content wrapper — gives us access to `@Environment(\.openWindow)`
+    /// so the Dock-reopen notification can be routed into SwiftUI's scene API.
+    private struct MenuBarExtraContent: View {
+        let relay: RelayProcess
+        let updateChecker: UpdateChecker
+        let showOnboarding: Bool
+
+        @Environment(\.openWindow) private var openWindow
+
+        var body: some View {
+            MenuBarView(relay: relay, updateChecker: updateChecker)
+                .onAppear {
+                    // Open onboarding window on first launch.
+                    if showOnboarding {
+                        NSApplication.shared.activate(ignoringOtherApps: true)
+                        for window in NSApplication.shared.windows where window.identifier?.rawValue == "onboarding" {
+                            window.makeKeyAndOrderFront(nil)
+                            return
+                        }
+                        for window in NSApplication.shared.windows where window.title == "Welcome" {
+                            window.makeKeyAndOrderFront(nil)
+                            return
+                        }
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .openManagementWindow)) { _ in
+                    // User clicked the Dock icon of a running instance — show
+                    // the management window as the visible "I'm running" surface.
+                    openWindow(id: "management")
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                }
+        }
     }
 
     /// Menu bar icon — colored circle overlay indicates relay status.
