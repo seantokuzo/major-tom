@@ -11,17 +11,20 @@ enum WaypointPathfinder {
     /// Map from door ID prefix to module type.
     private static let prefixToModule: [String: ModuleType] = [
         "eng": .engineering,
+        "engineering": .engineering,
         "bridge": .commandBridge,
         "eva": .evaBay,
         "training": .trainingBay,
         "crew": .crewQuarters,
         "galley": .galley,
         "bio": .bioDome,
+        "biodome": .bioDome,
         "arb": .arboretum,
+        "arboretum": .arboretum,
     ]
 
-    /// Parse a door ID (e.g., "eng_corridor") into the two endpoints.
-    /// Returns nil for the corridor side (corridor is not a ModuleType).
+    /// Parse a door ID (e.g., "eva_training") into the two endpoints.
+    /// Returns nil for sides that don't map to a module (e.g., "corridor").
     private static func parseDoorId(_ id: String) -> (ModuleType?, ModuleType?) {
         let parts = id.split(separator: "_").map(String.init)
         guard parts.count == 2 else { return (nil, nil) }
