@@ -24,6 +24,7 @@ import { createShellRoute } from './routes/shell.js';
 import { createApiApprovalsRoutes } from './routes/api-approvals.js';
 import { createPreferencesRoutes } from './routes/preferences.js';
 import { tmuxBootstrap, TmuxMissingError, TmuxVersionError } from './adapters/tmux-bootstrap.js';
+import { WindowReaper } from './adapters/window-reaper.js';
 
 // Phase 13 Wave 2 — shell-side approval routing
 import { ApprovalQueue } from './hooks/approval-queue.js';
@@ -330,8 +331,27 @@ export async function buildApp(config: AppConfig) {
   // Eager tmux bootstrap so the first `/shell/:tabId` attach doesn't race.
   // Non-fatal: if tmux is missing on dev boxes without the shell experience,
   // we warn and continue. The shell route still rechecks lazily per connect.
+  //
+  // Window reaper: after a startup grace period, kills any tmux windows
+  // with no active WebSocket client (orphans from prior app launches,
+  // relay restarts, or iOS generating random tab IDs). Also reaps windows
+  // after their last client disconnects and nobody reconnects within the
+  // disconnect grace period. Configurable via REAPER_STARTUP_GRACE_MS
+  // and REAPER_DISCONNECT_GRACE_MS env vars.
+  const parseGraceMs = (raw: string | undefined): number | undefined => {
+    if (raw === undefined) return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
+  const windowReaper = new WindowReaper(sessionManager, {
+    startupGraceMs: parseGraceMs(process.env['REAPER_STARTUP_GRACE_MS']),
+    disconnectGraceMs: parseGraceMs(process.env['REAPER_DISCONNECT_GRACE_MS']),
+  });
   try {
     await tmuxBootstrap.ensure();
+    // Bootstrap succeeded — start the startup reaper timer. After the
+    // grace period, any unclaimed windows are killed.
+    windowReaper.start();
   } catch (err) {
     if (err instanceof TmuxMissingError || err instanceof TmuxVersionError) {
       logger.warn({ err: (err as Error).message }, 'tmux unavailable — shell route will be degraded');
@@ -339,7 +359,7 @@ export async function buildApp(config: AppConfig) {
       logger.error({ err }, 'Unexpected tmux bootstrap error');
     }
   }
-  await app.register(createShellRoute({ sessionManager }));
+  await app.register(createShellRoute({ sessionManager, windowReaper }));
 
   // WebSocket (auth via session cookie on upgrade)
   await app.register(createWsRoute({
@@ -379,6 +399,7 @@ export async function buildApp(config: AppConfig) {
 
   app.addHook('onClose', async () => {
     logger.info('Shutting down services...');
+    windowReaper.dispose();
     healthMonitor.dispose();
     await achievementService.flush();
     await analyticsCollector.flush();
