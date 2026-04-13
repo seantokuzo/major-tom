@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Activity Assignment
 
 /// Tracks an agent's current station assignment and timing.
-struct ActivityAssignment {
+struct StationAssignment {
     let agentId: String
     let stationType: ActivityStationType
     let startedAt: Date
@@ -31,7 +31,7 @@ final class ActivityManager {
     var stations: [ActivityStation] = ActivityStationLayout.stations
 
     /// Current activity assignments by agent ID.
-    private(set) var assignments: [String: ActivityAssignment] = [:]
+    private(set) var assignments: [String: StationAssignment] = [:]
 
     /// Timer for cycling activities.
     private var cycleTask: Task<Void, Never>?
@@ -54,7 +54,7 @@ final class ActivityManager {
 
         // Create assignment with random duration (5-15 seconds)
         let duration = TimeInterval.random(in: 5...15)
-        let assignment = ActivityAssignment(
+        let assignment = StationAssignment(
             agentId: agentId,
             stationType: station.type,
             startedAt: Date(),
@@ -78,7 +78,7 @@ final class ActivityManager {
     }
 
     /// Get the current assignment for an agent.
-    func currentActivity(for agentId: String) -> ActivityAssignment? {
+    func currentActivity(for agentId: String) -> StationAssignment? {
         assignments[agentId]
     }
 

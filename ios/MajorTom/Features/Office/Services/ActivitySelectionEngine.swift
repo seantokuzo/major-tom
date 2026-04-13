@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Activity Assignment (New)
 
 /// An assigned activity — what the agent is doing, where, and for how long.
-struct ActivityAssignmentV2 {
+struct ActivityAssignment {
     let activityId: String
     let displayName: String
     let furnitureInstanceId: String
@@ -31,7 +31,7 @@ struct ActivityAssignmentV2 {
 final class ActivitySelectionEngine {
 
     /// Current activity assignments by agent ID.
-    private(set) var assignments: [String: ActivityAssignmentV2] = [:]
+    private(set) var assignments: [String: ActivityAssignment] = [:]
 
     /// Cooldown tracking: agentId → (activityId → lastCompletedAt)
     private var cooldowns: [String: [String: Date]] = [:]
@@ -41,11 +41,17 @@ final class ActivitySelectionEngine {
 
     /// External dependencies.
     private let registry: ActivityRegistry
-    let furnitureRegistry: FurnitureRegistry
+    private(set) var furnitureRegistry: FurnitureRegistry
 
     init() {
         self.registry = ActivityRegistry.shared
         self.furnitureRegistry = FurnitureRegistry()
+    }
+
+    /// Replace the furniture registry with the scene's instance.
+    /// Called from OfficeView.onAppear to wire the scene-owned registry.
+    func setFurnitureRegistry(_ registry: FurnitureRegistry) {
+        self.furnitureRegistry = registry
     }
 
     // MARK: - Selection
@@ -56,7 +62,7 @@ final class ActivitySelectionEngine {
         agentId: String,
         characterType: CharacterType,
         currentRoom: String
-    ) -> ActivityAssignmentV2? {
+    ) -> ActivityAssignment? {
         // Release any existing assignment first
         releaseActivity(for: agentId)
 
@@ -95,6 +101,7 @@ final class ActivitySelectionEngine {
 
         // Weighted random selection
         let totalWeight = weightedCandidates.reduce(0) { $0 + $1.weight }
+        guard totalWeight > 0 else { return nil }
         var roll = Double.random(in: 0..<totalWeight)
 
         var selected = weightedCandidates[0]
@@ -123,7 +130,7 @@ final class ActivitySelectionEngine {
         let duration = TimeInterval.random(in: minDuration...maxDuration)
 
         // Create assignment
-        let assignment = ActivityAssignmentV2(
+        let assignment = ActivityAssignment(
             activityId: selected.activity.id,
             displayName: selected.activity.displayName,
             furnitureInstanceId: selected.furniture.id,
@@ -159,7 +166,7 @@ final class ActivitySelectionEngine {
     // MARK: - Queries
 
     /// Get the current assignment for an agent.
-    func currentActivity(for agentId: String) -> ActivityAssignmentV2? {
+    func currentActivity(for agentId: String) -> ActivityAssignment? {
         assignments[agentId]
     }
 
@@ -179,7 +186,7 @@ final class ActivitySelectionEngine {
 
     /// Start the activity cycling timer.
     /// Checks every 2 seconds for expired activities and rotates agents.
-    func startCycling(onRotate: @escaping (String, ActivityAssignmentV2?) -> Void) {
+    func startCycling(onRotate: @escaping (String, ActivityAssignment?) -> Void) {
         stopCycling()
 
         cycleTask = Task { [weak self] in

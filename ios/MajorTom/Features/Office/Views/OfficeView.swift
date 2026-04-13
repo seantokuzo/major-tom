@@ -64,7 +64,9 @@ struct OfficeView: View {
             // Wire theme + mood engines and furniture registry to the scene
             scene.themeEngine = viewModel.themeEngine
             scene.moodEngine = viewModel.moodEngine
-            scene.furnitureRegistry = viewModel.activityEngine.furnitureRegistry
+            // Wire scene's furniture registry into the activity engine
+            // (scene owns it because didMove runs before onAppear)
+            viewModel.activityEngine.setFurnitureRegistry(scene.furnitureRegistry)
 
             // Start engines
             viewModel.themeEngine.start()
@@ -81,7 +83,7 @@ struct OfficeView: View {
             viewModel.activityEngine.startCycling { [weak scene, weak viewModel] agentId, _ in
                 guard let viewModel, let scene else { return }
                 guard let agent = viewModel.agents.first(where: { $0.id == agentId }) else { return }
-                let room = scene.currentRoom(for: agentId) ?? "crewQuarters"
+                let room = scene.currentRoom(for: agentId) ?? ModuleType.crewQuarters.rawValue
                 if let assignment = viewModel.activityEngine.assignActivity(
                     agentId: agentId,
                     characterType: agent.characterType,
@@ -387,7 +389,7 @@ struct OfficeView: View {
 
         case .idle:
             // Try to assign a JSON-configured activity
-            let room = scene.currentRoom(for: agent.id) ?? "crewQuarters"
+            let room = scene.currentRoom(for: agent.id) ?? ModuleType.crewQuarters.rawValue
             if let assignment = viewModel.activityEngine.assignActivity(
                 agentId: agent.id,
                 characterType: agent.characterType,

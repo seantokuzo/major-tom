@@ -64,7 +64,8 @@ final class OfficeScene: SKScene {
     private var furniturePlacements: [ModuleType: [FurniturePlacement]] = [:]
 
     /// Furniture registry for activity system — tracks types and occupancy.
-    var furnitureRegistry: FurnitureRegistry?
+    /// Non-optional: created at scene init so furniture is registered during didMove(to:).
+    let furnitureRegistry = FurnitureRegistry()
 
     // MARK: - Scene Lifecycle
 
@@ -430,7 +431,7 @@ final class OfficeScene: SKScene {
         furniturePlacements[module, default: []].append(placement)
 
         // Register in activity furniture registry for occupancy tracking
-        furnitureRegistry?.register(
+        furnitureRegistry.register(
             id: id,
             furnitureType: furnitureType,
             room: module.rawValue,
@@ -1668,7 +1669,7 @@ final class OfficeScene: SKScene {
     }
 
     /// Move an agent to perform a JSON-configured activity at furniture.
-    func moveAgentToActivity(id: String, assignment: ActivityAssignmentV2) {
+    func moveAgentToActivity(id: String, assignment: ActivityAssignment) {
         guard let sprite = agentSprites[id] else { return }
         sprite.updateStatus(.walking)
         sprite.stopAnimations()
