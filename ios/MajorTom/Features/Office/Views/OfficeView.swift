@@ -61,9 +61,10 @@ struct OfficeView: View {
             }
         }
         .onAppear {
-            // Wire theme + mood engines to the scene
+            // Wire theme + mood engines and furniture registry to the scene
             scene.themeEngine = viewModel.themeEngine
             scene.moodEngine = viewModel.moodEngine
+            scene.furnitureRegistry = viewModel.activityEngine.furnitureRegistry
 
             // Start engines
             viewModel.themeEngine.start()
@@ -76,10 +77,17 @@ struct OfficeView: View {
                 }
             }
 
-            // Start activity cycling
-            viewModel.activityManager.startCycling { [weak scene] agentId, station in
-                if let station {
-                    scene?.moveAgentToStation(id: agentId, stationType: station.type)
+            // Start activity cycling — when an activity expires, reassign
+            viewModel.activityEngine.startCycling { [weak scene, weak viewModel] agentId, _ in
+                guard let viewModel, let scene else { return }
+                guard let agent = viewModel.agents.first(where: { $0.id == agentId }) else { return }
+                let room = scene.currentRoom(for: agentId) ?? "crewQuarters"
+                if let assignment = viewModel.activityEngine.assignActivity(
+                    agentId: agentId,
+                    characterType: agent.characterType,
+                    currentRoom: room
+                ) {
+                    scene.moveAgentToActivity(id: agentId, assignment: assignment)
                 }
             }
 
@@ -99,7 +107,7 @@ struct OfficeView: View {
             // Stop engines + activity cycling when view disappears
             viewModel.themeEngine.stop()
             viewModel.moodEngine.stop()
-            viewModel.activityManager.stopCycling()
+            viewModel.activityEngine.stopCycling()
             spaceWeather.stop()
         }
         .onChange(of: viewModel.selectedAgentId) { _, newValue in
@@ -122,7 +130,7 @@ struct OfficeView: View {
                 if let agent = viewModel.selectedAgent {
                     AgentInspectorView(
                         agent: agent,
-                        activityDescription: viewModel.activityManager.activityDescription(for: agent.id),
+                        activityDescription: viewModel.activityEngine.activityDescription(for: agent.id),
                         onRename: { newName in
                             viewModel.renameAgent(id: agent.id, newName: newName)
                             scene.updateAgentName(id: agent.id, name: newName)
@@ -378,11 +386,16 @@ struct OfficeView: View {
             }
 
         case .idle:
-            // Try to assign to an activity station first
-            if let station = viewModel.activityManager.assignStation(for: agent.id) {
-                scene.moveAgentToStation(id: agent.id, stationType: station.type)
+            // Try to assign a JSON-configured activity
+            let room = scene.currentRoom(for: agent.id) ?? "crewQuarters"
+            if let assignment = viewModel.activityEngine.assignActivity(
+                agentId: agent.id,
+                characterType: agent.characterType,
+                currentRoom: room
+            ) {
+                scene.moveAgentToActivity(id: agent.id, assignment: assignment)
             } else {
-                // Fall back to break area behavior
+                // Fall back to break area behavior if no activity matches
                 let config = CharacterCatalog.config(for: agent.characterType)
                 if let destination = config.breakBehaviors.randomElement() {
                     let areaType = breakDestinationToArea(destination)

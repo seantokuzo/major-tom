@@ -177,6 +177,11 @@
 		F792FD0EB5F6D63846A49A15 /* GitPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BF2DF38E87E425D2926A8FE /* GitPanelView.swift */; };
 		FB9ACD1627AF69650D07975D /* ActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDB924E236ABFE12B68C803 /* ActivityManager.swift */; };
 		DD234D172CC2AC2AC6C7C563 /* GridMovementEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6D24EC42AF179BEACFD780 /* GridMovementEngine.swift */; };
+		6DA258ECC58371D63590FC9B /* ActivityDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93D2002D7B0DB5BAAE7692D0 /* ActivityDefinition.swift */; };
+		E3D28B814E4854BC378FBF7F /* ActivityRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4414BB482B81635A5703DF3 /* ActivityRegistry.swift */; };
+		98A0C189C7327A6652883D73 /* FurnitureRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 282E1D5B477D7DEE32C76B4B /* FurnitureRegistry.swift */; };
+		E20ABE423588EC0846D75A6A /* ActivitySelectionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72D88CD4F990BB00B9695888 /* ActivitySelectionEngine.swift */; };
+		90CBA5AB2095663428916BD2 /* Activities.json in Resources */ = {isa = PBXBuildFile; fileRef = 8FD57D45E23C7BF64B617B5F /* Activities.json */; };
 		FD27662CD00A7F829ABC6FA4 /* DangerScoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F013B10B2AA2CD96B19588 /* DangerScoring.swift */; };
 		FE62ADBFD8D61511DAA7AC76 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08B5EA37D9C8CAB62E22FA9E /* TerminalView.swift */; };
 		FF32683BA8C9BFCB454493CB /* SessionCountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E652FADA594D09DB757B828 /* SessionCountView.swift */; };
@@ -353,6 +358,11 @@
 		CCBDA7E064D0179C4FD35A17 /* MajorTomWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomWidgetsBundle.swift; sourceTree = "<group>"; };
 		CCDB924E236ABFE12B68C803 /* ActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityManager.swift; sourceTree = "<group>"; };
 		EE6D24EC42AF179BEACFD780 /* GridMovementEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridMovementEngine.swift; sourceTree = "<group>"; };
+		93D2002D7B0DB5BAAE7692D0 /* ActivityDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityDefinition.swift; sourceTree = "<group>"; };
+		B4414BB482B81635A5703DF3 /* ActivityRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityRegistry.swift; sourceTree = "<group>"; };
+		282E1D5B477D7DEE32C76B4B /* FurnitureRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FurnitureRegistry.swift; sourceTree = "<group>"; };
+		72D88CD4F990BB00B9695888 /* ActivitySelectionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivitySelectionEngine.swift; sourceTree = "<group>"; };
+		8FD57D45E23C7BF64B617B5F /* Activities.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Activities.json; sourceTree = "<group>"; };
 		CEE5C5DC2463A313FEDD6406 /* TerminalTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTabBar.swift; sourceTree = "<group>"; };
 		CF16084D9274212487A6B7CC /* TokenBreakdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenBreakdownView.swift; sourceTree = "<group>"; };
 		D06F8E498C8D1F63A30D6A5F /* RateLimitSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateLimitSettingsView.swift; sourceTree = "<group>"; };
@@ -541,6 +551,7 @@
 		1BF75AA0800A3C72B67D050E /* Office */ = {
 			isa = PBXGroup;
 			children = (
+				8FD57D45E23C7BF64B617B5F /* Activities.json */,
 				944EEB19C6C12FD8F9F43846 /* STATUS.md */,
 				EE5F6A7B8C9D0E1F2A3B4C5D /* Effects */,
 				42EB58783C4C82C3775366F2 /* Models */,
@@ -557,6 +568,7 @@
 			isa = PBXGroup;
 			children = (
 				CCDB924E236ABFE12B68C803 /* ActivityManager.swift */,
+				72D88CD4F990BB00B9695888 /* ActivitySelectionEngine.swift */,
 				EE6D24EC42AF179BEACFD780 /* GridMovementEngine.swift */,
 			);
 			path = Services;
@@ -786,9 +798,12 @@
 		42EB58783C4C82C3775366F2 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				93D2002D7B0DB5BAAE7692D0 /* ActivityDefinition.swift */,
+				B4414BB482B81635A5703DF3 /* ActivityRegistry.swift */,
 				F1C51280EF867529A6909DDD /* ActivityStation.swift */,
 				C3C4E64AF88E24ABC75AB59E /* AgentState.swift */,
 				49975C50EF000FB470E30360 /* CharacterConfig.swift */,
+				282E1D5B477D7DEE32C76B4B /* FurnitureRegistry.swift */,
 				579C4AF5EF7599467490F248 /* MoodEngine.swift */,
 				B2A5F6ECD6AEA9681C140DA3 /* OfficeLayout.swift */,
 				BB2C3D4E5F6A7B8C9D0E1F2A /* StationLayout.swift */,
@@ -1544,6 +1559,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				90CBA5AB2095663428916BD2 /* Activities.json in Resources */,
 				A1B2C3D4E5F60718293A4B5C /* Assets.xcassets in Resources */,
 				3F5D30750D5451D281E3E246 /* STATUS.md in Resources */,
 				5202349150346F7BABF87BC7 /* terminal.html in Resources */,
@@ -1586,10 +1602,14 @@
 				CF116C6F7B254D9768A74466 /* AchievementUnlockView.swift in Sources */,
 				E949D804FC6FE80EABAAB318 /* AchievementsListView.swift in Sources */,
 				D6A5DB6D08CDC3BC403ABF09 /* AchievementsViewModel.swift in Sources */,
+				6DA258ECC58371D63590FC9B /* ActivityDefinition.swift in Sources */,
 				EBF47A75810C7AF1AF460CB7 /* ActivityEntry.swift in Sources */,
 				FB9ACD1627AF69650D07975D /* ActivityManager.swift in Sources */,
+				E3D28B814E4854BC378FBF7F /* ActivityRegistry.swift in Sources */,
+				E20ABE423588EC0846D75A6A /* ActivitySelectionEngine.swift in Sources */,
 				DD234D172CC2AC2AC6C7C563 /* GridMovementEngine.swift in Sources */,
 				93EFF11D75E2B7730AA50D4E /* ActivityStation.swift in Sources */,
+				98A0C189C7327A6652883D73 /* FurnitureRegistry.swift in Sources */,
 				8AD9CF79749CD5BE5EF22487 /* AgentInspectorView.swift in Sources */,
 				9FE4BFB91ACE225068E13E8F /* AgentSprite.swift in Sources */,
 				47EC9244ECBFED3B28C37DBA /* AgentState.swift in Sources */,
