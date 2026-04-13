@@ -28,6 +28,15 @@ fi
 echo "=== Ground Control: Create DMG ==="
 echo "Source: ${APP_PATH}"
 
+# Cleanup trap — detach mounted DMG and remove temp file on error
+cleanup() {
+    if mount | grep -q "/Volumes/${VOLUME_NAME}"; then
+        hdiutil detach "/Volumes/${VOLUME_NAME}" -quiet 2>/dev/null || true
+    fi
+    rm -f "${TMP_DMG}"
+}
+trap cleanup EXIT
+
 # Clean previous artifacts
 rm -f "${DMG_PATH}" "${TMP_DMG}"
 

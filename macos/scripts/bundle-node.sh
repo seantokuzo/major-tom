@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# bundle-node.sh — Downloads Node.js v22 LTS binary for macOS
+# bundle-node.sh — Downloads Node.js v24 LTS binary for macOS
 # and stages just the `node` executable for app bundle embedding.
 #
 # Usage: ./bundle-node.sh [--strip] [--arch=arm64|x64] [output-dir]

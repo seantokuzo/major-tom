@@ -94,6 +94,10 @@ jobs:
           draft: false
           prerelease: false
 
+      - name: Sync MCP package version from tag
+        working-directory: mcp/ground-control-mcp
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version
+
       - name: Publish MCP to npm
         if: env.NPM_TOKEN != ''
         working-directory: mcp/ground-control-mcp

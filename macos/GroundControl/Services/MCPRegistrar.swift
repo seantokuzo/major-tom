@@ -57,16 +57,15 @@ enum MCPRegistrar {
     // MARK: - Registration Status
 
     /// Check if Ground Control's MCP server is registered with a client.
+    /// Returns false if the client isn't installed or settings can't be read.
     static func isRegistered(_ client: Client) -> Bool {
-        guard let settings = readSettings(for: client) else { return false }
+        guard let settings = try? readSettings(for: client) else { return false }
 
         switch client {
         case .claudeCode:
-            // Check mcpServers.ground-control in settings JSON
             guard let servers = settings["mcpServers"] as? [String: Any] else { return false }
             return servers["ground-control"] != nil
         case .vscode, .cursor:
-            // Check servers.ground-control in mcp.json
             guard let servers = settings["servers"] as? [String: Any] else { return false }
             return servers["ground-control"] != nil
         }
@@ -127,7 +126,7 @@ enum MCPRegistrar {
 
     private static func mergeClaudeCodeSettings(entry: [String: Any]) throws {
         let path = claudeCodeSettingsPath()
-        var settings = readJSON(at: path) ?? [:]
+        var settings = try readJSON(at: path) ?? [:]
         var servers = settings["mcpServers"] as? [String: Any] ?? [:]
         servers["ground-control"] = entry
         settings["mcpServers"] = servers
@@ -136,7 +135,7 @@ enum MCPRegistrar {
 
     private static func removeClaudeCodeEntry() throws {
         let path = claudeCodeSettingsPath()
-        guard var settings = readJSON(at: path) else { return }
+        guard var settings = try readJSON(at: path) else { return }
         guard var servers = settings["mcpServers"] as? [String: Any] else { return }
         servers.removeValue(forKey: "ground-control")
         settings["mcpServers"] = servers
@@ -155,9 +154,13 @@ enum MCPRegistrar {
 
         // Create parent directory if needed
         let dir = (path as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            atPath: dir,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
 
-        var settings = readJSON(at: path) ?? [:]
+        var settings = try readJSON(at: path) ?? [:]
         var servers = settings["servers"] as? [String: Any] ?? [:]
         servers["ground-control"] = entry
         settings["servers"] = servers
@@ -166,7 +169,7 @@ enum MCPRegistrar {
 
     private static func removeEditorMCPEntry(client: Client) throws {
         let path = editorMCPPath(for: client)
-        guard var settings = readJSON(at: path) else { return }
+        guard var settings = try readJSON(at: path) else { return }
         guard var servers = settings["servers"] as? [String: Any] else { return }
         servers.removeValue(forKey: "ground-control")
         settings["servers"] = servers
@@ -199,21 +202,28 @@ enum MCPRegistrar {
         }
     }
 
-    private static func readSettings(for client: Client) -> [String: Any]? {
+    private static func readSettings(for client: Client) throws -> [String: Any]? {
         switch client {
         case .claudeCode:
-            return readJSON(at: claudeCodeSettingsPath())
+            return try readJSON(at: claudeCodeSettingsPath())
         case .vscode, .cursor:
-            return readJSON(at: editorMCPPath(for: client))
+            return try readJSON(at: editorMCPPath(for: client))
         }
     }
 
     // MARK: - JSON Helpers
 
-    private static func readJSON(at path: String) -> [String: Any]? {
-        guard let data = FileManager.default.contents(atPath: path),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
+    /// Read a JSON file as a dictionary. Returns nil if the file doesn't exist.
+    /// Throws if the file exists but can't be parsed — prevents silently
+    /// overwriting a corrupt settings file.
+    private static func readJSON(at path: String) throws -> [String: Any]? {
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        guard let data = FileManager.default.contents(atPath: path) else {
+            throw RegistrationError.settingsParseError("Could not read file at \(path)")
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw RegistrationError.settingsParseError("File is not valid JSON: \(path)")
+        }
         return json
     }
 
