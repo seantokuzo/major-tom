@@ -1571,7 +1571,28 @@ final class OfficeScene: SKScene {
     func addAgent(id: String, name: String, characterType: CharacterType) {
         guard agentSprites[id] == nil else { return }
         let sprite = AgentSprite(agentId: id, name: name, characterType: characterType)
-        sprite.position = OfficeLayout.doorPosition
+
+        // Idle sprites scatter across random rooms; real agents spawn at airlock
+        if id.hasPrefix("idle-") {
+            let module = StationLayout.modules.randomElement()!
+            let bounds = module.bounds
+            let margin: CGFloat = 60
+            let position = CGPoint(
+                x: CGFloat.random(in: (bounds.minX + margin)...(bounds.maxX - margin)),
+                y: CGFloat.random(in: (bounds.minY + margin)...(bounds.maxY - margin))
+            )
+            // Use grid engine to find nearest walkable cell
+            if let path = gridEngine.findPath(from: position, to: position, in: module.type) {
+                sprite.position = path.last ?? position
+            } else {
+                sprite.position = position
+            }
+            sprite.updateModule(module.type)
+            sprite.startIdleAnimation()
+        } else {
+            sprite.position = OfficeLayout.doorPosition
+        }
+
         sprite.zPosition = 10
         addChild(sprite)
         agentSprites[id] = sprite
