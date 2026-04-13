@@ -33,6 +33,8 @@ struct ConfigView: View {
                 startupSection
                 CloudflareTunnelView(relay: relay, configManager: configManager)
 
+                integrationsSection
+
                 Divider()
                 actionButtons
             }
@@ -218,6 +220,150 @@ struct ConfigView: View {
             }
             .padding(8)
         }
+    }
+
+    // MARK: - Integrations Section
+
+    @State private var registrationStates: [MCPRegistrar.Client: ClientState] = [:]
+    @State private var registrationError: String?
+
+    private enum ClientState {
+        case notInstalled
+        case detected      // installed but not registered
+        case registered
+    }
+
+    @ViewBuilder
+    private var integrationsSection: some View {
+        GroupBox("Integrations") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Register Ground Control with AI coding tools so agents can manage the relay.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(MCPRegistrar.Client.allCases) { client in
+                    integrationRow(client: client)
+                }
+
+                if let error = registrationError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+
+                let detectedUnregistered = MCPRegistrar.Client.allCases.filter {
+                    registrationStates[$0] == .detected
+                }
+                if detectedUnregistered.count > 1 {
+                    HStack {
+                        Spacer()
+                        Button("Register All Detected") {
+                            registerAll(detectedUnregistered)
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+            .padding(8)
+            .onAppear { refreshRegistrationStates() }
+        }
+    }
+
+    @ViewBuilder
+    private func integrationRow(client: MCPRegistrar.Client) -> some View {
+        let state = registrationStates[client] ?? .notInstalled
+
+        HStack(spacing: 8) {
+            Image(systemName: client.sfSymbol)
+                .frame(width: 16)
+                .foregroundStyle(.secondary)
+
+            Text(client.rawValue)
+                .frame(width: 100, alignment: .leading)
+
+            // Status indicator
+            switch state {
+            case .registered:
+                HStack(spacing: 4) {
+                    Circle().fill(.green).frame(width: 8, height: 8)
+                    Text("Registered").font(.caption).foregroundStyle(.green)
+                }
+            case .detected:
+                HStack(spacing: 4) {
+                    Circle().fill(.blue).frame(width: 8, height: 8)
+                    Text("Detected").font(.caption).foregroundStyle(.blue)
+                }
+            case .notInstalled:
+                HStack(spacing: 4) {
+                    Circle().fill(.secondary.opacity(0.4)).frame(width: 8, height: 8)
+                    Text("Not found").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            // Action button
+            switch state {
+            case .registered:
+                Button("Unregister") {
+                    unregisterClient(client)
+                }
+                .controlSize(.small)
+            case .detected:
+                Button("Register") {
+                    registerClient(client)
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+            case .notInstalled:
+                EmptyView()
+            }
+        }
+    }
+
+    private func refreshRegistrationStates() {
+        for client in MCPRegistrar.Client.allCases {
+            if !MCPRegistrar.isInstalled(client) {
+                registrationStates[client] = .notInstalled
+            } else if MCPRegistrar.isRegistered(client) {
+                registrationStates[client] = .registered
+            } else {
+                registrationStates[client] = .detected
+            }
+        }
+    }
+
+    private func registerClient(_ client: MCPRegistrar.Client) {
+        registrationError = nil
+        do {
+            try MCPRegistrar.register(client)
+            refreshRegistrationStates()
+        } catch {
+            registrationError = error.localizedDescription
+        }
+    }
+
+    private func unregisterClient(_ client: MCPRegistrar.Client) {
+        registrationError = nil
+        do {
+            try MCPRegistrar.unregister(client)
+            refreshRegistrationStates()
+        } catch {
+            registrationError = error.localizedDescription
+        }
+    }
+
+    private func registerAll(_ clients: [MCPRegistrar.Client]) {
+        registrationError = nil
+        for client in clients {
+            do {
+                try MCPRegistrar.register(client)
+            } catch {
+                registrationError = error.localizedDescription
+                break
+            }
+        }
+        refreshRegistrationStates()
     }
 
     // MARK: - Action Buttons

@@ -82,6 +82,7 @@ fi
 
 STAGED_NODE="${BUILD_DIR}/staged-node"
 STAGED_RELAY="${BUILD_DIR}/staged-relay"
+STAGED_MCP="${BUILD_DIR}/staged-mcp"
 
 echo "==> bundling Node.js binary"
 "${SCRIPT_DIR}/bundle-node.sh" --strip "${STAGED_NODE}"
@@ -89,6 +90,10 @@ echo "==> bundling Node.js binary"
 echo ""
 echo "==> bundling relay dist"
 "${SCRIPT_DIR}/bundle-relay.sh" "${STAGED_RELAY}"
+
+echo ""
+echo "==> bundling MCP server"
+"${SCRIPT_DIR}/bundle-mcp.sh" "${STAGED_MCP}"
 
 echo ""
 
@@ -114,6 +119,9 @@ chmod +x "${RESOURCES_DIR}/node/node"
 
 echo "==> embedding relay dist into Resources/relay/"
 cp -R "${STAGED_RELAY}" "${RESOURCES_DIR}/relay"
+
+echo "==> embedding MCP server into Resources/mcp/"
+cp -R "${STAGED_MCP}" "${RESOURCES_DIR}/mcp"
 
 # ── Icon ──────────────────────────────────────────────────────────────────
 if [ -f "${ICON_SRC}" ]; then

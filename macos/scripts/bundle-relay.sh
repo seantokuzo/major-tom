@@ -94,6 +94,14 @@ fi
 echo "Installing production node_modules (--omit=dev)..."
 cp "${RELAY_DIR}/package.json" "${OUTPUT_DIR}/package.json"
 cp "${RELAY_DIR}/package-lock.json" "${OUTPUT_DIR}/package-lock.json" 2>/dev/null || true
+
+# Copy the postinstall script so npm can run it in the staged dir. The relay's
+# postinstall (fix-node-pty-perms.mjs) ensures node-pty's spawn-helper binary
+# is executable — skipping it causes posix_spawnp failures at runtime.
+if [[ -d "${RELAY_DIR}/scripts" ]]; then
+    mkdir -p "${OUTPUT_DIR}/scripts"
+    cp "${RELAY_DIR}/scripts/"*.mjs "${OUTPUT_DIR}/scripts/" 2>/dev/null || true
+fi
 (cd "${OUTPUT_DIR}" && npm ci --omit=dev 2>/dev/null || npm install --omit=dev)
 
 echo ""

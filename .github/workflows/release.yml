@@ -1,0 +1,108 @@
+name: Release Ground Control
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install relay dependencies
+        working-directory: relay
+        run: npm ci
+
+      - name: Install MCP dependencies
+        working-directory: mcp/ground-control-mcp
+        run: npm ci
+
+      - name: Build app bundle (release)
+        working-directory: macos
+        run: bash scripts/build-app.sh --release
+
+      - name: Create DMG
+        working-directory: macos
+        run: bash scripts/build-dmg.sh
+
+      # Code signing + notarization (only if certs are configured)
+      - name: Code sign and notarize
+        if: env.APPLE_DEVELOPER_ID != ''
+        working-directory: macos
+        env:
+          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_SPECIFIC_PASSWORD: ${{ secrets.APP_SPECIFIC_PASSWORD }}
+        run: |
+          # Sign the .app with Developer ID
+          codesign --deep --force --options runtime \
+            --sign "Developer ID Application: ${APPLE_DEVELOPER_ID}" \
+            --timestamp \
+            build/GroundControl.app
+
+          # Rebuild DMG with signed app
+          bash scripts/build-dmg.sh
+
+          # Notarize
+          xcrun notarytool submit build/GroundControl.dmg \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APP_SPECIFIC_PASSWORD" \
+            --wait
+
+          # Staple
+          xcrun stapler staple build/GroundControl.dmg
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Ground Control ${{ steps.version.outputs.version }}
+          body: |
+            ## Ground Control ${{ steps.version.outputs.version }}
+
+            ### Installation
+
+            **macOS (DMG):** Download `GroundControl.dmg` below, open it, and drag to Applications.
+
+            **MCP Server (npm):**
+            ```bash
+            claude mcp add ground-control -- npx @major-tom/ground-control-mcp
+            ```
+
+            **Homebrew:**
+            ```bash
+            brew tap seantokuzo/tap
+            brew install --cask ground-control
+            ```
+          files: |
+            macos/build/GroundControl.dmg
+          draft: false
+          prerelease: false
+
+      - name: Sync MCP package version from tag
+        working-directory: mcp/ground-control-mcp
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version
+
+      - name: Publish MCP to npm
+        if: env.NPM_TOKEN != ''
+        working-directory: mcp/ground-control-mcp
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
+          npm publish --access public
