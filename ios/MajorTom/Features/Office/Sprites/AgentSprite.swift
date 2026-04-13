@@ -414,6 +414,49 @@ final class AgentSprite: SKSpriteNode {
                 SKAction.wait(forDuration: 0.2),
             ]))
 
+        case "cooking":
+            // Busy chopping/stirring motion
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 2, y: -1, duration: 0.2),
+                SKAction.moveBy(x: -4, y: 0, duration: 0.25),
+                SKAction.moveBy(x: 2, y: 1, duration: 0.2),
+                SKAction.wait(forDuration: 0.4),
+            ]))
+
+        case "reading":
+            // Very still, occasional page-turn lean
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.wait(forDuration: 2.5),
+                SKAction.moveBy(x: 0.5, y: -0.5, duration: 0.3),
+                SKAction.moveBy(x: -0.5, y: 0.5, duration: 0.3),
+            ]))
+
+        case "waiting":
+            // Impatient weight-shifting
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 1.5, y: 0, duration: 1.0),
+                SKAction.moveBy(x: -3, y: 0, duration: 1.5),
+                SKAction.moveBy(x: 1.5, y: 0, duration: 1.0),
+                SKAction.wait(forDuration: 0.8),
+            ]))
+
+        case "walking":
+            // Gentle wandering sway
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 3, y: 1, duration: 0.8),
+                SKAction.moveBy(x: -6, y: -2, duration: 1.2),
+                SKAction.moveBy(x: 3, y: 1, duration: 0.8),
+            ]))
+
+        case "arcade":
+            // Rapid button-mashing with excitement
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 1, y: -1, duration: 0.1),
+                SKAction.moveBy(x: -2, y: 1, duration: 0.1),
+                SKAction.moveBy(x: 1, y: 0, duration: 0.1),
+                SKAction.wait(forDuration: 0.15),
+            ]))
+
         default:
             // Generic idle sway fallback
             animation = SKAction.repeatForever(SKAction.sequence([
