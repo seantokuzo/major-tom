@@ -124,12 +124,116 @@ final class TerminalViewModel {
     /// Reference to the auth service for relay URL and token.
     private let auth: AuthService
 
+    // MARK: - Tab Persistence
+
+    /// UserDefaults key for persisted tab IDs (string array).
+    private static let persistedTabIdsKey = "mt-terminal-tab-ids"
+
+    /// UserDefaults key for the active tab ID (string).
+    private static let persistedActiveTabIdKey = "mt-terminal-active-tab-id"
+
     init(auth: AuthService) {
         self.auth = auth
         self.keybarViewModel = KeybarViewModel(auth: auth)
-        // Create the initial default tab.
-        let initialTab = TerminalTab(title: "Terminal", isActive: true)
-        self.tabs = [initialTab]
+
+        // Restore persisted tab IDs, or create default.
+        // This is the critical fix for tmux window orphan accumulation:
+        // previously, every app launch generated a random UUID → new tabId
+        // → new tmux window on the relay. By persisting and restoring the
+        // tab IDs, we reconnect to the SAME tmux windows across launches.
+        let defaults = UserDefaults.standard
+        let savedTabIds = defaults.stringArray(forKey: Self.persistedTabIdsKey) ?? []
+        let savedActiveId = defaults.string(forKey: Self.persistedActiveTabIdKey)
+
+        if !savedTabIds.isEmpty {
+            self.tabs = savedTabIds.map { tabId in
+                TerminalTab(
+                    tabId: tabId,
+                    title: "Terminal",
+                    isActive: tabId == savedActiveId
+                )
+            }
+            // Ensure at least one tab is active.
+            if !self.tabs.contains(where: { $0.isActive }) {
+                self.tabs[0].isActive = true
+            }
+        } else {
+            // First launch — create a default tab and persist it.
+            let initialTab = TerminalTab(title: "Terminal", isActive: true)
+            self.tabs = [initialTab]
+            persistTabIds()
+        }
+    }
+
+    /// Persist current tab IDs and active tab to UserDefaults.
+    private func persistTabIds() {
+        let defaults = UserDefaults.standard
+        defaults.set(tabs.map(\.tabId), forKey: Self.persistedTabIdsKey)
+        defaults.set(activeTab?.tabId, forKey: Self.persistedActiveTabIdKey)
+    }
+
+    /// Reconcile persisted tabs with the relay's actual tmux windows.
+    ///
+    /// Fetches `GET /shell/tabs` and removes any local tabs whose windows
+    /// no longer exist on the relay (e.g. reaped after a relay restart).
+    /// Tabs whose windows are gone are pruned silently — the relay will
+    /// create fresh windows when the remaining tabs connect.
+    ///
+    /// Call once after auth is established (e.g. from the terminal view's
+    /// onAppear or after a successful auth check).
+    func reconcileWithRelay() async {
+        let base = relayBaseURL
+        guard let url = URL(string: "\(base)/shell/tabs") else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        // Auth: session cookie is handled by the shared URLSession cookie store.
+        // For WKWebView JWT fallback, append the token as a query param.
+        if let token = authToken {
+            var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            components?.queryItems = [URLQueryItem(name: "token", value: token)]
+            if let tokenURL = components?.url {
+                request.url = tokenURL
+            }
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else { return }
+
+            struct TabsResponse: Decodable {
+                let tabs: [String]
+            }
+
+            let decoded = try JSONDecoder().decode(TabsResponse.self, from: data)
+            let relayWindows = Set(decoded.tabs)
+
+            // If the relay has no windows at all (tmux not running, relay just
+            // started), skip reconciliation — our tabs will create windows on
+            // connect. Only prune when the relay has SOME windows but ours are
+            // missing from the set.
+            if relayWindows.isEmpty { return }
+
+            let before = tabs.count
+            tabs = tabs.filter { relayWindows.contains($0.tabId) }
+
+            // If all our tabs were pruned, create a fresh default.
+            if tabs.isEmpty {
+                let newTab = TerminalTab(title: "Terminal", isActive: true)
+                tabs = [newTab]
+            } else if !tabs.contains(where: { $0.isActive }) {
+                tabs[0].isActive = true
+            }
+
+            if tabs.count != before {
+                persistTabIds()
+            }
+        } catch {
+            // Network error — skip reconciliation, tabs will connect normally.
+            // The relay creates windows on demand so stale tab IDs just get
+            // fresh windows, which is acceptable.
+        }
     }
 
     // MARK: - Tab Management
@@ -143,6 +247,7 @@ final class TerminalViewModel {
 
         let newTab = TerminalTab(title: "Terminal", isActive: true)
         tabs.append(newTab)
+        persistTabIds()
 
         // Signal the web view to connect to the new tab.
         pendingTabSwitch = newTab.tabId
@@ -162,6 +267,7 @@ final class TerminalViewModel {
         if tabs.isEmpty {
             let newTab = TerminalTab(title: "Terminal", isActive: true)
             tabs.append(newTab)
+            persistTabIds()
             pendingTabSwitch = newTab.tabId
             return
         }
@@ -172,6 +278,7 @@ final class TerminalViewModel {
             tabs[newIndex].isActive = true
             pendingTabSwitch = tabs[newIndex].tabId
         }
+        persistTabIds()
     }
 
     /// Request to close a tab — shows confirmation dialog.
@@ -199,6 +306,7 @@ final class TerminalViewModel {
             tabs[i].isActive = false
         }
         tabs[targetIndex].isActive = true
+        persistTabIds()
 
         // Signal the web view to disconnect current and connect to the new tab.
         pendingTabSwitch = tabs[targetIndex].tabId

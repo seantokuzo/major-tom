@@ -12,13 +12,15 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
 import type { SessionManager } from '../sessions/session-manager.js';
+import type { WindowReaper } from '../adapters/window-reaper.js';
 import { attachPty } from '../adapters/pty-adapter.js';
 import { tmuxBootstrap } from '../adapters/tmux-bootstrap.js';
-import { killWindow } from '../utils/tmux-cli.js';
+import { killWindow, listWindows } from '../utils/tmux-cli.js';
 import { logger } from '../utils/logger.js';
 
 interface ShellRouteDeps {
   sessionManager: SessionManager;
+  windowReaper: WindowReaper;
 }
 
 /** Result of authenticating a shell request (WS upgrade or REST kill). */
@@ -94,7 +96,7 @@ function clampDim(raw: string | undefined): number | undefined {
 }
 
 export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
-  const { sessionManager } = deps;
+  const { sessionManager, windowReaper } = deps;
 
   return async (fastify) => {
     fastify.get<{ Params: { tabId: string }; Querystring: { token?: string; cols?: string; rows?: string } }>(
@@ -155,8 +157,18 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
             attachedAt: handle.createdAt,
           });
 
+          // Notify the window reaper that a client connected — cancels
+          // any pending disconnect grace timer for this window.
+          windowReaper.onClientConnected(tabId);
+
           const cleanup = () => {
             sessionManager.unregisterTab(tabId, ourPid);
+            // If this was the last client for this window, start the
+            // reaper's disconnect grace timer. After the grace period,
+            // the window is killed if nobody reconnects.
+            if (!sessionManager.getTab(tabId)) {
+              windowReaper.onLastClientDisconnected(tabId);
+            }
           };
           socket.on('close', cleanup);
           socket.on('error', cleanup);
@@ -169,6 +181,27 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
           } catch { /* ignore */ }
           socket.close(1011, 'pty attach failed');
         }
+      },
+    );
+
+    // ── Tab discovery ─────────────────────────────────────────
+    // `GET /shell/tabs` — returns the list of existing tmux window names.
+    // Clients use this on launch to discover windows they can reconnect
+    // to (iOS tab persistence) rather than blindly creating new ones.
+    // Also useful for admin/debug tooling.
+    fastify.get<{ Querystring: { token?: string } }>(
+      '/shell/tabs',
+      async (request, reply) => {
+        const sessionCookie = request.cookies?.[SESSION_COOKIE];
+        const { token: queryToken } = request.query;
+
+        const { authed } = await authenticateShellRequest(sessionCookie, queryToken);
+        if (!authed) {
+          return reply.code(401).send({ error: 'Authentication required' });
+        }
+
+        const windows = await listWindows();
+        return { tabs: windows };
       },
     );
 

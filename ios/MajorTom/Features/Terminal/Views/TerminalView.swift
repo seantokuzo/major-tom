@@ -184,6 +184,11 @@ struct TerminalView: View {
             liveActivityTask?.cancel()
         }
         .task {
+            // Reconcile persisted tab IDs with the relay's actual tmux
+            // windows. Runs before the WebView connects so stale tabs
+            // are pruned before we attempt to attach to them.
+            await viewModel.reconcileWithRelay()
+
             await viewModel.keybarViewModel.syncFromRelay()
             // Wait for the JS terminal to initialize before applying synced preferences,
             // otherwise setFontSize/setTheme no-op because `term` is nil in the webview.
