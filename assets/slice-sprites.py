@@ -278,7 +278,10 @@ def write_imageset(img: Image.Image, name: str, direction: str, output_dir: Path
 
 def slice_sprite_sheet(source_path: Path, name: str, output_dir: Path, bg_threshold: int = 220, labels: Optional[list[str]] = None) -> bool:
     """Slice a sprite sheet into 4 sprites with given labels."""
-    used_labels = labels or DIRECTIONS
+    used_labels = DIRECTIONS if labels is None else labels
+    if len(used_labels) != 4:
+        print(f"  ERROR: Expected 4 labels, got {len(used_labels)}: {used_labels}")
+        return False
     print(f"\n{'='*50}")
     print(f"Slicing: {source_path.name} → {name} ({', '.join(used_labels)})")
     print(f"{'='*50}")
