@@ -176,6 +176,7 @@
 		F59B2FB30D83FD15E16BA5D9 /* ToolActivityViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9D0828739E6805328165EA4 /* ToolActivityViewModel.swift */; };
 		F792FD0EB5F6D63846A49A15 /* GitPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BF2DF38E87E425D2926A8FE /* GitPanelView.swift */; };
 		FB9ACD1627AF69650D07975D /* ActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDB924E236ABFE12B68C803 /* ActivityManager.swift */; };
+		DD234D172CC2AC2AC6C7C563 /* GridMovementEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6D24EC42AF179BEACFD780 /* GridMovementEngine.swift */; };
 		FD27662CD00A7F829ABC6FA4 /* DangerScoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10F013B10B2AA2CD96B19588 /* DangerScoring.swift */; };
 		FE62ADBFD8D61511DAA7AC76 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08B5EA37D9C8CAB62E22FA9E /* TerminalView.swift */; };
 		FF32683BA8C9BFCB454493CB /* SessionCountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E652FADA594D09DB757B828 /* SessionCountView.swift */; };
@@ -351,6 +352,7 @@
 		CC19E99FB3AAD181F192CD3B /* MessageCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageCodec.swift; sourceTree = "<group>"; };
 		CCBDA7E064D0179C4FD35A17 /* MajorTomWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomWidgetsBundle.swift; sourceTree = "<group>"; };
 		CCDB924E236ABFE12B68C803 /* ActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityManager.swift; sourceTree = "<group>"; };
+		EE6D24EC42AF179BEACFD780 /* GridMovementEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridMovementEngine.swift; sourceTree = "<group>"; };
 		CEE5C5DC2463A313FEDD6406 /* TerminalTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTabBar.swift; sourceTree = "<group>"; };
 		CF16084D9274212487A6B7CC /* TokenBreakdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenBreakdownView.swift; sourceTree = "<group>"; };
 		D06F8E498C8D1F63A30D6A5F /* RateLimitSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateLimitSettingsView.swift; sourceTree = "<group>"; };
@@ -555,6 +557,7 @@
 			isa = PBXGroup;
 			children = (
 				CCDB924E236ABFE12B68C803 /* ActivityManager.swift */,
+				EE6D24EC42AF179BEACFD780 /* GridMovementEngine.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -1585,6 +1588,7 @@
 				D6A5DB6D08CDC3BC403ABF09 /* AchievementsViewModel.swift in Sources */,
 				EBF47A75810C7AF1AF460CB7 /* ActivityEntry.swift in Sources */,
 				FB9ACD1627AF69650D07975D /* ActivityManager.swift in Sources */,
+				DD234D172CC2AC2AC6C7C563 /* GridMovementEngine.swift in Sources */,
 				93EFF11D75E2B7730AA50D4E /* ActivityStation.swift in Sources */,
 				8AD9CF79749CD5BE5EF22487 /* AgentInspectorView.swift in Sources */,
 				9FE4BFB91ACE225068E13E8F /* AgentSprite.swift in Sources */,

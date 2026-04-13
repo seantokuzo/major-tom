@@ -20,9 +20,19 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Optional
 from PIL import Image
 
 DIRECTIONS = ["front", "back", "left", "right"]
+
+# Walk sheet labels: top-left, top-right, bottom-left, bottom-right
+WALK_LABELS = ["walkLeft1", "walkLeft2", "walkRight1", "walkRight2"]
+
+# Activity sheet labels (humans): sitting, sleeping, working, exercising
+HUMAN_ACTIVITY_LABELS = ["sitting", "sleeping", "working", "exercising"]
+
+# Activity sheet labels (dogs): sleeping, running, sniffing, sitting
+DOG_ACTIVITY_LABELS = ["sleeping", "running", "sniffing", "sitting"]
 
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
@@ -261,16 +271,19 @@ def write_imageset(img: Image.Image, name: str, direction: str, output_dir: Path
             {"idiom": "universal", "scale": "3x"},
         ],
         "info": {"author": "xcode", "version": 1},
-        "properties": {"preserves-vector-representation": True},
     }
     with open(imageset_dir / "Contents.json", "w") as f:
         json.dump(contents, f, indent=2)
 
 
-def slice_sprite_sheet(source_path: Path, name: str, output_dir: Path, bg_threshold: int = 220) -> bool:
-    """Slice a sprite sheet into 4 directional sprites."""
+def slice_sprite_sheet(source_path: Path, name: str, output_dir: Path, bg_threshold: int = 220, labels: Optional[list[str]] = None) -> bool:
+    """Slice a sprite sheet into 4 sprites with given labels."""
+    used_labels = DIRECTIONS if labels is None else labels
+    if len(used_labels) != 4:
+        print(f"  ERROR: Expected 4 labels, got {len(used_labels)}: {used_labels}")
+        return False
     print(f"\n{'='*50}")
-    print(f"Slicing: {source_path.name} → {name}")
+    print(f"Slicing: {source_path.name} → {name} ({', '.join(used_labels)})")
     print(f"{'='*50}")
 
     img = Image.open(source_path).convert("RGBA")
@@ -287,9 +300,9 @@ def slice_sprite_sheet(source_path: Path, name: str, output_dir: Path, bg_thresh
     sprites = normalize_sprites(sprites)
     print(f"  Normalized to: {sprites[0].width}x{sprites[0].height}")
 
-    for sprite, direction in zip(sprites, DIRECTIONS):
-        write_imageset(sprite, name, direction, output_dir)
-        print(f"  Wrote: {name}_{direction}.imageset/")
+    for sprite, label in zip(sprites, used_labels):
+        write_imageset(sprite, name, label, output_dir)
+        print(f"  Wrote: {name}_{label}.imageset/")
 
     print(f"  ✓ Done — {name}")
     return True
@@ -302,6 +315,9 @@ def main():
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--source-dir", type=Path, default=DEFAULT_SOURCE_DIR)
     parser.add_argument("--threshold", type=int, default=220, help="BG removal threshold")
+    parser.add_argument("--labels", nargs=4, help="Custom labels for the 4 quadrants (default: front back left right)")
+    parser.add_argument("--mode", choices=["standing", "walk", "human-activity", "dog-activity"],
+                       default="standing", help="Preset label modes")
     args = parser.parse_args()
 
     source_path = args.source_dir / args.source
@@ -311,7 +327,19 @@ def main():
         print(f"Source not found: {source_path}")
         sys.exit(1)
 
-    if not slice_sprite_sheet(source_path, args.name, args.output_dir, args.threshold):
+    # Determine labels
+    labels = args.labels
+    if not labels:
+        if args.mode == "walk":
+            labels = WALK_LABELS
+        elif args.mode == "human-activity":
+            labels = HUMAN_ACTIVITY_LABELS
+        elif args.mode == "dog-activity":
+            labels = DOG_ACTIVITY_LABELS
+        else:
+            labels = DIRECTIONS
+
+    if not slice_sprite_sheet(source_path, args.name, args.output_dir, args.threshold, labels):
         sys.exit(1)
 
 

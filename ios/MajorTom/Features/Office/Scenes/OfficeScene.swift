@@ -57,6 +57,12 @@ final class OfficeScene: SKScene {
     private var moodSpeechTime: TimeInterval = 0
     private var currentAlertState: StationAlertState = .normal
 
+    /// Grid-based pathfinding engine for intra-room movement.
+    let gridEngine = GridMovementEngine()
+
+    /// All placed furniture for grid obstacle registration.
+    private var furniturePlacements: [ModuleType: [FurniturePlacement]] = [:]
+
     // MARK: - Scene Lifecycle
 
     override func didMove(to view: SKView) {
@@ -81,6 +87,7 @@ final class OfficeScene: SKScene {
         renderCorridor()
         renderWindows()
         renderModuleFurniture()
+        buildMovementGrids()
         renderDesks()
         renderAirlockDoors()
         renderMainAirlock()
@@ -406,6 +413,25 @@ final class OfficeScene: SKScene {
         return container
     }
 
+    // MARK: - Grid Movement
+
+    /// Register a furniture sprite as a grid obstacle.
+    private func registerFurniture(_ node: SKNode, id: String, in module: ModuleType) {
+        let size: CGSize
+        if let sprite = node as? SKSpriteNode {
+            size = sprite.size
+        } else {
+            size = node.frame.size
+        }
+        let placement = FurniturePlacement(id: id, position: node.position, size: size)
+        furniturePlacements[module, default: []].append(placement)
+    }
+
+    /// Build pathfinding grids for all rooms using registered furniture.
+    private func buildMovementGrids() {
+        gridEngine.buildAllGrids(furniturePlacements: furniturePlacements)
+    }
+
     // MARK: - Module Furniture
 
     /// Place texture-based furniture in each module using StationLayout bounds.
@@ -423,29 +449,34 @@ final class OfficeScene: SKScene {
     private func renderCommandBridgeFurniture() {
         guard let module = StationLayout.module(for: .commandBridge) else { return }
         let bounds = module.bounds
+        let room = ModuleType.commandBridge
 
         // Captain's chair — center-upper area of the bridge
         let chair = StationFurnitureFactory.captainsChair()
         chair.position = CGPoint(x: bounds.midX, y: bounds.maxY - 100)
         chair.zPosition = 3
         addChild(chair)
+        registerFurniture(chair, id: "bridge_chair", in: room)
 
         // Tactical display — upper wall
         let tactical = StationFurnitureFactory.tacticalDisplay()
         tactical.position = CGPoint(x: bounds.midX, y: bounds.maxY - 40)
         tactical.zPosition = 3
         addChild(tactical)
+        registerFurniture(tactical, id: "bridge_tactical", in: room)
 
         // Status screens flanking the bridge
         let status1 = StationFurnitureFactory.statusScreen()
         status1.position = CGPoint(x: bounds.minX + 60, y: bounds.maxY - 60)
         status1.zPosition = 3
         addChild(status1)
+        registerFurniture(status1, id: "bridge_status1", in: room)
 
         let status2 = StationFurnitureFactory.statusScreen()
         status2.position = CGPoint(x: bounds.maxX - 60, y: bounds.maxY - 60)
         status2.zPosition = 3
         addChild(status2)
+        registerFurniture(status2, id: "bridge_status2", in: room)
 
         addWallStatusPanels(in: bounds, count: 4)
     }
@@ -453,75 +484,88 @@ final class OfficeScene: SKScene {
     private func renderEngineeringFurniture() {
         guard let module = StationLayout.module(for: .engineering) else { return }
         let bounds = module.bounds
+        let room = ModuleType.engineering
 
         // REACTOR CORE — centerpiece
         let reactor = StationFurnitureFactory.reactorCore()
         reactor.position = CGPoint(x: bounds.midX, y: bounds.midY + 40)
         reactor.zPosition = 3
         addChild(reactor)
+        registerFurniture(reactor, id: "eng_reactor", in: room)
 
         // Control panels flanking the reactor
         let panel1 = StationFurnitureFactory.controlPanel()
         panel1.position = CGPoint(x: bounds.minX + 80, y: bounds.midY + 120)
         panel1.zPosition = 3
         addChild(panel1)
+        registerFurniture(panel1, id: "eng_panel1", in: room)
 
         let panel2 = StationFurnitureFactory.controlPanel()
         panel2.position = CGPoint(x: bounds.maxX - 80, y: bounds.midY + 120)
         panel2.zPosition = 3
         addChild(panel2)
+        registerFurniture(panel2, id: "eng_panel2", in: room)
 
         // Tool rack on the left-lower
         let tools = StationFurnitureFactory.toolRack()
         tools.position = CGPoint(x: bounds.minX + 60, y: bounds.midY - 120)
         tools.zPosition = 3
         addChild(tools)
+        registerFurniture(tools, id: "eng_tools", in: room)
 
         // Storage crate on the right-lower
         let crate = StationFurnitureFactory.storageCrate()
         crate.position = CGPoint(x: bounds.maxX - 60, y: bounds.midY - 120)
         crate.zPosition = 3
         addChild(crate)
+        registerFurniture(crate, id: "eng_crate", in: room)
     }
 
     private func renderCrewQuartersFurniture() {
         guard let module = StationLayout.module(for: .crewQuarters) else { return }
         let bounds = module.bounds
+        let room = ModuleType.crewQuarters
 
         // Bunks — 2 along upper wall (room is narrower now)
         let bunk1 = StationFurnitureFactory.bunkBed()
         bunk1.position = CGPoint(x: bounds.minX + 100, y: bounds.maxY - 80)
         bunk1.zPosition = 3
         addChild(bunk1)
+        registerFurniture(bunk1, id: "crew_bunk1", in: room)
 
         let bunk2 = StationFurnitureFactory.bunkBed()
         bunk2.position = CGPoint(x: bounds.maxX - 100, y: bounds.maxY - 80)
         bunk2.zPosition = 3
         addChild(bunk2)
+        registerFurniture(bunk2, id: "crew_bunk2", in: room)
 
         // Bunk 3 along upper-mid
         let bunk3 = StationFurnitureFactory.bunkBed()
         bunk3.position = CGPoint(x: bounds.midX, y: bounds.maxY - 180)
         bunk3.zPosition = 3
         addChild(bunk3)
+        registerFurniture(bunk3, id: "crew_bunk3", in: room)
 
         // Couch in the lounge area
         let couch = StationFurnitureFactory.couch()
         couch.position = CGPoint(x: bounds.midX - 80, y: bounds.midY - 60)
         couch.zPosition = 3
         addChild(couch)
+        registerFurniture(couch, id: "crew_couch", in: room)
 
         // Media screen on right wall area
         let media = StationFurnitureFactory.mediaScreen()
         media.position = CGPoint(x: bounds.maxX - 70, y: bounds.midY)
         media.zPosition = 3
         addChild(media)
+        registerFurniture(media, id: "crew_media", in: room)
 
         // Floor lamp
         let lamp = StationFurnitureFactory.floorLampOn()
         lamp.position = CGPoint(x: bounds.midX + 120, y: bounds.midY - 100)
         lamp.zPosition = 3
         addChild(lamp)
+        registerFurniture(lamp, id: "crew_lamp", in: room)
 
         addWallStatusPanels(in: bounds, count: 2)
     }
@@ -529,29 +573,34 @@ final class OfficeScene: SKScene {
     private func renderGalleyFurniture() {
         guard let module = StationLayout.module(for: .galley) else { return }
         let bounds = module.bounds
+        let room = ModuleType.galley
 
         // Food dispensers along the upper wall
         let disp1 = StationFurnitureFactory.foodDispenser()
         disp1.position = CGPoint(x: bounds.minX + 100, y: bounds.maxY - 70)
         disp1.zPosition = 3
         addChild(disp1)
+        registerFurniture(disp1, id: "galley_disp1", in: room)
 
         let disp2 = StationFurnitureFactory.foodDispenser()
         disp2.position = CGPoint(x: bounds.minX + 220, y: bounds.maxY - 70)
         disp2.zPosition = 3
         addChild(disp2)
+        registerFurniture(disp2, id: "galley_disp2", in: room)
 
         // Coffee machine
         let coffee = StationFurnitureFactory.coffeeMachine()
         coffee.position = CGPoint(x: bounds.maxX - 100, y: bounds.maxY - 70)
         coffee.zPosition = 3
         addChild(coffee)
+        registerFurniture(coffee, id: "galley_coffee", in: room)
 
         // Dining table in center-lower
         let table = StationFurnitureFactory.diningTable()
         table.position = CGPoint(x: bounds.midX, y: bounds.midY - 40)
         table.zPosition = 3
         addChild(table)
+        registerFurniture(table, id: "galley_table", in: room)
 
         addWallStatusPanels(in: bounds, count: 2)
     }
@@ -559,34 +608,40 @@ final class OfficeScene: SKScene {
     private func renderBioDomeFurniture() {
         guard let module = StationLayout.module(for: .bioDome) else { return }
         let bounds = module.bounds
+        let room = ModuleType.bioDome
 
         // Trees
         let tree1 = StationFurnitureFactory.tree()
         tree1.position = CGPoint(x: bounds.minX + 100, y: bounds.midY + 80)
         tree1.zPosition = 3
         addChild(tree1)
+        registerFurniture(tree1, id: "bio_tree1", in: room)
 
         let tree2 = StationFurnitureFactory.tree()
         tree2.position = CGPoint(x: bounds.maxX - 100, y: bounds.midY + 80)
         tree2.zPosition = 3
         addChild(tree2)
+        registerFurniture(tree2, id: "bio_tree2", in: room)
 
         // Water feature — center
         let water = StationFurnitureFactory.waterFeature()
         water.position = CGPoint(x: bounds.midX, y: bounds.midY - 60)
         water.zPosition = 3
         addChild(water)
+        registerFurniture(water, id: "bio_water", in: room)
 
         // Office plants
         let plant1 = StationFurnitureFactory.officePlant()
         plant1.position = CGPoint(x: bounds.midX - 120, y: bounds.midY - 120)
         plant1.zPosition = 3
         addChild(plant1)
+        registerFurniture(plant1, id: "bio_plant1", in: room)
 
         let plant2 = StationFurnitureFactory.officePlant()
         plant2.position = CGPoint(x: bounds.midX + 120, y: bounds.midY - 120)
         plant2.zPosition = 3
         addChild(plant2)
+        registerFurniture(plant2, id: "bio_plant2", in: room)
 
         // Grow-light panels on ceiling
         for x in stride(from: bounds.minX + 60, to: bounds.maxX - 40, by: 100) {
@@ -608,63 +663,74 @@ final class OfficeScene: SKScene {
     private func renderArboretumFurniture() {
         guard let module = StationLayout.module(for: .arboretum) else { return }
         let bounds = module.bounds
+        let room = ModuleType.arboretum
 
         // Tree — center upper
         let tree = StationFurnitureFactory.tree()
         tree.position = CGPoint(x: bounds.midX, y: bounds.midY + 100)
         tree.zPosition = 3
         addChild(tree)
+        registerFurniture(tree, id: "arb_tree", in: room)
 
         // Park benches
         let bench1 = StationFurnitureFactory.parkBench()
         bench1.position = CGPoint(x: bounds.minX + 100, y: bounds.midY - 60)
         bench1.zPosition = 3
         addChild(bench1)
+        registerFurniture(bench1, id: "arb_bench1", in: room)
 
         let bench2 = StationFurnitureFactory.parkBench()
         bench2.position = CGPoint(x: bounds.maxX - 100, y: bounds.midY - 60)
         bench2.zPosition = 3
         addChild(bench2)
+        registerFurniture(bench2, id: "arb_bench2", in: room)
 
         // Pond
         let pond = StationFurnitureFactory.pond()
         pond.position = CGPoint(x: bounds.midX + 100, y: bounds.midY + 20)
         pond.zPosition = 3
         addChild(pond)
+        registerFurniture(pond, id: "arb_pond", in: room)
 
         // Office plant
         let plant = StationFurnitureFactory.officePlant()
         plant.position = CGPoint(x: bounds.minX + 70, y: bounds.midY + 120)
         plant.zPosition = 3
         addChild(plant)
+        registerFurniture(plant, id: "arb_plant", in: room)
     }
 
     private func renderTrainingBayFurniture() {
         guard let module = StationLayout.module(for: .trainingBay) else { return }
         let bounds = module.bounds
+        let room = ModuleType.trainingBay
 
         // Treadmills — stacked vertically in narrower room
         let treadmill1 = StationFurnitureFactory.treadmill()
         treadmill1.position = CGPoint(x: bounds.minX + 120, y: bounds.midY + 80)
         treadmill1.zPosition = 3
         addChild(treadmill1)
+        registerFurniture(treadmill1, id: "train_treadmill1", in: room)
 
         let treadmill2 = StationFurnitureFactory.treadmill()
         treadmill2.position = CGPoint(x: bounds.minX + 120, y: bounds.midY - 40)
         treadmill2.zPosition = 3
         addChild(treadmill2)
+        registerFurniture(treadmill2, id: "train_treadmill2", in: room)
 
         // Weight rack
         let weights = StationFurnitureFactory.weightRack()
         weights.position = CGPoint(x: bounds.maxX - 120, y: bounds.midY + 80)
         weights.zPosition = 3
         addChild(weights)
+        registerFurniture(weights, id: "train_weights", in: room)
 
         // Equipment locker
         let locker = StationFurnitureFactory.equipmentLocker()
         locker.position = CGPoint(x: bounds.maxX - 80, y: bounds.midY - 80)
         locker.zPosition = 3
         addChild(locker)
+        registerFurniture(locker, id: "train_locker", in: room)
 
         addWallStatusPanels(in: bounds, count: 2)
     }
@@ -672,39 +738,46 @@ final class OfficeScene: SKScene {
     private func renderEVABayFurniture() {
         guard let module = StationLayout.module(for: .evaBay) else { return }
         let bounds = module.bounds
+        let room = ModuleType.evaBay
 
         // Space suit racks — 3 arranged vertically in narrower room
         let suit1 = StationFurnitureFactory.spaceSuitRack()
         suit1.position = CGPoint(x: bounds.minX + 100, y: bounds.midY + 80)
         suit1.zPosition = 3
         addChild(suit1)
+        registerFurniture(suit1, id: "eva_suit1", in: room)
 
         let suit2 = StationFurnitureFactory.spaceSuitRack()
         suit2.position = CGPoint(x: bounds.midX, y: bounds.midY + 80)
         suit2.zPosition = 3
         addChild(suit2)
+        registerFurniture(suit2, id: "eva_suit2", in: room)
 
         let suit3 = StationFurnitureFactory.spaceSuitRack()
         suit3.position = CGPoint(x: bounds.maxX - 100, y: bounds.midY + 80)
         suit3.zPosition = 3
         addChild(suit3)
+        registerFurniture(suit3, id: "eva_suit3", in: room)
 
         // Storage crates — lower area
         let crate1 = StationFurnitureFactory.storageCrate()
         crate1.position = CGPoint(x: bounds.minX + 150, y: bounds.midY - 100)
         crate1.zPosition = 3
         addChild(crate1)
+        registerFurniture(crate1, id: "eva_crate1", in: room)
 
         let crate2 = StationFurnitureFactory.storageCrate()
         crate2.position = CGPoint(x: bounds.maxX - 150, y: bounds.midY - 100)
         crate2.zPosition = 3
         addChild(crate2)
+        registerFurniture(crate2, id: "eva_crate2", in: room)
 
         // Status screen
         let status = StationFurnitureFactory.statusScreen()
         status.position = CGPoint(x: bounds.midX, y: bounds.maxY - 50)
         status.zPosition = 3
         addChild(status)
+        registerFurniture(status, id: "eva_status", in: room)
 
         addWallStatusPanels(in: bounds, count: 2)
     }
@@ -1331,6 +1404,11 @@ final class OfficeScene: SKScene {
         updateParallax()
         updateDoorProximity()
 
+        // Purge expired cell reservations every ~60 frames (~1s)
+        if Int(currentTime * 60) % 60 == 0 {
+            gridEngine.purgeExpiredReservations()
+        }
+
         if currentTime - interactionScanTime > 8 {
             interactionScanTime = currentTime
             scanForInteractions()
@@ -1493,7 +1571,28 @@ final class OfficeScene: SKScene {
     func addAgent(id: String, name: String, characterType: CharacterType) {
         guard agentSprites[id] == nil else { return }
         let sprite = AgentSprite(agentId: id, name: name, characterType: characterType)
-        sprite.position = OfficeLayout.doorPosition
+
+        // Idle sprites scatter across random rooms; real agents spawn at airlock
+        if id.hasPrefix("idle-") {
+            let module = StationLayout.modules.randomElement()!
+            let bounds = module.bounds
+            let margin: CGFloat = 60
+            let position = CGPoint(
+                x: CGFloat.random(in: (bounds.minX + margin)...(bounds.maxX - margin)),
+                y: CGFloat.random(in: (bounds.minY + margin)...(bounds.maxY - margin))
+            )
+            // Use grid engine to find nearest walkable cell
+            if let path = gridEngine.findPath(from: position, to: position, in: module.type) {
+                sprite.position = path.last ?? position
+            } else {
+                sprite.position = position
+            }
+            sprite.updateModule(module.type)
+            sprite.startIdleAnimation()
+        } else {
+            sprite.position = OfficeLayout.doorPosition
+        }
+
         sprite.zPosition = 10
         addChild(sprite)
         agentSprites[id] = sprite
@@ -1501,6 +1600,7 @@ final class OfficeScene: SKScene {
 
     func removeAgent(id: String) {
         guard let sprite = agentSprites[id] else { return }
+        gridEngine.releaseAllReservations(for: id)
         sprite.stopAnimations()
         sprite.run(SKAction.fadeOut(withDuration: 0.5)) { [weak self] in
             sprite.removeFromParent()
@@ -1513,7 +1613,8 @@ final class OfficeScene: SKScene {
         let seatPos = CGPoint(x: OfficeLayout.desks[deskIndex].position.x, y: OfficeLayout.desks[deskIndex].position.y - 20)
         sprite.stopAnimations()
         sprite.updateStatus(.walking)
-        let waypoints = WaypointPathfinder.findPath(from: sprite.position, to: seatPos)
+        gridEngine.releaseAllReservations(for: id)
+        let waypoints = gridEngine.findFullPath(from: sprite.position, to: seatPos, agentId: id)
         sprite.moveAlongPath(waypoints) {
             sprite.updateStatus(.working)
             sprite.updateModule(.commandBridge)
@@ -1526,7 +1627,8 @@ final class OfficeScene: SKScene {
         let position = OfficeLayout.randomPosition(in: areaType)
         sprite.updateStatus(.walking)
         sprite.stopAnimations()
-        let waypoints = WaypointPathfinder.findPath(from: sprite.position, to: position)
+        gridEngine.releaseAllReservations(for: id)
+        let waypoints = gridEngine.findFullPath(from: sprite.position, to: position, agentId: id)
         sprite.moveAlongPath(waypoints) {
             sprite.updateStatus(.idle)
             let arrivedModule = StationLayout.module(at: position)?.type
@@ -1544,7 +1646,8 @@ final class OfficeScene: SKScene {
         )
         sprite.updateStatus(.walking)
         sprite.stopAnimations()
-        let waypoints = WaypointPathfinder.findPath(from: sprite.position, to: targetPos)
+        gridEngine.releaseAllReservations(for: id)
+        let waypoints = gridEngine.findFullPath(from: sprite.position, to: targetPos, agentId: id)
         sprite.moveAlongPath(waypoints) {
             sprite.updateStatus(.idle)
             let arrivedModule = StationLayout.module(at: targetPos)?.type
@@ -1557,7 +1660,8 @@ final class OfficeScene: SKScene {
         guard let sprite = agentSprites[id] else { return }
         sprite.updateStatus(.leaving)
         sprite.stopAnimations()
-        let waypoints = WaypointPathfinder.findPath(from: sprite.position, to: OfficeLayout.doorPosition)
+        gridEngine.releaseAllReservations(for: id)
+        let waypoints = gridEngine.findFullPath(from: sprite.position, to: OfficeLayout.doorPosition, agentId: id)
         sprite.moveAlongPath(waypoints) {
             sprite.updateModule(nil)
         }
