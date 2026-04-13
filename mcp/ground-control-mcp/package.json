@@ -1,16 +1,20 @@
 {
   "name": "@major-tom/ground-control-mcp",
   "version": "1.0.0",
-  "description": "MCP server bridge for Ground Control — programmatic relay/tunnel management",
+  "description": "MCP server for Ground Control — programmatic relay/tunnel management for AI coding agents",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "ground-control-mcp": "dist/index.js"
   },
+  "files": [
+    "dist/"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -21,7 +25,20 @@
     "typescript": "^5.8.0"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20"
   },
-  "private": true
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seantokuzo/major-tom.git",
+    "directory": "mcp/ground-control-mcp"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "ground-control",
+    "major-tom",
+    "relay",
+    "ai-agent"
+  ],
+  "license": "MIT"
 }

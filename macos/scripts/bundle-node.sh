@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-NODE_VERSION="22.16.0"
+NODE_VERSION="24.12.0"
 PLATFORM="darwin"
 
 # Detect host architecture (accept --arch override)
@@ -38,11 +38,11 @@ fi
 TARBALL="node-v${NODE_VERSION}-${PLATFORM}-${ARCH}.tar.gz"
 DOWNLOAD_URL="https://nodejs.org/dist/v${NODE_VERSION}/${TARBALL}"
 
-# SHA256 hashes of the official tarballs (from https://nodejs.org/dist/v22.16.0/SHASUMS256.txt)
+# SHA256 hashes of the official tarballs (from https://nodejs.org/dist/v24.12.0/SHASUMS256.txt)
 # Updated when NODE_VERSION changes.
 declare -A SHA256_HASHES=(
-    [arm64]="1d7f34ec4c03e12d8b33481e5c4560432d7dc31a0ef3ff5a4d9a8ada7cf6ecc9"
-    [x64]="838d400f7e66c804e5d11e2ecb61d6e9e878611146baff69d6a2def3cc23f4ac"
+    [arm64]="319f221adc5e44ff0ed57e8a441b2284f02b8dc6fc87b8eb92a6a93643fd8080"
+    [x64]="b82ea4c62fd08e250cab59d625e75d77cc5b0a3d60c6698ebee4545c88a169c5"
 )
 
 EXPECTED_SHA256="${SHA256_HASHES[${ARCH}]:-}"
@@ -116,8 +116,10 @@ chmod +x "${OUTPUT_DIR}/node"
 # Strip debug symbols if requested (saves ~8-10MB)
 if [[ "${STRIP_BINARY}" -eq 1 ]]; then
     BEFORE_SIZE=$(stat -f%z "${OUTPUT_DIR}/node" 2>/dev/null || stat --printf="%s" "${OUTPUT_DIR}/node" 2>/dev/null)
-    echo "Stripping debug symbols..."
-    strip "${OUTPUT_DIR}/node" 2>/dev/null || echo "  (strip had warnings — binary is still functional)"
+    echo "Stripping debug symbols (preserving dynamic linkage)..."
+    # Use -x to strip only local symbols. Bare `strip` removes symbols
+    # that native N-API addons (e.g. node-pty) need for dlopen.
+    strip -x "${OUTPUT_DIR}/node" 2>/dev/null || echo "  (strip had warnings — binary is still functional)"
     AFTER_SIZE=$(stat -f%z "${OUTPUT_DIR}/node" 2>/dev/null || stat --printf="%s" "${OUTPUT_DIR}/node" 2>/dev/null)
     SAVED=$(( (BEFORE_SIZE - AFTER_SIZE) / 1024 / 1024 ))
     echo "Stripped: ${BEFORE_SIZE} -> ${AFTER_SIZE} bytes (saved ~${SAVED}MB)"
