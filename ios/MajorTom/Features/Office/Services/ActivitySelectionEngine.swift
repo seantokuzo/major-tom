@@ -209,11 +209,11 @@ final class ActivitySelectionEngine {
         cycleTask = nil
     }
 
-    /// Clear all assignments and stop cycling.
+    /// Clear all engine-managed state and stop cycling.
+    /// Does NOT reset the furniture registry — that's scene-owned.
     func reset() {
         stopCycling()
         assignments.removeAll()
         cooldowns.removeAll()
-        furnitureRegistry.reset()
     }
 }

@@ -56,7 +56,7 @@
       "displayName": "Play Video Game",
       "type": "idle",
       "description": "Mash some buttons on the holo-game",
-      "furnitureTypes": ["status_screen"],
+      "furnitureTypes": ["media_screen"],
       "roomTypes": ["crewQuarters"],
       "characterGroup": "humans",
       "specificCharacters": [],

@@ -68,7 +68,10 @@ final class FurnitureRegistry {
 
     /// Release all furniture occupied by a given agent.
     func releaseAll(for agentId: String) {
-        for (id, instance) in instances where instance.occupantId == agentId {
+        let ids = instances.compactMap { id, instance in
+            instance.occupantId == agentId ? id : nil
+        }
+        for id in ids {
             instances[id]?.occupantId = nil
         }
     }
