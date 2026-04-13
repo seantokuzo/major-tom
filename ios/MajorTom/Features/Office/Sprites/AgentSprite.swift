@@ -353,6 +353,79 @@ final class AgentSprite: SKSpriteNode {
         run(animation, withKey: "station")
     }
 
+    /// Start an animation based on a JSON activity animation ID.
+    /// Maps string IDs from Activities.json to specific motion patterns.
+    func startActivityAnimation(_ animationID: String) {
+        removeAction(forKey: "idle")
+        removeAction(forKey: "work")
+        removeAction(forKey: "station")
+        removeAction(forKey: "activity")
+
+        let animation: SKAction
+
+        switch animationID {
+        case "sleeping":
+            // Very slow bob (sleeping)
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 0, y: 1, duration: 2.0),
+                SKAction.moveBy(x: 0, y: -1, duration: 2.0),
+            ]))
+
+        case "sitting":
+            // Gentle micro-movement (seated)
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 0.5, y: 0, duration: 1.5),
+                SKAction.moveBy(x: -1, y: 0, duration: 2.0),
+                SKAction.moveBy(x: 0.5, y: 0, duration: 1.5),
+            ]))
+
+        case "exercising":
+            // Quick up/down motion
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 0, y: 3, duration: 0.3),
+                SKAction.moveBy(x: 0, y: -3, duration: 0.3),
+                SKAction.wait(forDuration: 0.2),
+            ]))
+
+        case "working":
+            // Focused lean-in with small gestures
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 1, y: -1, duration: 0.4),
+                SKAction.moveBy(x: -2, y: 1, duration: 0.5),
+                SKAction.moveBy(x: 1, y: 0, duration: 0.4),
+                SKAction.wait(forDuration: 0.8),
+            ]))
+
+        case "sniffing":
+            // Nose-to-ground bobbing
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 3, y: -2, duration: 0.4),
+                SKAction.moveBy(x: -6, y: 0, duration: 0.6),
+                SKAction.moveBy(x: 3, y: 2, duration: 0.4),
+                SKAction.wait(forDuration: 0.3),
+            ]))
+
+        case "running":
+            // Fast side-to-side (playing/fetching)
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 8, y: 0, duration: 0.3),
+                SKAction.moveBy(x: -16, y: 0, duration: 0.6),
+                SKAction.moveBy(x: 8, y: 0, duration: 0.3),
+                SKAction.wait(forDuration: 0.2),
+            ]))
+
+        default:
+            // Generic idle sway fallback
+            animation = SKAction.repeatForever(SKAction.sequence([
+                SKAction.moveBy(x: 1, y: 0.5, duration: 1.0),
+                SKAction.moveBy(x: -2, y: -1, duration: 1.5),
+                SKAction.moveBy(x: 1, y: 0.5, duration: 1.0),
+            ]))
+        }
+
+        run(animation, withKey: "activity")
+    }
+
     /// Stop all animations.
     func stopAnimations() {
         removeAllActions()

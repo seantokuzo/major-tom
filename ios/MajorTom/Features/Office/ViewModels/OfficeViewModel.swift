@@ -16,8 +16,8 @@ final class OfficeViewModel {
 
     var showCharacterGallery: Bool = false
 
-    /// Activity manager for station-based idle activities
-    let activityManager = ActivityManager()
+    /// Activity selection engine — JSON-configured, replaces hardcoded ActivityManager
+    let activityEngine = ActivitySelectionEngine()
 
     /// Theme engine — day/night cycle + seasonal themes
     let themeEngine = ThemeEngine()
@@ -114,7 +114,7 @@ final class OfficeViewModel {
         agents[index].currentTask = task
 
         // Release any activity station
-        activityManager.releaseStation(for: id)
+        activityEngine.releaseActivity(for: id)
         moodEngine.recordActivity(id)
     }
 
@@ -266,7 +266,7 @@ final class OfficeViewModel {
     /// Remove an agent entirely (after they've left the office).
     private func removeAgent(id: String) {
         releaseDesk(for: id)
-        activityManager.releaseStation(for: id)
+        activityEngine.releaseActivity(for: id)
         moodEngine.removeAgent(id)
         agents.removeAll { $0.id == id }
         if selectedAgentId == id {

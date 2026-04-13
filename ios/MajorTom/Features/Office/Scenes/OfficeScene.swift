@@ -63,6 +63,10 @@ final class OfficeScene: SKScene {
     /// All placed furniture for grid obstacle registration.
     private var furniturePlacements: [ModuleType: [FurniturePlacement]] = [:]
 
+    /// Furniture registry for activity system — tracks types and occupancy.
+    /// Non-optional: created at scene init so furniture is registered during didMove(to:).
+    let furnitureRegistry = FurnitureRegistry()
+
     // MARK: - Scene Lifecycle
 
     override func didMove(to view: SKView) {
@@ -415,8 +419,8 @@ final class OfficeScene: SKScene {
 
     // MARK: - Grid Movement
 
-    /// Register a furniture sprite as a grid obstacle.
-    private func registerFurniture(_ node: SKNode, id: String, in module: ModuleType) {
+    /// Register a furniture sprite as a grid obstacle and in the activity furniture registry.
+    private func registerFurniture(_ node: SKNode, id: String, type furnitureType: String, in module: ModuleType) {
         let size: CGSize
         if let sprite = node as? SKSpriteNode {
             size = sprite.size
@@ -425,6 +429,14 @@ final class OfficeScene: SKScene {
         }
         let placement = FurniturePlacement(id: id, position: node.position, size: size)
         furniturePlacements[module, default: []].append(placement)
+
+        // Register in activity furniture registry for occupancy tracking
+        furnitureRegistry.register(
+            id: id,
+            furnitureType: furnitureType,
+            room: module.rawValue,
+            position: node.position
+        )
     }
 
     /// Build pathfinding grids for all rooms using registered furniture.
@@ -456,27 +468,27 @@ final class OfficeScene: SKScene {
         chair.position = CGPoint(x: bounds.midX, y: bounds.maxY - 100)
         chair.zPosition = 3
         addChild(chair)
-        registerFurniture(chair, id: "bridge_chair", in: room)
+        registerFurniture(chair, id: "bridge_chair", type: "captains_chair", in: room)
 
         // Tactical display — upper wall
         let tactical = StationFurnitureFactory.tacticalDisplay()
         tactical.position = CGPoint(x: bounds.midX, y: bounds.maxY - 40)
         tactical.zPosition = 3
         addChild(tactical)
-        registerFurniture(tactical, id: "bridge_tactical", in: room)
+        registerFurniture(tactical, id: "bridge_tactical", type: "tactical_display", in: room)
 
         // Status screens flanking the bridge
         let status1 = StationFurnitureFactory.statusScreen()
         status1.position = CGPoint(x: bounds.minX + 60, y: bounds.maxY - 60)
         status1.zPosition = 3
         addChild(status1)
-        registerFurniture(status1, id: "bridge_status1", in: room)
+        registerFurniture(status1, id: "bridge_status1", type: "status_screen", in: room)
 
         let status2 = StationFurnitureFactory.statusScreen()
         status2.position = CGPoint(x: bounds.maxX - 60, y: bounds.maxY - 60)
         status2.zPosition = 3
         addChild(status2)
-        registerFurniture(status2, id: "bridge_status2", in: room)
+        registerFurniture(status2, id: "bridge_status2", type: "status_screen", in: room)
 
         addWallStatusPanels(in: bounds, count: 4)
     }
@@ -491,34 +503,34 @@ final class OfficeScene: SKScene {
         reactor.position = CGPoint(x: bounds.midX, y: bounds.midY + 40)
         reactor.zPosition = 3
         addChild(reactor)
-        registerFurniture(reactor, id: "eng_reactor", in: room)
+        registerFurniture(reactor, id: "eng_reactor", type: "reactor_core", in: room)
 
         // Control panels flanking the reactor
         let panel1 = StationFurnitureFactory.controlPanel()
         panel1.position = CGPoint(x: bounds.minX + 80, y: bounds.midY + 120)
         panel1.zPosition = 3
         addChild(panel1)
-        registerFurniture(panel1, id: "eng_panel1", in: room)
+        registerFurniture(panel1, id: "eng_panel1", type: "control_panel", in: room)
 
         let panel2 = StationFurnitureFactory.controlPanel()
         panel2.position = CGPoint(x: bounds.maxX - 80, y: bounds.midY + 120)
         panel2.zPosition = 3
         addChild(panel2)
-        registerFurniture(panel2, id: "eng_panel2", in: room)
+        registerFurniture(panel2, id: "eng_panel2", type: "control_panel", in: room)
 
         // Tool rack on the left-lower
         let tools = StationFurnitureFactory.toolRack()
         tools.position = CGPoint(x: bounds.minX + 60, y: bounds.midY - 120)
         tools.zPosition = 3
         addChild(tools)
-        registerFurniture(tools, id: "eng_tools", in: room)
+        registerFurniture(tools, id: "eng_tools", type: "tool_rack", in: room)
 
         // Storage crate on the right-lower
         let crate = StationFurnitureFactory.storageCrate()
         crate.position = CGPoint(x: bounds.maxX - 60, y: bounds.midY - 120)
         crate.zPosition = 3
         addChild(crate)
-        registerFurniture(crate, id: "eng_crate", in: room)
+        registerFurniture(crate, id: "eng_crate", type: "storage_crate", in: room)
     }
 
     private func renderCrewQuartersFurniture() {
@@ -531,41 +543,41 @@ final class OfficeScene: SKScene {
         bunk1.position = CGPoint(x: bounds.minX + 100, y: bounds.maxY - 80)
         bunk1.zPosition = 3
         addChild(bunk1)
-        registerFurniture(bunk1, id: "crew_bunk1", in: room)
+        registerFurniture(bunk1, id: "crew_bunk1", type: "bunk_bed", in: room)
 
         let bunk2 = StationFurnitureFactory.bunkBed()
         bunk2.position = CGPoint(x: bounds.maxX - 100, y: bounds.maxY - 80)
         bunk2.zPosition = 3
         addChild(bunk2)
-        registerFurniture(bunk2, id: "crew_bunk2", in: room)
+        registerFurniture(bunk2, id: "crew_bunk2", type: "bunk_bed", in: room)
 
         // Bunk 3 along upper-mid
         let bunk3 = StationFurnitureFactory.bunkBed()
         bunk3.position = CGPoint(x: bounds.midX, y: bounds.maxY - 180)
         bunk3.zPosition = 3
         addChild(bunk3)
-        registerFurniture(bunk3, id: "crew_bunk3", in: room)
+        registerFurniture(bunk3, id: "crew_bunk3", type: "bunk_bed", in: room)
 
         // Couch in the lounge area
         let couch = StationFurnitureFactory.couch()
         couch.position = CGPoint(x: bounds.midX - 80, y: bounds.midY - 60)
         couch.zPosition = 3
         addChild(couch)
-        registerFurniture(couch, id: "crew_couch", in: room)
+        registerFurniture(couch, id: "crew_couch", type: "couch", in: room)
 
         // Media screen on right wall area
         let media = StationFurnitureFactory.mediaScreen()
         media.position = CGPoint(x: bounds.maxX - 70, y: bounds.midY)
         media.zPosition = 3
         addChild(media)
-        registerFurniture(media, id: "crew_media", in: room)
+        registerFurniture(media, id: "crew_media", type: "media_screen", in: room)
 
         // Floor lamp
         let lamp = StationFurnitureFactory.floorLampOn()
         lamp.position = CGPoint(x: bounds.midX + 120, y: bounds.midY - 100)
         lamp.zPosition = 3
         addChild(lamp)
-        registerFurniture(lamp, id: "crew_lamp", in: room)
+        registerFurniture(lamp, id: "crew_lamp", type: "floor_lamp", in: room)
 
         addWallStatusPanels(in: bounds, count: 2)
     }
@@ -580,27 +592,27 @@ final class OfficeScene: SKScene {
         disp1.position = CGPoint(x: bounds.minX + 100, y: bounds.maxY - 70)
         disp1.zPosition = 3
         addChild(disp1)
-        registerFurniture(disp1, id: "galley_disp1", in: room)
+        registerFurniture(disp1, id: "galley_disp1", type: "food_dispenser", in: room)
 
         let disp2 = StationFurnitureFactory.foodDispenser()
         disp2.position = CGPoint(x: bounds.minX + 220, y: bounds.maxY - 70)
         disp2.zPosition = 3
         addChild(disp2)
-        registerFurniture(disp2, id: "galley_disp2", in: room)
+        registerFurniture(disp2, id: "galley_disp2", type: "food_dispenser", in: room)
 
         // Coffee machine
         let coffee = StationFurnitureFactory.coffeeMachine()
         coffee.position = CGPoint(x: bounds.maxX - 100, y: bounds.maxY - 70)
         coffee.zPosition = 3
         addChild(coffee)
-        registerFurniture(coffee, id: "galley_coffee", in: room)
+        registerFurniture(coffee, id: "galley_coffee", type: "coffee_machine", in: room)
 
         // Dining table in center-lower
         let table = StationFurnitureFactory.diningTable()
         table.position = CGPoint(x: bounds.midX, y: bounds.midY - 40)
         table.zPosition = 3
         addChild(table)
-        registerFurniture(table, id: "galley_table", in: room)
+        registerFurniture(table, id: "galley_table", type: "dining_table", in: room)
 
         addWallStatusPanels(in: bounds, count: 2)
     }
@@ -615,33 +627,33 @@ final class OfficeScene: SKScene {
         tree1.position = CGPoint(x: bounds.minX + 100, y: bounds.midY + 80)
         tree1.zPosition = 3
         addChild(tree1)
-        registerFurniture(tree1, id: "bio_tree1", in: room)
+        registerFurniture(tree1, id: "bio_tree1", type: "tree", in: room)
 
         let tree2 = StationFurnitureFactory.tree()
         tree2.position = CGPoint(x: bounds.maxX - 100, y: bounds.midY + 80)
         tree2.zPosition = 3
         addChild(tree2)
-        registerFurniture(tree2, id: "bio_tree2", in: room)
+        registerFurniture(tree2, id: "bio_tree2", type: "tree", in: room)
 
         // Water feature — center
         let water = StationFurnitureFactory.waterFeature()
         water.position = CGPoint(x: bounds.midX, y: bounds.midY - 60)
         water.zPosition = 3
         addChild(water)
-        registerFurniture(water, id: "bio_water", in: room)
+        registerFurniture(water, id: "bio_water", type: "water_feature", in: room)
 
         // Office plants
         let plant1 = StationFurnitureFactory.officePlant()
         plant1.position = CGPoint(x: bounds.midX - 120, y: bounds.midY - 120)
         plant1.zPosition = 3
         addChild(plant1)
-        registerFurniture(plant1, id: "bio_plant1", in: room)
+        registerFurniture(plant1, id: "bio_plant1", type: "office_plant", in: room)
 
         let plant2 = StationFurnitureFactory.officePlant()
         plant2.position = CGPoint(x: bounds.midX + 120, y: bounds.midY - 120)
         plant2.zPosition = 3
         addChild(plant2)
-        registerFurniture(plant2, id: "bio_plant2", in: room)
+        registerFurniture(plant2, id: "bio_plant2", type: "office_plant", in: room)
 
         // Grow-light panels on ceiling
         for x in stride(from: bounds.minX + 60, to: bounds.maxX - 40, by: 100) {
@@ -670,34 +682,34 @@ final class OfficeScene: SKScene {
         tree.position = CGPoint(x: bounds.midX, y: bounds.midY + 100)
         tree.zPosition = 3
         addChild(tree)
-        registerFurniture(tree, id: "arb_tree", in: room)
+        registerFurniture(tree, id: "arb_tree", type: "tree", in: room)
 
         // Park benches
         let bench1 = StationFurnitureFactory.parkBench()
         bench1.position = CGPoint(x: bounds.minX + 100, y: bounds.midY - 60)
         bench1.zPosition = 3
         addChild(bench1)
-        registerFurniture(bench1, id: "arb_bench1", in: room)
+        registerFurniture(bench1, id: "arb_bench1", type: "park_bench", in: room)
 
         let bench2 = StationFurnitureFactory.parkBench()
         bench2.position = CGPoint(x: bounds.maxX - 100, y: bounds.midY - 60)
         bench2.zPosition = 3
         addChild(bench2)
-        registerFurniture(bench2, id: "arb_bench2", in: room)
+        registerFurniture(bench2, id: "arb_bench2", type: "park_bench", in: room)
 
         // Pond
         let pond = StationFurnitureFactory.pond()
         pond.position = CGPoint(x: bounds.midX + 100, y: bounds.midY + 20)
         pond.zPosition = 3
         addChild(pond)
-        registerFurniture(pond, id: "arb_pond", in: room)
+        registerFurniture(pond, id: "arb_pond", type: "pond", in: room)
 
         // Office plant
         let plant = StationFurnitureFactory.officePlant()
         plant.position = CGPoint(x: bounds.minX + 70, y: bounds.midY + 120)
         plant.zPosition = 3
         addChild(plant)
-        registerFurniture(plant, id: "arb_plant", in: room)
+        registerFurniture(plant, id: "arb_plant", type: "office_plant", in: room)
     }
 
     private func renderTrainingBayFurniture() {
@@ -710,27 +722,27 @@ final class OfficeScene: SKScene {
         treadmill1.position = CGPoint(x: bounds.minX + 120, y: bounds.midY + 80)
         treadmill1.zPosition = 3
         addChild(treadmill1)
-        registerFurniture(treadmill1, id: "train_treadmill1", in: room)
+        registerFurniture(treadmill1, id: "train_treadmill1", type: "treadmill", in: room)
 
         let treadmill2 = StationFurnitureFactory.treadmill()
         treadmill2.position = CGPoint(x: bounds.minX + 120, y: bounds.midY - 40)
         treadmill2.zPosition = 3
         addChild(treadmill2)
-        registerFurniture(treadmill2, id: "train_treadmill2", in: room)
+        registerFurniture(treadmill2, id: "train_treadmill2", type: "treadmill", in: room)
 
         // Weight rack
         let weights = StationFurnitureFactory.weightRack()
         weights.position = CGPoint(x: bounds.maxX - 120, y: bounds.midY + 80)
         weights.zPosition = 3
         addChild(weights)
-        registerFurniture(weights, id: "train_weights", in: room)
+        registerFurniture(weights, id: "train_weights", type: "weight_rack", in: room)
 
         // Equipment locker
         let locker = StationFurnitureFactory.equipmentLocker()
         locker.position = CGPoint(x: bounds.maxX - 80, y: bounds.midY - 80)
         locker.zPosition = 3
         addChild(locker)
-        registerFurniture(locker, id: "train_locker", in: room)
+        registerFurniture(locker, id: "train_locker", type: "equipment_locker", in: room)
 
         addWallStatusPanels(in: bounds, count: 2)
     }
@@ -745,39 +757,39 @@ final class OfficeScene: SKScene {
         suit1.position = CGPoint(x: bounds.minX + 100, y: bounds.midY + 80)
         suit1.zPosition = 3
         addChild(suit1)
-        registerFurniture(suit1, id: "eva_suit1", in: room)
+        registerFurniture(suit1, id: "eva_suit1", type: "space_suit_rack", in: room)
 
         let suit2 = StationFurnitureFactory.spaceSuitRack()
         suit2.position = CGPoint(x: bounds.midX, y: bounds.midY + 80)
         suit2.zPosition = 3
         addChild(suit2)
-        registerFurniture(suit2, id: "eva_suit2", in: room)
+        registerFurniture(suit2, id: "eva_suit2", type: "space_suit_rack", in: room)
 
         let suit3 = StationFurnitureFactory.spaceSuitRack()
         suit3.position = CGPoint(x: bounds.maxX - 100, y: bounds.midY + 80)
         suit3.zPosition = 3
         addChild(suit3)
-        registerFurniture(suit3, id: "eva_suit3", in: room)
+        registerFurniture(suit3, id: "eva_suit3", type: "space_suit_rack", in: room)
 
         // Storage crates — lower area
         let crate1 = StationFurnitureFactory.storageCrate()
         crate1.position = CGPoint(x: bounds.minX + 150, y: bounds.midY - 100)
         crate1.zPosition = 3
         addChild(crate1)
-        registerFurniture(crate1, id: "eva_crate1", in: room)
+        registerFurniture(crate1, id: "eva_crate1", type: "storage_crate", in: room)
 
         let crate2 = StationFurnitureFactory.storageCrate()
         crate2.position = CGPoint(x: bounds.maxX - 150, y: bounds.midY - 100)
         crate2.zPosition = 3
         addChild(crate2)
-        registerFurniture(crate2, id: "eva_crate2", in: room)
+        registerFurniture(crate2, id: "eva_crate2", type: "storage_crate", in: room)
 
         // Status screen
         let status = StationFurnitureFactory.statusScreen()
         status.position = CGPoint(x: bounds.midX, y: bounds.maxY - 50)
         status.zPosition = 3
         addChild(status)
-        registerFurniture(status, id: "eva_status", in: room)
+        registerFurniture(status, id: "eva_status", type: "status_screen", in: room)
 
         addWallStatusPanels(in: bounds, count: 2)
     }
@@ -1654,6 +1666,32 @@ final class OfficeScene: SKScene {
             sprite.updateModule(arrivedModule)
             sprite.startStationAnimation(stationType: stationType)
         }
+    }
+
+    /// Move an agent to perform a JSON-configured activity at furniture.
+    func moveAgentToActivity(id: String, assignment: ActivityAssignment) {
+        guard let sprite = agentSprites[id] else { return }
+        sprite.updateStatus(.walking)
+        sprite.stopAnimations()
+        gridEngine.releaseAllReservations(for: id)
+        let waypoints = gridEngine.findFullPath(from: sprite.position, to: assignment.targetPosition, agentId: id)
+        sprite.moveAlongPath(waypoints) {
+            sprite.updateStatus(.idle)
+            let arrivedModule = StationLayout.module(at: assignment.targetPosition)?.type
+            sprite.updateModule(arrivedModule)
+            // Use animation ID from the activity definition if available
+            if let animId = assignment.animationID {
+                sprite.startActivityAnimation(animId)
+            } else {
+                sprite.startIdleAnimation()
+            }
+        }
+    }
+
+    /// Get the room (ModuleType rawValue) an agent is currently in.
+    func currentRoom(for agentId: String) -> String? {
+        guard let sprite = agentSprites[agentId] else { return nil }
+        return StationLayout.module(at: sprite.position)?.type.rawValue
     }
 
     func moveAgentToDoor(id: String) {

@@ -50,6 +50,16 @@ enum CharacterType: String, CaseIterable {
     case esteban        // Cattle dog alt (bow tie)
     case hoku           // Black schnauzer
     case kai            // Pepper schnauzer
+
+    /// Whether this character is a dog (used for activity group filtering).
+    var isDog: Bool {
+        switch self {
+        case .elvis, .senor, .steve, .esteban, .hoku, .kai:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 // MARK: - Agent State
