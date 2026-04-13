@@ -19,6 +19,9 @@ final class OfficeViewModel {
     /// Activity selection engine — JSON-configured, replaces hardcoded ActivityManager
     let activityEngine = ActivitySelectionEngine()
 
+    /// Activity animator — periodic emotes and furniture texture swaps during activities.
+    let activityAnimator = ActivityAnimator()
+
     /// Theme engine — day/night cycle + seasonal themes
     let themeEngine = ThemeEngine()
 

@@ -82,6 +82,10 @@ struct OfficeView: View {
             // Start activity cycling — when an activity expires, reassign
             viewModel.activityEngine.startCycling { [weak scene, weak viewModel] agentId, _ in
                 guard let viewModel, let scene else { return }
+
+                // Stop the outgoing activity's animation phase
+                viewModel.activityAnimator.stopPhase(for: agentId, furnitureNodes: scene.furnitureNodes)
+
                 guard let agent = viewModel.agents.first(where: { $0.id == agentId }) else { return }
                 let room = scene.currentRoom(for: agentId) ?? ModuleType.crewQuarters.rawValue
                 if let assignment = viewModel.activityEngine.assignActivity(
@@ -89,7 +93,19 @@ struct OfficeView: View {
                     characterType: agent.characterType,
                     currentRoom: room
                 ) {
-                    scene.moveAgentToActivity(id: agentId, assignment: assignment)
+                    scene.moveAgentToActivity(id: agentId, assignment: assignment) { sprite in
+                        // Start animation phase when agent arrives at new activity
+                        if let definition = ActivityRegistry.shared.activity(byId: assignment.activityId) {
+                            viewModel.activityAnimator.startPhase(
+                                agentId: agentId,
+                                assignment: assignment,
+                                definition: definition,
+                                sprite: sprite,
+                                furnitureNodes: scene.furnitureNodes,
+                                furnitureRegistry: viewModel.activityEngine.furnitureRegistry
+                            )
+                        }
+                    }
                 }
             }
 
@@ -107,6 +123,7 @@ struct OfficeView: View {
         }
         .onDisappear {
             // Stop engines + activity cycling when view disappears
+            viewModel.activityAnimator.stopAll(furnitureNodes: scene.furnitureNodes)
             viewModel.themeEngine.stop()
             viewModel.moodEngine.stop()
             viewModel.activityEngine.stopCycling()
@@ -354,6 +371,7 @@ struct OfficeView: View {
 
         // Remove departed agents
         for id in previousAgentIds where !currentIds.contains(id) {
+            viewModel.activityAnimator.stopPhase(for: id, furnitureNodes: scene.furnitureNodes)
             scene.removeAgent(id: id)
         }
 
@@ -381,6 +399,7 @@ struct OfficeView: View {
             scene.updateAgentStatus(id: agent.id, status: .walking)
 
         case .working:
+            viewModel.activityAnimator.stopPhase(for: agent.id, furnitureNodes: scene.furnitureNodes)
             if let deskIndex = agent.deskIndex {
                 scene.moveAgentToDesk(id: agent.id, deskIndex: deskIndex)
             } else {
@@ -388,6 +407,9 @@ struct OfficeView: View {
             }
 
         case .idle:
+            // Stop any existing animation phase before reassigning
+            viewModel.activityAnimator.stopPhase(for: agent.id, furnitureNodes: scene.furnitureNodes)
+
             // Try to assign a JSON-configured activity
             let room = scene.currentRoom(for: agent.id) ?? ModuleType.crewQuarters.rawValue
             if let assignment = viewModel.activityEngine.assignActivity(
@@ -395,7 +417,22 @@ struct OfficeView: View {
                 characterType: agent.characterType,
                 currentRoom: room
             ) {
-                scene.moveAgentToActivity(id: agent.id, assignment: assignment)
+                let agentId = agent.id
+                let animator = viewModel.activityAnimator
+                let nodes = scene.furnitureNodes
+                let registry = viewModel.activityEngine.furnitureRegistry
+                scene.moveAgentToActivity(id: agentId, assignment: assignment) { sprite in
+                    if let definition = ActivityRegistry.shared.activity(byId: assignment.activityId) {
+                        animator.startPhase(
+                            agentId: agentId,
+                            assignment: assignment,
+                            definition: definition,
+                            sprite: sprite,
+                            furnitureNodes: nodes,
+                            furnitureRegistry: registry
+                        )
+                    }
+                }
             } else {
                 // Fall back to break area behavior if no activity matches
                 let config = CharacterCatalog.config(for: agent.characterType)
@@ -411,6 +448,7 @@ struct OfficeView: View {
             scene.celebrateAgent(id: agent.id)
 
         case .leaving:
+            viewModel.activityAnimator.stopPhase(for: agent.id, furnitureNodes: scene.furnitureNodes)
             if let deskIndex = agent.deskIndex {
                 scene.highlightDesk(deskIndex, occupied: false)
             }

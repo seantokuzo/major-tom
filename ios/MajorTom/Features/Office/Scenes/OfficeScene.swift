@@ -67,6 +67,9 @@ final class OfficeScene: SKScene {
     /// Non-optional: created at scene init so furniture is registered during didMove(to:).
     let furnitureRegistry = FurnitureRegistry()
 
+    /// Furniture sprite nodes keyed by instance ID (for texture swaps during activities).
+    private(set) var furnitureNodes: [String: SKNode] = [:]
+
     // MARK: - Scene Lifecycle
 
     override func didMove(to view: SKView) {
@@ -437,6 +440,9 @@ final class OfficeScene: SKScene {
             room: module.rawValue,
             position: node.position
         )
+
+        // Store node reference for texture swaps during activities
+        furnitureNodes[id] = node
     }
 
     /// Build pathfinding grids for all rooms using registered furniture.
@@ -1669,7 +1675,8 @@ final class OfficeScene: SKScene {
     }
 
     /// Move an agent to perform a JSON-configured activity at furniture.
-    func moveAgentToActivity(id: String, assignment: ActivityAssignment) {
+    /// The optional `onArrival` callback fires after the agent reaches the target and starts animating.
+    func moveAgentToActivity(id: String, assignment: ActivityAssignment, onArrival: ((AgentSprite) -> Void)? = nil) {
         guard let sprite = agentSprites[id] else { return }
         sprite.updateStatus(.walking)
         sprite.stopAnimations()
@@ -1685,6 +1692,7 @@ final class OfficeScene: SKScene {
             } else {
                 sprite.startIdleAnimation()
             }
+            onArrival?(sprite)
         }
     }
 
