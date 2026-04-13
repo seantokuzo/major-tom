@@ -98,10 +98,11 @@ final class ActivityAnimator {
 
     /// Stop all active phases (e.g., scene teardown).
     func stopAll(furnitureNodes: [String: SKNode]) {
-        for (agentId, phase) in activePhases {
+        let phases = activePhases
+        activePhases.removeAll()
+        for (_, phase) in phases {
             phase.emoteTask?.cancel()
             reverseTransitions(phase.appliedTransitions, furnitureNodes: furnitureNodes)
-            activePhases.removeValue(forKey: agentId)
         }
     }
 
