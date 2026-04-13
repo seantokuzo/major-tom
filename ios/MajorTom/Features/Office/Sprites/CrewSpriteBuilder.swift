@@ -61,6 +61,46 @@ enum CrewSpriteBuilder {
         return texture
     }
 
+    /// Characters known to have walk textures (populated on first check).
+    private static var walkTextureAvailability: [String: Bool] = [:]
+
+    /// Get the two walk frame textures for a direction (for animation).
+    /// Returns nil only if the character definitely has no walk textures.
+    static func walkFrames(for type: CharacterType, direction: FacingDirection) -> [SKTexture]? {
+        let side = (direction == .left || direction == .front) ? "Left" : "Right"
+        let key1 = "\(type.rawValue)_walk\(side)1"
+        let key2 = "\(type.rawValue)_walk\(side)2"
+
+        // Check cache first
+        if let cached1 = textureCache[key1], let cached2 = textureCache[key2] {
+            return [cached1, cached2]
+        }
+
+        // Check if we already know this character lacks walk textures
+        let availKey = "\(type.rawValue)_walk"
+        if walkTextureAvailability[availKey] == false {
+            return nil
+        }
+
+        // Try loading — textureNamed returns a placeholder if missing.
+        // We detect placeholders by checking if the texture size is tiny (<=4px).
+        let tex1 = atlas.textureNamed(key1)
+        tex1.filteringMode = .nearest
+
+        if tex1.size().width <= 4 {
+            // Placeholder texture — this character has no walk sprites
+            walkTextureAvailability[availKey] = false
+            return nil
+        }
+
+        let tex2 = atlas.textureNamed(key2)
+        tex2.filteringMode = .nearest
+        textureCache[key1] = tex1
+        textureCache[key2] = tex2
+        walkTextureAvailability[availKey] = true
+        return [tex1, tex2]
+    }
+
     /// Get the appropriate sprite size for a character type.
     static func size(for type: CharacterType) -> CGSize {
         dogTypes.contains(type) ? dogSpriteSize : spriteSize

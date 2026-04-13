@@ -572,10 +572,34 @@ final class AgentSprite: SKSpriteNode {
         label.run(sequence)
     }
 
+    // MARK: - Walk Animation
+
+    /// Start a 2-frame walk cycle animation using walk sprite textures.
+    /// Falls back to the standard facing texture if walk textures aren't available.
+    func startWalkAnimation(direction: FacingDirection) {
+        removeAction(forKey: "walkAnim")
+
+        guard let frames = CrewSpriteBuilder.walkFrames(for: characterType, direction: direction) else {
+            // No walk textures — just use the facing direction texture
+            setFacing(direction)
+            return
+        }
+
+        let animate = SKAction.animate(with: frames, timePerFrame: 0.2, resize: false, restore: false)
+        bodySprite.run(SKAction.repeatForever(animate), withKey: "walkAnim")
+    }
+
+    /// Stop walk animation and restore the standing texture.
+    func stopWalkAnimation() {
+        bodySprite.removeAction(forKey: "walkAnim")
+        CrewSpriteBuilder.updateTexture(bodySprite, type: characterType, facing: facing)
+    }
+
     // MARK: - Waypoint Movement
 
     /// Move along a series of waypoints sequentially.
     /// Each segment calculates its own duration based on distance for consistent speed.
+    /// Uses walk cycle animation when walk textures are available.
     func moveAlongPath(_ waypoints: [CGPoint], speed: CGFloat = 120, completion: (() -> Void)? = nil) {
         guard !waypoints.isEmpty else {
             completion?()
@@ -593,21 +617,28 @@ final class AgentSprite: SKSpriteNode {
             let distance = sqrt(dx * dx + dy * dy)
             let duration = max(TimeInterval(distance / speed), 0.1)
 
-            // Update facing at the start of each segment
+            // Update facing and start walk animation at the start of each segment
             let facingUpdate = SKAction.run { [weak self] in
                 guard let self else { return }
                 if abs(dx) > 1 || abs(dy) > 1 {
-                    self.setFacing(FacingDirection.from(dx: dx, dy: dy))
+                    let newDirection = FacingDirection.from(dx: dx, dy: dy)
+                    self.facing = newDirection
+                    self.startWalkAnimation(direction: newDirection)
                 }
             }
 
             let move = SKAction.move(to: waypoint, duration: duration)
-            move.timingMode = .easeInEaseOut
+            move.timingMode = .linear  // Consistent speed for grid paths
 
             actions.append(facingUpdate)
             actions.append(move)
             current = waypoint
         }
+
+        // Stop walk animation when movement completes
+        actions.append(SKAction.run { [weak self] in
+            self?.stopWalkAnimation()
+        })
 
         if let completion {
             actions.append(SKAction.run(completion))
