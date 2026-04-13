@@ -20,6 +20,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Optional
 from PIL import Image
 
 DIRECTIONS = ["front", "back", "left", "right"]
@@ -270,13 +271,12 @@ def write_imageset(img: Image.Image, name: str, direction: str, output_dir: Path
             {"idiom": "universal", "scale": "3x"},
         ],
         "info": {"author": "xcode", "version": 1},
-        "properties": {"preserves-vector-representation": True},
     }
     with open(imageset_dir / "Contents.json", "w") as f:
         json.dump(contents, f, indent=2)
 
 
-def slice_sprite_sheet(source_path: Path, name: str, output_dir: Path, bg_threshold: int = 220, labels: list[str] | None = None) -> bool:
+def slice_sprite_sheet(source_path: Path, name: str, output_dir: Path, bg_threshold: int = 220, labels: Optional[list[str]] = None) -> bool:
     """Slice a sprite sheet into 4 sprites with given labels."""
     used_labels = labels or DIRECTIONS
     print(f"\n{'='*50}")
