@@ -221,8 +221,16 @@ enum MCPRegistrar {
         guard let data = FileManager.default.contents(atPath: path) else {
             throw RegistrationError.settingsParseError("Could not read file at \(path)")
         }
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+
+        let parsedJSON: Any
+        do {
+            parsedJSON = try JSONSerialization.jsonObject(with: data)
+        } catch {
             throw RegistrationError.settingsParseError("File is not valid JSON: \(path)")
+        }
+
+        guard let json = parsedJSON as? [String: Any] else {
+            throw RegistrationError.settingsParseError("Settings file must contain a JSON object: \(path)")
         }
         return json
     }

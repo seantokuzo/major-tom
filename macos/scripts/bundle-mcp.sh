@@ -4,7 +4,7 @@
 # plus production deps for app bundle embedding.
 #
 # Usage: ./bundle-mcp.sh [output-dir]
-#   output-dir: where to place MCP dist files (default: ./build/mcp)
+#   output-dir: where to place MCP dist files (default: ../build/staged-mcp)
 #
 # Requires: npm, node
 #
