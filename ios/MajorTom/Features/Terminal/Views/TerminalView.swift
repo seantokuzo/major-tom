@@ -185,8 +185,12 @@ struct TerminalView: View {
         }
         .task {
             // Reconcile persisted tab IDs with the relay's actual tmux
-            // windows. Runs before the WebView connects so stale tabs
-            // are pruned before we attempt to attach to them.
+            // windows so stale tabs are pruned early. Note: the WebView
+            // may already be connecting concurrently (SwiftUI does not
+            // guarantee .task ordering vs view body rendering). Stale
+            // tab IDs still work — the relay creates fresh windows on
+            // demand — so the race is benign; reconciliation just cleans
+            // up the local tab list for the next launch.
             await viewModel.reconcileWithRelay()
 
             await viewModel.keybarViewModel.syncFromRelay()

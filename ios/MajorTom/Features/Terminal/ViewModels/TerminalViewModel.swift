@@ -187,14 +187,13 @@ final class TerminalViewModel {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        // Auth: session cookie is handled by the shared URLSession cookie store.
-        // For WKWebView JWT fallback, append the token as a query param.
+        // Auth: send the session JWT as a cookie header rather than a URL
+        // query parameter. Query-param auth exposes the token in logs,
+        // caches, and intermediaries — reserved for the WKWebView fallback
+        // path where cookie injection is unreliable. Native URLSession
+        // requests have full control over headers.
         if let token = authToken {
-            var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            components?.queryItems = [URLQueryItem(name: "token", value: token)]
-            if let tokenURL = components?.url {
-                request.url = tokenURL
-            }
+            request.setValue("mt-session=\(token)", forHTTPHeaderField: "Cookie")
         }
 
         do {

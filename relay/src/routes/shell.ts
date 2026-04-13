@@ -189,6 +189,12 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
     // Clients use this on launch to discover windows they can reconnect
     // to (iOS tab persistence) rather than blindly creating new ones.
     // Also useful for admin/debug tooling.
+    //
+    // Security note: in multi-user mode this returns ALL windows, not
+    // just the caller's. Multi-user scoping (per-user tab ownership)
+    // would require tagging tmux windows with owner identity — deferred
+    // until multi-user terminal isolation is built out. Single-user mode
+    // (the primary deployment) is unaffected.
     fastify.get<{ Querystring: { token?: string } }>(
       '/shell/tabs',
       async (request, reply) => {

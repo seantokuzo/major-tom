@@ -338,9 +338,14 @@ export async function buildApp(config: AppConfig) {
   // after their last client disconnects and nobody reconnects within the
   // disconnect grace period. Configurable via REAPER_STARTUP_GRACE_MS
   // and REAPER_DISCONNECT_GRACE_MS env vars.
+  const parseGraceMs = (raw: string | undefined): number | undefined => {
+    if (raw === undefined) return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
   const windowReaper = new WindowReaper(sessionManager, {
-    startupGraceMs: Number(process.env['REAPER_STARTUP_GRACE_MS']) || undefined,
-    disconnectGraceMs: Number(process.env['REAPER_DISCONNECT_GRACE_MS']) || undefined,
+    startupGraceMs: parseGraceMs(process.env['REAPER_STARTUP_GRACE_MS']),
+    disconnectGraceMs: parseGraceMs(process.env['REAPER_DISCONNECT_GRACE_MS']),
   });
   try {
     await tmuxBootstrap.ensure();
