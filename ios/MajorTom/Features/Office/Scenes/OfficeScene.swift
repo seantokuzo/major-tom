@@ -95,7 +95,7 @@ final class OfficeScene: SKScene {
         // leave/return to the Office tab while measuring.
         applyPerfHUD(to: view)
         perfHUDObserver = NotificationCenter.default.addObserver(
-            forName: PerfHUDPreferences.didChangeNotification,
+            forName: .perfHUDPreferencesDidChange,
             object: nil,
             queue: .main
         ) { [weak self, weak view] _ in
