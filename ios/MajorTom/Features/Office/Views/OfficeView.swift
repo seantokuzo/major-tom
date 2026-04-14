@@ -459,7 +459,6 @@ struct OfficeView: View {
         }
     }
 
-    /// Map BreakDestination enum to OfficeAreaType.
     /// Assign an activity to an idle agent. Idle-prefix sprites get a staggered
     /// delay (0.5–2.5s) so they don't all start walking in the same frame.
     private func assignIdleActivity(for agent: AgentState) {

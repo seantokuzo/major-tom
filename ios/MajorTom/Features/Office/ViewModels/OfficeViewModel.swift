@@ -122,8 +122,11 @@ final class OfficeViewModel {
 
         let characterType: CharacterType
         if let claimed = claimRandomSprite() {
-            // Remove the idle sprite for this character
+            // Remove the idle sprite for this character. Release its activity
+            // first so any occupied furniture (couch, treadmill, etc.) is freed
+            // — otherwise the engine leaks assignments for the removed sprite.
             let idleSpriteId = "\(Self.idlePrefix)\(claimed.rawValue)"
+            activityEngine.releaseActivity(for: idleSpriteId)
             agents.removeAll { $0.id == idleSpriteId }
             characterType = claimed
         } else {
