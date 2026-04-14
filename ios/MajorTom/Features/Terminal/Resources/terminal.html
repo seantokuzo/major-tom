@@ -88,9 +88,12 @@
   var ws = null;
   var reconnectTimer = null;
   var reconnectAttempt = 0;
-  var maxReconnectAttempts = 20;
-  var reconnectBaseMs = 500;
-  var reconnectMaxMs = 10000;
+  // Bounded retry budget: 3 attempts, 500ms → 1s → 2s. The first retry
+  // waits ≥500ms to dodge PR #130's PtyAdapter grace-window race where
+  // a too-fast reattach collides with the prior viewer's detach.
+  var maxReconnectAttempts = 3;
+  var reconnectDelaysMs = [500, 1000, 2000];
+  var lastCloseEvent = { code: 0, reason: '' };
   var useTokenFallback = false; // Flipped to true after an auth failure (1008)
   var statusEl = document.getElementById('status-message');
 
@@ -200,6 +203,19 @@
     }
     window.addEventListener('resize', queueFit);
 
+    // Foreground-from-background: WKWebView sometimes keeps a zombie WS
+    // open when iOS suspends the app. On visibility returning, if the WS
+    // isn't OPEN, start a fresh retry budget and reconnect. If a retry
+    // is already pending, let it fire — don't double-schedule.
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState !== 'visible') return;
+      var needsReconnect = !ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING);
+      if (needsReconnect && !reconnectTimer) {
+        reconnectAttempt = 0;
+        connectWS();
+      }
+    });
+
     // Tell native we're ready
     postToNative({ type: 'ready' });
 
@@ -255,8 +271,9 @@
       ws = new WebSocket(url);
       ws.binaryType = 'arraybuffer';
     } catch (e) {
+      lastCloseEvent = { code: 0, reason: 'WebSocket constructor failed' };
       setStatus('Connection failed');
-      postToNative({ type: 'disconnected', code: 0, reason: 'WebSocket constructor failed' });
+      postToNative({ type: 'disconnected', code: 0, reason: lastCloseEvent.reason });
       scheduleReconnect();
       return;
     }
@@ -299,10 +316,11 @@
     };
 
     ws.onclose = function(event) {
+      lastCloseEvent = { code: event.code, reason: event.reason || 'Connection closed' };
       postToNative({
         type: 'disconnected',
         code: event.code,
-        reason: event.reason || 'Connection closed'
+        reason: lastCloseEvent.reason
       });
 
       // Don't reconnect on intentional close (1000).
@@ -324,18 +342,15 @@
       // Permanent auth failure — don't keep retrying.
       if (event.code === 1008) {
         setStatus('Authentication failed');
+        notifyRetryExhausted();
         return;
       }
 
       // v2 spec: code 4001 = tab already attached on another device.
-      // Don't retry — multi-device simultaneous attach is deferred. The
-      // server sent a `{type:"error"}` text frame right before closing.
-      if (event.code === 4001) {
-        setStatus('Tab already attached on another device');
-        return;
-      }
-
-      setStatus('Disconnected — reconnecting...');
+      // Treat as retry-eligible — PR #130's PtyAdapter grace window can
+      // leave the prior viewer registered for a beat after background
+      // disconnects. The bounded backoff gives the server time to clear
+      // the slot before we give up.
       scheduleReconnect();
     };
 
@@ -346,20 +361,31 @@
 
   function scheduleReconnect() {
     if (reconnectAttempt >= maxReconnectAttempts) {
-      setStatus('Connection lost. Tap to retry.');
+      setStatus('Connection lost. Tap Reconnect.');
+      notifyRetryExhausted();
       return;
     }
 
-    var delay = Math.min(
-      reconnectBaseMs * Math.pow(1.5, reconnectAttempt),
-      reconnectMaxMs
-    );
+    var delay = reconnectDelaysMs[Math.min(reconnectAttempt, reconnectDelaysMs.length - 1)];
     reconnectAttempt++;
+    setStatus('Reconnecting ' + reconnectAttempt + '/' + maxReconnectAttempts + '...');
 
     reconnectTimer = setTimeout(function() {
       reconnectTimer = null;
       connectWS();
     }, delay);
+  }
+
+  // Signal the native layer that auto-retry is exhausted so it can flip
+  // to the error overlay with the manual Reconnect button. Regular
+  // `disconnected` messages are non-fatal — Swift keeps the webview on
+  // screen while retries run underneath.
+  function notifyRetryExhausted() {
+    postToNative({
+      type: 'retry_exhausted',
+      code: lastCloseEvent.code,
+      reason: lastCloseEvent.reason
+    });
   }
 
   // ── Status Display ─────────────────────────────────────────────────

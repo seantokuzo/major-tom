@@ -19,6 +19,7 @@ enum TerminalBridgeMessage {
     case ready
     case connected(tabId: String)
     case disconnected(code: Int, reason: String)
+    case retryExhausted(code: Int, reason: String)
     case bell
     case title(String)
     case selection(String)
@@ -41,6 +42,10 @@ enum TerminalBridgeMessage {
             let code = dict["code"] as? Int ?? 0
             let reason = dict["reason"] as? String ?? ""
             return .disconnected(code: code, reason: reason)
+        case "retry_exhausted":
+            let code = dict["code"] as? Int ?? 0
+            let reason = dict["reason"] as? String ?? ""
+            return .retryExhausted(code: code, reason: reason)
         case "bell":
             return .bell
         case "title":
@@ -73,10 +78,10 @@ final class TerminalViewModel {
         activeTab?.tabId ?? "default"
     }
 
-    /// Terminal title (set by xterm title escape sequence).
-    /// Derived from the active tab's title.
+    /// Terminal title shown in the status bar. Prefers a user rename
+    /// (`userTitle`) over the xterm-supplied shell title.
     var terminalTitle: String {
-        activeTab?.title ?? "Terminal"
+        activeTab?.displayTitle ?? "Terminal"
     }
 
     /// Current terminal dimensions.
@@ -132,6 +137,9 @@ final class TerminalViewModel {
     /// UserDefaults key for the active tab ID (string).
     private static let persistedActiveTabIdKey = "mt-terminal-active-tab-id"
 
+    /// UserDefaults key for user-supplied tab renames ([tabId: userTitle]).
+    private static let persistedTabUserTitlesKey = "mt-terminal-tab-user-titles"
+
     init(auth: AuthService) {
         self.auth = auth
         self.keybarViewModel = KeybarViewModel(auth: auth)
@@ -144,12 +152,14 @@ final class TerminalViewModel {
         let defaults = UserDefaults.standard
         let savedTabIds = defaults.stringArray(forKey: Self.persistedTabIdsKey) ?? []
         let savedActiveId = defaults.string(forKey: Self.persistedActiveTabIdKey)
+        let savedUserTitles = defaults.dictionary(forKey: Self.persistedTabUserTitlesKey) as? [String: String] ?? [:]
 
         if !savedTabIds.isEmpty {
             self.tabs = savedTabIds.map { tabId in
                 TerminalTab(
                     tabId: tabId,
                     title: "Terminal",
+                    userTitle: savedUserTitles[tabId],
                     isActive: tabId == savedActiveId
                 )
             }
@@ -165,11 +175,30 @@ final class TerminalViewModel {
         }
     }
 
-    /// Persist current tab IDs and active tab to UserDefaults.
+    /// Persist current tab IDs, active tab, and user rename overrides.
     private func persistTabIds() {
         let defaults = UserDefaults.standard
         defaults.set(tabs.map(\.tabId), forKey: Self.persistedTabIdsKey)
         defaults.set(activeTab?.tabId, forKey: Self.persistedActiveTabIdKey)
+        let userTitles: [String: String] = tabs.reduce(into: [:]) { acc, tab in
+            if let custom = tab.userTitle, !custom.isEmpty {
+                acc[tab.tabId] = custom
+            }
+        }
+        if userTitles.isEmpty {
+            defaults.removeObject(forKey: Self.persistedTabUserTitlesKey)
+        } else {
+            defaults.set(userTitles, forKey: Self.persistedTabUserTitlesKey)
+        }
+    }
+
+    /// Apply a user-supplied rename to the given tab. Passing `nil` or an
+    /// empty string clears the override, falling back to the xterm title.
+    func renameTab(id: UUID, to newTitle: String?) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = newTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        tabs[index].userTitle = (trimmed?.isEmpty == false) ? trimmed : nil
+        persistTabIds()
     }
 
     /// Reconcile persisted tabs with the relay's live PTY sessions.
@@ -396,11 +425,20 @@ final class TerminalViewModel {
                 }
             }
 
-        case .disconnected(let code, let reason):
-            connectionState = .disconnected
-            if code != 1000 && code != 1001 {
-                connectionState = .error("Disconnected: \(reason) (\(code))")
+        case .disconnected(let code, _):
+            // Clean close (1000/1001) stays as .disconnected. Transient
+            // drops are non-fatal — the JS layer's bounded auto-retry
+            // (3 attempts, 500ms→1s→2s) kicks in underneath. We reflect
+            // that as .connecting so the error overlay doesn't flash.
+            // Only `.retryExhausted` flips to .error.
+            if code == 1000 || code == 1001 {
+                connectionState = .disconnected
+            } else {
+                connectionState = .connecting
             }
+
+        case .retryExhausted(let code, let reason):
+            connectionState = .error("Disconnected: \(reason) (\(code))")
 
         case .bell:
             HapticService.impact(.light)
