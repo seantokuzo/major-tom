@@ -1,5 +1,10 @@
 import { beforeEach, afterEach } from 'vitest';
 
+// Keep pino quiet unless a test overrides LOG_LEVEL explicitly.
+if (!process.env['LOG_LEVEL']) {
+  process.env['LOG_LEVEL'] = 'silent';
+}
+
 const ORIG_SHELL = process.env['SHELL'];
 
 beforeEach(() => {
