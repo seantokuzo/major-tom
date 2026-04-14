@@ -2,13 +2,14 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { SessionManager } from '../sessions/session-manager.js';
 import type { FleetManager } from '../fleet/fleet-manager.js';
 import type { HealthMonitor } from '../health/health-monitor.js';
-import { listWindows } from '../utils/tmux-cli.js';
+import type { PtyAdapter } from '../adapters/pty-adapter.js';
 import { logger } from '../utils/logger.js';
 
 interface HealthDeps {
   sessionManager: SessionManager;
   fleetManager: FleetManager;
   healthMonitor: HealthMonitor;
+  ptyAdapter: PtyAdapter;
 }
 
 /**
@@ -37,7 +38,7 @@ export function setClientTracker(fn: ClientTrackerFn): void {
  * and fleet worker status from FleetManager.
  *
  * Also provides `/api/admin/status` — a richer admin endpoint for
- * Ground Control's dashboard (connected clients, memory, uptime, tmux).
+ * Ground Control's dashboard (connected clients, memory, uptime, tabs).
  */
 export function createHealthRoutes(deps: HealthDeps): FastifyPluginAsync {
   return async (fastify) => {
@@ -74,14 +75,9 @@ export function createHealthRoutes(deps: HealthDeps): FastifyPluginAsync {
       const sessions = deps.sessionManager.list();
       const mem = process.memoryUsage();
 
-      // tmux window count — best-effort, non-blocking
-      let tmuxWindowCount = 0;
-      try {
-        const windows = await listWindows();
-        tmuxWindowCount = windows.length;
-      } catch {
-        // tmux may not be running — that's fine
-      }
+      // Live PTY tab count — backed by the PtyAdapter in-memory session map
+      // (replaces the old tmux-backed `tmuxWindowCount` field).
+      const shellTabCount = deps.ptyAdapter.listTabs().length;
 
       return {
         status: 'ok',
@@ -99,7 +95,7 @@ export function createHealthRoutes(deps: HealthDeps): FastifyPluginAsync {
           heapTotal: mem.heapTotal,
           external: mem.external,
         },
-        tmuxWindowCount,
+        shellTabCount,
       };
     });
   };

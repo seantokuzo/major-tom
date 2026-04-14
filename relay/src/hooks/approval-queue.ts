@@ -1,6 +1,5 @@
 import { EventEmitter } from 'node:events';
 import { logger } from '../utils/logger.js';
-import { sendKeys, MAJOR_TOM_SESSION } from '../utils/tmux-cli.js';
 
 export type ApprovalDecision = 'allow' | 'deny' | 'skip' | 'allow_always';
 /** Queue-level mode: manual blocks, auto resolves immediately, delay resolves after timer */
@@ -10,9 +9,17 @@ export type ApprovalQueueMode = 'manual' | 'auto' | 'delay';
  * Wave 2: ORTHOGONAL routing dimension. Independent of `manual`/`auto`/`delay`.
  * - `local`  — TUI owns the decision; phone gets a passive notification
  * - `remote` — phone owns the decision; TUI is bypassed (hook blocks)
- * - `hybrid` — both prompt; first to resolve wins; phone-wins uses tmux send-keys
+ * - `hybrid` — both prompt; first to resolve wins; phone-wins injects the
+ *              decision into the PTY via `PtyAdapter.write(tabId, key+'\n')`.
  */
 export type ApprovalRoutingMode = 'local' | 'remote' | 'hybrid';
+
+/**
+ * Callback used by `resolveHybrid` to inject the user's decision into the
+ * running PTY so the TUI's prompt resolves. Wired from `app.ts` to
+ * `ptyAdapter.write`. Returns true on successful write.
+ */
+export type HybridWriter = (tabId: string, data: string) => boolean;
 
 /** Where the request originated. Used to decide enqueue behavior + dedup. */
 export type ApprovalSource = 'sdk' | 'hook';
@@ -34,7 +41,7 @@ interface PendingApproval {
   routingMode?: ApprovalRoutingMode;
   /** Origin path: sdk callback or shell hook script */
   source?: ApprovalSource;
-  /** tmux window name for hybrid send-keys target */
+  /** PTY tabId for hybrid PTY-write target */
   tabId?: string;
 }
 
@@ -72,12 +79,21 @@ export class ApprovalQueue extends EventEmitter {
   /** Recently resolved tool_use_ids — short TTL, used to short-circuit hybrid races. */
   private resolved = new Map<string, ApprovalDecision>();
   private RESOLVED_TTL_MS = 60_000;
+  private hybridWrite: HybridWriter | undefined;
 
   constructor(timeoutMs = 5 * 60 * 1000) {
     super();
     this.timeoutMs = timeoutMs;
     // Match listener cap to FleetManager scale (50)
     this.setMaxListeners(50);
+  }
+
+  /**
+   * Install the PTY write callback used by `resolveHybrid`. Wired from
+   * `app.ts` as `(tabId, data) => ptyAdapter.write(tabId, data)`.
+   */
+  setHybridWriter(fn: HybridWriter): void {
+    this.hybridWrite = fn;
   }
 
   /**
@@ -403,34 +419,41 @@ export class ApprovalQueue extends EventEmitter {
   /**
    * Resolve a hybrid-mode approval coming from the phone. Marks the
    * dedupKey as resolved (short-circuiting any duplicate enqueue) and
-   * injects the decision into the tmux window so the TUI's prompt
+   * writes the decision directly into the PTY so the TUI's prompt
    * resolves too. Best-effort: a stray keystroke is acceptable if the
    * TUI has already moved on. The relay does NOT delay or wait — see
    * Wave 2 spec OQ#2.
    */
-  async resolveHybrid(
+  resolveHybrid(
     dedupKey: string,
     decision: 'allow' | 'deny',
     tabId: string,
-  ): Promise<boolean> {
+  ): boolean {
     if (this.isResolved(dedupKey)) {
       logger.info({ dedupKey, decision }, 'Hybrid resolve skipped — already resolved');
       return false;
     }
     // Short-circuit any future duplicate enqueues immediately so we never
-    // double-fire even if the TUI's send-keys takes a beat to land.
+    // double-fire even if the TUI write takes a beat to land.
     this.markResolved(dedupKey, decision);
 
     // Mirror into the pending map so any in-flight Promise also resolves.
     this.resolve(dedupKey, decision);
 
+    if (!this.hybridWrite) {
+      logger.warn(
+        { dedupKey, tabId, decision },
+        'Hybrid resolve: no writer installed — TUI prompt will NOT be resolved',
+      );
+      return false;
+    }
+
     const key = decision === 'allow' ? 'a' : 'd';
-    const target = `${MAJOR_TOM_SESSION}:${tabId}`;
-    const ok = await sendKeys(target, key, 'Enter');
+    const ok = this.hybridWrite(tabId, `${key}\n`);
     if (!ok) {
-      logger.warn({ dedupKey, target, decision }, 'Hybrid send-keys injection failed');
+      logger.warn({ dedupKey, tabId, decision }, 'Hybrid PTY write failed (unknown tabId?)');
     } else {
-      logger.info({ dedupKey, target, decision }, 'Hybrid send-keys injected');
+      logger.info({ dedupKey, tabId, decision }, 'Hybrid PTY write injected');
     }
     return ok;
   }

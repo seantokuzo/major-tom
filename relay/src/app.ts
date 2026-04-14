@@ -23,8 +23,7 @@ import { createWsRoute } from './routes/ws.js';
 import { createShellRoute } from './routes/shell.js';
 import { createApiApprovalsRoutes } from './routes/api-approvals.js';
 import { createPreferencesRoutes } from './routes/preferences.js';
-import { tmuxBootstrap, TmuxMissingError, TmuxVersionError } from './adapters/tmux-bootstrap.js';
-import { WindowReaper } from './adapters/window-reaper.js';
+import { PtyAdapter } from './adapters/pty-adapter.js';
 
 // Phase 13 Wave 2 — shell-side approval routing
 import { ApprovalQueue } from './hooks/approval-queue.js';
@@ -307,8 +306,28 @@ export async function buildApp(config: AppConfig) {
     authPinEnabled: config.authPinEnabled,
   }));
 
+  // ── Shell PTY adapter ──────────────────────────────────
+  // Instantiated before any route that references it (health + shell).
+  // The adapter owns the in-memory session map, grace timers, and ring
+  // buffer. Env vars:
+  //   MAJOR_TOM_PTY_GRACE_MS      (default 30 min)
+  //   MAJOR_TOM_PTY_BUFFER_BYTES  (default 256 KiB)
+  //   MAJOR_TOM_PTY_INPUT_MAX     (default 64 KiB)
+  const parseNonNegativeInt = (raw: string | undefined): number | undefined => {
+    if (raw === undefined) return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
+  const ptyAdapter = new PtyAdapter({
+    graceMs: parseNonNegativeInt(process.env['MAJOR_TOM_PTY_GRACE_MS']),
+    bufferBytes: parseNonNegativeInt(process.env['MAJOR_TOM_PTY_BUFFER_BYTES']),
+    inputMaxBytes: parseNonNegativeInt(process.env['MAJOR_TOM_PTY_INPUT_MAX']),
+    cwd: config.claudeWorkDir,
+  });
+  shellApprovalQueue.setHybridWriter((tabId, data) => ptyAdapter.write(tabId, data));
+
   // Health check (public)
-  await app.register(createHealthRoutes({ sessionManager, fleetManager, healthMonitor }));
+  await app.register(createHealthRoutes({ sessionManager, fleetManager, healthMonitor, ptyAdapter }));
 
   // Push notifications (mix of public + auth-required)
   await app.register(createPushRoutes({ pushManager }));
@@ -327,39 +346,10 @@ export async function buildApp(config: AppConfig) {
     multiUserEnabled: config.multiUserEnabled,
   }));
 
-  // Shell WebSocket — Phase 13 "The Shell"
-  // Eager tmux bootstrap so the first `/shell/:tabId` attach doesn't race.
-  // Non-fatal: if tmux is missing on dev boxes without the shell experience,
-  // we warn and continue. The shell route still rechecks lazily per connect.
-  //
-  // Window reaper: after a startup grace period, kills any tmux windows
-  // with no active WebSocket client (orphans from prior app launches,
-  // relay restarts, or iOS generating random tab IDs). Also reaps windows
-  // after their last client disconnects and nobody reconnects within the
-  // disconnect grace period. Configurable via REAPER_STARTUP_GRACE_MS
-  // and REAPER_DISCONNECT_GRACE_MS env vars.
-  const parseGraceMs = (raw: string | undefined): number | undefined => {
-    if (raw === undefined) return undefined;
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 0 ? n : undefined;
-  };
-  const windowReaper = new WindowReaper(sessionManager, {
-    startupGraceMs: parseGraceMs(process.env['REAPER_STARTUP_GRACE_MS']),
-    disconnectGraceMs: parseGraceMs(process.env['REAPER_DISCONNECT_GRACE_MS']),
-  });
-  try {
-    await tmuxBootstrap.ensure();
-    // Bootstrap succeeded — start the startup reaper timer. After the
-    // grace period, any unclaimed windows are killed.
-    windowReaper.start();
-  } catch (err) {
-    if (err instanceof TmuxMissingError || err instanceof TmuxVersionError) {
-      logger.warn({ err: (err as Error).message }, 'tmux unavailable — shell route will be degraded');
-    } else {
-      logger.error({ err }, 'Unexpected tmux bootstrap error');
-    }
-  }
-  await app.register(createShellRoute({ sessionManager, windowReaper }));
+  // Shell WebSocket — registered after `createPreferencesRoutes` so its
+  // path doesn't collide with any earlier catch-all. PtyAdapter was
+  // constructed earlier so the health route could report tab counts.
+  await app.register(createShellRoute({ ptyAdapter }));
 
   // WebSocket (auth via session cookie on upgrade)
   await app.register(createWsRoute({
@@ -399,7 +389,7 @@ export async function buildApp(config: AppConfig) {
 
   app.addHook('onClose', async () => {
     logger.info('Shutting down services...');
-    windowReaper.dispose();
+    ptyAdapter.dispose();
     healthMonitor.dispose();
     await achievementService.flush();
     await analyticsCollector.flush();
