@@ -101,12 +101,6 @@ final class RelayProcess {
                 return
             }
 
-            // Check for tmux
-            if !tmuxAvailable() {
-                state.processState = .error("tmux not found — install with 'brew install tmux'")
-                return
-            }
-
             try launchProcess(paths: paths)
             state.processState = .running
             lastSuccessfulStart = Date()
@@ -696,46 +690,6 @@ final class RelayProcess {
                     }
                 }
             }
-        }
-    }
-
-    // MARK: - Dependency Checks
-
-    private func tmuxAvailable() -> Bool {
-        // Check common Homebrew and system paths first, since GUI-launched
-        // macOS apps often have a minimal PATH that excludes /opt/homebrew/bin
-        // and /usr/local/bin where Homebrew installs tmux.
-        let knownPaths = [
-            "/opt/homebrew/bin/tmux",   // Apple Silicon Homebrew
-            "/usr/local/bin/tmux",      // Intel Homebrew
-            "/usr/bin/tmux",            // System (unlikely but possible)
-        ]
-
-        for path in knownPaths {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                return true
-            }
-        }
-
-        // Fall back to which(1) with an expanded PATH for any non-standard installs
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        proc.arguments = ["tmux"]
-        proc.standardOutput = FileHandle.nullDevice
-        proc.standardError = FileHandle.nullDevice
-
-        // Inject Homebrew paths into the probe's PATH so which can find them
-        var env = ProcessInfo.processInfo.environment
-        let extraPaths = "/opt/homebrew/bin:/usr/local/bin"
-        env["PATH"] = extraPaths + ":" + (env["PATH"] ?? "/usr/bin:/bin")
-        proc.environment = env
-
-        do {
-            try proc.run()
-            proc.waitUntilExit()
-            return proc.terminationStatus == 0
-        } catch {
-            return false
         }
     }
 

@@ -10,7 +10,7 @@ struct HealthData: Codable, Equatable, Sendable {
     let clients: [ConnectedClient]
     let sessions: [ActiveSession]
     let memory: MemoryUsage
-    let tmuxWindowCount: Int
+    let shellTabCount: Int
 
     /// Fallback for when the relay is unreachable.
     static let offline = HealthData(
@@ -19,7 +19,7 @@ struct HealthData: Codable, Equatable, Sendable {
         clients: [],
         sessions: [],
         memory: MemoryUsage(rss: 0, heapUsed: 0, heapTotal: 0, external: 0),
-        tmuxWindowCount: 0
+        shellTabCount: 0
     )
 }
 

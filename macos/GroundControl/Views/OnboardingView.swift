@@ -1,13 +1,11 @@
-import AppKit
 import SwiftUI
 
 /// First-run onboarding wizard shown on initial launch.
 ///
 /// Steps:
-/// 1. Check prerequisites (tmux installed?)
-/// 2. Port configuration (default 9090, validate availability)
-/// 3. Auth mode selection (none / PIN / Google OAuth)
-/// 4. Optional Cloudflare Tunnel setup
+/// 1. Port configuration (default 9090, validate availability)
+/// 2. Auth mode selection (none / PIN / Google OAuth)
+/// 3. Optional Cloudflare Tunnel setup
 ///
 /// Saves config via `ConfigManager` and starts the relay on completion.
 struct OnboardingView: View {
@@ -16,8 +14,6 @@ struct OnboardingView: View {
     let onComplete: () -> Void
 
     @State private var currentStep = 0
-    @State private var tmuxInstalled = false
-    @State private var checkingTmux = true
 
     // Config values being set up
     @State private var port = 9090
@@ -26,7 +22,7 @@ struct OnboardingView: View {
     @State private var authMode: AuthMode = .pin
     @State private var enableCloudflare = false
 
-    private let totalSteps = 4
+    private let totalSteps = 3
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,10 +34,9 @@ struct OnboardingView: View {
             // Step content
             Group {
                 switch currentStep {
-                case 0: prerequisitesStep
-                case 1: portStep
-                case 2: authStep
-                case 3: cloudflareStep
+                case 0: portStep
+                case 1: authStep
+                case 2: cloudflareStep
                 default: EmptyView()
                 }
             }
@@ -54,9 +49,6 @@ struct OnboardingView: View {
             navigationBar
         }
         .frame(width: 520, height: 440)
-        .onAppear {
-            checkTmux()
-        }
         .alert("Save Failed", isPresented: $showSaveError) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -95,92 +87,7 @@ struct OnboardingView: View {
         .padding(.vertical, 20)
     }
 
-    // MARK: - Step 1: Prerequisites
-
-    @ViewBuilder
-    private var prerequisitesStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Prerequisites")
-                .font(.headline)
-
-            Text("Ground Control requires tmux for terminal session management.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            GroupBox {
-                HStack(spacing: 12) {
-                    if checkingTmux {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Checking for tmux...")
-                            .foregroundStyle(.secondary)
-                    } else if tmuxInstalled {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.title3)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("tmux is installed")
-                                .fontWeight(.medium)
-                            Text("Ready to go")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.orange)
-                            .font(.title3)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("tmux not found")
-                                .fontWeight(.medium)
-                            Text("Install with Homebrew:")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Spacer()
-
-                    if !checkingTmux {
-                        Button("Re-check") {
-                            checkTmux()
-                        }
-                        .controlSize(.small)
-                    }
-                }
-                .padding(4)
-            }
-
-            if !checkingTmux && !tmuxInstalled {
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("brew install tmux")
-                                .font(.system(.body, design: .monospaced))
-                                .textSelection(.enabled)
-
-                            Spacer()
-
-                            Button {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString("brew install tmux", forType: .string)
-                            } label: {
-                                Image(systemName: "doc.on.doc")
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Copy command")
-                        }
-
-                        Text("You can continue setup without tmux, but terminal sessions won't work until it's installed.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(4)
-                }
-            }
-        }
-    }
-
-    // MARK: - Step 2: Port Configuration
+    // MARK: - Step 1: Port Configuration
 
     @ViewBuilder
     private var portStep: some View {
@@ -234,7 +141,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Step 3: Auth Mode
+    // MARK: - Step 2: Auth Mode
 
     @ViewBuilder
     private var authStep: some View {
@@ -317,7 +224,7 @@ struct OnboardingView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Step 4: Cloudflare Tunnel
+    // MARK: - Step 3: Cloudflare Tunnel
 
     @ViewBuilder
     private var cloudflareStep: some View {
@@ -360,10 +267,6 @@ struct OnboardingView: View {
                     }
                     LabeledContent("Cloudflare Tunnel") {
                         Text(enableCloudflare ? "Enabled" : "Disabled")
-                    }
-                    LabeledContent("tmux") {
-                        Text(tmuxInstalled ? "Installed" : "Not found")
-                            .foregroundColor(tmuxInstalled ? .primary : .orange)
                     }
                 }
                 .padding(4)
@@ -409,7 +312,7 @@ struct OnboardingView: View {
 
     private var canAdvance: Bool {
         switch currentStep {
-        case 1:
+        case 0:
             return port >= 1024 && port <= 65535
         default:
             return true
@@ -417,58 +320,6 @@ struct OnboardingView: View {
     }
 
     // MARK: - Actions
-
-    private func checkTmux() {
-        checkingTmux = true
-        // Check well-known paths + which (matches RelayProcess.tmuxAvailable)
-        let knownPaths = [
-            "/opt/homebrew/bin/tmux",
-            "/usr/local/bin/tmux",
-            "/usr/bin/tmux",
-        ]
-
-        for path in knownPaths {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                tmuxInstalled = true
-                checkingTmux = false
-                return
-            }
-        }
-
-        // Fall back to which(1)
-        Task {
-            let found = await checkTmuxViaWhich()
-            tmuxInstalled = found
-            checkingTmux = false
-        }
-    }
-
-    private func checkTmuxViaWhich() async -> Bool {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        proc.arguments = ["tmux"]
-        proc.standardOutput = FileHandle.nullDevice
-        proc.standardError = FileHandle.nullDevice
-
-        var env = ProcessInfo.processInfo.environment
-        let extraPaths = "/opt/homebrew/bin:/usr/local/bin"
-        env["PATH"] = extraPaths + ":" + (env["PATH"] ?? "/usr/bin:/bin")
-        proc.environment = env
-
-        do {
-            try proc.run()
-        } catch {
-            return false
-        }
-
-        // Use terminationHandler instead of waitUntilExit() to avoid blocking
-        // the main thread (this Task inherits MainActor).
-        return await withCheckedContinuation { continuation in
-            proc.terminationHandler = { process in
-                continuation.resume(returning: process.terminationStatus == 0)
-            }
-        }
-    }
 
     private func checkPortAvailability() {
         checkingPort = true

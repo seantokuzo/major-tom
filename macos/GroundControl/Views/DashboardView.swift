@@ -61,8 +61,8 @@ struct DashboardView: View {
                             .monospacedDigit()
                     }
 
-                    LabeledContent("tmux Windows") {
-                        Text("\(relayClient.healthData.tmuxWindowCount)")
+                    LabeledContent("Shell Tabs") {
+                        Text("\(relayClient.healthData.shellTabCount)")
                             .monospacedDigit()
                     }
                 }
