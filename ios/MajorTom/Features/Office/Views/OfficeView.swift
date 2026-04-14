@@ -83,6 +83,9 @@ struct OfficeView: View {
             viewModel.activityEngine.startCycling { [weak scene, weak viewModel] agentId, _ in
                 guard let viewModel, let scene else { return }
 
+                // Sleeping sprites don't participate in activity cycling
+                if viewModel.isSleeping(agentId) { return }
+
                 // Stop the outgoing activity's animation phase
                 viewModel.activityAnimator.stopPhase(for: agentId, furnitureNodes: scene.furnitureNodes)
 
@@ -354,13 +357,55 @@ struct OfficeView: View {
 
     // MARK: - Scene Sync
 
+    // MARK: - Bunk Positions for Sleep Roster
+
+    /// Pre-computed bunk positions in crew quarters for sleeping sprites.
+    /// Spreads sleepers across the room near the bunk furniture.
+    private static let sleepingPositions: [CGPoint] = {
+        guard let module = StationLayout.module(for: .crewQuarters) else { return [] }
+        let bounds = module.bounds
+        // 3 physical bunks + additional floor positions near them
+        return [
+            // Near bunk 1 (upper-left)
+            CGPoint(x: bounds.minX + 100, y: bounds.maxY - 80),
+            CGPoint(x: bounds.minX + 100, y: bounds.maxY - 130),
+            CGPoint(x: bounds.minX + 160, y: bounds.maxY - 80),
+            CGPoint(x: bounds.minX + 160, y: bounds.maxY - 130),
+            // Near bunk 2 (upper-right)
+            CGPoint(x: bounds.maxX - 100, y: bounds.maxY - 80),
+            CGPoint(x: bounds.maxX - 100, y: bounds.maxY - 130),
+            CGPoint(x: bounds.maxX - 160, y: bounds.maxY - 80),
+            CGPoint(x: bounds.maxX - 160, y: bounds.maxY - 130),
+            // Near bunk 3 (center)
+            CGPoint(x: bounds.midX, y: bounds.maxY - 180),
+            CGPoint(x: bounds.midX - 60, y: bounds.maxY - 180),
+            CGPoint(x: bounds.midX + 60, y: bounds.maxY - 180),
+            CGPoint(x: bounds.midX, y: bounds.maxY - 230),
+            // Extra overflow positions (lower crew quarters)
+            CGPoint(x: bounds.midX - 60, y: bounds.maxY - 230),
+            CGPoint(x: bounds.midX + 60, y: bounds.maxY - 230),
+            CGPoint(x: bounds.minX + 100, y: bounds.maxY - 230),
+            CGPoint(x: bounds.maxX - 100, y: bounds.maxY - 230),
+        ]
+    }()
+
     /// Diff the current agent list against previous state and update the scene.
     private func syncScene(with agents: [AgentState]) {
         let currentIds = Set(agents.map(\.id))
 
+        // Track bunk index for sleeping sprite placement
+        var nextBunkIndex = 0
+
         // Add new agents
         for agent in agents where !previousAgentIds.contains(agent.id) {
             scene.addAgent(id: agent.id, name: agent.name, characterType: agent.characterType)
+
+            // Sleeping sprites go straight to bunks — no random scatter
+            if viewModel.isSleeping(agent.id) {
+                let bunkPos = Self.sleepingPositions[nextBunkIndex % Self.sleepingPositions.count]
+                nextBunkIndex += 1
+                scene.placeAgentSleeping(id: agent.id, bunkPosition: bunkPos)
+            }
 
             // Move to desk if assigned
             if let deskIndex = agent.deskIndex {
@@ -407,6 +452,9 @@ struct OfficeView: View {
             }
 
         case .idle:
+            // Sleeping sprites stay at bunks — skip activity assignment entirely
+            if viewModel.isSleeping(agent.id) { break }
+
             // Stop any existing animation phase before reassigning
             viewModel.activityAnimator.stopPhase(for: agent.id, furnitureNodes: scene.furnitureNodes)
 
@@ -419,7 +467,7 @@ struct OfficeView: View {
             ) {
                 let agentId = agent.id
                 let animator = viewModel.activityAnimator
-                let nodes = scene.furnitureNodes
+                let sceneRef = scene
                 let registry = viewModel.activityEngine.furnitureRegistry
                 scene.moveAgentToActivity(id: agentId, assignment: assignment) { sprite in
                     if let definition = ActivityRegistry.shared.activity(byId: assignment.activityId) {
@@ -428,7 +476,7 @@ struct OfficeView: View {
                             assignment: assignment,
                             definition: definition,
                             sprite: sprite,
-                            furnitureNodes: nodes,
+                            furnitureNodes: sceneRef.furnitureNodes,
                             furnitureRegistry: registry
                         )
                     }

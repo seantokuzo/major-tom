@@ -15,46 +15,35 @@ enum AgentStatus: String, CaseIterable {
 
 /// All character types available in the station: crew, celebrities, and dogs.
 enum CharacterType: String, CaseIterable {
-    // MARK: Original Crew
-    case dev
-    case officeWorker
-    case pm
-    case clown
-    case frankenstein
-    case dwight         // Dwight Schrute — The Office
-    case michael        // Michael Scott — The Office
-
-    // MARK: New Crew
+    // MARK: Crew
     case alienDiplomat
     case backendEngineer
     case botanist
+    case bowenYang      // Bowen Yang — celebrity
     case captain
     case chef
     case claudimusPrime // Ship's android
     case doctor
+    case dwight         // Dwight Schrute — The Office
     case frontendDev
-    case hacker
-    case mechanic
-    case pilot
-    case security
-    case tpm
-
-    // MARK: Celebrities
     case kendrick       // Kendrick Lamar
+    case mechanic
+    case pm
     case prince         // Prince
 
     // MARK: Dogs (named after the real dogs)
     case elvis          // Dachshund in space suit
-    case senor          // Dachshund alt (green hoodie)
-    case steve          // Cattle dog in space suit
     case esteban        // Cattle dog alt (bow tie)
     case hoku           // Black schnauzer
     case kai            // Pepper schnauzer
+    case senor          // Dachshund alt (green hoodie)
+    case steve          // Cattle dog in space suit
+    case zuckerbot      // Robot dog
 
     /// Whether this character is a dog (used for activity group filtering).
     var isDog: Bool {
         switch self {
-        case .elvis, .senor, .steve, .esteban, .hoku, .kai:
+        case .elvis, .esteban, .hoku, .kai, .senor, .steve, .zuckerbot:
             return true
         default:
             return false

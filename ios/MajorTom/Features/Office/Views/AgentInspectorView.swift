@@ -1,4 +1,5 @@
 import SwiftUI
+import SpriteKit
 
 // MARK: - Agent Inspector View
 
@@ -15,11 +16,12 @@ struct AgentInspectorView: View {
     @State private var isRenaming = false
     @State private var renameText = ""
     @State private var messageText = ""
+    @State private var spriteScene: InspectorSpriteScene?
 
     var body: some View {
         VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.md) {
-            // Header
-            header
+            // Sprite preview + header
+            spriteHeader
 
             Divider()
                 .background(MajorTomTheme.Colors.textTertiary)
@@ -53,14 +55,23 @@ struct AgentInspectorView: View {
 
     // MARK: - Components
 
-    private var header: some View {
-        HStack {
-            // Character color indicator
-            Circle()
-                .fill(CharacterCatalog.config(for: agent.characterType).spriteColor)
-                .frame(width: 32, height: 32)
+    private var spriteHeader: some View {
+        HStack(spacing: MajorTomTheme.Spacing.md) {
+            // Cycling sprite preview
+            SpriteView(scene: {
+                if let existing = spriteScene { return existing }
+                let scene = InspectorSpriteScene(characterType: agent.characterType)
+                Task { @MainActor in spriteScene = scene }
+                return scene
+            }())
+            .frame(width: 80, height: 80)
+            .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.medium))
+            .overlay(
+                RoundedRectangle(cornerRadius: MajorTomTheme.Radius.medium)
+                    .stroke(CharacterCatalog.config(for: agent.characterType).spriteColor.opacity(0.5), lineWidth: 1.5)
+            )
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(agent.name)
                     .font(MajorTomTheme.Typography.headline)
                     .foregroundStyle(MajorTomTheme.Colors.textPrimary)
@@ -68,11 +79,11 @@ struct AgentInspectorView: View {
                 Text(CharacterCatalog.config(for: agent.characterType).displayName)
                     .font(MajorTomTheme.Typography.caption)
                     .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+
+                statusBadge
             }
 
             Spacer()
-
-            statusBadge
         }
     }
 
@@ -237,13 +248,103 @@ struct AgentInspectorView: View {
     }
 }
 
+// MARK: - Inspector Sprite Scene
+
+/// SpriteKit scene that cycles through all available textures for a character.
+/// Shows standing directions, walk frames, and activity poses — 2 seconds each.
+final class InspectorSpriteScene: SKScene {
+    private let characterType: CharacterType
+
+    init(characterType: CharacterType) {
+        self.characterType = characterType
+        super.init(size: CGSize(width: 80, height: 80))
+        scaleMode = .aspectFit
+        backgroundColor = SKColor(red: 0.10, green: 0.10, blue: 0.13, alpha: 1.0)
+        anchorPoint = CGPoint(x: 0.5, y: 0.5)
+    }
+
+    @available(*, unavailable)
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func didMove(to view: SKView) {
+        super.didMove(to: view)
+
+        let atlas = SKTextureAtlas(named: "CrewSprites")
+        let name = characterType.rawValue
+
+        // Collect all available textures for this character
+        var textures: [SKTexture] = []
+
+        // Standing directions
+        for dir in ["front", "back", "left", "right"] {
+            let key = "\(name)_\(dir)"
+            if atlas.textureNames.contains(key) {
+                textures.append(atlas.textureNamed(key))
+            }
+        }
+
+        // Walk frames
+        for frame in ["walkLeft1", "walkLeft2", "walkRight1", "walkRight2"] {
+            let key = "\(name)_\(frame)"
+            if atlas.textureNames.contains(key) {
+                textures.append(atlas.textureNamed(key))
+            }
+        }
+
+        // Activity poses (humans)
+        for pose in ["sitting", "sleeping", "working", "exercising"] {
+            let key = "\(name)_\(pose)"
+            if atlas.textureNames.contains(key) {
+                textures.append(atlas.textureNamed(key))
+            }
+        }
+
+        // Activity poses (dogs)
+        for pose in ["running", "sniffing"] {
+            let key = "\(name)_\(pose)"
+            if atlas.textureNames.contains(key) {
+                textures.append(atlas.textureNamed(key))
+            }
+        }
+
+        guard let first = textures.first else { return }
+
+        for tex in textures { tex.filteringMode = .nearest }
+
+        let sprite = SKSpriteNode(texture: first, size: CrewSpriteBuilder.size(for: characterType))
+        sprite.setScale(1.6)
+        sprite.position = .zero
+        addChild(sprite)
+
+        // Gentle bob
+        sprite.run(.repeatForever(.sequence([
+            .moveBy(x: 0, y: 3, duration: 0.7),
+            .moveBy(x: 0, y: -3, duration: 0.7),
+        ])))
+
+        // Cycle through all textures
+        guard textures.count > 1 else { return }
+        var actions: [SKAction] = []
+        for tex in textures.dropFirst() {
+            actions.append(.wait(forDuration: 2.0))
+            actions.append(.run { sprite.texture = tex })
+        }
+        // Loop back to first
+        actions.append(.wait(forDuration: 2.0))
+        actions.append(.run { sprite.texture = first })
+        sprite.run(.repeatForever(.sequence(actions)))
+    }
+}
+
 #Preview {
     AgentInspectorView(
         agent: AgentState(
             id: "preview-1",
             name: "Alice",
             role: "frontend",
-            characterType: .dev,
+            characterType: .captain,
             status: .working,
             currentTask: "Building the login page",
             deskIndex: 0

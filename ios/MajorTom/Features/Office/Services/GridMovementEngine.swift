@@ -94,7 +94,7 @@ final class GridMovementEngine {
 
     /// Find a path within a single room, avoiding furniture and reserved cells.
     /// Returns scene-space waypoints with Catmull-Rom smoothing.
-    func findPath(from source: CGPoint, to target: CGPoint, in roomType: ModuleType, agentId: String? = nil) -> [CGPoint]? {
+    func findPath(from source: CGPoint, to target: CGPoint, in roomType: ModuleType, agentId: String? = nil, allowFallback: Bool = true) -> [CGPoint]? {
         guard let graph = roomGrids[roomType],
               let bounds = roomBounds[roomType] else { return nil }
 
@@ -107,7 +107,8 @@ final class GridMovementEngine {
 
         guard let startNode = graph.node(atGridPosition: vector_int2(clampedStart.x, clampedStart.y)),
               let endNode = graph.node(atGridPosition: vector_int2(clampedEnd.x, clampedEnd.y)) else {
-            // Start or end is blocked — try adjacent cells
+            // Start or end is blocked — try adjacent cells (but don't recurse again)
+            guard allowFallback else { return nil }
             return findPathToNearestOpen(from: source, to: target, in: roomType, agentId: agentId)
         }
 
@@ -420,7 +421,7 @@ final class GridMovementEngine {
                     if let graph = roomGrids[room],
                        graph.node(atGridPosition: vector_int2(candidate.x, candidate.y)) != nil {
                         let adjustedTarget = gridToScene(candidate, roomOrigin: bounds.origin)
-                        return findPath(from: source, to: adjustedTarget, in: room, agentId: agentId)
+                        return findPath(from: source, to: adjustedTarget, in: room, agentId: agentId, allowFallback: false)
                     }
                 }
             }

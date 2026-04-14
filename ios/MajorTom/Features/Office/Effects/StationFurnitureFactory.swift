@@ -125,7 +125,7 @@ enum StationFurnitureFactory {
 
     /// Bunk bed for crew rest.
     static func bunkBed() -> SKSpriteNode {
-        sprite(named: "bunk_bed", size: CGSize(width: 80, height: 80))
+        sprite(named: "bunk_bed_1", size: CGSize(width: 80, height: 80))
     }
 
     /// Couch / lounge seating.
@@ -138,9 +138,9 @@ enum StationFurnitureFactory {
         sprite(named: "media_screen", size: CGSize(width: 80, height: 65))
     }
 
-    /// Floor lamp (lit variant).
+    /// Floor lamp (lit / active variant).
     static func floorLampOn() -> SKNode {
-        let node = sprite(named: "floor_lamp_on", size: CGSize(width: 35, height: 80))
+        let node = sprite(named: "floor_lamp_active", size: CGSize(width: 35, height: 80))
 
         // Warm glow circle around the lamp
         let glow = SKShapeNode(circleOfRadius: 25)
@@ -160,14 +160,14 @@ enum StationFurnitureFactory {
 
     // MARK: - Galley
 
-    /// Food dispenser / vending unit.
+    /// Food dispenser / vending unit (idle state).
     static func foodDispenser() -> SKSpriteNode {
-        sprite(named: "food_dispenser", size: CGSize(width: 65, height: 100))
+        sprite(named: "food_dispenser_idle", size: CGSize(width: 65, height: 100))
     }
 
-    /// Coffee machine / beverage synthesizer.
+    /// Coffee machine / beverage synthesizer (idle state).
     static func coffeeMachine() -> SKSpriteNode {
-        sprite(named: "coffee_machine", size: CGSize(width: 50, height: 80))
+        sprite(named: "coffee_machine_idle", size: CGSize(width: 50, height: 80))
     }
 
     /// Dining table.
@@ -179,12 +179,12 @@ enum StationFurnitureFactory {
 
     /// Tree — large plant for nature modules.
     static func tree() -> SKSpriteNode {
-        sprite(named: "tree", size: CGSize(width: 80, height: 100))
+        sprite(named: "tree_1", size: CGSize(width: 80, height: 100))
     }
 
     /// Water feature — decorative pool.
     static func waterFeature() -> SKNode {
-        let node = sprite(named: "water_feature", size: CGSize(width: 100, height: 70))
+        let node = sprite(named: "water_feature_1", size: CGSize(width: 100, height: 70))
 
         // Shimmer overlay
         let shimmer = SKShapeNode(ellipseOf: CGSize(width: 50, height: 22))
@@ -216,7 +216,7 @@ enum StationFurnitureFactory {
 
     /// Pond — water body in the arboretum.
     static func pond() -> SKSpriteNode {
-        sprite(named: "pond", size: CGSize(width: 110, height: 80))
+        sprite(named: "pond_1", size: CGSize(width: 110, height: 80))
     }
 
     // MARK: - Training Bay
@@ -240,7 +240,7 @@ enum StationFurnitureFactory {
 
     /// Space suit on display rack.
     static func spaceSuitRack() -> SKSpriteNode {
-        sprite(named: "space_suit_rack", size: CGSize(width: 65, height: 110))
+        sprite(named: "spacesuit_rack_1", size: CGSize(width: 65, height: 110))
     }
 
     // MARK: - Preloading
