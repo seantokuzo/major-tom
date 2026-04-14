@@ -1,7 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Full re-splice of ALL sprite and furniture assets from canonical sources.
 # Nukes existing atlas contents and rebuilds from assets/crew/, assets/dogs/, assets/furniture/.
-set -e
+set -euo pipefail
+
+if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+  echo "Error: resplice-all.sh requires Bash 4+ (associative arrays)." >&2
+  echo "macOS ships Bash 3.2 — install a newer one via Homebrew: brew install bash" >&2
+  exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -141,6 +147,7 @@ if [ -f "$FURNITURE_PROCESSOR" ]; then
 else
   # Manual furniture processing — green screen remove + imageset wrap
   echo "No furniture processor found, doing manual processing..."
+  shopt -s nullglob
   for src in "$SCRIPT_DIR/furniture/"*.png; do
     name="$(basename "$src" .png)"
     imageset_dir="$FURNITURE_ATLAS/${name}.imageset"
