@@ -1,9 +1,10 @@
 import Foundation
 
-/// Represents a single terminal tab backed by a tmux window on the relay.
+/// Represents a single terminal tab backed by a PTY session on the relay.
 ///
 /// Each tab maps to a unique `/shell/:tabId` WebSocket endpoint. The relay
-/// creates (or re-attaches to) a tmux window keyed by `tabId`.
+/// spawns (or re-attaches to) a PTY keyed by `tabId`, holding it through a
+/// 30-min disconnect grace so app backgrounding does not lose state.
 struct TerminalTab: Identifiable, Equatable {
     /// Unique identifier for SwiftUI list diffing.
     let id: UUID

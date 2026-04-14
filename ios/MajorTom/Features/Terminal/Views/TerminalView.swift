@@ -6,10 +6,10 @@ import UIKit
 /// Wave 2: Full keyboard input. The NativeKeybar sits above the iOS software
 /// keyboard with specialty keys (Esc, Tab, Ctrl, arrows). The SpecialtyKeyGrid
 /// slides up as an alternative to the iOS keyboard with function keys, Ctrl
-/// combos, tmux shortcuts, and symbols.
+/// combos, user-started-tmux shortcuts, and symbols.
 ///
 /// Wave 3: Multi-tab support. The TerminalTabBar sits above the terminal area
-/// and lets users create, switch, and close tmux windows (tabs).
+/// and lets users create, switch, and close PTY sessions (tabs).
 ///
 /// Wave 4: Settings sheet with theme picker, font size slider, and keybar
 /// customization. Gear icon in the status bar presents TerminalSettingsView.
@@ -184,13 +184,13 @@ struct TerminalView: View {
             liveActivityTask?.cancel()
         }
         .task {
-            // Reconcile persisted tab IDs with the relay's actual tmux
-            // windows so stale tabs are pruned early. Note: the WebView
-            // may already be connecting concurrently (SwiftUI does not
-            // guarantee .task ordering vs view body rendering). Stale
-            // tab IDs still work — the relay creates fresh windows on
-            // demand — so the race is benign; reconciliation just cleans
-            // up the local tab list for the next launch.
+            // Reconcile persisted tab IDs with the relay's live PTY sessions
+            // so stale tabs are pruned early. Note: the WebView may already
+            // be connecting concurrently (SwiftUI does not guarantee .task
+            // ordering vs view body rendering). Stale tab IDs still work —
+            // the relay spawns a fresh PTY on connect — so the race is
+            // benign; reconciliation just cleans up the local tab list for
+            // the next launch.
             await viewModel.reconcileWithRelay()
 
             await viewModel.keybarViewModel.syncFromRelay()
