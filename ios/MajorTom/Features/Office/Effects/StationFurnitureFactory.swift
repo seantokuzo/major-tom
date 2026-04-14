@@ -39,12 +39,7 @@ enum StationFurnitureFactory {
     /// Workstation desk for agent seating — used at desk positions.
     /// Scaled for 600×640 rooms (was 120×80 for 1200×350 rooms).
     static func workstationDesk() -> SKSpriteNode {
-        sprite(named: "workstation_desk1", size: CGSize(width: 100, height: 70))
-    }
-
-    /// Alternate workstation desk variant.
-    static func workstationDesk2() -> SKSpriteNode {
-        sprite(named: "workstation_desk2", size: CGSize(width: 100, height: 70))
+        sprite(named: "workstation", size: CGSize(width: 100, height: 70))
     }
 
     /// Captain's chair — centerpiece of the Command Bridge.

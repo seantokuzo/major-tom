@@ -809,10 +809,7 @@ final class OfficeScene: SKScene {
 
     private func renderDesks() {
         for desk in OfficeLayout.desks {
-            // Alternate desk textures for visual variety
-            let console: SKSpriteNode = desk.id % 2 == 0
-                ? StationFurnitureFactory.workstationDesk()
-                : StationFurnitureFactory.workstationDesk2()
+            let console = StationFurnitureFactory.workstationDesk()
             console.position = desk.position
             console.zPosition = 3
             console.name = "consoleGroup_\(desk.id)"
@@ -1643,16 +1640,6 @@ final class OfficeScene: SKScene {
             sprite.updateModule(.commandBridge)
             sprite.startWorkAnimation()
         }
-    }
-
-    /// Place a sleeping sprite directly at a bunk position in crew quarters.
-    /// No pathfinding, no activity cycling — just a static sleeping animation.
-    func placeAgentSleeping(id: String, bunkPosition: CGPoint) {
-        guard let sprite = agentSprites[id] else { return }
-        sprite.stopAnimations()
-        sprite.position = bunkPosition
-        sprite.updateModule(.crewQuarters)
-        sprite.startActivityAnimation("sleeping")
     }
 
     func moveAgentToBreakArea(id: String, areaType: OfficeAreaType) {

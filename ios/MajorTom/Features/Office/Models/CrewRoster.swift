@@ -35,7 +35,15 @@ final class CrewRoster {
         let defaults = UserDefaults.standard
 
         if let savedNames = defaults.stringArray(forKey: Self.preferredKey) {
-            self.preferredOrder = savedNames.compactMap { CharacterType(rawValue: $0) }
+            // Sanitize: filter to humans, de-duplicate while preserving order.
+            // Guards against corrupted UserDefaults from older builds or migrations.
+            var seen = Set<CharacterType>()
+            self.preferredOrder = savedNames.compactMap {
+                guard let type = CharacterType(rawValue: $0),
+                      !type.isDog,
+                      seen.insert(type).inserted else { return nil }
+                return type
+            }
         } else {
             self.preferredOrder = []
         }

@@ -701,7 +701,7 @@ final class AgentSprite: SKSpriteNode {
             return
         }
 
-        let animate = SKAction.animate(with: frames, timePerFrame: 0.2, resize: false, restore: false)
+        let animate = SKAction.animate(with: frames, timePerFrame: 0.28, resize: false, restore: false)
         bodySprite.run(SKAction.repeatForever(animate), withKey: "walkAnim")
     }
 
@@ -716,7 +716,7 @@ final class AgentSprite: SKSpriteNode {
     /// Move along a series of waypoints sequentially.
     /// Each segment calculates its own duration based on distance for consistent speed.
     /// Uses walk cycle animation when walk textures are available.
-    func moveAlongPath(_ waypoints: [CGPoint], speed: CGFloat = 120, completion: (() -> Void)? = nil) {
+    func moveAlongPath(_ waypoints: [CGPoint], speed: CGFloat = 90, completion: (() -> Void)? = nil) {
         guard !waypoints.isEmpty else {
             completion?()
             return
