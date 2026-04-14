@@ -4,19 +4,35 @@
 
 ## Current Phase
 
-**QA Phase** complete (PR #111). Next: **Phase "Space Station"** — iOS office revamp.
-Spec: `docs/PHASE-SPACE-STATION.md`
+**Life Engine** complete (PRs #124–#128). Next: **Optimization phase** — battery drain fix.
 
-### QA / Performance Phase
+Memory: `project_optimization_phase.md` has the full wave plan + verified hotspots + Apple best practices.
 
-| Item | Status | PR |
-|------|--------|----|
-| Wave 1 — Memory fixes (both apps) | DONE | #111 |
-| Wave 2 — Performance optimization | DONE | (covered in #111) |
-| Wave 3 — Manual QA | DONE | — |
-| Terminal binary frame fix | DONE | #111 |
+### Optimization phase (NEXT — queued)
 
-### Prior Tracks (all complete)
+Research 2026-04-14 refuted the "PNG is killing us" hypothesis. Real hotspots are SKAction allocation churn + per-frame overhead, not texture format. Sprite-redraw experiment scrapped.
+
+| Wave | Scope | Status |
+|------|-------|--------|
+| 1 — Measurement | SpriteKit HUD + Instruments baseline | QUEUED |
+| 2 — Cheap wins | ignoresSiblingOrder, cache parallax refs, frame budget | QUEUED |
+| 3 — SKAction pooling | Reuse action graphs in AgentSprite, dirty-flag mood | QUEUED |
+| 4 — Culling + atlas split + tile map | Pause offscreen, split CrewSprites, SKTileMapNode floor | QUEUED |
+| 5 — Verify | Re-measure. Target: Instruments energy "Low" | QUEUED |
+
+### Life Engine phase (complete)
+
+| Wave | Scope | PR |
+|------|-------|----|
+| 1 — Grid pathfinding, haptics, new rooms | DONE | #124 |
+| 2 — Activity selection engine (JSON) | DONE | #125 |
+| 3 — Activity animations, emotes, asset transitions | DONE | #126 |
+| 3b — Roster rewire + asset resplice + inspector preview | DONE | #127 |
+| 3c — Crew picker UI | DONE | #128 |
+
+### Space Station phase (complete — superseded by Life Engine)
+
+Spec: `docs/PHASE-SPACE-STATION.md` — office→station revamp folded into Life Engine waves.
 
 ### Ground Control (macOS relay manager)
 
@@ -54,4 +70,4 @@ Spec: `docs/PHASE-14-SWIFTTERM.md`
 | 11 | The Pipeline | #86-88 |
 | 12 | Glow Up | — |
 | 13 | The Shell | #89-96 |
-| QA | PWA Polish | #101 |
+| QA | PWA Polish | #101, #111 |
