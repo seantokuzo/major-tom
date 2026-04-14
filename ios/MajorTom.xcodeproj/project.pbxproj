@@ -86,6 +86,7 @@
 		7D680AE80F01D84BF6209698 /* CloseTabConfirm.swift in Sources */ = {isa = PBXBuildFile; fileRef = E104B2CEBAA36B9B97E254AA /* CloseTabConfirm.swift */; };
 		818FA51F81C18CFE08B3C097 /* PairingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526DF9EAD13F47F747C7ACC3 /* PairingViewModel.swift */; };
 		8294293F9EF30CBEED38BFC6 /* HapticService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7794C5813F5964F288D432AD /* HapticService.swift */; };
+		39E76A83321DEBACFD4BB7DE /* PerfHUDPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1972DF8FED85D9290EA3F331 /* PerfHUDPreferences.swift */; };
 		83C02DEBD2B6488A47A08A65 /* ModePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66594811ED284A67510E10AE /* ModePickerView.swift */; };
 		85574E49192424FB81A91CA9 /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = D91A9F673395FFFDE1E3A220 /* MarkdownText.swift */; };
 		855E5820EB1F99D820AFF91A /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EE6178C1ADCC581A8CEDD6E /* SessionListView.swift */; };
@@ -307,6 +308,7 @@
 		7643A52E74C92A59EFA82ED7 /* OfficeScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeScene.swift; sourceTree = "<group>"; };
 		765796A3C1DAD173DB56A1CC /* ThemeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeEngine.swift; sourceTree = "<group>"; };
 		7794C5813F5964F288D432AD /* HapticService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticService.swift; sourceTree = "<group>"; };
+		1972DF8FED85D9290EA3F331 /* PerfHUDPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfHUDPreferences.swift; sourceTree = "<group>"; };
 		794D98FF20DC91F49542FE7D /* OfficeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeViewModel.swift; sourceTree = "<group>"; };
 		7A8199AB9D26A914D6633EF0 /* PermissionModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionModeView.swift; sourceTree = "<group>"; };
 		7B0675DDA1DE8E757F72ECF0 /* AnalyticsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsViewModel.swift; sourceTree = "<group>"; };
@@ -827,6 +829,7 @@
 				10F013B10B2AA2CD96B19588 /* DangerScoring.swift */,
 				7794C5813F5964F288D432AD /* HapticService.swift */,
 				A9BD8A95DFAD6160FF41E83F /* KeychainService.swift */,
+				1972DF8FED85D9290EA3F331 /* PerfHUDPreferences.swift */,
 				28F93EA76007AD19338D6B61 /* PhoneWatchConnectivityService.swift */,
 				6EF58FBAC8341407F9E3E7A0 /* RelayService.swift */,
 			);
@@ -1667,6 +1670,7 @@
 				E8F577B5E74B036260C3633B /* GitStatusView.swift in Sources */,
 				C73A60CB24EFABD14D9C2A2F /* GodModeConfirmation.swift in Sources */,
 				8294293F9EF30CBEED38BFC6 /* HapticService.swift in Sources */,
+				39E76A83321DEBACFD4BB7DE /* PerfHUDPreferences.swift in Sources */,
 				8A47BE851B898A4D0899F183 /* KeySpec.swift in Sources */,
 				22A50E5C5D84EFE896C415FF /* KeybarCustomizer.swift in Sources */,
 				6894059C83BB1BFF450749C2 /* KeybarViewModel.swift in Sources */,

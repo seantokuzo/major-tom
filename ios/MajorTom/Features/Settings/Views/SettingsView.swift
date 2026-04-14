@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @State private var viewModel: SettingsViewModel
+    @State private var showsPerfHUD: Bool = PerfHUDPreferences.isEnabled
 
     private let auth: AuthService
     private let relay: RelayService
@@ -22,6 +23,7 @@ struct SettingsView: View {
                 teamSection
                 notificationSection
                 sessionSection
+                developerSection
                 aboutSection
             }
             .scrollContentBackground(.hidden)
@@ -222,6 +224,24 @@ struct SettingsView: View {
             }
         } header: {
             Text("Session")
+        }
+    }
+
+    // MARK: - Developer
+
+    private var developerSection: some View {
+        Section {
+            Toggle(isOn: $showsPerfHUD) {
+                Label("Performance HUD", systemImage: "speedometer")
+            }
+            .onChange(of: showsPerfHUD) { _, newValue in
+                PerfHUDPreferences.isEnabled = newValue
+            }
+            .listRowBackground(MajorTomTheme.Colors.surface)
+        } header: {
+            Text("Developer")
+        } footer: {
+            Text("Overlays SpriteKit FPS + node/draw/quad counts on the Office scene. Use during Instruments profiling — see docs/PERF-BASELINE.md.")
         }
     }
 
