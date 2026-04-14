@@ -73,6 +73,9 @@ final class OfficeScene: SKScene {
     /// Guard against `didMove(to:)` being invoked more than once (e.g. SpriteView re-hosting).
     private var hasSetup = false
 
+    /// NotificationCenter token for live Performance HUD toggle updates.
+    private var perfHUDObserver: NSObjectProtocol?
+
     // MARK: - Scene Lifecycle
 
     override func didMove(to view: SKView) {
@@ -86,6 +89,19 @@ final class OfficeScene: SKScene {
 
         // Enable multi-touch for pinch zoom
         view.isMultipleTouchEnabled = true
+
+        // Performance HUD — flipped via Settings → Developer → Performance HUD.
+        // Re-applied live when the preference changes so we don't need to
+        // leave/return to the Office tab while measuring.
+        applyPerfHUD(to: view)
+        perfHUDObserver = NotificationCenter.default.addObserver(
+            forName: PerfHUDPreferences.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self, weak view] _ in
+            guard let view else { return }
+            self?.applyPerfHUD(to: view)
+        }
 
         // Setup camera — start at col1_top snap position
         cameraNode = SKCameraNode()
@@ -107,6 +123,22 @@ final class OfficeScene: SKScene {
         renderThemeOverlay()
         renderAmbientParticles()
         startAmbientAnimations()
+    }
+
+    deinit {
+        if let perfHUDObserver {
+            NotificationCenter.default.removeObserver(perfHUDObserver)
+        }
+    }
+
+    // MARK: - Performance HUD
+
+    private func applyPerfHUD(to view: SKView) {
+        let enabled = PerfHUDPreferences.isEnabled
+        view.showsFPS = enabled
+        view.showsNodeCount = enabled
+        view.showsDrawCount = enabled
+        view.showsQuadCount = enabled
     }
 
     // MARK: - Station Hull Rendering

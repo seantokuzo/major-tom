@@ -14,7 +14,7 @@ Research 2026-04-14 refuted the "PNG is killing us" hypothesis. Real hotspots ar
 
 | Wave | Scope | Status |
 |------|-------|--------|
-| 1 — Measurement | SpriteKit HUD + Instruments baseline | QUEUED |
+| 1 — Measurement | SpriteKit HUD + Instruments baseline | IN PROGRESS |
 | 2 — Cheap wins | ignoresSiblingOrder, cache parallax refs, frame budget | QUEUED |
 | 3 — SKAction pooling | Reuse action graphs in AgentSprite, dirty-flag mood | QUEUED |
 | 4 — Culling + atlas split + tile map | Pause offscreen, split CrewSprites, SKTileMapNode floor | QUEUED |
