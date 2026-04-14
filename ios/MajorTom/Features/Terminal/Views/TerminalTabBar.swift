@@ -18,6 +18,16 @@ struct TerminalTabBar: View {
     /// Callback when the "+" button is tapped to create a new tab.
     let onCreateTab: () -> Void
 
+    /// Callback when the user renames a tab via long-press.
+    /// Passing an empty string clears the override.
+    let onRenameTab: (UUID, String) -> Void
+
+    /// The tab currently being renamed (drives the native rename alert).
+    @State private var renameTarget: TerminalTab?
+
+    /// Draft text bound to the alert's TextField.
+    @State private var renameDraft: String = ""
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: MajorTomTheme.Spacing.xs) {
@@ -33,13 +43,43 @@ struct TerminalTabBar: View {
         }
         .frame(height: 36)
         .background(MajorTomTheme.Colors.surface)
+        .alert(
+            "Rename Tab",
+            isPresented: renameAlertBinding,
+            presenting: renameTarget
+        ) { tab in
+            TextField("Tab name", text: $renameDraft)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled(true)
+            Button("Save") {
+                onRenameTab(tab.id, renameDraft)
+                renameTarget = nil
+            }
+            Button("Reset", role: .destructive) {
+                onRenameTab(tab.id, "")
+                renameTarget = nil
+            }
+            Button("Cancel", role: .cancel) {
+                renameTarget = nil
+            }
+        } message: { _ in
+            Text("Leave blank or tap Reset to fall back to the shell's title.")
+        }
+    }
+
+    /// Bridges `renameTarget: TerminalTab?` to a Bool-binding for `.alert`.
+    private var renameAlertBinding: Binding<Bool> {
+        Binding(
+            get: { renameTarget != nil },
+            set: { if !$0 { renameTarget = nil } }
+        )
     }
 
     // MARK: - Tab Button
 
     private func tabButton(for tab: TerminalTab) -> some View {
         HStack(spacing: MajorTomTheme.Spacing.xs) {
-            Text(tab.title)
+            Text(tab.displayTitle)
                 .font(.system(size: 12, weight: tab.isActive ? .semibold : .regular, design: .monospaced))
                 .foregroundStyle(tab.isActive ? MajorTomTheme.Colors.accent : MajorTomTheme.Colors.textSecondary)
                 .lineLimit(1)
@@ -55,7 +95,7 @@ struct TerminalTabBar: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Close \(tab.title)")
+            .accessibilityLabel("Close \(tab.displayTitle)")
         }
         .padding(.horizontal, MajorTomTheme.Spacing.sm)
         .padding(.vertical, MajorTomTheme.Spacing.xs)
@@ -72,8 +112,35 @@ struct TerminalTabBar: View {
         .onTapGesture {
             onSelectTab(tab.id)
         }
+        .contextMenu {
+            Button {
+                beginRename(for: tab)
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            if tab.userTitle != nil {
+                Button(role: .destructive) {
+                    onRenameTab(tab.id, "")
+                } label: {
+                    Label("Reset Name", systemImage: "arrow.uturn.backward")
+                }
+            }
+        }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(tab.title), tab\(tab.isActive ? ", active" : "")")
+        .accessibilityLabel("\(tab.displayTitle), tab\(tab.isActive ? ", active" : "")")
+        .accessibilityHint("Double tap to switch, or use the Rename action.")
+        .accessibilityAction(named: Text("Rename")) {
+            beginRename(for: tab)
+        }
+    }
+
+    /// Opens the rename alert seeded with the tab's current user title.
+    /// Shared by the context-menu button and the VoiceOver action so both
+    /// entry points route through the same state transition.
+    private func beginRename(for tab: TerminalTab) {
+        HapticService.impact(.medium)
+        renameDraft = tab.userTitle ?? ""
+        renameTarget = tab
     }
 
     // MARK: - New Tab Button

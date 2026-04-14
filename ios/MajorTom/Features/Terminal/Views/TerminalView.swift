@@ -79,6 +79,9 @@ struct TerminalView: View {
                     },
                     onCreateTab: {
                         viewModel.createTab()
+                    },
+                    onRenameTab: { id, newTitle in
+                        viewModel.renameTab(id: id, to: newTitle)
                     }
                 )
 
@@ -130,7 +133,7 @@ struct TerminalView: View {
         }
         .closeTabConfirmation(
             isPresented: $viewModel.showCloseConfirmation,
-            tabTitle: viewModel.tabs.first(where: { $0.id == viewModel.pendingCloseTabId })?.title ?? "Terminal",
+            tabTitle: viewModel.tabs.first(where: { $0.id == viewModel.pendingCloseTabId })?.displayTitle ?? "Terminal",
             onConfirm: {
                 viewModel.confirmCloseTab()
             }

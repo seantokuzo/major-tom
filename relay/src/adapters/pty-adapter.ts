@@ -319,6 +319,12 @@ export class PtyAdapter {
     env['TERM'] = env['TERM'] ?? 'xterm-256color';
     env['COLORTERM'] = env['COLORTERM'] ?? 'truecolor';
     env['LANG'] = env['LANG'] ?? 'en_US.UTF-8';
+    // Align PWD with the spawn cwd so shell prompts expanding `\W` (bash)
+    // or equivalents render the correct basename on the very first prompt.
+    // Without this, bash inherits whatever PWD the relay process has, and
+    // the initial PS1 expansion can fall out of sync with the child's
+    // actual working directory until the user runs `cd` or equivalent.
+    env['PWD'] = this.cwd;
 
     const ptyProcess = this.spawnFn(this.shell, this.shellArgs, {
       name: 'xterm-256color',
