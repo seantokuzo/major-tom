@@ -92,7 +92,7 @@ struct CharacterGalleryView: View {
     private func traitsView(config: CharacterConfig) -> some View {
         HStack(spacing: MajorTomTheme.Spacing.sm) {
             // Type badge
-            let isDog = [CharacterType.elvis, .senor, .steve, .esteban, .hoku, .kai].contains(config.type)
+            let isDog = config.type.isDog
             traitBadge(
                 icon: isDog ? "pawprint.fill" : "person.fill",
                 text: isDog ? "Dog" : "Human",
@@ -144,26 +144,14 @@ struct CharacterGalleryView: View {
 
     private func characterDescription(for type: CharacterType) -> String {
         switch type {
-        case .dev:
-            return "The classic coder. Lives on caffeine, thrives under pressure, and always has headphones on."
-        case .officeWorker:
-            return "Keeps the wheels turning. Organized, reliable, and always has a spreadsheet ready."
-        case .pm:
-            return "Herds cats for a living. Loves standup meetings and Gantt charts."
-        case .clown:
-            return "Office morale officer. Brings joy, chaos, and occasional whoopee cushions."
-        case .frankenstein:
-            return "The office wildcard. Bolts included. Surprisingly good at pair programming."
-        case .dwight:
-            return "Assistant to the Regional Manager. Bears. Beets. Battlestar Galactica."
-        case .michael:
-            return "World's Best Boss. That's what the mug says, and he bought it himself."
         case .alienDiplomat:
             return "Three eyes, two antennae, one mission: intergalactic peace. Fluent in 47 languages."
         case .backendEngineer:
             return "Lives in the terminal. Thinks the frontend is just a fancy printf."
         case .botanist:
             return "Keeps the station's greenhouse alive. Has names for all the plants."
+        case .bowenYang:
+            return "Weekend Update's finest. Brought chaotic energy and impeccable timing to the station."
         case .captain:
             return "The one in charge. Distinguished, decorated, and always has a plan."
         case .chef:
@@ -172,34 +160,32 @@ struct CharacterGalleryView: View {
             return "Ship's android. Runs on logic, curiosity, and the occasional firmware update."
         case .doctor:
             return "Patches up the crew. Calm under pressure, steady hands, terrible bedside jokes."
+        case .dwight:
+            return "Assistant to the Regional Manager. Bears. Beets. Battlestar Galactica."
         case .frontendDev:
             return "Pixel-perfect or bust. Has opinions about CSS that could start wars."
-        case .hacker:
-            return "Hoodie up, visor on, neon glowing. Probably just fixing the Wi-Fi."
-        case .mechanic:
-            return "Oil-stained and proud. If it's broken, they'll fix it. If it's not, they'll improve it."
-        case .pilot:
-            return "Cocky grin, aviator shades, flight patches. Can parallel park a starship."
-        case .security:
-            return "Keeps the station safe. Built like a bulkhead. Surprisingly gentle with the dogs."
-        case .tpm:
-            return "Technical Program Manager. Tracks every ticket, owns every timeline, blocks no one."
         case .kendrick:
             return "Humble but hungry. Runs the station's freestyle cipher every Friday night."
+        case .mechanic:
+            return "Oil-stained and proud. If it's broken, they'll fix it. If it's not, they'll improve it."
+        case .pm:
+            return "Herds cats for a living. Loves standup meetings and Gantt charts."
         case .prince:
             return "Purple reign in space. Brought a guitar to the station. Plays it at 3 AM."
         case .elvis:
             return "Long boi. Requires a blanket at all times. Expert at fitting under desks."
-        case .senor:
-            return "Elvis's brother. Green hoodie enthusiast. Equally long, equally dramatic."
-        case .steve:
-            return "High energy herder. Will round up the team for meetings whether you like it or not."
         case .esteban:
             return "Steve's dapper twin. Bow tie mandatory. Herds with sophistication."
         case .hoku:
             return "Distinguished and dignified. The station elder. Judges silently from their corner."
         case .kai:
             return "Salt and pepper wisdom. Best beard on the station, no contest."
+        case .senor:
+            return "Elvis's brother. Green hoodie enthusiast. Equally long, equally dramatic."
+        case .steve:
+            return "High energy herder. Will round up the team for meetings whether you like it or not."
+        case .zuckerbot:
+            return "Metallic good boy. Fetches data, not sticks. Loyalty protocol: maximum."
         }
     }
 }

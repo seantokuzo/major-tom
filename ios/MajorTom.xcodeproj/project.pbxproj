@@ -25,6 +25,8 @@
 		1ECF57AD1993033DCCF73DB5 /* OfficeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 794D98FF20DC91F49542FE7D /* OfficeViewModel.swift */; };
 		1FB9124E49F11A762382E6A9 /* SpecialtyKeyGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908E6CFCF4E1F5F05D0AE4C3 /* SpecialtyKeyGrid.swift */; };
 		2211645B8B3E1BF5093FE2CD /* MoodEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 579C4AF5EF7599467490F248 /* MoodEngine.swift */; };
+		3A1B2C4D5E6F78901234ABCD /* CrewRoster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B7C8D9E0F1A23456789BCDE /* CrewRoster.swift */; };
+		4C3D2E1F0A9B87654321FEDC /* CrewPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D8E9F0A1B2C34567890ABCD /* CrewPickerView.swift */; };
 		22A50E5C5D84EFE896C415FF /* KeybarCustomizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D14F27776863DA81864B0F1 /* KeybarCustomizer.swift */; };
 		236F9F1B1379B823DB4FD5DB /* MajorTomWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCBDA7E064D0179C4FD35A17 /* MajorTomWidgetsBundle.swift */; };
 		241AFDC78C513CD9E223E14B /* PromptHistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F01A77A2D40CD2418227CFFA /* PromptHistoryViewModel.swift */; };
@@ -271,6 +273,7 @@
 		5718B2D3AD922237DE9889F2 /* AnalyticsDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsDashboardView.swift; sourceTree = "<group>"; };
 		5795954485F00C86256F6533 /* LiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
 		579C4AF5EF7599467490F248 /* MoodEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoodEngine.swift; sourceTree = "<group>"; };
+		6B7C8D9E0F1A23456789BCDE /* CrewRoster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrewRoster.swift; sourceTree = "<group>"; };
 		591E0D4455AD31B2BBD8761C /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		5A61BDDFAF4D3943E1355934 /* ToolActivityRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolActivityRow.swift; sourceTree = "<group>"; };
 		5ACD0D641EBD462C446D4C20 /* CIRunsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CIRunsView.swift; sourceTree = "<group>"; };
@@ -352,6 +355,7 @@
 		BBDD93D05B7AFEA1D59E6331 /* NotificationSettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsViewModel.swift; sourceTree = "<group>"; };
 		BC0B8C7069C99E830703066D /* ToolMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolMessageView.swift; sourceTree = "<group>"; };
 		BD500881DC6249D63A9E0ACA /* OfficeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeView.swift; sourceTree = "<group>"; };
+		7D8E9F0A1B2C34567890ABCD /* CrewPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrewPickerView.swift; sourceTree = "<group>"; };
 		BF0C705C7B75FC8AADBDC2F9 /* ModelDistributionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDistributionView.swift; sourceTree = "<group>"; };
 		C0656AE4C6DEE802350E31BF /* MajorTomLiveActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomLiveActivityView.swift; sourceTree = "<group>"; };
 		C13191C0A248C84CA6959981 /* WebSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketClient.swift; sourceTree = "<group>"; };
@@ -806,6 +810,7 @@
 				C3C4E64AF88E24ABC75AB59E /* AgentState.swift */,
 				49975C50EF000FB470E30360 /* CharacterConfig.swift */,
 				282E1D5B477D7DEE32C76B4B /* FurnitureRegistry.swift */,
+				6B7C8D9E0F1A23456789BCDE /* CrewRoster.swift */,
 				579C4AF5EF7599467490F248 /* MoodEngine.swift */,
 				B2A5F6ECD6AEA9681C140DA3 /* OfficeLayout.swift */,
 				BB2C3D4E5F6A7B8C9D0E1F2A /* StationLayout.swift */,
@@ -1077,6 +1082,7 @@
 			children = (
 				6A6B155FB1E10E586EFA12AC /* AgentInspectorView.swift */,
 				E176705EB6880868FE05573E /* CharacterGalleryView.swift */,
+				7D8E9F0A1B2C34567890ABCD /* CrewPickerView.swift */,
 				BD500881DC6249D63A9E0ACA /* OfficeView.swift */,
 			);
 			path = Views;
@@ -1677,6 +1683,8 @@
 				43FBF1E65395F38364EDB020 /* MessageCodec.swift in Sources */,
 				83C02DEBD2B6488A47A08A65 /* ModePickerView.swift in Sources */,
 				07F6D478AD81C3549F81ECEB /* ModelDistributionView.swift in Sources */,
+				3A1B2C4D5E6F78901234ABCD /* CrewRoster.swift in Sources */,
+				4C3D2E1F0A9B87654321FEDC /* CrewPickerView.swift in Sources */,
 				2211645B8B3E1BF5093FE2CD /* MoodEngine.swift in Sources */,
 				5AC11640AB3C3745F3F00123 /* NativeKeybar.swift in Sources */,
 				1111499A6385A17E5806AC54 /* NotificationService.swift in Sources */,

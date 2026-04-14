@@ -36,58 +36,7 @@ struct CharacterConfig: Identifiable {
 enum CharacterCatalog {
 
     static let all: [CharacterConfig] = [
-        // MARK: Original Crew
-        CharacterConfig(
-            type: .dev,
-            displayName: "Developer",
-            spriteColor: Color(red: 0.30, green: 0.70, blue: 0.95),  // Blue
-            breakBehaviors: [.breakRoom, .kitchen, .gym],
-            needsBlanket: false
-        ),
-        CharacterConfig(
-            type: .officeWorker,
-            displayName: "Office Worker",
-            spriteColor: Color(red: 0.55, green: 0.80, blue: 0.45),  // Green
-            breakBehaviors: [.breakRoom, .kitchen],
-            needsBlanket: false
-        ),
-        CharacterConfig(
-            type: .pm,
-            displayName: "Project Manager",
-            spriteColor: Color(red: 0.95, green: 0.75, blue: 0.30),  // Yellow/Gold
-            breakBehaviors: [.breakRoom, .kitchen, .gym],
-            needsBlanket: false
-        ),
-        CharacterConfig(
-            type: .clown,
-            displayName: "Office Clown",
-            spriteColor: Color(red: 0.95, green: 0.40, blue: 0.60),  // Pink
-            breakBehaviors: [.breakRoom, .kitchen, .rollercoaster, .gym],
-            needsBlanket: false
-        ),
-        CharacterConfig(
-            type: .frankenstein,
-            displayName: "Frankenstein",
-            spriteColor: Color(red: 0.50, green: 0.85, blue: 0.50),  // Frankenstein green
-            breakBehaviors: [.breakRoom, .gym, .rollercoaster],
-            needsBlanket: false
-        ),
-        CharacterConfig(
-            type: .dwight,
-            displayName: "Dwight",
-            spriteColor: Color(red: 0.75, green: 0.65, blue: 0.20),  // Mustard yellow tie
-            breakBehaviors: [.breakRoom, .gym, .kitchen],
-            needsBlanket: false
-        ),
-        CharacterConfig(
-            type: .michael,
-            displayName: "Michael",
-            spriteColor: Color(red: 0.25, green: 0.30, blue: 0.55),  // Navy suit
-            breakBehaviors: [.breakRoom, .kitchen, .rollercoaster],
-            needsBlanket: false
-        ),
-
-        // MARK: New Crew
+        // MARK: Crew
         CharacterConfig(
             type: .alienDiplomat,
             displayName: "Alien Diplomat",
@@ -107,6 +56,13 @@ enum CharacterCatalog {
             displayName: "Botanist",
             spriteColor: Color(red: 0.45, green: 0.75, blue: 0.35),  // Plant green
             breakBehaviors: [.breakRoom, .kitchen],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .bowenYang,
+            displayName: "Bowen Yang",
+            spriteColor: Color(red: 0.90, green: 0.45, blue: 0.55),  // Pink/coral
+            breakBehaviors: [.breakRoom, .kitchen, .rollercoaster],
             needsBlanket: false
         ),
         CharacterConfig(
@@ -138,6 +94,13 @@ enum CharacterCatalog {
             needsBlanket: false
         ),
         CharacterConfig(
+            type: .dwight,
+            displayName: "Dwight",
+            spriteColor: Color(red: 0.75, green: 0.65, blue: 0.20),  // Mustard yellow tie
+            breakBehaviors: [.breakRoom, .gym, .kitchen],
+            needsBlanket: false
+        ),
+        CharacterConfig(
             type: .frontendDev,
             displayName: "Frontend Dev",
             spriteColor: Color(red: 0.85, green: 0.50, blue: 0.90),  // Purple/magenta
@@ -145,10 +108,10 @@ enum CharacterCatalog {
             needsBlanket: false
         ),
         CharacterConfig(
-            type: .hacker,
-            displayName: "Hacker",
-            spriteColor: Color(red: 0.20, green: 0.85, blue: 0.30),  // Neon green
-            breakBehaviors: [.breakRoom, .gym],
+            type: .kendrick,
+            displayName: "Kendrick",
+            spriteColor: Color(red: 0.85, green: 0.65, blue: 0.20),  // Gold
+            breakBehaviors: [.breakRoom, .kitchen, .gym],
             needsBlanket: false
         ),
         CharacterConfig(
@@ -159,32 +122,9 @@ enum CharacterCatalog {
             needsBlanket: false
         ),
         CharacterConfig(
-            type: .pilot,
-            displayName: "Pilot",
-            spriteColor: Color(red: 0.25, green: 0.45, blue: 0.30),  // Dark green flight suit
-            breakBehaviors: [.breakRoom, .kitchen, .gym],
-            needsBlanket: false
-        ),
-        CharacterConfig(
-            type: .security,
-            displayName: "Security Officer",
-            spriteColor: Color(red: 0.30, green: 0.30, blue: 0.35),  // Dark charcoal
-            breakBehaviors: [.breakRoom, .gym],
-            needsBlanket: false
-        ),
-        CharacterConfig(
-            type: .tpm,
-            displayName: "TPM",
-            spriteColor: Color(red: 0.55, green: 0.45, blue: 0.70),  // Professional purple
-            breakBehaviors: [.breakRoom, .kitchen],
-            needsBlanket: false
-        ),
-
-        // MARK: Celebrities
-        CharacterConfig(
-            type: .kendrick,
-            displayName: "Kendrick",
-            spriteColor: Color(red: 0.85, green: 0.65, blue: 0.20),  // Gold
+            type: .pm,
+            displayName: "Project Manager",
+            spriteColor: Color(red: 0.95, green: 0.75, blue: 0.30),  // Yellow/Gold
             breakBehaviors: [.breakRoom, .kitchen, .gym],
             needsBlanket: false
         ),
@@ -205,20 +145,6 @@ enum CharacterCatalog {
             needsBlanket: true  // Always needs a blanket at their desk
         ),
         CharacterConfig(
-            type: .senor,
-            displayName: "Señor",
-            spriteColor: Color(red: 0.65, green: 0.40, blue: 0.18),  // Warm brown
-            breakBehaviors: [.dogCorner, .dogPark, .kitchen],
-            needsBlanket: true
-        ),
-        CharacterConfig(
-            type: .steve,
-            displayName: "Steve",
-            spriteColor: Color(red: 0.85, green: 0.35, blue: 0.25),  // Red heeler
-            breakBehaviors: [.dogCorner, .dogPark, .gym],
-            needsBlanket: false
-        ),
-        CharacterConfig(
             type: .esteban,
             displayName: "Esteban",
             spriteColor: Color(red: 0.80, green: 0.30, blue: 0.22),  // Warm red
@@ -237,6 +163,27 @@ enum CharacterCatalog {
             displayName: "Kai",
             spriteColor: Color(red: 0.35, green: 0.35, blue: 0.40),  // Salt & pepper
             breakBehaviors: [.dogCorner, .dogPark, .breakRoom],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .senor,
+            displayName: "Señor",
+            spriteColor: Color(red: 0.65, green: 0.40, blue: 0.18),  // Warm brown
+            breakBehaviors: [.dogCorner, .dogPark, .kitchen],
+            needsBlanket: true
+        ),
+        CharacterConfig(
+            type: .steve,
+            displayName: "Steve",
+            spriteColor: Color(red: 0.85, green: 0.35, blue: 0.25),  // Red heeler
+            breakBehaviors: [.dogCorner, .dogPark, .gym],
+            needsBlanket: false
+        ),
+        CharacterConfig(
+            type: .zuckerbot,
+            displayName: "Zuckerbot",
+            spriteColor: Color(red: 0.50, green: 0.60, blue: 0.75),  // Metallic blue
+            breakBehaviors: [.dogCorner, .dogPark, .gym],
             needsBlanket: false
         ),
     ]
