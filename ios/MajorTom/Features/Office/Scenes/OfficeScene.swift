@@ -1645,16 +1645,6 @@ final class OfficeScene: SKScene {
         }
     }
 
-    /// Place a sleeping sprite directly at a bunk position in crew quarters.
-    /// No pathfinding, no activity cycling — just a static sleeping animation.
-    func placeAgentSleeping(id: String, bunkPosition: CGPoint) {
-        guard let sprite = agentSprites[id] else { return }
-        sprite.stopAnimations()
-        sprite.position = bunkPosition
-        sprite.updateModule(.crewQuarters)
-        sprite.startActivityAnimation("sleeping")
-    }
-
     func moveAgentToBreakArea(id: String, areaType: OfficeAreaType) {
         guard let sprite = agentSprites[id] else { return }
         let position = OfficeLayout.randomPosition(in: areaType)

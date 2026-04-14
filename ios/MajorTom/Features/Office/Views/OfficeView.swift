@@ -7,11 +7,13 @@ import SpriteKit
 private enum OfficeSheetType: Identifiable {
     case inspector
     case gallery
+    case crewPicker
 
     var id: String {
         switch self {
         case .inspector: return "inspector"
         case .gallery: return "gallery"
+        case .crewPicker: return "crewPicker"
         }
     }
 }
@@ -44,7 +46,7 @@ struct OfficeView: View {
         ZStack {
             // SpriteKit scene
             SpriteView(scene: scene)
-                .ignoresSafeArea()
+                .ignoresSafeArea(.all, edges: .bottom)
                 .onChange(of: viewModel.agents) { _, newAgents in
                     syncScene(with: newAgents)
                 }
@@ -82,9 +84,6 @@ struct OfficeView: View {
             // Start activity cycling — when an activity expires, reassign
             viewModel.activityEngine.startCycling { [weak scene, weak viewModel] agentId, _ in
                 guard let viewModel, let scene else { return }
-
-                // Sleeping sprites don't participate in activity cycling
-                if viewModel.isSleeping(agentId) { return }
 
                 // Stop the outgoing activity's animation phase
                 viewModel.activityAnimator.stopPhase(for: agentId, furnitureNodes: scene.furnitureNodes)
@@ -177,6 +176,15 @@ struct OfficeView: View {
                 CharacterGalleryView(onDismiss: {
                     viewModel.showCharacterGallery = false
                 })
+            case .crewPicker:
+                CrewPickerView(
+                    crewRoster: viewModel.crewRoster,
+                    onDismiss: {
+                        activeSheet = nil
+                        // Repopulate with new preferences
+                        viewModel.shuffleCrew()
+                    }
+                )
             }
         }
         .onChange(of: activeSheet) { _, newValue in
@@ -208,6 +216,29 @@ struct OfficeView: View {
             .glassBackground()
 
             Spacer()
+
+            // Shuffle crew button
+            Button {
+                HapticService.impact(.light)
+                viewModel.shuffleCrew()
+            } label: {
+                Image(systemName: "shuffle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                    .padding(MajorTomTheme.Spacing.sm)
+                    .glassBackground()
+            }
+
+            // Select crew button
+            Button {
+                activeSheet = .crewPicker
+            } label: {
+                Image(systemName: "person.2.badge.gearshape")
+                    .font(.system(size: 14))
+                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                    .padding(MajorTomTheme.Spacing.sm)
+                    .glassBackground()
+            }
 
             // Character gallery button
             Button {
@@ -357,55 +388,13 @@ struct OfficeView: View {
 
     // MARK: - Scene Sync
 
-    // MARK: - Bunk Positions for Sleep Roster
-
-    /// Pre-computed bunk positions in crew quarters for sleeping sprites.
-    /// Spreads sleepers across the room near the bunk furniture.
-    private static let sleepingPositions: [CGPoint] = {
-        guard let module = StationLayout.module(for: .crewQuarters) else { return [] }
-        let bounds = module.bounds
-        // 3 physical bunks + additional floor positions near them
-        return [
-            // Near bunk 1 (upper-left)
-            CGPoint(x: bounds.minX + 100, y: bounds.maxY - 80),
-            CGPoint(x: bounds.minX + 100, y: bounds.maxY - 130),
-            CGPoint(x: bounds.minX + 160, y: bounds.maxY - 80),
-            CGPoint(x: bounds.minX + 160, y: bounds.maxY - 130),
-            // Near bunk 2 (upper-right)
-            CGPoint(x: bounds.maxX - 100, y: bounds.maxY - 80),
-            CGPoint(x: bounds.maxX - 100, y: bounds.maxY - 130),
-            CGPoint(x: bounds.maxX - 160, y: bounds.maxY - 80),
-            CGPoint(x: bounds.maxX - 160, y: bounds.maxY - 130),
-            // Near bunk 3 (center)
-            CGPoint(x: bounds.midX, y: bounds.maxY - 180),
-            CGPoint(x: bounds.midX - 60, y: bounds.maxY - 180),
-            CGPoint(x: bounds.midX + 60, y: bounds.maxY - 180),
-            CGPoint(x: bounds.midX, y: bounds.maxY - 230),
-            // Extra overflow positions (lower crew quarters)
-            CGPoint(x: bounds.midX - 60, y: bounds.maxY - 230),
-            CGPoint(x: bounds.midX + 60, y: bounds.maxY - 230),
-            CGPoint(x: bounds.minX + 100, y: bounds.maxY - 230),
-            CGPoint(x: bounds.maxX - 100, y: bounds.maxY - 230),
-        ]
-    }()
-
     /// Diff the current agent list against previous state and update the scene.
     private func syncScene(with agents: [AgentState]) {
         let currentIds = Set(agents.map(\.id))
 
-        // Track bunk index for sleeping sprite placement
-        var nextBunkIndex = 0
-
         // Add new agents
         for agent in agents where !previousAgentIds.contains(agent.id) {
             scene.addAgent(id: agent.id, name: agent.name, characterType: agent.characterType)
-
-            // Sleeping sprites go straight to bunks — no random scatter
-            if viewModel.isSleeping(agent.id) {
-                let bunkPos = Self.sleepingPositions[nextBunkIndex % Self.sleepingPositions.count]
-                nextBunkIndex += 1
-                scene.placeAgentSleeping(id: agent.id, bunkPosition: bunkPos)
-            }
 
             // Move to desk if assigned
             if let deskIndex = agent.deskIndex {
@@ -452,13 +441,30 @@ struct OfficeView: View {
             }
 
         case .idle:
-            // Sleeping sprites stay at bunks — skip activity assignment entirely
-            if viewModel.isSleeping(agent.id) { break }
+            assignIdleActivity(for: agent)
 
+        case .celebrating:
+            scene.celebrateAgent(id: agent.id)
+
+        case .leaving:
+            viewModel.activityAnimator.stopPhase(for: agent.id, furnitureNodes: scene.furnitureNodes)
+            if let deskIndex = agent.deskIndex {
+                scene.highlightDesk(deskIndex, occupied: false)
+            }
+            scene.moveAgentToDoor(id: agent.id)
+        }
+    }
+
+    /// Map BreakDestination enum to OfficeAreaType.
+    /// Assign an activity to an idle agent. Idle-prefix sprites get a staggered
+    /// delay (0.5–2.5s) so they don't all start walking in the same frame.
+    private func assignIdleActivity(for agent: AgentState) {
+        let isIdleSprite = agent.id.hasPrefix("idle-")
+
+        let doAssign = { [viewModel, scene] in
             // Stop any existing animation phase before reassigning
             viewModel.activityAnimator.stopPhase(for: agent.id, furnitureNodes: scene.furnitureNodes)
 
-            // Try to assign a JSON-configured activity
             let room = scene.currentRoom(for: agent.id) ?? ModuleType.crewQuarters.rawValue
             if let assignment = viewModel.activityEngine.assignActivity(
                 agentId: agent.id,
@@ -482,7 +488,6 @@ struct OfficeView: View {
                     }
                 }
             } else {
-                // Fall back to break area behavior if no activity matches
                 let config = CharacterCatalog.config(for: agent.characterType)
                 if let destination = config.breakBehaviors.randomElement() {
                     let areaType = breakDestinationToArea(destination)
@@ -491,20 +496,21 @@ struct OfficeView: View {
                     scene.updateAgentStatus(id: agent.id, status: .idle)
                 }
             }
+        }
 
-        case .celebrating:
-            scene.celebrateAgent(id: agent.id)
-
-        case .leaving:
-            viewModel.activityAnimator.stopPhase(for: agent.id, furnitureNodes: scene.furnitureNodes)
-            if let deskIndex = agent.deskIndex {
-                scene.highlightDesk(deskIndex, occupied: false)
+        if isIdleSprite {
+            // Stagger idle sprites so they don't stampede
+            let delay = Double.random(in: 0.5...2.5)
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(delay))
+                doAssign()
             }
-            scene.moveAgentToDoor(id: agent.id)
+        } else {
+            // Real agents assigned immediately
+            doAssign()
         }
     }
 
-    /// Map BreakDestination enum to OfficeAreaType.
     private func breakDestinationToArea(_ destination: BreakDestination) -> OfficeAreaType {
         switch destination {
         case .breakRoom: return .breakRoom

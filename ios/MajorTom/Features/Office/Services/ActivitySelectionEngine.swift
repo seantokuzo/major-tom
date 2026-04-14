@@ -185,7 +185,8 @@ final class ActivitySelectionEngine {
     // MARK: - Cycle Management
 
     /// Start the activity cycling timer.
-    /// Checks every 2 seconds for expired activities and rotates agents.
+    /// Checks every 2 seconds for expired activities and staggers rotations
+    /// so agents don't all start walking simultaneously.
     func startCycling(onRotate: @escaping (String, ActivityAssignment?) -> Void) {
         stopCycling()
 
@@ -197,6 +198,10 @@ final class ActivitySelectionEngine {
 
                 let agentsToRotate = self.agentsNeedingRotation()
                 for agentId in agentsToRotate {
+                    // Stagger each rotation by 0.3–1.5s to avoid stampede
+                    let delay = Double.random(in: 0.3...1.5)
+                    try? await Task.sleep(for: .seconds(delay))
+                    guard !Task.isCancelled else { return }
                     onRotate(agentId, nil)
                 }
             }

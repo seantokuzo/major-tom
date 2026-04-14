@@ -34,26 +34,14 @@ final class OfficeViewModel {
         return agents.first { $0.id == id }
     }
 
-    // MARK: - Sleep Roster
+    // MARK: - Crew Roster
 
-    /// Number of human characters that stay awake (all dogs are always awake).
-    /// Tune this to balance visual density vs. performance.
-    static let awakeHumanCount = 6
+    /// Maximum number of human sprites visible when idle.
+    /// Dogs are always shown. Extra humans only appear when subagent overflow demands them.
+    static let maxIdleHumans = 6
 
-    /// IDs of idle sprites that are sleeping in crew quarters bunks.
-    /// Sleeping sprites get a static sleeping animation — no activity cycling, no pathfinding.
-    private(set) var sleepingAgentIds: Set<String> = []
-
-    /// Check whether a given agent is on the sleep roster.
-    func isSleeping(_ agentId: String) -> Bool {
-        sleepingAgentIds.contains(agentId)
-    }
-
-    /// Wake a sleeping agent (e.g., when a real agent spawns and claims that sprite).
-    /// Removes the agent from the sleep roster so the scene can transition it.
-    func wakeSleepingAgent(_ agentId: String) {
-        sleepingAgentIds.remove(agentId)
-    }
+    /// The crew roster — manages which humans are active and user preferences.
+    let crewRoster = CrewRoster()
 
     // MARK: - Sprite Pool
 
@@ -77,22 +65,14 @@ final class OfficeViewModel {
     func populateIdleSprites() {
         guard agents.isEmpty || agents.allSatisfy({ isIdleSprite($0.id) }) else { return }
 
-        // Clear any existing idle sprites and sleep roster
+        // Clear any existing idle sprites
         agents.removeAll { isIdleSprite($0.id) }
-        sleepingAgentIds.removeAll()
         availableSprites = Set(CharacterType.allCases)
 
         let allTypes = CharacterType.allCases
 
-        // Dogs are always awake
+        // Dogs are always on screen
         let dogs = allTypes.filter { $0.isDog }
-        // Humans get split into awake day-shift and sleeping night-shift
-        var humans = allTypes.filter { !$0.isDog }
-        humans.shuffle()
-        let awakeHumans = Array(humans.prefix(Self.awakeHumanCount))
-        let sleepingHumans = Array(humans.dropFirst(Self.awakeHumanCount))
-
-        // Add all dogs as normal idle sprites
         for charType in dogs {
             let config = CharacterCatalog.config(for: charType)
             agents.append(AgentState(
@@ -104,10 +84,12 @@ final class OfficeViewModel {
                 currentTask: nil,
                 deskIndex: nil
             ))
+            availableSprites.remove(charType)
         }
 
-        // Add awake humans as normal idle sprites
-        for charType in awakeHumans {
+        // Only the active crew humans get rendered — the rest don't exist in the scene
+        let activeHumans = crewRoster.activeHumans(count: Self.maxIdleHumans)
+        for charType in activeHumans {
             let config = CharacterCatalog.config(for: charType)
             agents.append(AgentState(
                 id: "\(Self.idlePrefix)\(charType.rawValue)",
@@ -118,23 +100,22 @@ final class OfficeViewModel {
                 currentTask: nil,
                 deskIndex: nil
             ))
+            availableSprites.remove(charType)
         }
+    }
 
-        // Add sleeping humans — same idle status but tracked in sleepingAgentIds
-        for charType in sleepingHumans {
-            let config = CharacterCatalog.config(for: charType)
-            let agentId = "\(Self.idlePrefix)\(charType.rawValue)"
-            agents.append(AgentState(
-                id: agentId,
-                name: config.displayName,
-                role: charType.rawValue,
-                characterType: charType,
-                status: .idle,
-                currentTask: nil,
-                deskIndex: nil
-            ))
-            sleepingAgentIds.insert(agentId)
+    /// Re-randomize the active crew and repopulate idle sprites.
+    func shuffleCrew() {
+        crewRoster.shuffle()
+        // Remove all idle sprites and repopulate with new selection
+        let realAgents = agents.filter { !isIdleSprite($0.id) }
+        agents = realAgents
+        availableSprites = Set(CharacterType.allCases)
+        // Re-claim sprites used by real agents
+        for agent in realAgents {
+            availableSprites.remove(agent.characterType)
         }
+        populateIdleSprites()
     }
 
     // MARK: - Agent Lifecycle Handlers
@@ -146,15 +127,19 @@ final class OfficeViewModel {
 
         let characterType: CharacterType
         if let claimed = claimRandomSprite() {
-            // Remove the idle sprite for this character and clean up sleep roster
+            // Remove the idle sprite for this character
             let idleSpriteId = "\(Self.idlePrefix)\(claimed.rawValue)"
-            sleepingAgentIds.remove(idleSpriteId)
             agents.removeAll { $0.id == idleSpriteId }
             characterType = claimed
         } else {
-            // Overflow: all sprites occupied, use round-robin fallback
-            let allTypes = CharacterType.allCases
-            characterType = allTypes[agents.count % allTypes.count]
+            // Overflow: pull an unrendered human from the crew roster
+            let claimedTypes = Set(agents.map(\.characterType))
+            if let overflow = crewRoster.overflowHuman(excluding: claimedTypes, maxIdleCount: Self.maxIdleHumans) {
+                characterType = overflow
+            } else {
+                // Absolute fallback — all humans exhausted, reuse a dog type
+                characterType = CharacterType.allCases.filter(\.isDog).randomElement() ?? .elvis
+            }
         }
 
         let deskIndex = assignNextAvailableDesk(to: id)
@@ -291,9 +276,14 @@ final class OfficeViewModel {
     // MARK: - Private Helpers
 
     /// Return a character type to the idle pool after an agent leaves.
-    /// Non-dog humans go back to sleep if the awake roster is already full.
+    /// Overflow humans (not part of the active crew) simply vanish — no re-rendering.
     private func returnToIdlePool(_ charType: CharacterType) {
         releaseSprite(charType)
+
+        // If this was an overflow human (not in the active crew), don't re-render
+        if !charType.isDog && !crewRoster.isActiveCrew(charType, maxCount: Self.maxIdleHumans) {
+            return
+        }
 
         let config = CharacterCatalog.config(for: charType)
         let idleId = "\(Self.idlePrefix)\(charType.rawValue)"
@@ -311,16 +301,6 @@ final class OfficeViewModel {
             deskIndex: nil
         )
         agents.append(idleAgent)
-
-        // If this is a human and we already have enough awake humans, send them to sleep
-        if !charType.isDog {
-            let awakeHumanIdleCount = agents.filter {
-                isIdleSprite($0.id) && !$0.characterType.isDog && !sleepingAgentIds.contains($0.id)
-            }.count
-            if awakeHumanIdleCount > Self.awakeHumanCount {
-                sleepingAgentIds.insert(idleId)
-            }
-        }
     }
 
     /// Find the next available desk and assign it.
