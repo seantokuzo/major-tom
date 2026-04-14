@@ -277,6 +277,18 @@
             term.write('\r\n\x1b[2;31m[relay] ' + (msg.message || 'unknown error') + '\x1b[0m\r\n');
             return;
           }
+          // v2: {type:"attached", tabId, restored} — sent on first connect
+          // AND on reattach within the 30-min disconnect grace. `restored`
+          // lets future UI surface "reconnected to existing session" vs
+          // "fresh shell" without needing a separate probe.
+          if (msg.type === 'attached') {
+            return;
+          }
+          // v2: {type:"exit", exitCode, signal} — PTY exited naturally
+          // (user typed `exit`, crash, etc.). Server closes WS after this.
+          if (msg.type === 'exit') {
+            return;
+          }
         } catch (e) {
           // Not JSON — treat as raw terminal data
         }
@@ -312,6 +324,14 @@
       // Permanent auth failure — don't keep retrying.
       if (event.code === 1008) {
         setStatus('Authentication failed');
+        return;
+      }
+
+      // v2 spec: code 4001 = tab already attached on another device.
+      // Don't retry — multi-device simultaneous attach is deferred. The
+      // server sent a `{type:"error"}` text frame right before closing.
+      if (event.code === 4001) {
+        setStatus('Tab already attached on another device');
         return;
       }
 

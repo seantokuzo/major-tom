@@ -2,11 +2,11 @@
 
 > Auto-injected into fresh sessions. Keep concise.
 
-## Current Phase
+## Current Phase (in flight)
 
-**Life Engine** complete (PRs #124–#128). Next: **Optimization phase** — battery drain fix.
+**Terminal Reboot** shipped (PR #130) — relay now runs plain PTY per tab, tmux scaffolding deleted. Spec: `docs/TERMINAL-PROTOCOL-SPEC.md`. Only active phase now:
 
-Memory: `project_optimization_phase.md` has the full wave plan + verified hotspots + Apple best practices.
+1. **Optimization phase** — iOS battery drain fix (`optimization/wave1-measurement` branch). Memory: `project_optimization_phase.md`.
 
 ### Optimization phase (NEXT — queued)
 
@@ -71,3 +71,5 @@ Spec: `docs/PHASE-14-SWIFTTERM.md`
 | 12 | Glow Up | — |
 | 13 | The Shell | #89-96 |
 | QA | PWA Polish | #101, #111 |
+| 14 | SwiftTerm (iOS terminal) | #97-110 |
+| — | Terminal Reboot (tmux → plain PTY) | #130 |

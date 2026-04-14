@@ -322,14 +322,11 @@
     queueFit();
   });
 
-  // Bug 4: force a repaint when this tab is (re)activated. A hidden tab
-  // uses `display: none`, so tmux never bothered to repaint the window
-  // while it was off-screen — xterm renders whatever was in its buffer
-  // from BEFORE the switch. On reactivation we refit (in case the
-  // viewport size changed), then send a `refresh` control frame that
-  // asks the relay to nudge tmux into a full repaint via a 1-col resize
-  // wobble. Finally we steal focus back so the iOS soft-keyboard pops
-  // straight up without a second tap.
+  // When this tab becomes active, refit xterm (the container may have
+  // resized while hidden under `display: none`) and steal focus so the
+  // iOS soft-keyboard pops straight up without a second tap. Local-only
+  // work — no wire traffic. The v2 relay streams PTY output live, so no
+  // server-side redraw nudge is needed.
   $effect(() => {
     const seq = shellStore.activationSeq[tabId];
     if (!seq) return;
@@ -337,7 +334,6 @@
     if (!opened) return;
     requestAnimationFrame(() => {
       queueFit();
-      shellStore.sendControl(tabId, { type: 'refresh' });
       term?.focus();
     });
   });

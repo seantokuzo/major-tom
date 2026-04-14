@@ -1,411 +1,409 @@
 /**
- * PTY adapter — streams a tmux-attached pseudo-terminal over a WebSocket.
+ * PtyAdapter — plain PTY per tab, no multiplexer.
  *
- * Wave 1 scope: raw byte streaming, resize control, disposed guard,
- * multi-device attach via tmux's native window sharing. Wave 2 adds
- * CLAUDE_CONFIG_DIR + MAJOR_TOM_APPROVAL env plumbing.
+ * Replaces the tmux-backed Wave 1 adapter. Holds an in-memory map of
+ * PTY sessions keyed by tabId, with a configurable 30-min disconnect
+ * grace + per-session ring buffer for replay on reattach.
+ *
+ * State machine per session:
+ *   IDLE → ACTIVE (first attach spawns PTY)
+ *   ACTIVE ↔ DETACHED (viewer comes/goes; PTY persists)
+ *   DETACHED → TERMINATED (grace timer fires)
+ *   ACTIVE → TERMINATED (kill or natural PTY exit)
+ *
+ * Multi-device simultaneous attach is OUT OF SCOPE — second viewer on an
+ * already-attached tab is rejected. See `// FUTURE: multi-user` markers
+ * for the path forward when team-server mode lands.
+ *
+ * Spec: docs/TERMINAL-PROTOCOL-SPEC.md
  */
 import * as pty from 'node-pty';
 import type { IPty } from 'node-pty';
-import type { WebSocket } from 'ws';
 import { homedir } from 'node:os';
-import { randomBytes } from 'node:crypto';
 import { logger } from '../utils/logger.js';
-import {
-  MAJOR_TOM_SOCKET,
-  createWindow,
-  createViewSession,
-  killSession,
-  killWindow,
-} from '../utils/tmux-cli.js';
-import { tmuxBootstrap } from './tmux-bootstrap.js';
-import { MAJOR_TOM_CONFIG_DIR } from '../installer/install-hooks.js';
 
-export interface PtyAttachOptions {
-  tabId: string;
-  cols?: number;
-  rows?: number;
-}
+/** Max bytes per client→server input frame. Spec: env MAJOR_TOM_PTY_INPUT_MAX. */
+export const DEFAULT_INPUT_MAX_BYTES = 64 * 1024;
+/** Per-tab ring buffer cap. Spec: env MAJOR_TOM_PTY_BUFFER_BYTES. */
+export const DEFAULT_BUFFER_BYTES = 256 * 1024;
+/** Grace timer between WS detach and PTY kill. Spec: env MAJOR_TOM_PTY_GRACE_MS. */
+export const DEFAULT_GRACE_MS = 30 * 60 * 1000;
+/** Time SIGTERM has to land before SIGKILL escalation. */
+const SIGKILL_DELAY_MS = 5_000;
 
 /**
- * Hard cap on how much data a single client→server binary frame may
- * push into the PTY. The WebSocket-level `maxPayload` was bumped to
- * 8 MiB so the relay can stream large server→client redraws, but the
- * client→server direction has no legitimate need for big frames —
- * paste of an entire 8 MiB blob would be an attack, not a use case.
- * Caught by Copilot review on PR #89.
+ * Minimal duck-typed WebSocket interface so the adapter can be unit-tested
+ * without standing up a real `ws.WebSocket`. The real ws.WebSocket satisfies
+ * this trivially.
  */
-const MAX_PTY_INPUT_BYTES = 64 * 1024;
+export interface PtyClient {
+  readonly readyState: number;
+  readonly OPEN: number;
+  send(data: string | Buffer, opts?: { binary?: boolean }): void;
+  close(code?: number, reason?: string): void;
+}
 
-export interface PtyHandle {
-  tabId: string;
+export interface AttachOptions {
+  cols: number;
+  rows: number;
   /**
-   * Unique per-attach tmux view session name (e.g. `view-t1-a3bf91c2`).
-   * Created at attach time as a grouped session sharing the master session's
-   * window set but tracking its OWN "current window" slot, so a second
-   * client's attach can't pull this client's view onto a different window.
-   * Killed in `dispose()` — killing a grouped session leaves the shared
-   * windows alive because they belong to the master session.
+   * Per-spawn env extras merged into the new PTY's environment.
+   * Only consulted on first spawn; reattach to an existing session ignores
+   * this (the PTY's env is fixed at spawn time).
    */
-  viewSessionId: string;
+  envExtras?: Record<string, string>;
+}
+
+export type AttachOutcome =
+  | { kind: 'attached'; restored: boolean }
+  | { kind: 'rejected'; reason: 'already-attached' };
+
+export interface TabInfo {
+  tabId: string;
+  attached: boolean;
+  lastActivityAt: string;
+}
+
+export interface PtyAdapterOptions {
+  graceMs?: number;
+  bufferBytes?: number;
+  inputMaxBytes?: number;
+  cwd?: string;
+  /** Override for `process.env`. Defaults to `process.env`. */
+  env?: Record<string, string | undefined>;
+  /** Explicit shell path. Defaults to `env.SHELL || '/bin/bash'`. */
+  shell?: string;
+  /** Args to pass to the shell. Defaults to `['-l']` (login shell). */
+  shellArgs?: string[];
+  /** Spawn injection point — tests pass a stub or a script like `cat`. */
+  spawn?: (file: string, args: string[], opts: pty.IPtyForkOptions) => IPty;
+}
+
+/**
+ * FIFO byte ring with a hard cap. When `push` would exceed `max`, the
+ * oldest chunks are evicted (whole-chunk granularity — we don't slice
+ * inside a chunk because PTY data may contain partial UTF-8 sequences).
+ */
+export class RingBuffer {
+  private chunks: Buffer[] = [];
+  private bytes = 0;
+  constructor(private readonly max: number) {}
+
+  push(chunk: Buffer): void {
+    if (chunk.length === 0) return;
+    this.chunks.push(chunk);
+    this.bytes += chunk.length;
+    while (this.bytes > this.max && this.chunks.length > 0) {
+      const dropped = this.chunks.shift();
+      if (dropped) this.bytes -= dropped.length;
+    }
+  }
+
+  drain(): Buffer {
+    if (this.chunks.length === 0) return Buffer.alloc(0);
+    return Buffer.concat(this.chunks);
+  }
+
+  get size(): number {
+    return this.bytes;
+  }
+}
+
+interface PtySession {
+  tabId: string;
   pty: IPty;
-  socket: WebSocket;
-  disposed: boolean;
-  createdAt: Date;
+  ring: RingBuffer;
+  viewer?: PtyClient;
+  graceTimer?: ReturnType<typeof setTimeout>;
+  lastActivityAt: number;
+  exited: boolean;
 }
 
-// node-pty's `onData` is typed as `IEvent<string>` regardless of `encoding`.
-// At runtime with `encoding: null` it emits `Buffer`. We keep the cast local
-// so callers don't need to think about it.
-// See microsoft/node-pty#489.
-type PtyDataHandler = (data: string | Buffer) => void;
+export class PtyAdapter {
+  private readonly sessions = new Map<string, PtySession>();
+  private readonly graceMs: number;
+  private readonly bufferBytes: number;
+  private readonly inputMaxBytes: number;
+  private readonly cwd: string;
+  private readonly env: Record<string, string | undefined>;
+  private readonly shell: string;
+  private readonly shellArgs: string[];
+  private readonly spawnFn: (file: string, args: string[], opts: pty.IPtyForkOptions) => IPty;
 
-/**
- * Spawn a tmux attach into `tabId`, wire it to `socket`, and return the
- * handle. The handle is `disposed = true` once either side closes — writes
- * after disposal are a silent no-op (write-after-kill crash guard on macOS).
- *
- * Wave 2.6 change: each attach now creates its OWN grouped tmux "view"
- * session (`view-<tabId>-<randhex>`) which shares the master session's
- * window set but tracks an independent "current window" slot. This is the
- * fix for the session-handling bug where a second WS attaching with
- * `-t major-tom:t2` would forcibly switch every other client's view from
- * t1 to t2 (the master session has one shared current-window slot; a
- * grouped session is the tmux-native way to get per-client isolation).
- *
- * Callers may await tmuxBootstrap.ensure() first so route-level failures
- * surface from the WS handler with clean error reporting, but this function
- * still performs an idempotent bootstrap re-check before attaching as a
- * defensive guard against the tmux server being killed externally between
- * the route's bootstrap call and our spawn (Copilot review nit on PR #89).
- */
-export async function attachPty(
-  socket: WebSocket,
-  options: PtyAttachOptions,
-): Promise<PtyHandle> {
-  const { tabId } = options;
-  const cols = options.cols && options.cols > 0 ? options.cols : 80;
-  const rows = options.rows && options.rows > 0 ? options.rows : 24;
-
-  // Defensive re-check: the route already bootstrapped, but the tmux server
-  // could have been killed externally in the gap before we spawn.
-  await tmuxBootstrap.ensure();
-
-  // Env vars that need to reach the SHELL inside the tmux window — must
-  // be injected at `new-window -e` time, not on the tmux client. Wave 2:
-  //
-  //   CLAUDE_CONFIG_DIR    — points Claude Code at our private config dir
-  //                          so the installed PreToolUse hook fires.
-  //   MAJOR_TOM_CONFIG_DIR — same path, kept under a separate name so the
-  //                          hook script can read approval-mode.json from
-  //                          a stable place even if Claude Code remaps
-  //                          CLAUDE_CONFIG_DIR.
-  //   MAJOR_TOM_APPROVAL   — fallback default mode (the hook script
-  //                          re-reads approval-mode.json on every call,
-  //                          this is just the no-jq fallback).
-  //   MAJOR_TOM_RELAY_PORT — internal hook HTTP server port. The hook
-  //                          script POSTs to 127.0.0.1:<port>/hooks/...
-  //                          NOT the WS port. Defaults to 9091, matching
-  //                          server.ts's HOOK_PORT default.
-  //   MAJOR_TOM_TAB_ID     — already injected pre-Wave-2; the hook script
-  //                          forwards it as `X-MT-Tab` so the relay knows
-  //                          which tmux window to target for hybrid mode.
-  const hookPort = process.env['HOOK_PORT'] ?? '9091';
-  await createWindow(tabId, {
-    MAJOR_TOM_TAB_ID: tabId,
-    CLAUDE_CONFIG_DIR: MAJOR_TOM_CONFIG_DIR,
-    MAJOR_TOM_CONFIG_DIR: MAJOR_TOM_CONFIG_DIR,
-    MAJOR_TOM_APPROVAL: process.env['MAJOR_TOM_APPROVAL'] ?? 'local',
-    MAJOR_TOM_RELAY_PORT: hookPort,
-  });
-
-  // Create a unique per-attach grouped view session. Unique suffix so two
-  // devices viewing the same tabId concurrently each get their own
-  // current-window slot (no cross-contamination). 8 hex chars = 32 bits of
-  // randomness, vastly more than enough to avoid collisions at human-scale
-  // attach rates.
-  const viewSessionId = `view-${tabId}-${randomBytes(4).toString('hex')}`;
-  try {
-    await createViewSession(viewSessionId, tabId);
-  } catch (err) {
-    logger.error(
-      { err, tabId, viewSessionId },
-      'Failed to create grouped view session — aborting PTY attach',
-    );
-    throw err;
+  constructor(opts: PtyAdapterOptions = {}) {
+    this.graceMs = opts.graceMs ?? DEFAULT_GRACE_MS;
+    this.bufferBytes = opts.bufferBytes ?? DEFAULT_BUFFER_BYTES;
+    this.inputMaxBytes = opts.inputMaxBytes ?? DEFAULT_INPUT_MAX_BYTES;
+    this.env = opts.env ?? process.env;
+    this.cwd = opts.cwd ?? this.env['HOME'] ?? homedir();
+    this.shell = opts.shell ?? this.env['SHELL'] ?? '/bin/bash';
+    this.shellArgs = opts.shellArgs ?? ['-l'];
+    this.spawnFn = opts.spawn ?? pty.spawn;
   }
 
-  // Env vars below only affect the tmux *client* process (this attach-
-  // session), not the inner shell. We still set TERM/COLORTERM so xterm.js
-  // negotiates a 256-color truecolor stream with the client side.
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    LANG: process.env['LANG'] ?? 'en_US.UTF-8',
-    TERM: 'xterm-256color',
-    COLORTERM: 'truecolor',
-  };
+  /**
+   * Attach a client to `tabId`. Behavior:
+   * - IDLE (no session): spawn PTY, register, send `attached:false`.
+   * - DETACHED (PTY alive in grace): cancel timer, send `attached:true`,
+   *   replay ring buffer.
+   * - ACTIVE with another viewer: reject. Caller should send
+   *   `{type:"error"}` and close WS with code 4001.
+   *
+   * Spec: docs/TERMINAL-PROTOCOL-SPEC.md § Lifecycle State Machine.
+   */
+  attach(tabId: string, client: PtyClient, opts: AttachOptions): AttachOutcome {
+    let session = this.sessions.get(tabId);
+    if (session && session.viewer && session.viewer !== client) {
+      // FUTURE: multi-user — replace this rejection with a viewer-set
+      // broadcast so multiple devices can co-view the same tab.
+      logger.warn({ tabId }, 'Attach rejected — tab already has a viewer');
+      return { kind: 'rejected', reason: 'already-attached' };
+    }
 
-  // Wrap pty.spawn in try/catch so a spawn failure can clean up the
-  // grouped view session we just created — otherwise a failed attach
-  // would leak a `view-*` session inside the master tmux server forever
-  // (no handle exists yet, so socket.on('close') → dispose() won't run).
-  // Caught by Copilot PR #94 review.
-  let ptyProcess: IPty;
-  try {
-    ptyProcess = pty.spawn(
-      'tmux',
-      [
-        '-L', MAJOR_TOM_SOCKET,
-        'attach-session',
-        // No `-d`: allow concurrent tmux clients so the same shell window
-        // can be observed from multiple devices (laptop + phone) at once.
-        // Caught by Copilot review on PR #89 — `-d` would forcibly kick
-        // every other attached client, defeating multi-device viewing.
-        //
-        // Wave 2.6: target the view session, NOT the master. Each attach
-        // has its own grouped view session so current-window switches in
-        // one client do not drag other clients along.
-        '-t', viewSessionId,
-      ],
-      {
-        name: 'xterm-256color',
-        cols,
-        rows,
-        cwd: process.env['HOME'] ?? homedir(),
-        env: env as { [key: string]: string },
-        // Binary mode: `encoding: null` tells node-pty to emit Buffers on
-        // onData. Types claim it's `string`, see #489 — we cast the handler.
-        encoding: null as unknown as undefined,
-        handleFlowControl: true,
-      },
-    );
-  } catch (err) {
-    logger.error(
-      { err, tabId, viewSessionId },
-      'pty.spawn failed after view session created — cleaning up grouped session',
-    );
-    try {
-      await killSession(viewSessionId);
-    } catch (cleanupErr) {
+    let restored = false;
+    if (session) {
+      if (session.graceTimer) {
+        clearTimeout(session.graceTimer);
+        session.graceTimer = undefined;
+      }
+      session.viewer = client;
+      restored = true;
+      logger.info({ tabId }, 'Reattached within grace');
+    } else {
+      session = this.spawnSession(tabId, opts);
+      session.viewer = client;
+      logger.info({ tabId, pid: session.pty.pid }, 'Fresh PTY attached');
+    }
+
+    this.sendJson(client, { type: 'attached', tabId, restored });
+    if (restored) {
+      const replay = session.ring.drain();
+      if (replay.length > 0) this.sendBinary(client, replay);
+    }
+    session.lastActivityAt = Date.now();
+    return { kind: 'attached', restored };
+  }
+
+  /**
+   * Detach the given client from `tabId`. PTY persists; grace timer starts.
+   * If `client` doesn't match the session's current viewer (stale callback,
+   * re-attach race), no-op.
+   */
+  detach(tabId: string, client: PtyClient): void {
+    const session = this.sessions.get(tabId);
+    if (!session) return;
+    if (session.viewer !== client) return;
+    session.viewer = undefined;
+    if (session.graceTimer) clearTimeout(session.graceTimer);
+    session.graceTimer = setTimeout(() => {
+      const current = this.sessions.get(tabId);
+      if (!current || current !== session) return;
+      if (current.viewer) return;
+      logger.info({ tabId, graceMs: this.graceMs }, 'Grace expired — terminating PTY');
+      this.kill(tabId);
+    }, this.graceMs);
+    logger.info({ tabId, graceMs: this.graceMs }, 'Client detached — grace timer started');
+  }
+
+  /**
+   * Forward a raw input frame from the client to the PTY.
+   * Returns `false` when oversized — caller should close WS with 1009.
+   */
+  sendInput(tabId: string, buf: Buffer): boolean {
+    if (buf.length > this.inputMaxBytes) {
       logger.warn(
-        { err: cleanupErr, viewSessionId },
-        'Failed to clean up view session after pty.spawn failure',
+        { tabId, frameBytes: buf.length, limit: this.inputMaxBytes },
+        'PTY input frame exceeds limit',
       );
+      return false;
     }
-    throw err;
-  }
-
-  const handle: PtyHandle = {
-    tabId,
-    viewSessionId,
-    pty: ptyProcess,
-    socket,
-    disposed: false,
-    createdAt: new Date(),
-  };
-
-  logger.info(
-    { tabId, viewSessionId, pid: ptyProcess.pid, cols, rows },
-    'PTY attached to tmux window via grouped view session',
-  );
-
-  // ── PTY → socket (binary frames) ────────────────────────────
-  (ptyProcess.onData as unknown as (cb: PtyDataHandler) => void)((data) => {
-    if (handle.disposed) return;
-    if (socket.readyState !== socket.OPEN) return;
-    const buf: Buffer =
-      typeof data === 'string' ? Buffer.from(data, 'binary') : data;
+    const session = this.sessions.get(tabId);
+    if (!session) return true;
     try {
-      socket.send(buf, { binary: true });
+      (session.pty as unknown as { write(d: Buffer): void }).write(buf);
+      session.lastActivityAt = Date.now();
     } catch (err) {
-      logger.warn({ err, tabId }, 'Failed to forward PTY data to socket');
+      logger.warn({ err, tabId }, 'PTY write failed');
     }
-  });
+    return true;
+  }
 
-  ptyProcess.onExit(({ exitCode, signal }) => {
-    if (handle.disposed) return;
-    logger.info({ tabId, exitCode, signal }, 'PTY exited');
-    // Notify the client with exit details BEFORE disposing. We intentionally
-    // do NOT flip handle.disposed here — dispose() is the single source of
-    // truth for that flag. Flipping it early meant the subsequent
-    // socket.on('close') dispose call would short-circuit and `killSession`
-    // would never run on the natural PTY-exit path, leaking the grouped
-    // view session inside the master tmux server. Caught by Copilot PR #94
-    // review.
-    if (socket.readyState === socket.OPEN) {
-      try {
-        socket.send(JSON.stringify({ type: 'exit', exitCode, signal }));
-        socket.close(1000, 'pty-exited');
-      } catch {
-        // socket already gone — ignore
-      }
-    }
-    void dispose(handle, 'pty-exited');
-  });
-
-  // ── socket → PTY (binary = data, text = control JSON) ───────
-  socket.on('message', (msg: Buffer, isBinary: boolean) => {
-    if (handle.disposed) return;
-    if (isBinary) {
-      // App-level cap: 8 MiB maxPayload is for server→client redraws,
-      // not for the client to push 8 MiB into the PTY in one frame.
-      if (msg.length > MAX_PTY_INPUT_BYTES) {
-        logger.warn(
-          { tabId, frameBytes: msg.length, limit: MAX_PTY_INPUT_BYTES },
-          'PTY input frame exceeds limit — dropping',
-        );
-        return;
-      }
-      writeSafe(handle, msg);
-      return;
-    }
-    // Text frame: control message
-    let ctrl: Record<string, unknown>;
+  /**
+   * Direct write — used by the hook approval handler to inject
+   * `decision + '\n'` into the PTY when the user resolves an approval
+   * from the phone. Bypasses the input frame cap (decisions are tiny).
+   * Returns true on success, false if the tabId has no session.
+   */
+  write(tabId: string, data: string | Buffer): boolean {
+    const session = this.sessions.get(tabId);
+    if (!session) return false;
     try {
-      ctrl = JSON.parse(msg.toString('utf-8')) as Record<string, unknown>;
+      const buf = typeof data === 'string' ? Buffer.from(data, 'utf-8') : data;
+      (session.pty as unknown as { write(d: Buffer): void }).write(buf);
+      session.lastActivityAt = Date.now();
+      return true;
     } catch (err) {
-      logger.warn({ err, tabId }, 'Invalid control JSON from client');
-      return;
+      logger.warn({ err, tabId }, 'PTY direct write failed');
+      return false;
     }
-    switch (ctrl['type']) {
-      case 'resize': {
-        const rawCols = Number(ctrl['cols']);
-        const rawRows = Number(ctrl['rows']);
-        if (
-          Number.isFinite(rawCols) && rawCols >= 2 && rawCols <= 500 &&
-          Number.isFinite(rawRows) && rawRows >= 2 && rawRows <= 500
-        ) {
-          try {
-            ptyProcess.resize(Math.floor(rawCols), Math.floor(rawRows));
-          } catch (err) {
-            logger.warn({ err, tabId, cols: rawCols, rows: rawRows }, 'PTY resize failed');
-          }
-        }
-        return;
-      }
-      case 'input': {
-        // Allow clients to send text input as a JSON control frame too,
-        // in case their WS impl can't do binary easily (e.g. debug tools).
-        // Same MAX_PTY_INPUT_BYTES cap as the binary path so we can't
-        // be flooded via the JSON channel either.
-        const data = typeof ctrl['data'] === 'string' ? (ctrl['data'] as string) : '';
-        if (data.length === 0) return;
-        const buf = Buffer.from(data, 'utf-8');
-        if (buf.length > MAX_PTY_INPUT_BYTES) {
-          logger.warn(
-            { tabId, frameBytes: buf.length, limit: MAX_PTY_INPUT_BYTES },
-            'PTY JSON input frame exceeds limit — dropping',
-          );
-          return;
-        }
-        writeSafe(handle, buf);
-        return;
-      }
-      case 'refresh': {
-        // Bug 4: nudge tmux into repainting the visible window. When the
-        // web client swaps between CLI tabs (display: none on the hidden
-        // pane), tmux never repaints the off-screen window, so on
-        // reactivation the xterm buffer shows stale content. A 1-col
-        // resize wobble forces tmux to emit a full redraw without the
-        // client needing to know tmux is involved at all.
-        const currentCols = ptyProcess.cols;
-        const currentRows = ptyProcess.rows;
-        if (
-          Number.isFinite(currentCols) && Number.isFinite(currentRows) &&
-          currentCols > 2 && currentRows > 2
-        ) {
-          try {
-            ptyProcess.resize(currentCols - 1, currentRows);
-            ptyProcess.resize(currentCols, currentRows);
-          } catch (err) {
-            logger.warn(
-              { err, tabId, cols: currentCols, rows: currentRows },
-              'PTY refresh (resize wobble) failed',
-            );
-          }
-        }
-        return;
-      }
-      case 'kill': {
-        // Wave 2.6: user deliberately closed the CLI tab (UI confirm modal
-        // already in front of this path). Kill the underlying tmux WINDOW,
-        // not just the view session — otherwise the shared window would
-        // leak inside the master session forever, which is the "forgotten
-        // sessions hanging around" problem the user called out.
-        //
-        // Fire-and-forget: tmux killing the window will naturally cause
-        // every attached view session's PTY to exit (shell receives SIGHUP),
-        // which triggers onExit → dispose() → socket close. We don't need
-        // to reply to the client.
-        logger.info({ tabId, viewSessionId }, 'Client requested kill-window');
-        killWindow(tabId).catch((err) => {
-          logger.warn({ err, tabId }, 'kill-window failed');
-        });
-        return;
-      }
-      default:
-        logger.debug({ tabId, type: ctrl['type'] }, 'Ignoring unknown control frame');
+  }
+
+  /** Resize the PTY. Bounds enforcement happens at the route layer. */
+  resize(tabId: string, cols: number, rows: number): void {
+    const session = this.sessions.get(tabId);
+    if (!session) return;
+    try {
+      session.pty.resize(cols, rows);
+      session.lastActivityAt = Date.now();
+    } catch (err) {
+      logger.warn({ err, tabId, cols, rows }, 'PTY resize failed');
     }
-  });
-
-  socket.on('close', () => {
-    void dispose(handle, 'socket-closed');
-  });
-  socket.on('error', (err) => {
-    logger.warn({ err, tabId }, 'Socket error on PTY session');
-    void dispose(handle, 'socket-error');
-  });
-
-  return handle;
-}
-
-/** Write bytes to the PTY, dropping the write if disposed. */
-function writeSafe(handle: PtyHandle, data: Buffer): void {
-  if (handle.disposed) return;
-  try {
-    // node-pty types say write() takes a string, but in binary mode it
-    // accepts a Buffer. The lib toString('binary')s internally, so we
-    // pass bytes unchanged. See microsoft/node-pty#489.
-    (handle.pty as unknown as { write: (d: Buffer) => void }).write(data);
-  } catch (err) {
-    // Route through dispose() rather than flipping `handle.disposed = true`
-    // directly. Flipping the flag here meant the subsequent socket.on('close')
-    // dispose call would short-circuit on `if (handle.disposed) return;`, so
-    // `killSession(handle.viewSessionId)` never ran on the write-error teardown
-    // path — leaking the per-attach grouped view session. Same class of bug
-    // as the Round 1 onExit fix. Caught by Copilot PR #94 review round 3.
-    logger.warn({ err, tabId: handle.tabId }, 'PTY write failed — disposing handle');
-    void dispose(handle, 'pty-write-failed');
   }
-}
 
-/**
- * Tear down the PTY exactly once. Safe to call from any exit path.
- *
- * Wave 2.6: also kills the per-attach grouped view session. Killing a
- * grouped session does NOT kill the shared windows — those belong to the
- * master `major-tom` session and survive until someone explicitly
- * `killWindow`s them (that's what the `kill` control frame does when the
- * user closes a CLI tab via the confirmation modal). So relay restarts,
- * WS reconnects, and stray browser-tab closures still leave the real
- * `claude` process running inside its tmux window, which is the whole
- * point of Phase 13.
- */
-export async function dispose(handle: PtyHandle, reason: string): Promise<void> {
-  if (handle.disposed) return;
-  handle.disposed = true;
-  logger.info({ tabId: handle.tabId, viewSessionId: handle.viewSessionId, reason }, 'Disposing PTY handle');
-  try {
-    handle.pty.kill();
-  } catch (err) {
-    logger.debug({ err, tabId: handle.tabId }, 'PTY kill threw (likely already dead)');
+  /**
+   * Immediate termination — bypasses grace. SIGTERM, then SIGKILL after
+   * a 5s safety net if the PTY still hasn't exited.
+   */
+  kill(tabId: string): void {
+    const session = this.sessions.get(tabId);
+    if (!session) return;
+    try {
+      session.pty.kill('SIGTERM');
+    } catch {
+      // already dead
+    }
+    const sigkillTimer = setTimeout(() => {
+      try { session.pty.kill('SIGKILL'); } catch { /* already dead */ }
+    }, SIGKILL_DELAY_MS);
+    sigkillTimer.unref();
+    this.evict(tabId);
   }
-  try {
-    await killSession(handle.viewSessionId);
-  } catch (err) {
-    logger.debug(
-      { err, tabId: handle.tabId, viewSessionId: handle.viewSessionId },
-      'kill view session threw (likely already gone)',
-    );
+
+  has(tabId: string): boolean {
+    return this.sessions.has(tabId);
+  }
+
+  /**
+   * Snapshot of all live tabs. Backs `GET /shell/tabs`.
+   * Sorted by `lastActivityAt` descending so most recent appears first.
+   */
+  listTabs(): TabInfo[] {
+    return [...this.sessions.values()]
+      .map((s) => ({
+        tabId: s.tabId,
+        attached: s.viewer !== undefined,
+        lastActivityAt: new Date(s.lastActivityAt).toISOString(),
+      }))
+      .sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? 1 : -1));
+  }
+
+  /**
+   * Stop all timers, kill all PTYs, drop the session map.
+   * Tests call this in `afterEach`; production calls it from `onClose`.
+   */
+  dispose(): void {
+    for (const [tabId, session] of this.sessions) {
+      if (session.graceTimer) clearTimeout(session.graceTimer);
+      try { session.pty.kill('SIGKILL'); } catch { /* ignore */ }
+      this.sessions.delete(tabId);
+      logger.debug({ tabId }, 'Adapter disposed — session cleared');
+    }
+  }
+
+  private spawnSession(tabId: string, opts: AttachOptions): PtySession {
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(this.env)) {
+      if (typeof v === 'string') env[k] = v;
+    }
+    if (opts.envExtras) Object.assign(env, opts.envExtras);
+    env['TERM'] = env['TERM'] ?? 'xterm-256color';
+    env['COLORTERM'] = env['COLORTERM'] ?? 'truecolor';
+    env['LANG'] = env['LANG'] ?? 'en_US.UTF-8';
+
+    const ptyProcess = this.spawnFn(this.shell, this.shellArgs, {
+      name: 'xterm-256color',
+      cols: opts.cols,
+      rows: opts.rows,
+      cwd: this.cwd,
+      env,
+      // Binary mode: node-pty's types claim `string` but with `encoding: null`
+      // it emits Buffers. See microsoft/node-pty#489.
+      encoding: null as unknown as undefined,
+      handleFlowControl: true,
+    });
+
+    const session: PtySession = {
+      tabId,
+      pty: ptyProcess,
+      ring: new RingBuffer(this.bufferBytes),
+      lastActivityAt: Date.now(),
+      exited: false,
+    };
+    this.sessions.set(tabId, session);
+
+    (ptyProcess.onData as unknown as (cb: (data: string | Buffer) => void) => void)((data) => {
+      const buf: Buffer = typeof data === 'string' ? Buffer.from(data, 'binary') : data;
+      session.lastActivityAt = Date.now();
+      if (session.viewer && session.viewer.readyState === session.viewer.OPEN) {
+        // Live viewer gets the stream directly. Skip the ring on this
+        // path — otherwise a reattach within grace would replay bytes
+        // the client already rendered, visibly duplicating them in
+        // xterm. Copilot caught this on PR #130 review.
+        try {
+          session.viewer.send(buf, { binary: true });
+        } catch (err) {
+          logger.warn({ err, tabId: session.tabId }, 'Failed to forward PTY data');
+        }
+      } else {
+        // No live viewer — buffer for replay on reattach.
+        session.ring.push(buf);
+      }
+    });
+
+    ptyProcess.onExit(({ exitCode, signal }) => {
+      if (session.exited) return;
+      session.exited = true;
+      logger.info({ tabId: session.tabId, exitCode, signal }, 'PTY exited');
+      const v = session.viewer;
+      if (v && v.readyState === v.OPEN) {
+        try {
+          this.sendJson(v, { type: 'exit', exitCode, signal });
+          v.close(1000, 'pty-exited');
+        } catch {
+          // already closed
+        }
+      }
+      this.evict(session.tabId);
+    });
+
+    return session;
+  }
+
+  private evict(tabId: string): void {
+    const session = this.sessions.get(tabId);
+    if (!session) return;
+    if (session.graceTimer) {
+      clearTimeout(session.graceTimer);
+      session.graceTimer = undefined;
+    }
+    this.sessions.delete(tabId);
+  }
+
+  private sendJson(client: PtyClient, data: unknown): void {
+    if (client.readyState !== client.OPEN) return;
+    try {
+      client.send(JSON.stringify(data));
+    } catch {
+      // peer gone — ignore
+    }
+  }
+
+  private sendBinary(client: PtyClient, buf: Buffer): void {
+    if (client.readyState !== client.OPEN) return;
+    try {
+      client.send(buf, { binary: true });
+    } catch {
+      // peer gone — ignore
+    }
   }
 }

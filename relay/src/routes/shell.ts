@@ -1,29 +1,25 @@
 /**
  * Shell WebSocket route — `/shell/:tabId`.
  *
- * Streams a tmux-backed pseudo-terminal to the client. The tmux server
- * is dedicated (`-L major-tom`) so our sessions survive WS reconnects
- * and relay restarts. Auth mirrors the main `/ws` route: session cookie
- * primary, dev-only AUTH_TOKEN fallback.
+ * Streams a plain PTY (one per tab) over WebSocket via `PtyAdapter`.
+ * Replaces the v1 tmux-backed implementation. Backing PTY persists
+ * through a 30-min disconnect grace so iOS app backgrounding does not
+ * lose state. See `docs/TERMINAL-PROTOCOL-SPEC.md`.
  *
- * Wave 1 intentionally keeps this minimal — no approval pipeline, no
- * sprite wiring, no env injection for Claude hooks. That's Wave 2+.
+ * Auth mirrors the main `/ws` route: session cookie primary, dev-only
+ * AUTH_TOKEN fallback, WKWebView JWT fallback via `?token=`.
  */
 import type { FastifyPluginAsync } from 'fastify';
+import type { WebSocket } from 'ws';
 import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
-import type { SessionManager } from '../sessions/session-manager.js';
-import type { WindowReaper } from '../adapters/window-reaper.js';
-import { attachPty } from '../adapters/pty-adapter.js';
-import { tmuxBootstrap } from '../adapters/tmux-bootstrap.js';
-import { killWindow, listWindows } from '../utils/tmux-cli.js';
+import type { PtyAdapter, PtyClient } from '../adapters/pty-adapter.js';
+import { MAJOR_TOM_CONFIG_DIR } from '../installer/install-hooks.js';
 import { logger } from '../utils/logger.js';
 
 interface ShellRouteDeps {
-  sessionManager: SessionManager;
-  windowReaper: WindowReaper;
+  ptyAdapter: PtyAdapter;
 }
 
-/** Result of authenticating a shell request (WS upgrade or REST kill). */
 interface ShellAuthResult {
   authed: boolean;
   email?: string;
@@ -31,12 +27,9 @@ interface ShellAuthResult {
 
 /**
  * Shared auth logic for shell routes. Checks (in order):
- *  1. Dev-mode legacy AUTH_TOKEN via ?token= query param
- *  2. Session cookie (primary path)
- *  3. WKWebView JWT fallback via ?token= (verified as session token)
- *
- * Extracted to avoid duplication between the WS upgrade and REST kill
- * handlers — Copilot caught the drift risk on PR #97 review.
+ *  1. Dev-mode legacy AUTH_TOKEN via `?token=`
+ *  2. Session cookie
+ *  3. JWT fallback via `?token=` (WKWebView cookie-injection edge cases)
  */
 async function authenticateShellRequest(
   sessionCookie: string | undefined,
@@ -45,23 +38,19 @@ async function authenticateShellRequest(
   const legacyAuthToken = process.env['AUTH_TOKEN'];
   const isDevMode = process.env['NODE_ENV'] !== 'production';
 
-  // 1. Dev-mode legacy AUTH_TOKEN
   if (isDevMode && queryToken && legacyAuthToken && queryToken === legacyAuthToken) {
     return { authed: true };
   }
 
-  // 2. Session cookie (primary)
   if (sessionCookie) {
     try {
       const payload = await verifySessionToken(sessionCookie);
       return { authed: true, email: payload.email };
     } catch {
-      // Cookie present but invalid — fall through to JWT fallback
+      // Fall through to token fallback
     }
   }
 
-  // 3. WKWebView JWT fallback: cookie injection can fail in edge cases,
-  //    so also accept the session JWT as a ?token= query param.
   if (queryToken && queryToken !== legacyAuthToken) {
     try {
       const payload = await verifySessionToken(queryToken);
@@ -74,32 +63,56 @@ async function authenticateShellRequest(
   return { authed: false };
 }
 
-/** Valid tabIds: 1-64 chars of `[a-zA-Z0-9._-]`. Defensive against path abuse. */
+/** Valid tabIds: 1-64 chars of `[a-zA-Z0-9._-]`. */
 const TAB_ID_RE = /^[a-zA-Z0-9._-]{1,64}$/;
-
-/** Same bounds as the runtime resize handler in pty-adapter.ts. */
 const DIM_MIN = 2;
 const DIM_MAX = 500;
 
 /**
- * Clamp a query-string dimension into the same [2, 500] range we enforce
- * on runtime resize control frames. Returns undefined for missing/invalid
- * input so the PTY adapter falls back to its default. Caught by Copilot
- * review on PR #89 — unbounded values would let an authed client force
- * an oversized PTY allocation.
+ * Parse a query-string dimension. Returns three outcomes so the caller can
+ * distinguish "unset → use default", "valid in-bounds → use value", and
+ * "invalid → reject request with 1008":
+ *   - `{ ok: true, value: undefined }` — missing / empty
+ *   - `{ ok: true, value: N }` — finite integer in [DIM_MIN, DIM_MAX]
+ *   - `{ ok: false }` — non-numeric OR out-of-bounds (no clamping)
  */
-function clampDim(raw: string | undefined): number | undefined {
-  if (raw === undefined) return undefined;
+function parseDim(raw: string | undefined): { ok: true; value: number | undefined } | { ok: false } {
+  if (raw === undefined || raw === '') return { ok: true, value: undefined };
   const n = Number(raw);
-  if (!Number.isFinite(n)) return undefined;
-  return Math.max(DIM_MIN, Math.min(DIM_MAX, Math.floor(n)));
+  if (!Number.isFinite(n)) return { ok: false };
+  const floored = Math.floor(n);
+  if (floored < DIM_MIN || floored > DIM_MAX) return { ok: false };
+  return { ok: true, value: floored };
+}
+
+/** Wrap a ws.WebSocket in the minimal `PtyClient` shape. */
+function toPtyClient(socket: WebSocket): PtyClient {
+  return socket as unknown as PtyClient;
+}
+
+/**
+ * Build the per-PTY env extras. Only injected on first spawn — subsequent
+ * reattaches to the same tabId keep whatever env was set originally.
+ */
+function buildEnvExtras(tabId: string): Record<string, string> {
+  const hookPort = process.env['HOOK_PORT'] ?? '9091';
+  return {
+    MAJOR_TOM_TAB_ID: tabId,
+    CLAUDE_CONFIG_DIR: MAJOR_TOM_CONFIG_DIR,
+    MAJOR_TOM_CONFIG_DIR: MAJOR_TOM_CONFIG_DIR,
+    MAJOR_TOM_APPROVAL: process.env['MAJOR_TOM_APPROVAL'] ?? 'local',
+    MAJOR_TOM_RELAY_PORT: hookPort,
+  };
 }
 
 export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
-  const { sessionManager, windowReaper } = deps;
+  const { ptyAdapter } = deps;
 
   return async (fastify) => {
-    fastify.get<{ Params: { tabId: string }; Querystring: { token?: string; cols?: string; rows?: string } }>(
+    fastify.get<{
+      Params: { tabId: string };
+      Querystring: { token?: string; cols?: string; rows?: string };
+    }>(
       '/shell/:tabId',
       { websocket: true },
       async (socket, request) => {
@@ -110,91 +123,105 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
           return;
         }
 
-        // ── Auth ──────────────────────────────────────────────
         const sessionCookie = request.cookies?.[SESSION_COOKIE];
         const { token: queryToken, cols: colsQ, rows: rowsQ } = request.query;
 
         const { authed, email } = await authenticateShellRequest(sessionCookie, queryToken);
-
         if (!authed) {
           logger.warn({ tabId, ip: request.ip }, 'Shell WS unauthenticated — closing');
           socket.close(1008, 'Authentication required');
           return;
         }
 
-        // ── Bootstrap (idempotent, lazy) ──────────────────────
-        try {
-          await tmuxBootstrap.ensure();
-        } catch (err) {
-          logger.error({ err, tabId }, 'tmux bootstrap failed — cannot attach shell');
+        const parsedCols = parseDim(colsQ);
+        const parsedRows = parseDim(rowsQ);
+        if (!parsedCols.ok || !parsedRows.ok) {
+          logger.warn({ tabId, colsQ, rowsQ }, 'Shell WS rejected — invalid cols/rows');
+          socket.close(1008, 'Invalid cols/rows');
+          return;
+        }
+        const cols = parsedCols.value ?? 80;
+        const rows = parsedRows.value ?? 24;
+
+        const client = toPtyClient(socket);
+        const outcome = ptyAdapter.attach(tabId, client, {
+          cols,
+          rows,
+          envExtras: buildEnvExtras(tabId),
+        });
+        if (outcome.kind === 'rejected') {
           try {
-            socket.send(JSON.stringify({ type: 'error', message: (err as Error).message }));
-          } catch { /* ignore */ }
-          socket.close(1011, 'tmux unavailable');
+            socket.send(JSON.stringify({ type: 'error', message: 'tab already attached' }));
+          } catch {
+            // peer gone
+          }
+          socket.close(4001, 'tab already attached');
           return;
         }
 
-        // Optional initial cols/rows so the first redraw isn't at 80x24,
-        // clamped to the same bounds enforced on resize control frames.
-        const cols = clampDim(colsQ);
-        const rows = clampDim(rowsQ);
+        logger.info({ tabId, email, ip: request.ip, restored: outcome.restored }, 'Shell WS attached');
 
-        try {
-          const handle = await attachPty(socket, {
-            tabId,
-            ...(cols !== undefined ? { cols } : {}),
-            ...(rows !== undefined ? { rows } : {}),
-          });
-
-          // Register the tab on the session manager so future waves can
-          // coordinate (approvals, hybrid keystroke injection, tab UI).
-          // Pass the pid to cleanup so a stale close from an older socket
-          // cannot evict the handle of a newer attach against the same id.
-          const ourPid = handle.pty.pid;
-          sessionManager.registerTab({
-            tabId,
-            pid: ourPid,
-            attachedAt: handle.createdAt,
-          });
-
-          // Notify the window reaper that a client connected — cancels
-          // any pending disconnect grace timer for this window.
-          windowReaper.onClientConnected(tabId);
-
-          const cleanup = () => {
-            sessionManager.unregisterTab(tabId, ourPid);
-            // If this was the last client for this window, start the
-            // reaper's disconnect grace timer. After the grace period,
-            // the window is killed if nobody reconnects.
-            if (!sessionManager.getTab(tabId)) {
-              windowReaper.onLastClientDisconnected(tabId);
+        socket.on('message', (msg: Buffer, isBinary: boolean) => {
+          if (isBinary) {
+            const ok = ptyAdapter.sendInput(tabId, msg);
+            if (!ok) {
+              logger.warn({ tabId, size: msg.length }, 'Closing WS — input frame exceeds limit');
+              socket.close(1009, 'Input frame too large');
             }
-          };
-          socket.on('close', cleanup);
-          socket.on('error', cleanup);
-
-          logger.info({ tabId, email, ip: request.ip }, 'Shell WS attached');
-        } catch (err) {
-          logger.error({ err, tabId }, 'Failed to attach PTY');
+            return;
+          }
+          let ctrl: Record<string, unknown>;
           try {
-            socket.send(JSON.stringify({ type: 'error', message: (err as Error).message }));
-          } catch { /* ignore */ }
-          socket.close(1011, 'pty attach failed');
-        }
+            ctrl = JSON.parse(msg.toString('utf-8')) as Record<string, unknown>;
+          } catch (err) {
+            logger.warn({ err, tabId }, 'Invalid control JSON from client');
+            return;
+          }
+          switch (ctrl['type']) {
+            case 'resize': {
+              const rawCols = Number(ctrl['cols']);
+              const rawRows = Number(ctrl['rows']);
+              if (
+                Number.isFinite(rawCols) && rawCols >= DIM_MIN && rawCols <= DIM_MAX &&
+                Number.isFinite(rawRows) && rawRows >= DIM_MIN && rawRows <= DIM_MAX
+              ) {
+                ptyAdapter.resize(tabId, Math.floor(rawCols), Math.floor(rawRows));
+              }
+              return;
+            }
+            case 'input': {
+              const data = typeof ctrl['data'] === 'string' ? (ctrl['data'] as string) : '';
+              if (data.length === 0) return;
+              const buf = Buffer.from(data, 'utf-8');
+              const ok = ptyAdapter.sendInput(tabId, buf);
+              if (!ok) {
+                socket.close(1009, 'Input frame too large');
+              }
+              return;
+            }
+            case 'kill': {
+              logger.info({ tabId }, 'Client requested kill');
+              ptyAdapter.kill(tabId);
+              return;
+            }
+            case 'refresh': {
+              // v2 spec: silently ignored. Was a tmux redraw hack.
+              return;
+            }
+            default:
+              logger.debug({ tabId, type: ctrl['type'] }, 'Ignoring unknown control frame');
+          }
+        });
+
+        const onCloseOrError = () => {
+          ptyAdapter.detach(tabId, client);
+        };
+        socket.on('close', onCloseOrError);
+        socket.on('error', onCloseOrError);
       },
     );
 
-    // ── Tab discovery ─────────────────────────────────────────
-    // `GET /shell/tabs` — returns the list of existing tmux window names.
-    // Clients use this on launch to discover windows they can reconnect
-    // to (iOS tab persistence) rather than blindly creating new ones.
-    // Also useful for admin/debug tooling.
-    //
-    // Security note: in multi-user mode this returns ALL windows, not
-    // just the caller's. Multi-user scoping (per-user tab ownership)
-    // would require tagging tmux windows with owner identity — deferred
-    // until multi-user terminal isolation is built out. Single-user mode
-    // (the primary deployment) is unaffected.
+    // GET /shell/tabs — new shape: [{tabId, attached, lastActivityAt}]
     fastify.get<{ Querystring: { token?: string } }>(
       '/shell/tabs',
       async (request, reply) => {
@@ -206,63 +233,34 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
           return reply.code(401).send({ error: 'Authentication required' });
         }
 
-        const windows = await listWindows();
-        return { tabs: windows };
+        return ptyAdapter.listTabs();
       },
     );
 
-    // ── REST fallback kill ────────────────────────────────────
-    // `POST /shell/:tabId/kill` — last-resort path for closing a tab
-    // when the shell WebSocket isn't in OPEN state. The frontend normally
-    // sends `{type:'kill'}` in-band over the WS, but if the user clicks
-    // the × while the socket is CONNECTING (initial connect or mid-
-    // reconnect) or already CLOSING/CLOSED, that in-band send is a no-op
-    // and the tmux window would otherwise leak forever. Caught by Copilot
-    // PR #94 review round 2.
-    //
-    // Auth MIRRORS the WebSocket route above: session cookie primary,
-    // dev-only `?token=AUTH_TOKEN` legacy fallback. Rolling custom auth
-    // here instead of using `requireSession` because the WS route accepts
-    // the legacy token too, and a user relying on `relay.authToken`
-    // (dev mode, no Google sign-in) would otherwise hit 401 on this REST
-    // fallback and the tmux window would leak for CONNECTING/CLOSED
-    // socket states. Caught by Copilot PR #94 review round 3.
+    // POST /shell/:tabId/kill — 204 on success, 404 on unknown tabId.
     fastify.post<{ Params: { tabId: string }; Querystring: { token?: string } }>(
       '/shell/:tabId/kill',
       async (request, reply) => {
         const { tabId } = request.params;
         if (!TAB_ID_RE.test(tabId)) {
-          logger.warn({ tabId, ip: request.ip }, 'REST kill rejected — invalid tabId');
           return reply.code(400).send({ error: 'Invalid tabId' });
         }
 
-        // ── Auth (shared with /shell/:tabId WS upgrade) ─────
         const sessionCookie = request.cookies?.[SESSION_COOKIE];
         const { token: queryToken } = request.query;
 
         const { authed, email } = await authenticateShellRequest(sessionCookie, queryToken);
-
         if (!authed) {
-          logger.warn({ tabId, ip: request.ip }, 'REST kill unauthenticated — rejecting');
           return reply.code(401).send({ error: 'Authentication required' });
         }
 
-        try {
-          await killWindow(tabId);
-          logger.info(
-            { tabId, email, ip: request.ip },
-            'Shell window killed via REST fallback',
-          );
-        } catch (err) {
-          // `killWindow` throws on non-zero tmux exit codes (round 3
-          // fix). A throw here means tmux actually failed — not that the
-          // window is missing (that's a silent no-op inside killWindow
-          // itself via the has-window guard). Return 500 so the client
-          // can log the failure instead of assuming the kill landed.
-          logger.warn({ err, tabId }, 'killWindow threw in REST fallback');
-          return reply.code(500).send({ error: 'Failed to kill tmux window' });
+        if (!ptyAdapter.has(tabId)) {
+          return reply.code(404).send({ error: 'tabId not found' });
         }
-        return { status: 'ok' };
+
+        ptyAdapter.kill(tabId);
+        logger.info({ tabId, email, ip: request.ip }, 'Shell tab killed via REST fallback');
+        return reply.code(204).send();
       },
     );
   };

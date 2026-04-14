@@ -61,7 +61,7 @@ export function createApiApprovalsRoutes(
 
     // ── POST /api/approvals/:id/decision ─────────────────────
     // Endpoint the SW notification actions hit. Body: { decision }.
-    // Hybrid-mode resolves go through resolveHybrid (tmux send-keys);
+    // Hybrid-mode resolves go through resolveHybrid (PTY write inject);
     // everything else through plain resolve().
     //
     // When multi-user mode is enabled the handler also enforces the
@@ -119,7 +119,7 @@ export function createApiApprovalsRoutes(
         );
         const isHybrid = pending?.routingMode === 'hybrid' && pending.tabId;
         if (isHybrid && pending?.tabId) {
-          await deps.shellApprovalQueue.resolveHybrid(requestId, decision, pending.tabId);
+          deps.shellApprovalQueue.resolveHybrid(requestId, decision, pending.tabId);
         } else {
           deps.shellApprovalQueue.resolve(requestId, decision);
         }

@@ -67,7 +67,7 @@ final class TerminalViewModel {
     /// Current connection state of the terminal WebSocket.
     var connectionState: TerminalConnectionState = .disconnected
 
-    /// The active tab ID for the tmux window.
+    /// The active tab ID for the PTY session on the relay.
     /// Derived from the active tab in the `tabs` array.
     var tabId: String {
         activeTab?.tabId ?? "default"
@@ -137,10 +137,10 @@ final class TerminalViewModel {
         self.keybarViewModel = KeybarViewModel(auth: auth)
 
         // Restore persisted tab IDs, or create default.
-        // This is the critical fix for tmux window orphan accumulation:
-        // previously, every app launch generated a random UUID → new tabId
-        // → new tmux window on the relay. By persisting and restoring the
-        // tab IDs, we reconnect to the SAME tmux windows across launches.
+        // Previously, every app launch generated a random UUID → new tabId
+        // → fresh PTY on the relay. By persisting and restoring tab IDs we
+        // reconnect to the SAME PTY sessions across launches (assuming the
+        // relay still holds them through its 30-min disconnect grace).
         let defaults = UserDefaults.standard
         let savedTabIds = defaults.stringArray(forKey: Self.persistedTabIdsKey) ?? []
         let savedActiveId = defaults.string(forKey: Self.persistedActiveTabIdKey)
@@ -172,12 +172,13 @@ final class TerminalViewModel {
         defaults.set(activeTab?.tabId, forKey: Self.persistedActiveTabIdKey)
     }
 
-    /// Reconcile persisted tabs with the relay's actual tmux windows.
+    /// Reconcile persisted tabs with the relay's live PTY sessions.
     ///
-    /// Fetches `GET /shell/tabs` and removes any local tabs whose windows
-    /// no longer exist on the relay (e.g. reaped after a relay restart).
-    /// Tabs whose windows are gone are pruned silently — the relay will
-    /// create fresh windows when the remaining tabs connect.
+    /// Fetches `GET /shell/tabs` and prunes any local tabs whose sessions
+    /// no longer exist on the relay (e.g. expired past the 30-min grace
+    /// after the relay was restarted while the app was backgrounded).
+    /// Missing sessions are silent — the relay spawns a fresh PTY on the
+    /// next connect.
     ///
     /// Call once after auth is established (e.g. from the terminal view's
     /// onAppear or after a successful auth check).
@@ -201,21 +202,21 @@ final class TerminalViewModel {
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else { return }
 
-            struct TabsResponse: Decodable {
-                let tabs: [String]
+            // v2 shape: [{tabId, attached, lastActivityAt}]
+            struct TabEntry: Decodable {
+                let tabId: String
             }
 
-            let decoded = try JSONDecoder().decode(TabsResponse.self, from: data)
-            let relayWindows = Set(decoded.tabs)
+            let decoded = try JSONDecoder().decode([TabEntry].self, from: data)
+            let relaySessions = Set(decoded.map(\.tabId))
 
-            // If the relay has no windows at all (tmux not running, relay just
-            // started), skip reconciliation — our tabs will create windows on
-            // connect. Only prune when the relay has SOME windows but ours are
-            // missing from the set.
-            if relayWindows.isEmpty { return }
+            // If the relay has no live sessions at all, skip reconciliation
+            // — our tabs will spawn fresh PTYs on connect. Only prune when
+            // the relay has some sessions but ours are missing from the set.
+            if relaySessions.isEmpty { return }
 
             let before = tabs.count
-            tabs = tabs.filter { relayWindows.contains($0.tabId) }
+            tabs = tabs.filter { relaySessions.contains($0.tabId) }
 
             // If all our tabs were pruned, create a fresh default.
             if tabs.isEmpty {
@@ -230,8 +231,8 @@ final class TerminalViewModel {
             }
         } catch {
             // Network error — skip reconciliation, tabs will connect normally.
-            // The relay creates windows on demand so stale tab IDs just get
-            // fresh windows, which is acceptable.
+            // The relay spawns PTYs on demand so stale tab IDs just get fresh
+            // sessions (`restored:false`), which is acceptable.
         }
     }
 

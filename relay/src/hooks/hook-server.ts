@@ -399,7 +399,7 @@ export function createHookServer(
   });
 
   // Loopback only — these endpoints are trusted by Claude Code's hook
-  // scripts inside our tmux windows, no authentication. NEVER bind to
+  // scripts running inside each PTY, no authentication. NEVER bind to
   // 0.0.0.0 or expose this port through Cloudflare.
   server.listen(port, '127.0.0.1', () => {
     logger.info({ port, host: '127.0.0.1' }, 'Hook HTTP server listening');

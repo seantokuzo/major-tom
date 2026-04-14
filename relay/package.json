@@ -12,7 +12,8 @@
     "start": "node --env-file=.env dist/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "echo \"No tests yet\" && exit 0",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "node scripts/fix-node-pty-perms.mjs",
     "tunnel:setup": "bash ../tunnel/setup.sh",
     "tunnel": "bash ../tunnel/start.sh",
@@ -40,7 +41,8 @@
     "@types/ws": "8.18.1",
     "esbuild": "0.25.0",
     "tsx": "4.19.4",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "^4.1.4"
   },
   "engines": {
     "node": ">=22.0.0"

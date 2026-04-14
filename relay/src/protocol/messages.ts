@@ -542,7 +542,7 @@ export interface ApprovalRequestMessage {
   routingMode?: 'local' | 'remote' | 'hybrid';
   /** Origin of the approval — SDK callback or shell hook script. */
   source?: 'sdk' | 'hook';
-  /** tmux window name for hybrid send-keys target. Only set when source==='hook'. */
+  /** PTY tabId for hybrid-mode decision write-back. Only set when source==='hook'. */
   tabId?: string;
 }
 

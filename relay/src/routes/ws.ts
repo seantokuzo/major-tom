@@ -750,8 +750,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         let resolvedByShellQueue = false;
         if (shellApprovalQueue.isPending(message.requestId)) {
           // Look up the pending entry to detect hybrid routing — hybrid
-          // resolves go through `resolveHybrid` so the relay also injects
-          // `a` / `d` Enter into the right tmux window.
+          // resolves go through `resolveHybrid` so the relay also writes
+          // `a\n` / `d\n` into the PTY for the owning tabId.
           const pending = shellApprovalQueue.getPendingDetails().find(
             (p) => p.requestId === message.requestId,
           );
@@ -760,9 +760,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             pending.tabId &&
             (message.decision === 'allow' || message.decision === 'deny');
           if (isHybridDecision && pending?.tabId) {
-            // Best-effort send-keys + queue resolve. Don't await — the
-            // tmux call shouldn't block the WS handler.
-            void shellApprovalQueue.resolveHybrid(
+            shellApprovalQueue.resolveHybrid(
               message.requestId,
               message.decision as 'allow' | 'deny',
               pending.tabId,

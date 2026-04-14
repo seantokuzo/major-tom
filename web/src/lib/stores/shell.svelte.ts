@@ -2,9 +2,10 @@
  * Shell store — owns per-tab WebSocket connections to /shell/:tabId,
  * tracks focus, and exposes a tiny imperative API for the xterm pane.
  *
- * Phase 13 Wave 1: each tab is one tmux window. Reconnect logic is
- * intentionally simple — exponential backoff up to 20 attempts, the
- * tmux backend keeps the real `claude` session alive across drops.
+ * Terminal protocol v2: each tab is one PTY session. Reconnect logic is
+ * intentionally simple — exponential backoff up to 20 attempts; the relay
+ * holds the PTY through a 30-min grace so backgrounding / network drops
+ * don't lose state.
  */
 
 interface ShellTab {
@@ -106,12 +107,9 @@ class ShellStore {
    * whenever a tab becomes active — that covers openTab (new + re-open),
    * the closeTab fallback to tabs[0], and explicit setActive() calls.
    * The XtermPane for the newly-visible tab watches its own entry via a
-   * $effect and, on bump, refits + sends a `refresh` control frame to
-   * force tmux to repaint its window. A hidden pane (`display: none`)
-   * has a stale xterm buffer because tmux doesn't repaint regions it
-   * can't see — on reactivation we need to pull fresh state or the
-   * user sees the pre-switch prompt even after the shell's cwd moved
-   * under them.
+   * $effect and, on bump, refits its xterm instance + steals focus so
+   * the soft keyboard pops back up. No wire traffic is emitted — the
+   * relay streams PTY output live and no redraw nudge is needed.
    */
   activationSeq = $state<Record<string, number>>({});
   /**
@@ -230,22 +228,21 @@ class ShellStore {
     if (tab.reconnectTimer !== null) {
       clearTimeout(tab.reconnectTimer);
     }
-    // Wave 2.6: tell the relay to kill the underlying tmux window, not
-    // just detach this client. Without this, every closed tab leaks a
-    // tmux window inside the master `major-tom` session forever — the
-    // real "forgotten sessions hanging around" problem the user flagged.
+    // Tell the relay to terminate the underlying PTY, not just detach
+    // this client. Without this, closing a tab would leave the PTY
+    // alive in the relay's session map until the 30-min grace timer
+    // expired — a stranded process per closed tab.
     //
     // Two paths depending on WebSocket state:
     //   OPEN  → send {type:'kill'} in-band. WebSocket preserves frame
     //           ordering on the wire so the server processes kill →
     //           close in that order. Fast, stays on the existing socket.
     //   other → CONNECTING/CLOSING/CLOSED/null all mean the in-band
-    //           send is a no-op, which would leak the tmux window since
-    //           socket.on('close') on the server only disposes the
-    //           grouped view session, not the underlying window. Fall
-    //           back to POST /shell/:tabId/kill so "close tab" is
-    //           reliably destructive in every socket state. Caught by
-    //           Copilot PR #94 review round 2.
+    //           send is a no-op, which would strand the PTY in the
+    //           relay's grace window (it will eventually reap, but not
+    //           promptly). Fall back to POST /shell/:tabId/kill so
+    //           "close tab" is reliably destructive in every socket
+    //           state. Caught by Copilot PR #94 review round 2.
     if (tab.socket && tab.socket.readyState === WebSocket.OPEN) {
       let sent = false;
       try {
@@ -379,25 +376,25 @@ class ShellStore {
   }
 
   /**
-   * REST fallback for killing a tmux window when the shell WebSocket
-   * is not in OPEN state (CONNECTING, CLOSING, CLOSED, or null). The
-   * relay endpoint mirrors the shell WS auth: session cookie primary,
-   * dev-only `?token=AUTH_TOKEN` legacy fallback. We pass the same
-   * token the tab's WebSocket used at connect time when available so
-   * users relying on legacy token auth (no Google session cookie) don't
-   * hit a 401 on this fallback — which would reintroduce the tmux
-   * window leak for CONNECTING/CLOSED socket states. Caught by Copilot
-   * PR #94 review round 3.
+   * REST fallback for killing a PTY when the shell WebSocket is not in
+   * OPEN state (CONNECTING, CLOSING, CLOSED, or null). The relay
+   * endpoint mirrors the shell WS auth: session cookie primary, dev-only
+   * `?token=AUTH_TOKEN` legacy fallback. We pass the same token the
+   * tab's WebSocket used at connect time when available so users
+   * relying on legacy token auth (no Google session cookie) don't hit a
+   * 401 on this fallback — which would leave the PTY stranded in the
+   * relay's grace window for CONNECTING/CLOSED socket states. Caught by
+   * Copilot PR #94 review round 3.
    *
    * Fire-and-forget on purpose — closeTab() continues synchronously and
    * the UI tab is removed immediately regardless of whether the kill
    * request lands. If it fails we log a warning and move on; the worst
-   * case is a stranded tmux window, which is exactly what we had before
-   * this fallback existed (so no regression).
+   * case is a PTY that lingers until the grace timer reaps it, which is
+   * the same outcome as before this fallback existed (so no regression).
    *
    * Added as part of Copilot PR #94 review round 2 — the in-band kill
    * frame was only sent on OPEN sockets, so closing during the initial
-   * connect or a mid-reconnect leaked the window.
+   * connect or a mid-reconnect left the PTY stranded.
    */
   private async killWindowRest(tabId: string, token: string | null): Promise<void> {
     if (typeof window === 'undefined') return;
@@ -451,15 +448,28 @@ class ShellStore {
         }
         return;
       }
-      // Text frame: control message from server (exit, error)
+      // Text frame: control message from server (attached, exit, error)
       if (typeof ev.data === 'string') {
         try {
           const ctrl = JSON.parse(ev.data) as Record<string, unknown>;
-          if (ctrl['type'] === 'exit') {
+          const type = ctrl['type'];
+          if (type === 'attached') {
+            // v2 handshake frame: server confirms attach. `restored=true`
+            // means we reattached to a PTY that was alive in the relay's
+            // grace window (background-resume case); false means a fresh
+            // PTY spawn. Log-only for now — no UI surface. Future: show
+            // a subtle "resumed" indicator for analytics / UX.
+            const restored = ctrl['restored'] === true;
+            console.info(
+              `[shellStore] attached tab=${tabId} restored=${restored}`,
+            );
+          } else if (type === 'exit') {
             this.emitStatus(tabId, 'closed', 'pty-exit');
-          } else if (ctrl['type'] === 'error') {
+          } else if (type === 'error') {
             this.emitStatus(tabId, 'error', String(ctrl['message'] ?? ''));
           }
+          // Unknown `type` values are silently ignored — lets the server
+          // introduce new control frames without breaking older clients.
         } catch {
           // ignore malformed control frames
         }
