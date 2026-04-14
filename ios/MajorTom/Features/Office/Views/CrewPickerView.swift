@@ -84,7 +84,12 @@ struct CrewPickerView: View {
             .environment(\.editMode, .constant(.active))
         }
         .onAppear {
-            selectedHumans = crewRoster.preferredOrder
+            // Extra safety: filter to humans + dedupe even though CrewRoster already
+            // sanitizes on load. ForEach(id: \.rawValue) crashes on duplicates.
+            var seen = Set<CharacterType>()
+            selectedHumans = crewRoster.preferredOrder.filter {
+                !$0.isDog && seen.insert($0).inserted
+            }
             let selected = Set(selectedHumans)
             availableHumans = allHumans.filter { !selected.contains($0) }
         }

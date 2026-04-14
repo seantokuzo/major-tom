@@ -66,10 +66,12 @@ final class OfficeViewModel {
         // Clear idle sprites only — real agents are preserved across shuffle/select.
         agents.removeAll { isIdleSprite($0.id) }
 
-        // Start from full pool, subtract whatever real agents already claim.
-        let claimed = Set(agents.map(\.characterType))
-        availableSprites = Set(CharacterType.allCases).subtracting(claimed)
+        // `availableSprites` is the claimable *rendered* idle pool — spawning
+        // agents take over a visible idle sprite rather than adding a new one.
+        // Rebuild it from the idle sprites we actually render below.
+        availableSprites = []
 
+        let claimed = Set(agents.map(\.characterType))
         let allTypes = CharacterType.allCases
 
         // Dogs are always on screen (unless a real agent is using that sprite).
@@ -84,7 +86,7 @@ final class OfficeViewModel {
                 currentTask: nil,
                 deskIndex: nil
             ))
-            availableSprites.remove(charType)
+            availableSprites.insert(charType)
         }
 
         // Only the active crew humans get rendered — skip any already claimed by real agents.
@@ -100,7 +102,7 @@ final class OfficeViewModel {
                 currentTask: nil,
                 deskIndex: nil
             ))
-            availableSprites.remove(charType)
+            availableSprites.insert(charType)
         }
     }
 
@@ -269,11 +271,10 @@ final class OfficeViewModel {
     // MARK: - Private Helpers
 
     /// Return a character type to the idle pool after an agent leaves.
-    /// Overflow humans (not part of the active crew) simply vanish — no re-rendering.
+    /// Overflow humans (not part of the active crew) simply vanish — no re-rendering,
+    /// and crucially not added to `availableSprites` since there's nothing to claim.
     private func returnToIdlePool(_ charType: CharacterType) {
-        releaseSprite(charType)
-
-        // If this was an overflow human (not in the active crew), don't re-render
+        // Overflow human — don't re-render, don't add to claimable pool.
         if !charType.isDog && !crewRoster.isActiveCrew(charType, maxCount: Self.maxIdleHumans) {
             return
         }
@@ -294,6 +295,7 @@ final class OfficeViewModel {
             deskIndex: nil
         )
         agents.append(idleAgent)
+        releaseSprite(charType)  // now there's a rendered idle to claim
     }
 
     /// Find the next available desk and assign it.

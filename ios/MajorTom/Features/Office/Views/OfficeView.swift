@@ -228,6 +228,8 @@ struct OfficeView: View {
                     .padding(MajorTomTheme.Spacing.sm)
                     .glassBackground()
             }
+            .accessibilityLabel("Shuffle crew")
+            .accessibilityHint("Randomizes which humans appear on screen")
 
             // Select crew button
             Button {
@@ -239,6 +241,8 @@ struct OfficeView: View {
                     .padding(MajorTomTheme.Spacing.sm)
                     .glassBackground()
             }
+            .accessibilityLabel("Select crew")
+            .accessibilityHint("Opens the crew picker to choose your preferred humans")
 
             // Character gallery button
             Button {

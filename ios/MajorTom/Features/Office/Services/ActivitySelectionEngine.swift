@@ -204,7 +204,7 @@ final class ActivitySelectionEngine {
                 await withTaskGroup(of: Void.self) { group in
                     for agentId in agentsToRotate {
                         let delay = Double.random(in: 0.3...1.5)
-                        group.addTask {
+                        group.addTask { @MainActor in
                             try? await Task.sleep(for: .seconds(delay))
                             guard !Task.isCancelled else { return }
                             onRotate(agentId, nil)
