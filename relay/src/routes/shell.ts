@@ -69,9 +69,12 @@ const DIM_MIN = 2;
 const DIM_MAX = 500;
 
 /**
- * Parse and clamp a query-string dimension. Returns undefined if missing,
- * throws a 400-friendly marker via returning null if invalid so the caller
- * can distinguish "unset → use default" from "invalid → reject request".
+ * Parse a query-string dimension. Returns three outcomes so the caller can
+ * distinguish "unset → use default", "valid in-bounds → use value", and
+ * "invalid → reject request with 1008":
+ *   - `{ ok: true, value: undefined }` — missing / empty
+ *   - `{ ok: true, value: N }` — finite integer in [DIM_MIN, DIM_MAX]
+ *   - `{ ok: false }` — non-numeric OR out-of-bounds (no clamping)
  */
 function parseDim(raw: string | undefined): { ok: true; value: number | undefined } | { ok: false } {
   if (raw === undefined || raw === '') return { ok: true, value: undefined };

@@ -200,62 +200,80 @@ describe('PtyAdapter.detach + grace + ring buffer replay', () => {
     await waitFor(() => expect(adapter.has('tab-1')).toBe(false), 1_500);
   });
 
-  it('reattach within grace cancels timer, sends restored:true, replays buffer', async () => {
+  it('reattach within grace cancels timer + sends restored:true', async () => {
     const c1 = makeClient();
     adapter.attach('tab-1', c1, ATTACH_DEFAULTS);
-    adapter.sendInput('tab-1', Buffer.from('echo-pre\n'));
-
-    // Wait for cat to echo back into ring buffer.
-    await waitFor(() => {
-      const seen = Buffer.concat(
-        c1.sent.filter((s) => s.binary).map((s) => s.data as Buffer),
-      ).toString('utf-8');
-      expect(seen).toContain('echo-pre');
-    });
-
     adapter.detach('tab-1', c1);
 
-    // Reattach
     const c2 = makeClient();
     const out = adapter.attach('tab-1', c2, ATTACH_DEFAULTS);
     expect(out).toEqual({ kind: 'attached', restored: true });
-
-    // First text frame is the attached ack; subsequent binary frame(s) are replay.
     expect(JSON.parse(c2.sent[0]!.data as string).restored).toBe(true);
-    const replay = Buffer.concat(
-      c2.sent.filter((s) => s.binary).map((s) => s.data as Buffer),
-    ).toString('utf-8');
-    expect(replay).toContain('echo-pre');
   });
 
-  it('ring buffer caps at bufferBytes when over-pushed', async () => {
-    const small = makeAdapter({ bufferBytes: 64 });
+  it('only bytes produced while DETACHED are replayed on reattach (no dupes)', async () => {
+    // Use a long grace so the PTY can't be reaped mid-test.
+    const a = makeAdapter({ graceMs: 10_000 });
+    try {
+      const c1 = makeClient();
+      a.attach('tab-1', c1, ATTACH_DEFAULTS);
+
+      // While ATTACHED: send some data, wait for live echo. These bytes
+      // go straight to the viewer and MUST NOT accumulate in the ring.
+      a.sendInput('tab-1', Buffer.from('attached-phase\n'));
+      await waitFor(() => {
+        const seen = Buffer.concat(
+          c1.sent.filter((s) => s.binary).map((s) => s.data as Buffer),
+        ).toString('utf-8');
+        expect(seen).toContain('attached-phase');
+      });
+
+      // Detach — PTY stays alive in grace. Subsequent PTY output now
+      // buffers into the ring.
+      a.detach('tab-1', c1);
+      a.write('tab-1', 'detached-phase\n');
+
+      // Give cat a tick to echo into the ring.
+      await new Promise((r) => setTimeout(r, 150));
+
+      const c2 = makeClient();
+      const out = a.attach('tab-1', c2, ATTACH_DEFAULTS);
+      expect(out).toEqual({ kind: 'attached', restored: true });
+      const replay = Buffer.concat(
+        c2.sent.filter((s) => s.binary).map((s) => s.data as Buffer),
+      ).toString('utf-8');
+      expect(replay).toContain('detached-phase');
+      // Crucial: the attached-phase bytes must NOT be in the replay —
+      // they were streamed live to c1, and replaying them to c2 would
+      // visibly duplicate content the prior viewer already rendered.
+      expect(replay).not.toContain('attached-phase');
+    } finally {
+      a.dispose();
+    }
+  });
+
+  it('ring buffer caps at bufferBytes when over-pushed during DETACHED', async () => {
+    const small = makeAdapter({ bufferBytes: 64, graceMs: 10_000 });
     try {
       const client = makeClient();
       small.attach('tab-1', client, ATTACH_DEFAULTS);
+      // Detach first — subsequent PTY output then buffers into the ring.
+      small.detach('tab-1', client);
 
       // Push enough bytes through cat to overflow the 64-byte ring.
-      // Each chunk through PTY may be small; loop until bytes flow.
       for (let i = 0; i < 10; i++) {
-        small.sendInput('tab-1', Buffer.from('x'.repeat(50) + '\n'));
+        small.write('tab-1', 'x'.repeat(50) + '\n');
       }
 
-      // Allow PTY to flush.
-      await waitFor(() => {
-        const seen = Buffer.concat(
-          client.sent.filter((s) => s.binary).map((s) => s.data as Buffer),
-        );
-        expect(seen.length).toBeGreaterThan(64);
-      });
+      // Give cat time to echo all chunks into the ring.
+      await new Promise((r) => setTimeout(r, 300));
 
-      // Ring buffer is internal; we verify by detaching + reattaching and
-      // checking the replay length is bounded.
-      small.detach('tab-1', client);
       const c2 = makeClient();
       small.attach('tab-1', c2, ATTACH_DEFAULTS);
       const replay = Buffer.concat(
         c2.sent.filter((s) => s.binary).map((s) => s.data as Buffer),
       );
+      expect(replay.length).toBeGreaterThan(0);
       expect(replay.length).toBeLessThanOrEqual(64);
     } finally {
       small.dispose();

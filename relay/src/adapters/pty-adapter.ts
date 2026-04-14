@@ -343,14 +343,20 @@ export class PtyAdapter {
 
     (ptyProcess.onData as unknown as (cb: (data: string | Buffer) => void) => void)((data) => {
       const buf: Buffer = typeof data === 'string' ? Buffer.from(data, 'binary') : data;
-      session.ring.push(buf);
       session.lastActivityAt = Date.now();
       if (session.viewer && session.viewer.readyState === session.viewer.OPEN) {
+        // Live viewer gets the stream directly. Skip the ring on this
+        // path — otherwise a reattach within grace would replay bytes
+        // the client already rendered, visibly duplicating them in
+        // xterm. Copilot caught this on PR #130 review.
         try {
           session.viewer.send(buf, { binary: true });
         } catch (err) {
           logger.warn({ err, tabId: session.tabId }, 'Failed to forward PTY data');
         }
+      } else {
+        // No live viewer — buffer for replay on reattach.
+        session.ring.push(buf);
       }
     });
 

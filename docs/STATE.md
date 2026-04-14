@@ -2,26 +2,11 @@
 
 > Auto-injected into fresh sessions. Keep concise.
 
-## NEXT ACTION (queued for autonomous execution)
-
-**Terminal Reboot — Ditch Tmux** is queued and ready to execute autonomously.
-
-If you are a fresh session and the user types "next" or otherwise green-lights you, read and execute:
-
-- `docs/HANDOFF-TERMINAL-REBOOT.md` (execution brief — start here)
-- `docs/PHASE-TERMINAL-REBOOT.md` (wave plan)
-- `docs/TERMINAL-PROTOCOL-SPEC.md` (wire protocol contract)
-
-All design decisions are LOCKED. Execute end-to-end: TDD → big-bang refactor → PR → review pipeline until under-5-comment round → merge → memory + STATE updates. Worktree branch: `worktree-terminal+ditch-tmux-plan`.
-
-A parallel session is on `optimization/wave1-measurement` for iOS battery work — do NOT touch iOS optimization files. Terminal refactor scope: relay + iOS terminal feature + PWA + Ground Control tmux check removal.
-
 ## Current Phase (in flight)
 
-**Life Engine** complete (PRs #124–#128). Two parallel phases now:
+**Terminal Reboot** shipped (PR #130) — relay now runs plain PTY per tab, tmux scaffolding deleted. Spec: `docs/TERMINAL-PROTOCOL-SPEC.md`. Only active phase now:
 
 1. **Optimization phase** — iOS battery drain fix (`optimization/wave1-measurement` branch). Memory: `project_optimization_phase.md`.
-2. **Terminal Reboot** — relay tmux removal (this worktree). Memory: `project_terminal_reboot_handoff.md`.
 
 ### Optimization phase (NEXT — queued)
 
@@ -86,3 +71,5 @@ Spec: `docs/PHASE-14-SWIFTTERM.md`
 | 12 | Glow Up | — |
 | 13 | The Shell | #89-96 |
 | QA | PWA Polish | #101, #111 |
+| 14 | SwiftTerm (iOS terminal) | #97-110 |
+| — | Terminal Reboot (tmux → plain PTY) | #130 |

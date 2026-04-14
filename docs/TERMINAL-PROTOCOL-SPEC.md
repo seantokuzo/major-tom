@@ -17,17 +17,21 @@ User-started tmux sessions inside the spawned shell (`tmux new -s work`) are una
 ## Endpoint
 
 ```
-ws[s]://<relay-host>/shell/:tabId?cols=<N>&rows=<M>[&token=<jwt>]
+ws[s]://<relay-host>/shell/:tabId?[cols=<N>&rows=<M>][&token=<jwt>]
 ```
 
 | Param | Required | Notes |
 |-------|----------|-------|
-| `:tabId` | yes | Client-owned identifier. Regex `/^[a-zA-Z0-9._-]{1,64}$/`. |
-| `cols` | yes | Initial terminal width. Bounds 2–500. |
-| `rows` | yes | Initial terminal height. Bounds 2–500. |
-| `token` | optional | JWT fallback when no session cookie. |
+| `:tabId` | yes | Client-owned identifier. Regex `/^[a-zA-Z0-9._-]{1,64}$/`. Invalid → WS close `1008`. |
+| `cols` | no | Initial terminal width. Bounds 2–500 (hard reject on out-of-bounds → WS close `1008`). Defaults to 80 when missing. |
+| `rows` | no | Initial terminal height. Bounds 2–500 (hard reject on out-of-bounds → WS close `1008`). Defaults to 24 when missing. |
+| `token` | optional | Session JWT fallback when no cookie can be attached (WKWebView edge cases) OR the dev-mode legacy `AUTH_TOKEN` value. |
 
-Auth precedence: cookie session → `?token=` → reject `401`.
+Auth precedence (checked in order):
+1. **Dev-mode legacy token** — if `NODE_ENV !== 'production'` AND `AUTH_TOKEN` env is set AND `?token=` matches it, accept.
+2. **Session cookie** — `mt-session` cookie verified as a JWT.
+3. **Token query fallback** — `?token=<jwt>` verified as a session JWT (used by WKWebView when cookie injection fails).
+4. Otherwise: **WS close with code `1008`** ("Authentication required"). REST endpoints under `/shell/*` return HTTP `401` for the same failure.
 
 ---
 
