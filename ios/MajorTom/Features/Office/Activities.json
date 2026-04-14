@@ -35,8 +35,8 @@
       "assetTransitions": [
         {
           "furnitureType": "floor_lamp",
-          "fromTexture": "floor_lamp_on",
-          "toTexture": "floor_lamp_off",
+          "fromTexture": "floor_lamp_active",
+          "toTexture": "floor_lamp_idle",
           "reverseOnComplete": true
         }
       ]
@@ -263,8 +263,8 @@
       "assetTransitions": [
         {
           "furnitureType": "floor_lamp",
-          "fromTexture": "floor_lamp_on",
-          "toTexture": "floor_lamp_off",
+          "fromTexture": "floor_lamp_active",
+          "toTexture": "floor_lamp_idle",
           "reverseOnComplete": true
         }
       ]

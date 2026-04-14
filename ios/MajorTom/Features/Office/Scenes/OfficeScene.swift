@@ -70,9 +70,14 @@ final class OfficeScene: SKScene {
     /// Furniture sprite nodes keyed by instance ID (for texture swaps during activities).
     private(set) var furnitureNodes: [String: SKNode] = [:]
 
+    /// Guard against `didMove(to:)` being invoked more than once (e.g. SpriteView re-hosting).
+    private var hasSetup = false
+
     // MARK: - Scene Lifecycle
 
     override func didMove(to view: SKView) {
+        guard !hasSetup else { return }
+        hasSetup = true
         super.didMove(to: view)
         backgroundColor = StationPalette.deepSpace
         size = CGSize(width: StationLayout.sceneWidth, height: StationLayout.sceneHeight)
@@ -1638,6 +1643,16 @@ final class OfficeScene: SKScene {
             sprite.updateModule(.commandBridge)
             sprite.startWorkAnimation()
         }
+    }
+
+    /// Place a sleeping sprite directly at a bunk position in crew quarters.
+    /// No pathfinding, no activity cycling — just a static sleeping animation.
+    func placeAgentSleeping(id: String, bunkPosition: CGPoint) {
+        guard let sprite = agentSprites[id] else { return }
+        sprite.stopAnimations()
+        sprite.position = bunkPosition
+        sprite.updateModule(.crewQuarters)
+        sprite.startActivityAnimation("sleeping")
     }
 
     func moveAgentToBreakArea(id: String, areaType: OfficeAreaType) {
