@@ -319,6 +319,12 @@ export class PtyAdapter {
     env['TERM'] = env['TERM'] ?? 'xterm-256color';
     env['COLORTERM'] = env['COLORTERM'] ?? 'truecolor';
     env['LANG'] = env['LANG'] ?? 'en_US.UTF-8';
+    // Align PWD with the spawn cwd so shell prompts expanding `\W` (bash)
+    // or equivalents render the correct basename on the very first prompt.
+    // Without this, bash inherits whatever PWD the relay process has, and
+    // the initial PS1 expansion can fall out of sync with the child's
+    // actual working directory until the user runs `cd` or equivalent.
+    env['PWD'] = this.cwd;
 
     const ptyProcess = this.spawnFn(this.shell, this.shellArgs, {
       name: 'xterm-256color',
@@ -341,25 +347,9 @@ export class PtyAdapter {
     };
     this.sessions.set(tabId, session);
 
-    // First-prompt redraw: on the first data chunk from bash (initial PS1
-    // after .bash_profile sources), send Ctrl-L to force a redraw. Fixes
-    // the first prompt rendering with an empty `\W` because the basename
-    // expands before $PWD is populated from `cwd`. Subsequent prompts are
-    // always correct, so this is a one-shot.
-    let initialPromptRedrawn = false;
-
     (ptyProcess.onData as unknown as (cb: (data: string | Buffer) => void) => void)((data) => {
       const buf: Buffer = typeof data === 'string' ? Buffer.from(data, 'binary') : data;
       session.lastActivityAt = Date.now();
-
-      if (!initialPromptRedrawn) {
-        initialPromptRedrawn = true;
-        try {
-          (ptyProcess as unknown as { write(d: Buffer): void }).write(Buffer.from('\x0c'));
-        } catch {
-          // PTY exited before redraw — safe to ignore
-        }
-      }
       if (session.viewer && session.viewer.readyState === session.viewer.OPEN) {
         // Live viewer gets the stream directly. Skip the ring on this
         // path — otherwise a reattach within grace would replay bytes

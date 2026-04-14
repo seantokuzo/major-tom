@@ -391,6 +391,57 @@ describe('PtyAdapter shell selection', () => {
   });
 });
 
+describe('PtyAdapter spawn env prep', () => {
+  it('sets PWD to the spawn cwd so first prompt \\W expands correctly', () => {
+    let capturedEnv: Record<string, string> | undefined;
+    const fakePty = {
+      pid: 1, cols: 80, rows: 24,
+      onData() {}, onExit() {}, kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+    };
+    const a = new PtyAdapter({
+      cwd: '/Users/tester/projects/demo',
+      env: { SHELL: '/bin/bash', HOME: '/Users/tester' },
+      spawn: ((_file: string, _args: string[], opts: { env: Record<string, string> }) => {
+        capturedEnv = opts.env;
+        return fakePty;
+      }) as never,
+    });
+    try {
+      a.attach('tab-1', makeClient(), ATTACH_DEFAULTS);
+      expect(capturedEnv?.PWD).toBe('/Users/tester/projects/demo');
+    } finally {
+      a.dispose();
+    }
+  });
+
+  it('reattach within grace does NOT re-run env prep (first-spawn only)', () => {
+    const envSpawns: Array<Record<string, string>> = [];
+    const fakePty = {
+      pid: 1, cols: 80, rows: 24,
+      onData() {}, onExit() {}, kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+    };
+    const a = new PtyAdapter({
+      cwd: '/tmp/work',
+      graceMs: 5_000,
+      env: { SHELL: '/bin/bash' },
+      spawn: ((_file: string, _args: string[], opts: { env: Record<string, string> }) => {
+        envSpawns.push(opts.env);
+        return fakePty;
+      }) as never,
+    });
+    try {
+      const c1 = makeClient();
+      a.attach('tab-1', c1, ATTACH_DEFAULTS);
+      a.detach('tab-1', c1);
+      a.attach('tab-1', makeClient(), ATTACH_DEFAULTS); // reattach
+      expect(envSpawns.length).toBe(1);
+      expect(envSpawns[0]?.PWD).toBe('/tmp/work');
+    } finally {
+      a.dispose();
+    }
+  });
+});
+
 describe('PtyAdapter constants', () => {
   it('default input max matches the spec', () => {
     expect(DEFAULT_INPUT_MAX_BYTES).toBe(64 * 1024);

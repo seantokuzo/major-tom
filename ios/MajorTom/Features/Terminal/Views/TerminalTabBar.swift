@@ -112,14 +112,35 @@ struct TerminalTabBar: View {
         .onTapGesture {
             onSelectTab(tab.id)
         }
-        .onLongPressGesture(minimumDuration: 0.4) {
-            HapticService.impact(.medium)
-            renameDraft = tab.userTitle ?? ""
-            renameTarget = tab
+        .contextMenu {
+            Button {
+                beginRename(for: tab)
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            if tab.userTitle != nil {
+                Button(role: .destructive) {
+                    onRenameTab(tab.id, "")
+                } label: {
+                    Label("Reset Name", systemImage: "arrow.uturn.backward")
+                }
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(tab.displayTitle), tab\(tab.isActive ? ", active" : "")")
-        .accessibilityHint("Double tap to switch, long press to rename.")
+        .accessibilityHint("Double tap to switch, or use the Rename action.")
+        .accessibilityAction(named: Text("Rename")) {
+            beginRename(for: tab)
+        }
+    }
+
+    /// Opens the rename alert seeded with the tab's current user title.
+    /// Shared by the context-menu button and the VoiceOver action so both
+    /// entry points route through the same state transition.
+    private func beginRename(for tab: TerminalTab) {
+        HapticService.impact(.medium)
+        renameDraft = tab.userTitle ?? ""
+        renameTarget = tab
     }
 
     // MARK: - New Tab Button

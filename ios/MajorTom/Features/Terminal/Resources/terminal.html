@@ -323,8 +323,11 @@
         reason: lastCloseEvent.reason
       });
 
-      // Don't reconnect on intentional close (1000).
-      if (event.code === 1000) {
+      // Don't reconnect on intentional close (1000) or server-initiated
+      // graceful shutdown (1001 — "Going Away"). Both layers must agree
+      // here: Swift also treats 1001 as clean so it doesn't flip to
+      // `.connecting` while JS silently stops retrying.
+      if (event.code === 1000 || event.code === 1001) {
         setStatus('Disconnected');
         return;
       }
@@ -339,8 +342,11 @@
         return;
       }
 
-      // Permanent auth failure — don't keep retrying.
+      // Permanent auth failure — don't keep retrying. Override the close
+      // reason so the native error overlay shows something more useful
+      // than "Connection closed" (servers often omit a close reason).
       if (event.code === 1008) {
+        lastCloseEvent.reason = 'Authentication failed';
         setStatus('Authentication failed');
         notifyRetryExhausted();
         return;
