@@ -341,9 +341,25 @@ export class PtyAdapter {
     };
     this.sessions.set(tabId, session);
 
+    // First-prompt redraw: on the first data chunk from bash (initial PS1
+    // after .bash_profile sources), send Ctrl-L to force a redraw. Fixes
+    // the first prompt rendering with an empty `\W` because the basename
+    // expands before $PWD is populated from `cwd`. Subsequent prompts are
+    // always correct, so this is a one-shot.
+    let initialPromptRedrawn = false;
+
     (ptyProcess.onData as unknown as (cb: (data: string | Buffer) => void) => void)((data) => {
       const buf: Buffer = typeof data === 'string' ? Buffer.from(data, 'binary') : data;
       session.lastActivityAt = Date.now();
+
+      if (!initialPromptRedrawn) {
+        initialPromptRedrawn = true;
+        try {
+          (ptyProcess as unknown as { write(d: Buffer): void }).write(Buffer.from('\x0c'));
+        } catch {
+          // PTY exited before redraw — safe to ignore
+        }
+      }
       if (session.viewer && session.viewer.readyState === session.viewer.OPEN) {
         // Live viewer gets the stream directly. Skip the ring on this
         // path — otherwise a reattach within grace would replay bytes
