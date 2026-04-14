@@ -4,9 +4,10 @@
 
 ## Current Phase (in flight)
 
-**Terminal Reboot** shipped (PR #130) — relay now runs plain PTY per tab, tmux scaffolding deleted. Spec: `docs/TERMINAL-PROTOCOL-SPEC.md`. Only active phase now:
+**Terminal Reboot** shipped (PR #130) — relay now runs plain PTY per tab, tmux scaffolding deleted. Spec: `docs/TERMINAL-PROTOCOL-SPEC.md`. Active phase sequence:
 
-1. **Optimization phase** — iOS battery drain fix (`optimization/wave1-measurement` branch). Memory: `project_optimization_phase.md`.
+1. **Terminal Polish Pass** — three iOS terminal QoL fixes (first-prompt `\W`, reconnect retry, renameable tabs). Spec: `docs/PHASE-TERMINAL-POLISH.md`. Memory: `project_terminal_polish_phase.md`. Runs *before* optimization Wave 2.
+2. **Optimization phase** — iOS battery drain fix. Wave 1 measurement tooling SHIPPED (PR #129). Memory: `project_optimization_phase.md`. Waves 2–5 queued behind Terminal Polish.
 
 ### Optimization phase (NEXT — queued)
 
