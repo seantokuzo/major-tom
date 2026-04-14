@@ -16,6 +16,16 @@ FURNITURE_PROCESSOR="$SCRIPT_DIR/process-furniture.py"
 CREW_ATLAS="$PROJECT_ROOT/ios/MajorTom/Assets.xcassets/CrewSprites.spriteatlas"
 FURNITURE_ATLAS="$PROJECT_ROOT/ios/MajorTom/Assets.xcassets/StationFurniture.spriteatlas"
 
+# Make CWD deterministic — slicer uses relative paths internally
+cd "$SCRIPT_DIR"
+
+# Preflight: Pillow is required by all Python workers. Fail fast before we nuke the atlases.
+if ! python3 -c "import PIL" 2>/dev/null; then
+  echo "Error: Pillow is required but not installed." >&2
+  echo "Install with: python3 -m pip install pillow" >&2
+  exit 1
+fi
+
 # Name mapping: source_file_prefix → camelCase output name
 declare -A CREW_NAMES=(
   ["alien_diplomat"]="alienDiplomat"
@@ -39,7 +49,7 @@ declare -A DOG_NAMES=(
   ["esteban"]="esteban"
   ["hoku"]="hoku"
   ["kai"]="kai"
-  ["señor"]="senor"
+  ["senor"]="senor"
   ["steve"]="steve"
   ["zuckerbot"]="zuckerbot"
 )
