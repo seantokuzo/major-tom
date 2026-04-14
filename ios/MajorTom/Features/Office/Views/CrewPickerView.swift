@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Lets the user set their preferred crew order.
 /// First 6 are the active idle crew. Additional picks become the overflow priority pool.
-/// Drag to reorder, tap to toggle selection.
+/// Drag selected crew to reorder, tap available crew to add, swipe-to-delete to remove.
 struct CrewPickerView: View {
     let crewRoster: CrewRoster
     let onDismiss: () -> Void

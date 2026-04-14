@@ -42,11 +42,6 @@ enum StationFurnitureFactory {
         sprite(named: "workstation", size: CGSize(width: 100, height: 70))
     }
 
-    /// Alternate workstation desk variant (same asset, single source).
-    static func workstationDesk2() -> SKSpriteNode {
-        sprite(named: "workstation", size: CGSize(width: 100, height: 70))
-    }
-
     /// Captain's chair — centerpiece of the Command Bridge.
     static func captainsChair() -> SKSpriteNode {
         sprite(named: "captains_chair", size: CGSize(width: 80, height: 80))

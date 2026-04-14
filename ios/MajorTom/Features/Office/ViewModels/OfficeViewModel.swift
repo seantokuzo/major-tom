@@ -63,17 +63,17 @@ final class OfficeViewModel {
     }
 
     func populateIdleSprites() {
-        guard agents.isEmpty || agents.allSatisfy({ isIdleSprite($0.id) }) else { return }
-
-        // Clear any existing idle sprites
+        // Clear idle sprites only — real agents are preserved across shuffle/select.
         agents.removeAll { isIdleSprite($0.id) }
-        availableSprites = Set(CharacterType.allCases)
+
+        // Start from full pool, subtract whatever real agents already claim.
+        let claimed = Set(agents.map(\.characterType))
+        availableSprites = Set(CharacterType.allCases).subtracting(claimed)
 
         let allTypes = CharacterType.allCases
 
-        // Dogs are always on screen
-        let dogs = allTypes.filter { $0.isDog }
-        for charType in dogs {
+        // Dogs are always on screen (unless a real agent is using that sprite).
+        for charType in allTypes.filter({ $0.isDog }) where !claimed.contains(charType) {
             let config = CharacterCatalog.config(for: charType)
             agents.append(AgentState(
                 id: "\(Self.idlePrefix)\(charType.rawValue)",
@@ -87,9 +87,9 @@ final class OfficeViewModel {
             availableSprites.remove(charType)
         }
 
-        // Only the active crew humans get rendered — the rest don't exist in the scene
+        // Only the active crew humans get rendered — skip any already claimed by real agents.
         let activeHumans = crewRoster.activeHumans(count: Self.maxIdleHumans)
-        for charType in activeHumans {
+        for charType in activeHumans where !claimed.contains(charType) {
             let config = CharacterCatalog.config(for: charType)
             agents.append(AgentState(
                 id: "\(Self.idlePrefix)\(charType.rawValue)",
@@ -105,16 +105,9 @@ final class OfficeViewModel {
     }
 
     /// Re-randomize the active crew and repopulate idle sprites.
+    /// populateIdleSprites() preserves real agents and rebuilds only the idle pool.
     func shuffleCrew() {
         crewRoster.shuffle()
-        // Remove all idle sprites and repopulate with new selection
-        let realAgents = agents.filter { !isIdleSprite($0.id) }
-        agents = realAgents
-        availableSprites = Set(CharacterType.allCases)
-        // Re-claim sprites used by real agents
-        for agent in realAgents {
-            availableSprites.remove(agent.characterType)
-        }
         populateIdleSprites()
     }
 

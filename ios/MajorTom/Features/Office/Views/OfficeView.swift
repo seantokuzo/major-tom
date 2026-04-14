@@ -462,6 +462,12 @@ struct OfficeView: View {
         let isIdleSprite = agent.id.hasPrefix("idle-")
 
         let doAssign = { [viewModel, scene] in
+            // Re-verify agent still exists and is idle — staggered tasks can
+            // outlive the agent (remove/claim during the 0.5–2.5s delay would
+            // otherwise occupy furniture for a ghost sprite).
+            guard let current = viewModel.agents.first(where: { $0.id == agent.id }),
+                  current.status == .idle else { return }
+
             // Stop any existing animation phase before reassigning
             viewModel.activityAnimator.stopPhase(for: agent.id, furnitureNodes: scene.furnitureNodes)
 

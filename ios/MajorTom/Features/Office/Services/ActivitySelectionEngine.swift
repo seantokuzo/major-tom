@@ -194,15 +194,22 @@ final class ActivitySelectionEngine {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
 
-                guard let self else { return }
+                guard let self, !Task.isCancelled else { return }
 
                 let agentsToRotate = self.agentsNeedingRotation()
-                for agentId in agentsToRotate {
-                    // Stagger each rotation by 0.3–1.5s to avoid stampede
-                    let delay = Double.random(in: 0.3...1.5)
-                    try? await Task.sleep(for: .seconds(delay))
-                    guard !Task.isCancelled else { return }
-                    onRotate(agentId, nil)
+
+                // Stagger per-agent without serializing the loop — each rotation
+                // fires in its own structured child task, so the next 2s check
+                // isn't delayed by the sum of stagger windows.
+                await withTaskGroup(of: Void.self) { group in
+                    for agentId in agentsToRotate {
+                        let delay = Double.random(in: 0.3...1.5)
+                        group.addTask {
+                            try? await Task.sleep(for: .seconds(delay))
+                            guard !Task.isCancelled else { return }
+                            onRotate(agentId, nil)
+                        }
+                    }
                 }
             }
         }

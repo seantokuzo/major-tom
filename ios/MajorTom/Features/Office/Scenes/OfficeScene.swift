@@ -809,10 +809,7 @@ final class OfficeScene: SKScene {
 
     private func renderDesks() {
         for desk in OfficeLayout.desks {
-            // Alternate desk textures for visual variety
-            let console: SKSpriteNode = desk.id % 2 == 0
-                ? StationFurnitureFactory.workstationDesk()
-                : StationFurnitureFactory.workstationDesk2()
+            let console = StationFurnitureFactory.workstationDesk()
             console.position = desk.position
             console.zPosition = 3
             console.name = "consoleGroup_\(desk.id)"
