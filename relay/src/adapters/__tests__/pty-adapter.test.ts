@@ -101,6 +101,14 @@ describe('RingBuffer', () => {
     expect(r.size).toBe(60);
     expect(r.drain().toString()).toBe('b'.repeat(60));
   });
+
+  it('drain clears state so a subsequent drain returns empty', () => {
+    const r = new RingBuffer(100);
+    r.push(Buffer.alloc(40, 'a'));
+    expect(r.drain().length).toBe(40);
+    expect(r.size).toBe(0);
+    expect(r.drain().length).toBe(0);
+  });
 });
 
 // ── PtyAdapter behavior ─────────────────────────────────────
@@ -252,31 +260,79 @@ describe('PtyAdapter.detach + grace + ring buffer replay', () => {
     }
   });
 
-  it('ring buffer caps at bufferBytes when over-pushed during DETACHED', async () => {
-    const small = makeAdapter({ bufferBytes: 64, graceMs: 10_000 });
+  it('second reattach does not re-send bytes already drained on first reattach', async () => {
+    const a = makeAdapter({ graceMs: 10_000 });
+    try {
+      const c1 = makeClient();
+      a.attach('tab-1', c1, ATTACH_DEFAULTS);
+      a.detach('tab-1', c1);
+      a.write('tab-1', 'burst-one\n');
+      await new Promise((r) => setTimeout(r, 150));
+
+      // First reattach — should drain the ring and deliver 'burst-one'.
+      const c2 = makeClient();
+      a.attach('tab-1', c2, ATTACH_DEFAULTS);
+      const firstReplay = Buffer.concat(
+        c2.sent.filter((s) => s.binary).map((s) => s.data as Buffer),
+      ).toString('utf-8');
+      expect(firstReplay).toContain('burst-one');
+      a.detach('tab-1', c2);
+
+      // No new PTY output between c2 detach and c3 attach. The ring must
+      // be empty — re-replaying 'burst-one' would visibly duplicate what
+      // c2 already rendered. This covers the iOS foreground-wake case
+      // where the WebSocket drops and reconnects to the same tabId.
+      const c3 = makeClient();
+      a.attach('tab-1', c3, ATTACH_DEFAULTS);
+      const secondReplay = Buffer.concat(
+        c3.sent.filter((s) => s.binary).map((s) => s.data as Buffer),
+      ).toString('utf-8');
+      expect(secondReplay).not.toContain('burst-one');
+    } finally {
+      a.dispose();
+    }
+  });
+
+  it('ring buffer caps at bufferBytes when over-pushed during DETACHED', () => {
+    // Synthetic PTY so chunk sizes are deterministic. node-pty's flush
+    // behavior differs between macOS and Linux — on the Linux CI runner
+    // cat can emit its echo as one chunk larger than the 64-byte cap,
+    // which the ring evicts whole-chunk and leaves empty. That's valid
+    // ring behavior but makes the cat-based variant of this test flaky.
+    // With injected onData we control chunk granularity.
+    const onDataCbs: Array<(d: string | Buffer) => void> = [];
+    const fakePty = {
+      pid: 1, cols: 80, rows: 24,
+      onData(cb: (d: string | Buffer) => void) { onDataCbs.push(cb); },
+      onExit() {},
+      kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+    };
+    const a = new PtyAdapter({
+      spawn: (() => fakePty) as never,
+      bufferBytes: 64,
+      graceMs: 10_000,
+    });
     try {
       const client = makeClient();
-      small.attach('tab-1', client, ATTACH_DEFAULTS);
-      // Detach first — subsequent PTY output then buffers into the ring.
-      small.detach('tab-1', client);
+      a.attach('tab-1', client, ATTACH_DEFAULTS);
+      a.detach('tab-1', client);
 
-      // Push enough bytes through cat to overflow the 64-byte ring.
+      // Emit 10 × 30-byte chunks. Each is smaller than the 64-byte cap
+      // so eviction advances chunk-by-chunk; post-push the ring holds
+      // the newest chunks up to ~60 bytes total.
       for (let i = 0; i < 10; i++) {
-        small.write('tab-1', 'x'.repeat(50) + '\n');
+        onDataCbs[0]?.(Buffer.alloc(30, String.fromCharCode(97 + i)));
       }
 
-      // Give cat time to echo all chunks into the ring.
-      await new Promise((r) => setTimeout(r, 300));
-
       const c2 = makeClient();
-      small.attach('tab-1', c2, ATTACH_DEFAULTS);
+      a.attach('tab-1', c2, ATTACH_DEFAULTS);
       const replay = Buffer.concat(
         c2.sent.filter((s) => s.binary).map((s) => s.data as Buffer),
       );
       expect(replay.length).toBeGreaterThan(0);
       expect(replay.length).toBeLessThanOrEqual(64);
     } finally {
-      small.dispose();
+      a.dispose();
     }
   });
 });
