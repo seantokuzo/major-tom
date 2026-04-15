@@ -270,12 +270,15 @@
 
     if (ws) {
       // Detach listeners BEFORE closing so the outgoing socket's async
-      // onclose can't poison the new flow. Default ws.close() sends code
-      // 1005, which falls through our 1000/1001 clean-close guard and
-      // would call scheduleReconnect() on the replaced socket — stacking
-      // phantom retries that fight the connection we're about to make.
-      // This bug surfaced as terminals crash-looping after a tab switch
-      // (two tabs each generating a fresh MajorTom.connect() call).
+      // onclose can't poison the new flow. ws.close() with no status
+      // yields CloseEvent.code 1005 on the receiving side (1005 is
+      // reserved — never transmitted on the wire, only reported when no
+      // code was received). That does NOT match our 1000/1001 clean-
+      // close guard, so the replaced socket's onclose would call
+      // scheduleReconnect(), stacking phantom retries that fight the
+      // connection we're about to make. Surfaced as terminals crash-
+      // looping after a tab switch (two tabs each generating a fresh
+      // MajorTom.connect() call).
       ws.onopen = null;
       ws.onclose = null;
       ws.onerror = null;
