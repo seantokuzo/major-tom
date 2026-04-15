@@ -204,94 +204,55 @@ struct OfficeView: View {
 
     private var topBar: some View {
         HStack {
-            // Agent count
-            Label(
-                "\(viewModel.agents.count) agent\(viewModel.agents.count == 1 ? "" : "s")",
-                systemImage: "person.2.fill"
-            )
-            .font(MajorTomTheme.Typography.caption)
-            .foregroundStyle(MajorTomTheme.Colors.textSecondary)
-            .padding(.horizontal, MajorTomTheme.Spacing.md)
-            .padding(.vertical, MajorTomTheme.Spacing.sm)
-            .glassBackground()
-
-            Spacer()
-
-            // Shuffle crew button
+            // Map button (opens full mini-map overlay)
             Button {
                 HapticService.impact(.light)
-                viewModel.shuffleCrew()
+                showMiniMap = true
             } label: {
-                Image(systemName: "shuffle")
-                    .font(.system(size: 14))
-                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
-                    .padding(MajorTomTheme.Spacing.sm)
-                    .glassBackground()
-            }
-            .accessibilityLabel("Shuffle crew")
-            .accessibilityHint("Randomizes which humans appear on screen")
-
-            // Select crew button
-            Button {
-                activeSheet = .crewPicker
-            } label: {
-                Image(systemName: "person.2.badge.gearshape")
-                    .font(.system(size: 14))
-                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
-                    .padding(MajorTomTheme.Spacing.sm)
-                    .glassBackground()
-            }
-            .accessibilityLabel("Select crew")
-            .accessibilityHint("Opens the crew picker to choose your preferred humans")
-
-            // Character gallery button
-            Button {
-                viewModel.showCharacterGallery = true
-            } label: {
-                Image(systemName: "person.crop.rectangle.stack")
+                Image(systemName: "map.fill")
                     .font(.system(size: 16))
                     .foregroundStyle(MajorTomTheme.Colors.textSecondary)
                     .padding(MajorTomTheme.Spacing.sm)
                     .glassBackground()
             }
+            .accessibilityLabel("Open station map")
+            .accessibilityHint("Shows the full station overview to jump between rooms")
 
-            // Mini-map button (long press to open overlay)
-            miniMapButton
+            Spacer()
+
+            // Office options menu
+            Menu {
+                Section("\(viewModel.agents.count) agent\(viewModel.agents.count == 1 ? "" : "s")") {
+                    Button {
+                        HapticService.impact(.light)
+                        viewModel.shuffleCrew()
+                    } label: {
+                        Label("Shuffle Crew", systemImage: "shuffle")
+                    }
+
+                    Button {
+                        activeSheet = .crewPicker
+                    } label: {
+                        Label("Select Crew", systemImage: "person.2.badge.gearshape")
+                    }
+
+                    Button {
+                        viewModel.showCharacterGallery = true
+                    } label: {
+                        Label("Character Gallery", systemImage: "person.crop.rectangle.stack")
+                    }
+                }
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                    .padding(MajorTomTheme.Spacing.sm)
+                    .glassBackground()
+            }
+            .accessibilityLabel("Office options")
+            .accessibilityHint("Crew shuffle, picker, and character gallery")
         }
         .padding(MajorTomTheme.Spacing.md)
-    }
-
-    /// Mini-map button that opens the full overlay on long press.
-    private var miniMapButton: some View {
-        VStack(spacing: 2) {
-            Text("MAP")
-                .font(.system(.caption2, design: .monospaced, weight: .bold))
-                .foregroundStyle(MajorTomTheme.Colors.textTertiary)
-
-            // Tiny 2×4 grid preview
-            HStack(spacing: 1) {
-                miniMapTinyColumn(types: [.commandBridge, .engineering, .crewQuarters, .galley])
-                miniMapTinyColumn(types: [.bioDome, .arboretum, .trainingBay, .evaBay])
-            }
-            .frame(width: 36, height: 48)
-        }
-        .padding(MajorTomTheme.Spacing.xs)
-        .glassBackground()
-        .onLongPressGesture(minimumDuration: 0.4) {
-            HapticService.impact(.medium)
-            showMiniMap = true
-        }
-    }
-
-    /// Tiny column for the mini-map button preview.
-    private func miniMapTinyColumn(types: [ModuleType]) -> some View {
-        VStack(spacing: 1) {
-            ForEach(types, id: \.rawValue) { moduleType in
-                Rectangle()
-                    .fill(Color(uiColor: StationPalette.floorColor(for: moduleType)))
-                    .cornerRadius(1)
-            }
-        }
     }
 
     // MARK: - Mini-Map Overlay
