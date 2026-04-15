@@ -260,7 +260,26 @@
   }
 
   function connectWS() {
+    // Cancel any pending auto-retry — we're initiating a fresh connection
+    // right now, so an enqueued reconnect would fire after us and close
+    // the socket we're about to open.
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+
     if (ws) {
+      // Detach listeners BEFORE closing so the outgoing socket's async
+      // onclose can't poison the new flow. Default ws.close() sends code
+      // 1005, which falls through our 1000/1001 clean-close guard and
+      // would call scheduleReconnect() on the replaced socket — stacking
+      // phantom retries that fight the connection we're about to make.
+      // This bug surfaced as terminals crash-looping after a tab switch
+      // (two tabs each generating a fresh MajorTom.connect() call).
+      ws.onopen = null;
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
       try { ws.close(); } catch (e) { /* ignore */ }
     }
 
@@ -418,7 +437,18 @@
     connect: function(cfg) {
       if (cfg.url) config.relayURL = cfg.url;
       if (cfg.token) config.token = cfg.token;
-      if (cfg.tabId) config.tabId = cfg.tabId;
+      if (cfg.tabId) {
+        // Tab switch: wipe the xterm buffer so the previous tab's output
+        // doesn't stack under the new tab's fresh prompt. All tabs share
+        // one xterm instance; without a reset their content visibly
+        // overlaps on switch. Only reset on an actual tabId change so
+        // in-place reconnects (retry, foreground wake, initial load)
+        // preserve their scrollback.
+        if (config.tabId && config.tabId !== cfg.tabId && term) {
+          term.reset();
+        }
+        config.tabId = cfg.tabId;
+      }
       if (cfg.theme) {
         config.theme = cfg.theme;
         if (term) {

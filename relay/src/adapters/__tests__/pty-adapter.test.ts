@@ -101,6 +101,14 @@ describe('RingBuffer', () => {
     expect(r.size).toBe(60);
     expect(r.drain().toString()).toBe('b'.repeat(60));
   });
+
+  it('drain clears state so a subsequent drain returns empty', () => {
+    const r = new RingBuffer(100);
+    r.push(Buffer.alloc(40, 'a'));
+    expect(r.drain().length).toBe(40);
+    expect(r.size).toBe(0);
+    expect(r.drain().length).toBe(0);
+  });
 });
 
 // ── PtyAdapter behavior ─────────────────────────────────────
@@ -247,6 +255,39 @@ describe('PtyAdapter.detach + grace + ring buffer replay', () => {
       // they were streamed live to c1, and replaying them to c2 would
       // visibly duplicate content the prior viewer already rendered.
       expect(replay).not.toContain('attached-phase');
+    } finally {
+      a.dispose();
+    }
+  });
+
+  it('second reattach does not re-send bytes already drained on first reattach', async () => {
+    const a = makeAdapter({ graceMs: 10_000 });
+    try {
+      const c1 = makeClient();
+      a.attach('tab-1', c1, ATTACH_DEFAULTS);
+      a.detach('tab-1', c1);
+      a.write('tab-1', 'burst-one\n');
+      await new Promise((r) => setTimeout(r, 150));
+
+      // First reattach — should drain the ring and deliver 'burst-one'.
+      const c2 = makeClient();
+      a.attach('tab-1', c2, ATTACH_DEFAULTS);
+      const firstReplay = Buffer.concat(
+        c2.sent.filter((s) => s.binary).map((s) => s.data as Buffer),
+      ).toString('utf-8');
+      expect(firstReplay).toContain('burst-one');
+      a.detach('tab-1', c2);
+
+      // No new PTY output between c2 detach and c3 attach. The ring must
+      // be empty — re-replaying 'burst-one' would visibly duplicate what
+      // c2 already rendered. This covers the iOS foreground-wake case
+      // where the WebSocket drops and reconnects to the same tabId.
+      const c3 = makeClient();
+      a.attach('tab-1', c3, ATTACH_DEFAULTS);
+      const secondReplay = Buffer.concat(
+        c3.sent.filter((s) => s.binary).map((s) => s.data as Buffer),
+      ).toString('utf-8');
+      expect(secondReplay).not.toContain('burst-one');
     } finally {
       a.dispose();
     }

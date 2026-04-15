@@ -101,7 +101,13 @@ export class RingBuffer {
 
   drain(): Buffer {
     if (this.chunks.length === 0) return Buffer.alloc(0);
-    return Buffer.concat(this.chunks);
+    const buf = Buffer.concat(this.chunks);
+    // Clear after consumption. Without this, every reattach within grace
+    // re-sends the full ring — the prior viewer already rendered those
+    // bytes, so a second reattach visibly duplicates content in xterm.
+    this.chunks = [];
+    this.bytes = 0;
+    return buf;
   }
 
   get size(): number {
