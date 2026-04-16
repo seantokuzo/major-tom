@@ -20,8 +20,12 @@ final class OfficeScene: SKScene {
     /// Station node references.
     private var stationNodes: [ActivityStationType: SKNode] = [:]
 
-    /// Window container nodes for starfield effects.
-    private var windowNodes: [SKNode] = []
+    /// Cached parallax layer refs per window — avoids per-frame `childNode(withName:)`
+    /// recursive lookups in `updateParallax` (was the #1 CPU hotspot, 21.7% of frame time).
+    private var windowParallaxLayers: [(far: SKNode, near: SKNode)] = []
+
+    /// Last camera offset applied during parallax; skip work when unchanged (idle station).
+    private var lastParallaxCameraOffset: CGPoint = CGPoint(x: CGFloat.infinity, y: CGFloat.infinity)
 
     /// Animated airlock door nodes (by door ID).
     private var airlockDoors: [String: (left: SKSpriteNode, right: SKSpriteNode, top: SKSpriteNode?, bottom: SKSpriteNode?)] = [:]
@@ -386,13 +390,13 @@ final class OfficeScene: SKScene {
 
     private func renderWindows() {
         for (module, windowConfig) in StationLayout.allWindows {
-            let window = createWindowNode(config: windowConfig, module: module)
-            addChild(window)
-            windowNodes.append(window)
+            let built = createWindowNode(config: windowConfig, module: module)
+            addChild(built.container)
+            windowParallaxLayers.append((far: built.farStars, near: built.nearStars))
         }
     }
 
-    private func createWindowNode(config: WindowConfig, module _: StationModule) -> SKNode {
+    private func createWindowNode(config: WindowConfig, module _: StationModule) -> (container: SKNode, farStars: SKEmitterNode, nearStars: SKEmitterNode) {
         let container = SKNode()
         container.position = config.position
         container.zPosition = 0.8
@@ -454,7 +458,7 @@ final class OfficeScene: SKScene {
         reflection.zRotation = 0.1
         container.addChild(reflection)
 
-        return container
+        return (container: container, farStars: farStars, nearStars: nearStars)
     }
 
     // MARK: - Grid Movement
@@ -1474,21 +1478,28 @@ final class OfficeScene: SKScene {
     // MARK: - Parallax
 
     /// Shift window starfield layers based on camera offset to create depth parallax.
+    ///
+    /// Uses cached `windowParallaxLayers` (populated in `renderWindows`) instead of
+    /// per-frame `childNode(withName: "//...")` recursive lookups. Skips work entirely
+    /// when the camera hasn't moved since the last frame (idle station).
     private func updateParallax() {
         let cameraOffset = CGPoint(
             x: cameraNode.position.x - size.width / 2,
             y: cameraNode.position.y - size.height / 2
         )
 
-        for windowNode in windowNodes {
-            // Far stars: shift 3% of camera offset (deep, barely moves)
-            if let farStars = windowNode.childNode(withName: "//starsFar") {
-                farStars.position = CGPoint(x: cameraOffset.x * 0.03, y: cameraOffset.y * 0.03)
-            }
-            // Near stars: shift 6% of camera offset (closer, moves more)
-            if let nearStars = windowNode.childNode(withName: "//starsNear") {
-                nearStars.position = CGPoint(x: cameraOffset.x * 0.06, y: cameraOffset.y * 0.06)
-            }
+        // Early-exit: camera hasn't moved, nothing to update.
+        if cameraOffset == lastParallaxCameraOffset { return }
+        lastParallaxCameraOffset = cameraOffset
+
+        let farOffset = CGPoint(x: cameraOffset.x * 0.03, y: cameraOffset.y * 0.03)
+        let nearOffset = CGPoint(x: cameraOffset.x * 0.06, y: cameraOffset.y * 0.06)
+
+        for layers in windowParallaxLayers {
+            // Far stars: shift 3% of camera offset (deep, barely moves).
+            layers.far.position = farOffset
+            // Near stars: shift 6% of camera offset (closer, moves more).
+            layers.near.position = nearOffset
         }
     }
 
