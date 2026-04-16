@@ -1,6 +1,32 @@
 import Foundation
 import ActivityKit
 
+// MARK: - Preferences
+
+extension Notification.Name {
+    /// Posted when `LiveActivityPreferences.isEnabled` actually changes.
+    static let liveActivityPreferencesDidChange = Notification.Name("com.majortom.liveActivity.didChange")
+}
+
+/// User-facing toggle for Dynamic Island / Lock Screen Live Activities.
+///
+/// Default is OFF — activities are opt-in so the Dynamic Island doesn't persist
+/// with a deep-link gesture that can be triggered inadvertently. When the user
+/// flips this off, `LiveActivityManager` ends any currently running activities
+/// so the shut-up is immediate, not "wait for the next session to end."
+enum LiveActivityPreferences {
+    private static let defaultsKey = "liveActivity.enabled"
+
+    static var isEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: defaultsKey) }
+        set {
+            guard newValue != UserDefaults.standard.bool(forKey: defaultsKey) else { return }
+            UserDefaults.standard.set(newValue, forKey: defaultsKey)
+            NotificationCenter.default.post(name: .liveActivityPreferencesDidChange, object: nil)
+        }
+    }
+}
+
 // MARK: - Live Activity Manager
 
 /// Manages the lifecycle of Major Tom Live Activities on Lock Screen and Dynamic Island.
@@ -35,6 +61,9 @@ final class LiveActivityManager {
     /// Start a new Live Activity for the given session.
     func startActivity(for session: SessionInfo) async {
         guard isSupported else { return }
+        // User-facing opt-in — default off. Avoids the Dynamic Island persisting
+        // and its deep-link widget gesture being triggered inadvertently.
+        guard LiveActivityPreferences.isEnabled else { return }
 
         // Prune orphaned snapshots that no longer have an active activity
         pruneOrphanedSnapshots()
@@ -89,7 +118,7 @@ final class LiveActivityManager {
 
         await activity.end(
             .init(state: finalState, staleDate: nil),
-            dismissalPolicy: .after(.now + 30)  // Keep on Lock Screen for 30s
+            dismissalPolicy: .immediate  // Dismiss from Lock Screen / DI immediately
         )
 
         activities.removeValue(forKey: sessionId)
@@ -107,6 +136,41 @@ final class LiveActivityManager {
         let orphanedSnapshotKeys = Array(snapshots.keys.filter { !activeIds.contains($0) })
         for key in orphanedSnapshotKeys {
             snapshots.removeValue(forKey: key)
+        }
+    }
+
+    /// Clean up any Live Activities that survived a prior app process — e.g. when
+    /// the app was force-killed or crashed without calling `.end()`. Without this,
+    /// activities can linger on Lock Screen / Dynamic Island for up to 8 hours.
+    ///
+    /// Call once on app launch. Enumerates `Activity<Attributes>.activities` which
+    /// returns system-wide activities for this app, not just ones in our local dict.
+    func cleanupOrphanedActivities() async {
+        guard isSupported else { return }
+        for activity in Activity<MajorTomActivityAttributes>.activities {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
+        activities.removeAll()
+        snapshots.removeAll()
+        for (_, task) in debounceTasks { task.cancel() }
+        debounceTasks.removeAll()
+    }
+
+    /// Observe the user toggling Live Activities off — ends all running activities
+    /// immediately so the shut-up is instant instead of "wait for the next session
+    /// to end." Called once from app startup.
+    func observePreferenceChanges() {
+        NotificationCenter.default.addObserver(
+            forName: .liveActivityPreferencesDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            if !LiveActivityPreferences.isEnabled {
+                Task { @MainActor in
+                    await self.endAllActivities()
+                }
+            }
         }
     }
 
