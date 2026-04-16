@@ -1,6 +1,6 @@
 # Performance Baseline — Optimization Phase Wave 1
 
-> Captured: 2026-04-15 · Device: Sean's iPhone (00008130-001625913CF0001C) · Config: Release · Low Power Mode: OFF
+> Captured: 2026-04-15 · Device: Sean's iPhone (UDID redacted) · Config: Release · Low Power Mode: OFF
 >
 > Goal: lock down a baseline before Wave 2+ optimizations so we know if they actually moved the needle. User reported severe battery drain on-device; the theory from the 2026-04-14 audit is allocation churn + per-frame overhead, not texture format. This baseline is the "before."
 >

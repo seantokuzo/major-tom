@@ -56,6 +56,16 @@ final class LiveActivityManager {
     /// Debounce interval for non-urgent updates (seconds).
     private let debounceInterval: TimeInterval = 3.0
 
+    /// Retained token for the preference-change observer so we can avoid
+    /// re-registering on repeat `observePreferenceChanges()` calls (SwiftUI
+    /// `.onAppear` can fire more than once across scene transitions).
+    private var preferenceObserverToken: NSObjectProtocol?
+
+    /// Guards `cleanupOrphanedActivities()` so it runs at most once per app
+    /// process — otherwise a second `.onAppear` could end legitimate in-flight
+    /// activities that were started after the first cleanup.
+    private var hasRunOrphanCleanup = false
+
     // MARK: - Lifecycle
 
     /// Start a new Live Activity for the given session.
@@ -143,9 +153,12 @@ final class LiveActivityManager {
     /// the app was force-killed or crashed without calling `.end()`. Without this,
     /// activities can linger on Lock Screen / Dynamic Island for up to 8 hours.
     ///
-    /// Call once on app launch. Enumerates `Activity<Attributes>.activities` which
-    /// returns system-wide activities for this app, not just ones in our local dict.
+    /// Idempotent: `hasRunOrphanCleanup` ensures this runs at most once per app
+    /// process, so a second `.onAppear` can't kill a legitimate activity that was
+    /// started after first launch.
     func cleanupOrphanedActivities() async {
+        guard !hasRunOrphanCleanup else { return }
+        hasRunOrphanCleanup = true
         guard isSupported else { return }
         for activity in Activity<MajorTomActivityAttributes>.activities {
             await activity.end(nil, dismissalPolicy: .immediate)
@@ -158,9 +171,13 @@ final class LiveActivityManager {
 
     /// Observe the user toggling Live Activities off — ends all running activities
     /// immediately so the shut-up is instant instead of "wait for the next session
-    /// to end." Called once from app startup.
+    /// to end."
+    ///
+    /// Idempotent: retains the observer token and bails if already registered, so a
+    /// second `.onAppear` can't accumulate duplicate observers.
     func observePreferenceChanges() {
-        NotificationCenter.default.addObserver(
+        guard preferenceObserverToken == nil else { return }
+        preferenceObserverToken = NotificationCenter.default.addObserver(
             forName: .liveActivityPreferencesDidChange,
             object: nil,
             queue: .main
