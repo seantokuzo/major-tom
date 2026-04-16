@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @State private var viewModel: SettingsViewModel
     @State private var showsPerfHUD: Bool = PerfHUDPreferences.isEnabled
+    @State private var liveActivitiesEnabled: Bool = LiveActivityPreferences.isEnabled
 
     private let auth: AuthService
     private let relay: RelayService
@@ -195,8 +196,19 @@ struct SettingsView: View {
                 Label("Notification Settings", systemImage: "bell.badge")
             }
             .listRowBackground(MajorTomTheme.Colors.surface)
+
+            Toggle(isOn: $liveActivitiesEnabled) {
+                Label("Live Activities", systemImage: "bell.badge.waveform")
+            }
+            .onChange(of: liveActivitiesEnabled) { _, newValue in
+                LiveActivityPreferences.isEnabled = newValue
+                HapticService.selection()
+            }
+            .listRowBackground(MajorTomTheme.Colors.surface)
         } header: {
             Text("Notifications")
+        } footer: {
+            Text("Dynamic Island + Lock Screen updates for active sessions. Off by default — the widget's tap gesture can be easy to trigger accidentally.")
         }
     }
 

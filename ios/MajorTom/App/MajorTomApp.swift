@@ -39,6 +39,11 @@ struct MajorTomApp: App {
                 }
                 setupNotificationHandlers()
                 setupWatchConnectivity()
+                // Kill any Live Activities left over from a prior launch (force-kill,
+                // crash, etc.) so the Dynamic Island doesn't persist indefinitely.
+                // Also set up the "user toggled off -> end all" observer.
+                liveActivityManager.observePreferenceChanges()
+                Task { await liveActivityManager.cleanupOrphanedActivities() }
                 // Fetch auth methods on launch for already-paired devices
                 if auth.isPaired {
                     Task {

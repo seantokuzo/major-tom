@@ -63,6 +63,10 @@ struct OfficeView: View {
             }
         }
         .onAppear {
+            // Resume the SKScene update loop when the Office tab becomes visible.
+            // Paired with `scene.isPaused = true` in `.onDisappear` — idle tabs
+            // should not be running the 60fps SpriteKit render/update loop.
+            scene.isPaused = false
             // Wire theme + mood engines and furniture registry to the scene
             scene.themeEngine = viewModel.themeEngine
             scene.moodEngine = viewModel.moodEngine
@@ -124,6 +128,9 @@ struct OfficeView: View {
             }
         }
         .onDisappear {
+            // Pause the SKScene update loop so a hidden Office tab does not burn
+            // CPU/battery running updateParallax, applyAgentMoods, etc.
+            scene.isPaused = true
             // Stop engines + activity cycling when view disappears
             viewModel.activityAnimator.stopAll(furnitureNodes: scene.furnitureNodes)
             viewModel.themeEngine.stop()
@@ -203,7 +210,7 @@ struct OfficeView: View {
     // MARK: - Top Bar
 
     private var topBar: some View {
-        HStack {
+        HStack(spacing: MajorTomTheme.Spacing.sm) {
             // Map button (opens full mini-map overlay)
             Button {
                 HapticService.impact(.light)
@@ -217,8 +224,6 @@ struct OfficeView: View {
             }
             .accessibilityLabel("Open station map")
             .accessibilityHint("Shows the full station overview to jump between rooms")
-
-            Spacer()
 
             // Office options menu
             Menu {
@@ -251,6 +256,8 @@ struct OfficeView: View {
             }
             .accessibilityLabel("Office options")
             .accessibilityHint("Crew shuffle, picker, and character gallery")
+
+            Spacer()
         }
         .padding(MajorTomTheme.Spacing.md)
     }

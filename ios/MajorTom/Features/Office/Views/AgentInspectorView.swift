@@ -314,7 +314,7 @@ final class InspectorSpriteScene: SKScene {
         for tex in textures { tex.filteringMode = .nearest }
 
         let sprite = SKSpriteNode(texture: first, size: CrewSpriteBuilder.size(for: characterType))
-        sprite.setScale(1.6)
+        sprite.setScale(1.12)
         sprite.position = .zero
         addChild(sprite)
 
