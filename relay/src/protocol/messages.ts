@@ -1236,6 +1236,13 @@ export interface TabSessionEndedMessage {
   endedAt: string;
 }
 
+// Broadcast when the PTY grace expires (30-min disconnect) or the tab is
+// killed outright. Office Manager removes the tab from the list on receipt.
+export interface TabClosedMessage {
+  type: 'tab.closed';
+  tabId: string;
+}
+
 /** Base server message union (without envelope fields). */
 type ServerMessageBase =
   | OutputMessage
@@ -1307,7 +1314,8 @@ type ServerMessageBase =
   | SpriteResponseMessage
   | SpriteStateMessage
   | TabSessionStartedMessage
-  | TabSessionEndedMessage;
+  | TabSessionEndedMessage
+  | TabClosedMessage;
 
 /**
  * Every outbound server message may carry an optional `seq` —

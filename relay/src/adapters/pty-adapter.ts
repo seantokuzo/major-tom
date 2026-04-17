@@ -77,6 +77,14 @@ export interface PtyAdapterOptions {
   shellArgs?: string[];
   /** Spawn injection point — tests pass a stub or a script like `cat`. */
   spawn?: (file: string, args: string[], opts: pty.IPtyForkOptions) => IPty;
+  /**
+   * Tab-Keyed Offices — invoked after the PTY is fully evicted from the
+   * adapter (grace-expire, natural exit, or explicit kill). Used by app.ts
+   * to call `tabRegistry.tabClosed(tabId)` and broadcast `tab.closed`.
+   * Not fired from `dispose()` — that's a whole-relay shutdown path and
+   * doesn't want per-tab fanout.
+   */
+  onTabClosed?: (tabId: string) => void;
 }
 
 /**
@@ -135,6 +143,7 @@ export class PtyAdapter {
   private readonly shell: string;
   private readonly shellArgs: string[];
   private readonly spawnFn: (file: string, args: string[], opts: pty.IPtyForkOptions) => IPty;
+  private readonly onTabClosed?: (tabId: string) => void;
 
   constructor(opts: PtyAdapterOptions = {}) {
     this.graceMs = opts.graceMs ?? DEFAULT_GRACE_MS;
@@ -145,6 +154,7 @@ export class PtyAdapter {
     this.shell = opts.shell ?? this.env['SHELL'] ?? '/bin/bash';
     this.shellArgs = opts.shellArgs ?? ['-l'];
     this.spawnFn = opts.spawn ?? pty.spawn;
+    this.onTabClosed = opts.onTabClosed;
   }
 
   /**
@@ -399,6 +409,13 @@ export class PtyAdapter {
       session.graceTimer = undefined;
     }
     this.sessions.delete(tabId);
+    if (this.onTabClosed) {
+      try {
+        this.onTabClosed(tabId);
+      } catch (err) {
+        logger.warn({ err, tabId }, 'onTabClosed callback threw');
+      }
+    }
   }
 
   private sendJson(client: PtyClient, data: unknown): void {
