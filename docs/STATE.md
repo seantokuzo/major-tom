@@ -4,20 +4,20 @@
 
 ## Current Phase (in flight)
 
-**Sprite-Agent Wiring** — spec/planning phase, no implementation yet. Spec: `docs/PHASE-SPRITE-AGENT-WIRING.md`. Memory: `project_sprite_agent_wiring_phase.md`. Waiting on Q1-Q5 decisions before Wave 1 closes.
+**Sprite-Agent Wiring** — Wave 2 shipped, Wave 3 next. Spec: `docs/PHASE-SPRITE-AGENT-WIRING.md`. Memory: `project_sprite_agent_wiring_phase.md`.
 
-### Sprite-Agent Wiring (NEXT — spec-first)
+### Sprite-Agent Wiring
 
-Makes the sprite metaphor functionally real — tapping a sprite does something deterministic, messaging is routed with defined semantics, multi-session Office has a coherent story. Spec-first: five open design questions (Office scope, link tightness, messaging semantics, idle-sprite behavior, visual differentiation) must be answered before implementation.
+Makes the sprite metaphor functionally real — tapping a sprite does something deterministic, messaging is routed with defined semantics, multi-session Office has a coherent story.
 
 | Wave | Scope | Status |
 |------|-------|--------|
-| 1 — Decisions & Spec Freeze | Answer Q1-Q5, enumerate remaining scenarios, lock protocol | IN PROGRESS |
-| 2 — Data Model + Protocol | `linkedSubagentId` wiring, persist `parentId`, new relay messages | QUEUED |
-| 3 — Multi-Session Scoping | Depends on Q1 decision | QUEUED |
-| 4 — Messaging Delivery | Relay-side `/btw` injection, queueing, ack | QUEUED |
-| 5 — UI Polish | Visual differentiation, speech bubbles, drafts across switches | QUEUED |
-| 6 — Edge Cases + Battle Test | Race conditions, disconnect/reconnect, concurrent sends | QUEUED |
+| 1 — Research + Spec Freeze | All 7 research gates answered, spec updated | SHIPPED (#137) |
+| 2 — Data Model + Protocol | Relay: sprite.* messages, persistence, classifier, sessionId on events. iOS: RoleMapper, clone-not-consume, remove dog fallback | SHIPPED (#138, #139) |
+| 3 — Office Manager + Multi-Session | NavigationStack manager, per-session SKScene lifecycle, cold rebuild | NEXT |
+| 4 — `/btw` Messaging Delivery | Relay queue, turn-boundary injection spike, modal flow, dog responses | QUEUED |
+| 5 — Visual Differentiation + Notifications | Role aura, tool-event bubbles, progress, local push | QUEUED |
+| 6 — Edge Cases + Battle Test | Race conditions, disconnect/reconnect, persistence cascade | QUEUED |
 
 ### Optimization phase (COMPLETE)
 
