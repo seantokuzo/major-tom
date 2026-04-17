@@ -44,6 +44,25 @@ struct OfficeView: View {
     /// Snapshot of bubble-preview sprite IDs that have already been rendered.
     @State private var firedPreviewIds: Set<String> = []
 
+    /// Snapshot of sprite IDs with role aura active, for diffing.
+    @State private var previousAuraIds: Set<String> = []
+
+    /// Snapshot of sprite IDs with an active tool bubble, for diffing.
+    @State private var previousToolLabels: [String: String] = [:]
+
+    /// Sprite IDs whose tool bubble is currently suppressed (response bubble
+    /// is holding the slot for 5s). Used to restore when the hold expires.
+    @State private var toolBubbleHolds: Set<String> = []
+
+    /// Per-sprite restore tasks for the 5s tool-bubble hold. Tracked so a new
+    /// preview arriving within an existing 5s window cancels the previous
+    /// restore Task — otherwise two overlapping timers would clear the hold
+    /// early.
+    @State private var toolBubbleHoldTasks: [String: Task<Void, Never>] = [:]
+
+    /// Snapshot of sprite progress metrics for diffing.
+    @State private var previousProgressMetrics: [String: OfficeViewModel.ProgressMetrics] = [:]
+
     /// Activated scene — populated in onAppear, avoids side effects in body.
     @State private var activatedScene: OfficeScene?
 
@@ -122,14 +141,32 @@ struct OfficeView: View {
                 .onChange(of: viewModel.pendingBubblePreviews, initial: true) { _, previews in
                     fireBubblePreviews(previews, viewModel: viewModel, scene: scene)
                 }
+                .onChange(of: viewModel.spriteAuraActive, initial: true) { _, ids in
+                    syncRoleAuras(ids: ids, viewModel: viewModel, scene: scene)
+                }
+                .onChange(of: viewModel.spriteToolLabels, initial: true) { _, labels in
+                    syncToolBubbles(labels: labels, scene: scene)
+                }
+                .onChange(of: viewModel.spriteProgressMetrics, initial: true) { _, metrics in
+                    syncProgressMetrics(metrics: metrics, scene: scene)
+                }
                 .onChange(of: ObjectIdentifier(scene)) { _, _ in
                     // Scene identity changed (cold rebuild after LRU eviction) —
                     // reset diffing state so all currently-unread glows/previews
                     // are re-applied to the fresh scene instead of skipped.
                     previousUnreadIds = []
                     firedPreviewIds = []
+                    previousAuraIds = []
+                    previousToolLabels = [:]
+                    previousProgressMetrics = [:]
+                    toolBubbleHolds = []
+                    for (_, task) in toolBubbleHoldTasks { task.cancel() }
+                    toolBubbleHoldTasks = [:]
                     syncUnreadGlows(ids: viewModel.unreadResponseSpriteIds, scene: scene)
                     fireBubblePreviews(viewModel.pendingBubblePreviews, viewModel: viewModel, scene: scene)
+                    syncRoleAuras(ids: viewModel.spriteAuraActive, viewModel: viewModel, scene: scene)
+                    syncToolBubbles(labels: viewModel.spriteToolLabels, scene: scene)
+                    syncProgressMetrics(metrics: viewModel.spriteProgressMetrics, scene: scene)
                 }
                 .onChange(of: relay?.connectionState) { _, newState in
                     if newState == .connected, let sid = viewModel.sessionId {
@@ -429,8 +466,32 @@ struct OfficeView: View {
     }
 
     /// Fire pending bubble previews once per sprite.
+    ///
+    /// M3 priority: if a tool bubble is currently showing on this sprite, yield
+    /// to the response bubble for 5 seconds, then restore the tool bubble if
+    /// it's still active. The green glow persists independently on the sprite.
     private func fireBubblePreviews(_ previews: [String: String], viewModel: OfficeViewModel, scene: OfficeScene) {
         for (spriteId, text) in previews where !firedPreviewIds.contains(spriteId) {
+            // M3: hide active tool bubble for the 5s response window.
+            if viewModel.spriteToolLabels[spriteId] != nil {
+                scene.hideToolBubble(on: spriteId)
+                toolBubbleHolds.insert(spriteId)
+                // Cancel any existing restore task for this sprite so a second
+                // preview inside the 5s window doesn't let a stale timer clear
+                // the hold early.
+                toolBubbleHoldTasks[spriteId]?.cancel()
+                // After 5s, if the tool is still active, re-show it.
+                let task = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(5))
+                    guard !Task.isCancelled else { return }
+                    if let label = viewModel.spriteToolLabels[spriteId] {
+                        scene.showToolBubble(on: spriteId, label: label)
+                    }
+                    toolBubbleHolds.remove(spriteId)
+                    toolBubbleHoldTasks[spriteId] = nil
+                }
+                toolBubbleHoldTasks[spriteId] = task
+            }
             scene.showResponsePreviewBubble(on: spriteId, text: shortPreview(text))
             firedPreviewIds.insert(spriteId)
             viewModel.consumeBubblePreview(for: spriteId)
@@ -446,6 +507,65 @@ struct OfficeView: View {
         if trimmed.count <= 80 { return trimmed }
         let idx = trimmed.index(trimmed.startIndex, offsetBy: 77)
         return String(trimmed[..<idx]) + "…"
+    }
+
+    // MARK: - Wave 5 Sync Helpers
+
+    /// Apply role-aura adds/removes to the scene based on `spriteAuraActive`.
+    /// The canonical role comes from the matching AgentState.
+    private func syncRoleAuras(ids: Set<String>, viewModel: OfficeViewModel, scene: OfficeScene) {
+        let additions = ids.subtracting(previousAuraIds)
+        let removals = previousAuraIds.subtracting(ids)
+        for id in additions {
+            let role = viewModel.agents.first(where: { $0.id == id })?.canonicalRole
+            scene.showRoleAura(on: id, canonicalRole: role)
+        }
+        for id in removals {
+            scene.hideRoleAura(on: id)
+        }
+        previousAuraIds = ids
+    }
+
+    /// Apply tool-bubble updates: show new bubbles, swap labels when changed,
+    /// hide when removed. Respects the M3 hold set (response bubble is
+    /// holding the slot for 5 seconds).
+    private func syncToolBubbles(labels: [String: String], scene: OfficeScene) {
+        let currentIds = Set(labels.keys)
+        let previousIds = Set(previousToolLabels.keys)
+
+        // Additions + label changes
+        for (id, label) in labels {
+            let prev = previousToolLabels[id]
+            if prev != label && !toolBubbleHolds.contains(id) {
+                scene.showToolBubble(on: id, label: label)
+            }
+        }
+
+        // Removals
+        for id in previousIds.subtracting(currentIds) {
+            scene.hideToolBubble(on: id)
+        }
+
+        previousToolLabels = labels
+    }
+
+    /// Apply progress indicator updates: update text when changed, hide when removed.
+    private func syncProgressMetrics(metrics: [String: OfficeViewModel.ProgressMetrics], scene: OfficeScene) {
+        let currentIds = Set(metrics.keys)
+        let previousIds = Set(previousProgressMetrics.keys)
+
+        for (id, m) in metrics {
+            let prev = previousProgressMetrics[id]
+            if prev != m {
+                scene.updateProgressIndicator(on: id, toolCount: m.toolCount, tokenCount: m.tokenCount)
+            }
+        }
+
+        for id in previousIds.subtracting(currentIds) {
+            scene.hideProgressIndicator(on: id)
+        }
+
+        previousProgressMetrics = metrics
     }
 
     // MARK: - Scene Sync

@@ -1786,6 +1786,40 @@ final class OfficeScene: SKScene {
         agentSprites[agentId]?.showResponsePreviewBubble(text)
     }
 
+    // MARK: - Role Aura / Tool Bubble / Progress (Wave 5)
+
+    /// Show the role-colored aura on a sprite (only takes effect if no green
+    /// unread glow is active — AgentSprite coordinates priority internally).
+    func showRoleAura(on agentId: String, canonicalRole: String?) {
+        agentSprites[agentId]?.showRoleAura(canonicalRole: canonicalRole)
+    }
+
+    /// Hide the role aura on a sprite.
+    func hideRoleAura(on agentId: String) {
+        agentSprites[agentId]?.hideRoleAura()
+    }
+
+    /// Show or update the humanized tool-event bubble on a sprite.
+    func showToolBubble(on agentId: String, label: String) {
+        agentSprites[agentId]?.showToolBubble(label: label)
+    }
+
+    /// Hide the tool-event bubble on a sprite.
+    func hideToolBubble(on agentId: String) {
+        agentSprites[agentId]?.hideToolBubble()
+    }
+
+    /// Update the mini progress indicator below a sprite. Pass nil for both
+    /// counts to hide the indicator.
+    func updateProgressIndicator(on agentId: String, toolCount: Int?, tokenCount: Int?) {
+        agentSprites[agentId]?.updateProgressIndicator(toolCount: toolCount, tokenCount: tokenCount)
+    }
+
+    /// Hide the progress indicator on a sprite.
+    func hideProgressIndicator(on agentId: String) {
+        agentSprites[agentId]?.hideProgressIndicator()
+    }
+
     // MARK: - Desk Highlighting
 
     func highlightDesk(_ deskIndex: Int, occupied: Bool) {

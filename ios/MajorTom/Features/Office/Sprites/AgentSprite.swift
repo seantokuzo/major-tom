@@ -49,6 +49,26 @@ final class AgentSprite: SKSpriteNode {
     /// is waiting. Overrides default working auras.
     private var unreadGlowNode: SKNode?
 
+    /// Role-colored aura shown while the sprite is working (Wave 5).
+    /// Hidden when the green unread glow is active; restored when it clears.
+    private var roleAuraNode: SpriteAura?
+
+    /// Last canonicalRole applied to the role aura — used to decide whether
+    /// to rebuild on role updates.
+    private var currentRoleForAura: String?
+
+    /// Whether a role aura is currently "requested" by the scene — we use
+    /// this to restore the aura when the green unread glow is cleared.
+    private var roleAuraRequested: Bool = false
+
+    /// Humanized tool-event bubble node (Wave 5). Mutable so each tool.start
+    /// can swap the label in-place without re-adding a bubble node.
+    private var toolBubbleBG: SKShapeNode?
+    private var toolBubbleLabel: SKLabelNode?
+
+    /// Mini progress indicator label shown under the sprite while working (Wave 5).
+    private var progressLabel: SKLabelNode?
+
     /// The texture-based crew sprite body node.
     private let bodySprite: SKSpriteNode
 
@@ -654,9 +674,63 @@ final class AgentSprite: SKSpriteNode {
 
     // MARK: - Emote System
 
-    // MARK: - Unread /btw Response Glow (Wave 4)
+    // MARK: - Role Aura (Wave 5)
+
+    /// Show the role-colored aura under the sprite. Hidden while the green
+    /// unread-response glow is active; restored when it clears.
+    ///
+    /// Safe to call repeatedly with the same `canonicalRole` — no-ops when
+    /// the current aura already matches. Role changes rebuild the node.
+    func showRoleAura(canonicalRole: String?) {
+        roleAuraRequested = true
+        currentRoleForAura = canonicalRole
+
+        // Green glow suppresses the role aura entirely.
+        guard unreadGlowNode == nil else {
+            removeRoleAuraNode()
+            return
+        }
+
+        // No-op if the current aura is already for this role.
+        if let existing = roleAuraNode, existing.canonicalRole == canonicalRole {
+            return
+        }
+
+        // Rebuild: remove any existing role aura first.
+        removeRoleAuraNode()
+
+        let spriteSize = CrewSpriteBuilder.size(for: characterType)
+        // ~1.3× sprite bounding radius (spec). Sprite is a square frame.
+        let radius = max(spriteSize.width, spriteSize.height) * 0.5 * 1.3
+
+        let aura = SpriteAura(canonicalRole: canonicalRole, radius: radius)
+        aura.name = "roleAura"
+        // Under the body sprite (zPosition 0) but above the floor (no overlap).
+        aura.zPosition = -1.0
+        addChild(aura)
+        aura.fadeIn()
+        roleAuraNode = aura
+    }
+
+    /// Hide the role aura. Clears both the requested flag and the node so it
+    /// won't re-appear until `showRoleAura` is called again.
+    func hideRoleAura() {
+        roleAuraRequested = false
+        currentRoleForAura = nil
+        removeRoleAuraNode()
+    }
+
+    private func removeRoleAuraNode() {
+        guard let aura = roleAuraNode else { return }
+        aura.fadeOutAndRemove()
+        roleAuraNode = nil
+    }
+
+    // MARK: - Unread /btw Response Glow (Wave 4 + Wave 5 priority)
 
     /// Attach the green "unread /btw response" glow.
+    /// Hides any active role aura — it will be restored by `hideUnreadResponseGlow`
+    /// if the sprite was still requesting one.
     func showUnreadResponseGlow() {
         guard unreadGlowNode == nil else { return }
         let spriteSize = CrewSpriteBuilder.size(for: characterType)
@@ -679,9 +753,13 @@ final class AgentSprite: SKSpriteNode {
 
         addChild(glow)
         unreadGlowNode = glow
+
+        // Green takes priority — suppress the role aura until the glow clears.
+        removeRoleAuraNode()
     }
 
-    /// Remove the unread glow.
+    /// Remove the unread glow. Restores the role aura if one was previously
+    /// requested (i.e. the sprite is still in a working state).
     func hideUnreadResponseGlow() {
         guard let glow = unreadGlowNode else { return }
         glow.removeAllActions()
@@ -690,11 +768,179 @@ final class AgentSprite: SKSpriteNode {
             SKAction.removeFromParent(),
         ]))
         unreadGlowNode = nil
+
+        // Restore the role aura if the scene still wants it shown.
+        if roleAuraRequested {
+            showRoleAura(canonicalRole: currentRoleForAura)
+        }
     }
 
     /// Preview a /btw response as a speech bubble over the sprite.
     func showResponsePreviewBubble(_ text: String, duration: TimeInterval = 5.0) {
         showSpeechBubble(text, duration: duration)
+    }
+
+    // MARK: - Tool Bubble (Wave 5)
+
+    /// Show or update the humanized tool-event bubble above the sprite.
+    /// Auto-hides after `autoHideAfter` seconds as a safety net if the
+    /// matching `tool.complete` never arrives.
+    func showToolBubble(label: String, autoHideAfter: TimeInterval = 30.0) {
+        let spriteSize = CrewSpriteBuilder.size(for: characterType)
+        let textWidth = CGFloat(label.count) * 5.5 + 12
+        let bubbleWidth = max(textWidth, 50)
+        let bubbleY = spriteSize.height / 2 + 36
+
+        if let bg = toolBubbleBG, let lbl = toolBubbleLabel {
+            // Fade-swap the text in place so we don't flash a new node.
+            lbl.run(SKAction.sequence([
+                SKAction.fadeOut(withDuration: 0.1),
+                SKAction.run { lbl.text = label },
+                SKAction.fadeIn(withDuration: 0.15),
+            ]))
+            // Resize background in-place by updating its path. Avoids the
+            // previous queued-SKAction race where hideToolBubble() could run
+            // before the resize action fired, leaving an orphaned background.
+            let bubbleHeight: CGFloat = 16
+            let rect = CGRect(
+                x: -bubbleWidth / 2,
+                y: -bubbleHeight / 2,
+                width: bubbleWidth,
+                height: bubbleHeight
+            )
+            bg.path = CGPath(
+                roundedRect: rect,
+                cornerWidth: 4,
+                cornerHeight: 4,
+                transform: nil
+            )
+        } else {
+            // Build fresh
+            let bg = SKShapeNode(rectOf: CGSize(width: bubbleWidth, height: 16), cornerRadius: 4)
+            bg.fillColor = SKColor(white: 0.1, alpha: 0.85)
+            bg.strokeColor = SKColor(red: 0.35, green: 0.75, blue: 1.0, alpha: 0.5)
+            bg.lineWidth = 0.5
+            bg.position = CGPoint(x: 0, y: bubbleY)
+            bg.zPosition = 18
+            bg.alpha = 0
+            addChild(bg)
+
+            let lbl = SKLabelNode(fontNamed: "Menlo")
+            lbl.fontSize = 8
+            lbl.fontColor = SKColor(red: 0.85, green: 0.95, blue: 1.0, alpha: 1)
+            lbl.horizontalAlignmentMode = .center
+            lbl.verticalAlignmentMode = .center
+            lbl.text = label
+            lbl.position = CGPoint(x: 0, y: bubbleY)
+            lbl.zPosition = 19
+            lbl.alpha = 0
+            addChild(lbl)
+
+            let fadeIn = SKAction.fadeAlpha(to: 1.0, duration: 0.2)
+            bg.run(fadeIn)
+            lbl.run(fadeIn)
+
+            toolBubbleBG = bg
+            toolBubbleLabel = lbl
+        }
+
+        // (Re)schedule the safety auto-hide.
+        removeAction(forKey: "toolBubbleSafety")
+        let safety = SKAction.sequence([
+            SKAction.wait(forDuration: autoHideAfter),
+            SKAction.run { [weak self] in self?.hideToolBubble() },
+        ])
+        run(safety, withKey: "toolBubbleSafety")
+    }
+
+    /// Hide the tool-event bubble (fades out and removes).
+    func hideToolBubble() {
+        removeAction(forKey: "toolBubbleSafety")
+        let fade = SKAction.sequence([
+            SKAction.fadeOut(withDuration: 0.2),
+            SKAction.removeFromParent(),
+        ])
+        toolBubbleBG?.run(fade)
+        toolBubbleLabel?.run(fade)
+        toolBubbleBG = nil
+        toolBubbleLabel = nil
+    }
+
+    // MARK: - Progress Indicator (Wave 5)
+
+    /// Update the mini progress indicator shown below the sprite.
+    /// Passing `nil` for both params hides the indicator.
+    func updateProgressIndicator(toolCount: Int?, tokenCount: Int?) {
+        let formatted = Self.formatProgressText(toolCount: toolCount, tokenCount: tokenCount)
+        guard let text = formatted else {
+            hideProgressIndicator()
+            return
+        }
+
+        let spriteSize = CrewSpriteBuilder.size(for: characterType)
+        // Above the status dot (which is at -(height/2 + 6)), but below the
+        // sprite body. Use -height/2 - 18 for clear separation from the dot.
+        let yPos = -(spriteSize.height / 2 + 18)
+
+        if let lbl = progressLabel {
+            lbl.text = text
+            lbl.position = CGPoint(x: 0, y: yPos)
+            return
+        }
+
+        let lbl = SKLabelNode(fontNamed: "Menlo")
+        lbl.fontSize = 7
+        lbl.fontColor = SKColor(red: 0.75, green: 0.85, blue: 1.0, alpha: 0.95)
+        lbl.horizontalAlignmentMode = .center
+        lbl.verticalAlignmentMode = .top
+        lbl.text = text
+        lbl.position = CGPoint(x: 0, y: yPos)
+        lbl.zPosition = 8
+        lbl.alpha = 0
+        addChild(lbl)
+        progressLabel = lbl
+        lbl.run(SKAction.fadeAlpha(to: 1.0, duration: 0.2))
+    }
+
+    /// Hide the progress indicator (fades out and removes).
+    func hideProgressIndicator() {
+        guard let lbl = progressLabel else { return }
+        lbl.run(SKAction.sequence([
+            SKAction.fadeOut(withDuration: 0.2),
+            SKAction.removeFromParent(),
+        ]))
+        progressLabel = nil
+    }
+
+    /// Format `{toolCount} tools · {tokenCount}k tokens` with k/M suffix
+    /// on the token count (one decimal). Returns nil when neither is present.
+    static func formatProgressText(toolCount: Int?, tokenCount: Int?) -> String? {
+        let toolPart: String? = toolCount.map { count in
+            let label = count == 1 ? "tool" : "tools"
+            return "\(count) \(label)"
+        }
+        let tokenPart: String? = tokenCount.map(formatTokenCount)
+
+        switch (toolPart, tokenPart) {
+        case let (tools?, tokens?): return "\(tools) · \(tokens)"
+        case let (tools?, nil):     return tools
+        case let (nil, tokens?):    return tokens
+        default:                    return nil
+        }
+    }
+
+    /// Format a raw token count as `"1.2k tokens"` / `"3.4M tokens"` / `"812 tokens"`.
+    static func formatTokenCount(_ count: Int) -> String {
+        let absCount = abs(count)
+        if absCount >= 1_000_000 {
+            let millions = Double(count) / 1_000_000.0
+            return String(format: "%.1fM tokens", millions)
+        } else if absCount >= 1_000 {
+            let thousands = Double(count) / 1_000.0
+            return String(format: "%.1fk tokens", thousands)
+        } else {
+            return "\(count) tokens"
+        }
     }
 
     /// Show an animated emote above the sprite.

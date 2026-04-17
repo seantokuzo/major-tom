@@ -1,5 +1,6 @@
 import Foundation
 import WidgetKit
+import UIKit
 
 @Observable
 @MainActor
@@ -753,6 +754,16 @@ final class RelayService {
                 if let sid = currentSession?.id {
                     liveActivityManager?.handleToolStart(sessionId: sid, toolName: event.tool)
                 }
+                // Wave 5: route per-sprite tool bubble when relay tags the event.
+                if let subagentId = event.subagentId {
+                    officeSceneManager?.ensureViewModel(for: event.sessionId)
+                        .handleSpriteToolStart(
+                            subagentId: subagentId,
+                            toolUseId: event.toolUseId,
+                            tool: event.tool,
+                            input: event.input
+                        )
+                }
                 updateWidgetData()
             }
 
@@ -779,6 +790,14 @@ final class RelayService {
                 if let sid = currentSession?.id {
                     liveActivityManager?.handleToolComplete(sessionId: sid)
                 }
+                // Wave 5: hide per-sprite tool bubble if relay tagged the event.
+                if let subagentId = event.subagentId {
+                    officeSceneManager?.ensureViewModel(for: event.sessionId)
+                        .handleSpriteToolComplete(
+                            subagentId: subagentId,
+                            toolUseId: event.toolUseId
+                        )
+                }
                 updateWidgetData()
             }
 
@@ -796,12 +815,23 @@ final class RelayService {
 
         case .agentWorking:
             if let event = try? MessageCodec.decode(AgentWorkingEvent.self, from: data) {
-                officeSceneManager?.ensureViewModel(for: event.sessionId).handleAgentWorking(id: event.agentId, task: event.task)
+                officeSceneManager?.ensureViewModel(for: event.sessionId)
+                    .handleAgentWorking(
+                        id: event.agentId,
+                        task: event.task,
+                        toolCount: event.toolCount,
+                        tokenCount: event.tokenCount
+                    )
             }
 
         case .agentIdle:
             if let event = try? MessageCodec.decode(AgentIdleEvent.self, from: data) {
-                officeSceneManager?.ensureViewModel(for: event.sessionId).handleAgentIdle(id: event.agentId)
+                officeSceneManager?.ensureViewModel(for: event.sessionId)
+                    .handleAgentIdle(
+                        id: event.agentId,
+                        toolCount: event.toolCount,
+                        tokenCount: event.tokenCount
+                    )
             }
 
         case .agentComplete:
@@ -1225,6 +1255,11 @@ final class RelayService {
                             preview: bannerPreview(previewSource)
                         )
                     }
+
+                    // Wave 5 — local push when the app isn't in the active
+                    // foreground. Best-effort during iOS backgrounding grace
+                    // window (~10s); relay re-queues beyond that.
+                    postBtwResponseNotificationIfBackgrounded(event: event, vm: vm)
                 }
             }
 
@@ -1246,6 +1281,30 @@ final class RelayService {
             let msg = ChatMessage(role: .assistant, content: event.chunk)
             chatMessages.append(msg)
         }
+    }
+
+    /// Wave 5 — post a local `/btw` response notification if the app is NOT
+    /// in the active foreground state. Delivered responses only (dropped
+    /// responses don't need a push, user will see the green glow on return).
+    private func postBtwResponseNotificationIfBackgrounded(
+        event: SpriteResponseEvent,
+        vm: OfficeViewModel?
+    ) {
+        guard event.status == "delivered" else { return }
+        guard UIApplication.shared.applicationState != .active else { return }
+
+        let agent = vm?.agents.first(where: {
+            $0.linkedSubagentId == event.subagentId || $0.id == event.subagentId
+        })
+        let role = agent?.canonicalRole ?? agent?.role ?? "agent"
+        let spriteName = agent?.name ?? String(event.subagentId.prefix(8))
+        notificationService?.postBtwResponseNotification(
+            sessionId: event.sessionId,
+            subagentId: event.subagentId,
+            role: role,
+            spriteName: spriteName,
+            response: event.text
+        )
     }
 
     private func clearSessionState() {

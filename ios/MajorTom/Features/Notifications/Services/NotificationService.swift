@@ -7,11 +7,16 @@ import UIKit
 enum NotificationCategory: String {
     case approvalRequest = "APPROVAL_REQUEST"
     case sessionEvent = "SESSION_EVENT"
+    /// Wave 5 — local push when a `/btw` response arrives while the app is
+    /// backgrounded. Carries a single "Cool Beans" action.
+    case btwResponse = "SPRITE_BTW_RESPONSE"
 }
 
 enum NotificationAction: String {
     case allow = "ALLOW_ACTION"
     case deny = "DENY_ACTION"
+    /// Wave 5 — dismisses the unread `/btw` response for the originating sprite.
+    case coolBeans = "COOL_BEANS"
 }
 
 // MARK: - Notification Service
@@ -25,6 +30,10 @@ final class NotificationService: NSObject {
     /// Callback invoked when user acts on an approval notification.
     /// Parameters: requestId, approved (true = allow, false = deny)
     var onApprovalAction: ((String, Bool) -> Void)?
+
+    /// Wave 5 — invoked when the user taps the "Cool Beans" action on a
+    /// `/btw` response notification. Parameters: sessionId, subagentId.
+    var onBtwCoolBeansAction: ((String, String) -> Void)?
 
     private let center = UNUserNotificationCenter.current()
 
@@ -105,7 +114,20 @@ final class NotificationService: NSObject {
             options: []
         )
 
-        center.setNotificationCategories([approvalCategory, sessionCategory])
+        // Wave 5 — "Cool Beans" action on sprite /btw response notifications.
+        let coolBeansAction = UNNotificationAction(
+            identifier: NotificationAction.coolBeans.rawValue,
+            title: "Cool Beans",
+            options: []
+        )
+        let btwCategory = UNNotificationCategory(
+            identifier: NotificationCategory.btwResponse.rawValue,
+            actions: [coolBeansAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+
+        center.setNotificationCategories([approvalCategory, sessionCategory, btwCategory])
     }
 
     // MARK: - Local Notification Posting
@@ -178,6 +200,49 @@ final class NotificationService: NSObject {
         )
     }
 
+    /// Post a `/btw` response notification (Wave 5).
+    ///
+    /// Only fires when the app is NOT in the active foreground state. Caller
+    /// is expected to gate on `UIApplication.shared.applicationState != .active`.
+    /// Title: `"[{role}] {spriteName}"`, body: first ~120 chars of the response.
+    /// Carries session/subagent identifiers so the "Cool Beans" action can
+    /// clear the matching unread state.
+    func postBtwResponseNotification(
+        sessionId: String,
+        subagentId: String,
+        role: String,
+        spriteName: String,
+        response: String
+    ) {
+        guard isAuthorized else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "[\(role)] \(spriteName)"
+        content.body = Self.truncatedBody(response)
+        content.sound = .default
+        content.categoryIdentifier = NotificationCategory.btwResponse.rawValue
+        content.userInfo = [
+            "sessionId": sessionId,
+            "subagentId": subagentId,
+            "deepLink": "majortom://office"
+        ]
+
+        let request = UNNotificationRequest(
+            identifier: "btw-\(subagentId)-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+
+        center.add(request)
+    }
+
+    private static func truncatedBody(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > 120 else { return trimmed }
+        let idx = trimmed.index(trimmed.startIndex, offsetBy: 117)
+        return String(trimmed[..<idx]) + "…"
+    }
+
     /// Post a session end notification.
     func postSessionEndNotification(sessionId: String, costUsd: Double) {
         let costString = String(format: "$%.4f", costUsd)
@@ -226,6 +291,13 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             case NotificationAction.deny.rawValue:
                 if let requestId {
                     onApprovalAction?(requestId, false)
+                }
+
+            case NotificationAction.coolBeans.rawValue:
+                // Wave 5 — clear the unread /btw state for the originating sprite.
+                if let sessionId = userInfo["sessionId"] as? String,
+                   let subagentId = userInfo["subagentId"] as? String {
+                    onBtwCoolBeansAction?(sessionId, subagentId)
                 }
 
             case UNNotificationDefaultActionIdentifier:
