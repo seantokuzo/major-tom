@@ -106,11 +106,9 @@ final class RelayService {
     // Auto-approved tools log
     var autoApprovedTools: [AutoApprovedTool] = []
 
-    /// Office view model -- receives agent lifecycle events.
-    /// TODO: [Wave 3] Replace with `officeViewModels: [String: OfficeViewModel]` keyed by sessionId.
-    /// All agent.* and sprite.* events will route to the session-specific OfficeViewModel.
-    /// For now, all events go to this single shared instance (backwards compatible).
-    var officeViewModel: OfficeViewModel?
+    /// Office scene manager — manages per-session OfficeViewModel + OfficeScene pairs.
+    /// Agent.* and sprite.* events are routed to the session-specific OfficeViewModel.
+    var officeSceneManager: OfficeSceneManager?
 
     /// Auth service for token management
     var authService: AuthService?
@@ -293,6 +291,15 @@ final class RelayService {
     func sendAgentMessage(sessionId: String, agentId: String, text: String) async throws {
         let message = AgentMessageMessage(sessionId: sessionId, agentId: agentId, text: text)
         try await webSocket.send(message)
+    }
+
+    /// Request current sprite mappings for a session from the relay.
+    /// The relay responds with a `sprite.state` event containing all active links.
+    func requestSpriteState(for sessionId: String) {
+        let message = SpriteStateRequestMessage(sessionId: sessionId)
+        Task {
+            try? await webSocket.send(message)
+        }
     }
 
     // MARK: - Workspace & Context
@@ -716,8 +723,10 @@ final class RelayService {
 
         case .agentSpawn:
             if let event = try? MessageCodec.decode(AgentSpawnEvent.self, from: data) {
-                // TODO: [Wave 3] Route to per-session OfficeViewModel using sessionId
-                officeViewModel?.handleAgentSpawn(id: event.agentId, role: event.role, task: event.task, parentId: event.parentId)
+                // Route to per-session OfficeViewModel (agent events use currentSession)
+                if let sid = currentSession?.id {
+                    officeSceneManager?.viewModel(for: sid)?.handleAgentSpawn(id: event.agentId, role: event.role, task: event.task, parentId: event.parentId)
+                }
                 notificationService?.postAgentSpawnNotification(
                     agentId: event.agentId,
                     role: event.role,
@@ -731,20 +740,23 @@ final class RelayService {
 
         case .agentWorking:
             if let event = try? MessageCodec.decode(AgentWorkingEvent.self, from: data) {
-                // TODO: [Wave 3] Route to per-session OfficeViewModel using sessionId
-                officeViewModel?.handleAgentWorking(id: event.agentId, task: event.task)
+                if let sid = currentSession?.id {
+                    officeSceneManager?.viewModel(for: sid)?.handleAgentWorking(id: event.agentId, task: event.task)
+                }
             }
 
         case .agentIdle:
             if let event = try? MessageCodec.decode(AgentIdleEvent.self, from: data) {
-                // TODO: [Wave 3] Route to per-session OfficeViewModel using sessionId
-                officeViewModel?.handleAgentIdle(id: event.agentId)
+                if let sid = currentSession?.id {
+                    officeSceneManager?.viewModel(for: sid)?.handleAgentIdle(id: event.agentId)
+                }
             }
 
         case .agentComplete:
             if let event = try? MessageCodec.decode(AgentCompleteEvent.self, from: data) {
-                // TODO: [Wave 3] Route to per-session OfficeViewModel using sessionId
-                officeViewModel?.handleAgentComplete(id: event.agentId, result: event.result)
+                if let sid = currentSession?.id {
+                    officeSceneManager?.viewModel(for: sid)?.handleAgentComplete(id: event.agentId, result: event.result)
+                }
                 notificationService?.postAgentCompleteNotification(
                     agentId: event.agentId,
                     result: event.result
@@ -757,8 +769,9 @@ final class RelayService {
 
         case .agentDismissed:
             if let event = try? MessageCodec.decode(AgentDismissedEvent.self, from: data) {
-                // TODO: [Wave 3] Route to per-session OfficeViewModel using sessionId
-                officeViewModel?.handleAgentDismissed(id: event.agentId)
+                if let sid = currentSession?.id {
+                    officeSceneManager?.viewModel(for: sid)?.handleAgentDismissed(id: event.agentId)
+                }
                 if let sid = currentSession?.id {
                     liveActivityManager?.handleAgentComplete(sessionId: sid)
                 }
@@ -853,9 +866,11 @@ final class RelayService {
         case .achievementUnlocked:
             if let event = try? MessageCodec.decode(AchievementUnlockedEvent.self, from: data) {
                 achievementsViewModel?.handleAchievementUnlocked(event)
-                // Trigger office celebration for a random agent
-                if let agentId = officeViewModel?.agents.filter({ $0.status == .working || $0.status == .idle }).randomElement()?.id {
-                    officeViewModel?.handleAgentCelebration(id: agentId)
+                // Trigger office celebration for a random agent in the current session
+                if let sid = currentSession?.id,
+                   let vm = officeSceneManager?.viewModel(for: sid),
+                   let agentId = vm.agents.filter({ $0.status == .working || $0.status == .idle }).randomElement()?.id {
+                    vm.handleAgentCelebration(id: agentId)
                 }
             }
 
@@ -1117,20 +1132,17 @@ final class RelayService {
 
         case .spriteLink:
             if let event = try? MessageCodec.decode(SpriteLinkEvent.self, from: data) {
-                // TODO: [Wave 3] Route to per-session OfficeViewModel using event.sessionId
-                officeViewModel?.handleSpriteLink(event)
+                officeSceneManager?.viewModel(for: event.sessionId)?.handleSpriteLink(event)
             }
 
         case .spriteUnlink:
             if let event = try? MessageCodec.decode(SpriteUnlinkEvent.self, from: data) {
-                // TODO: [Wave 3] Route to per-session OfficeViewModel using event.sessionId
-                officeViewModel?.handleSpriteUnlink(event)
+                officeSceneManager?.viewModel(for: event.sessionId)?.handleSpriteUnlink(event)
             }
 
         case .spriteState:
             if let event = try? MessageCodec.decode(SpriteStateEvent.self, from: data) {
-                // TODO: [Wave 3] Route to per-session OfficeViewModel using event.sessionId
-                officeViewModel?.handleSpriteState(event)
+                officeSceneManager?.viewModel(for: event.sessionId)?.handleSpriteState(event)
             }
 
         case .error:
@@ -1191,8 +1203,9 @@ final class RelayService {
 
     /// Push latest session state to the widget data store and watch.
     private func updateWidgetData() {
-        let agentCount = officeViewModel?.agents.count ?? 0
-        let activeAgents = officeViewModel?.agents.filter { $0.status == .working || $0.status == .spawning }.count ?? 0
+        let currentVM = currentSession.flatMap { officeSceneManager?.viewModel(for: $0.id) }
+        let agentCount = currentVM?.agents.count ?? 0
+        let activeAgents = currentVM?.agents.filter { $0.status == .working || $0.status == .spawning }.count ?? 0
 
         WidgetDataProvider.updateSessionStatus(.init(
             isActive: currentSession != nil,
@@ -1326,7 +1339,7 @@ final class RelayService {
         if let session = currentSession,
            !watchSessions.contains(where: { $0.id == session.id })
         {
-            let agentCount = officeViewModel?.agents.count ?? 0
+            let agentCount = officeSceneManager?.viewModel(for: session.id)?.agents.count ?? 0
             let watchSession = WatchSession(
                 id: session.id,
                 name: session.workingDir ?? "Session",

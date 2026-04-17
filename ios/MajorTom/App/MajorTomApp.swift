@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct MajorTomApp: App {
     @State private var relay = RelayService()
-    @State private var officeViewModel = OfficeViewModel()
+    @State private var officeSceneManager = OfficeSceneManager()
     @State private var auth = AuthService()
     @State private var notificationService = NotificationService()
     @State private var liveActivityManager = LiveActivityManager()
@@ -26,7 +26,8 @@ struct MajorTomApp: App {
             .onAppear {
                 let achievementsVM = AchievementsViewModel(auth: auth)
                 achievementsViewModel = achievementsVM
-                relay.officeViewModel = officeViewModel
+                relay.officeSceneManager = officeSceneManager
+                officeSceneManager.relay = relay
                 relay.authService = auth
                 relay.notificationService = notificationService
                 relay.liveActivityManager = liveActivityManager
@@ -122,7 +123,7 @@ struct MajorTomApp: App {
                 }
                 .tag(AppTab.terminal)
 
-            OfficeView(viewModel: officeViewModel, relay: relay)
+            OfficeManagerView(sceneManager: officeSceneManager, relay: relay)
                 .tabItem {
                     Label("Office", systemImage: "building.2")
                 }

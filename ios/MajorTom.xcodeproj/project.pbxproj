@@ -23,6 +23,8 @@
 		1A22CF8ACA6F58DD4DE5C89D /* FleetDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 606AFAAEB048B1DBCAEA1309 /* FleetDashboardView.swift */; };
 		1A9E5EAEF36B8610B9A0050F /* SessionTimelineProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FA07A9DCD7F42613309990 /* SessionTimelineProvider.swift */; };
 		1ECF57AD1993033DCCF73DB5 /* OfficeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 794D98FF20DC91F49542FE7D /* OfficeViewModel.swift */; };
+		1ECF57AE2993044ECCF73DC6 /* OfficeSceneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 794D99002EDC92F59643FF8E /* OfficeSceneManager.swift */; };
+		1ECF57AF3993055FCCF73ED7 /* OfficeManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD5008821EC7350E4B0F1BCB /* OfficeManagerView.swift */; };
 		1FB9124E49F11A762382E6A9 /* SpecialtyKeyGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908E6CFCF4E1F5F05D0AE4C3 /* SpecialtyKeyGrid.swift */; };
 		2211645B8B3E1BF5093FE2CD /* MoodEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 579C4AF5EF7599467490F248 /* MoodEngine.swift */; };
 		3A1B2C4D5E6F78901234ABCD /* CrewRoster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B7C8D9E0F1A23456789BCDE /* CrewRoster.swift */; };
@@ -312,6 +314,7 @@
 		7794C5813F5964F288D432AD /* HapticService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticService.swift; sourceTree = "<group>"; };
 		1972DF8FED85D9290EA3F331 /* PerfHUDPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfHUDPreferences.swift; sourceTree = "<group>"; };
 		794D98FF20DC91F49542FE7D /* OfficeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeViewModel.swift; sourceTree = "<group>"; };
+		794D99002EDC92F59643FF8E /* OfficeSceneManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeSceneManager.swift; sourceTree = "<group>"; };
 		7A8199AB9D26A914D6633EF0 /* PermissionModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionModeView.swift; sourceTree = "<group>"; };
 		7B0675DDA1DE8E757F72ECF0 /* AnalyticsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsViewModel.swift; sourceTree = "<group>"; };
 		7FF6122D7FFB5D6E1C71F943 /* GitLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitLogView.swift; sourceTree = "<group>"; };
@@ -359,6 +362,7 @@
 		BBDD93D05B7AFEA1D59E6331 /* NotificationSettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsViewModel.swift; sourceTree = "<group>"; };
 		BC0B8C7069C99E830703066D /* ToolMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolMessageView.swift; sourceTree = "<group>"; };
 		BD500881DC6249D63A9E0ACA /* OfficeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeView.swift; sourceTree = "<group>"; };
+		BD5008821EC7350E4B0F1BCB /* OfficeManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeManagerView.swift; sourceTree = "<group>"; };
 		7D8E9F0A1B2C34567890ABCD /* CrewPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrewPickerView.swift; sourceTree = "<group>"; };
 		BF0C705C7B75FC8AADBDC2F9 /* ModelDistributionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDistributionView.swift; sourceTree = "<group>"; };
 		C0656AE4C6DEE802350E31BF /* MajorTomLiveActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomLiveActivityView.swift; sourceTree = "<group>"; };
@@ -852,6 +856,7 @@
 		53A697AA7BC2945AF0AE4838 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				794D99002EDC92F59643FF8E /* OfficeSceneManager.swift */,
 				794D98FF20DC91F49542FE7D /* OfficeViewModel.swift */,
 			);
 			path = ViewModels;
@@ -1089,6 +1094,7 @@
 				6A6B155FB1E10E586EFA12AC /* AgentInspectorView.swift */,
 				E176705EB6880868FE05573E /* CharacterGalleryView.swift */,
 				7D8E9F0A1B2C34567890ABCD /* CrewPickerView.swift */,
+				BD5008821EC7350E4B0F1BCB /* OfficeManagerView.swift */,
 				BD500881DC6249D63A9E0ACA /* OfficeView.swift */,
 			);
 			path = Views;
@@ -1700,7 +1706,9 @@
 				1016EDC3CDBD61DED804691E /* NotificationSettingsViewModel.swift in Sources */,
 				01CF88DD53BD425A8BB52F59 /* OfficeLayout.swift in Sources */,
 				6E4EDEA7EBF6C0B069F3654C /* OfficeScene.swift in Sources */,
+				1ECF57AF3993055FCCF73ED7 /* OfficeManagerView.swift in Sources */,
 				9F2F95450060416CA67BA3FB /* OfficeView.swift in Sources */,
+				1ECF57AE2993044ECCF73DC6 /* OfficeSceneManager.swift in Sources */,
 				1ECF57AD1993033DCCF73DB5 /* OfficeViewModel.swift in Sources */,
 				3320719E65C7D12EC787C929 /* PairingView.swift in Sources */,
 				818FA51F81C18CFE08B3C097 /* PairingViewModel.swift in Sources */,

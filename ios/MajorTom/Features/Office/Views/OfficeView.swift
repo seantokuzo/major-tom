@@ -22,18 +22,14 @@ private enum OfficeSheetType: Identifiable {
 
 /// SwiftUI wrapper for the SpriteKit office scene.
 /// Manages the bridge between OfficeViewModel state changes and the SKScene.
+/// Now session-aware: gets its viewModel and scene from OfficeSceneManager.
 struct OfficeView: View {
-    @Bindable var viewModel: OfficeViewModel
+    let sessionId: String
+    var sceneManager: OfficeSceneManager
     var relay: RelayService?
 
     @State private var activeSheet: OfficeSheetType?
     @State private var showMiniMap = false
-    @State private var scene: OfficeScene = {
-        let scene = OfficeScene()
-        scene.size = CGSize(width: StationLayout.sceneWidth, height: StationLayout.sceneHeight)
-        scene.scaleMode = .aspectFill
-        return scene
-    }()
 
     /// Space weather engine for cosmetic atmospheric events.
     @State private var spaceWeather = SpaceWeatherEngine()
@@ -42,36 +38,88 @@ struct OfficeView: View {
     @State private var previousAgentIds: Set<String> = []
     @State private var previousStatuses: [String: AgentStatus] = [:]
 
+    @Environment(\.dismiss) private var dismiss
+
+    /// Resolved viewModel from the scene manager.
+    private var viewModel: OfficeViewModel? {
+        sceneManager.viewModel(for: sessionId)
+    }
+
+    /// Resolved scene from the scene manager (triggers cold rebuild if needed).
+    private var currentScene: OfficeScene? {
+        sceneManager.scene(for: sessionId)
+    }
+
     var body: some View {
+        Group {
+            if let viewModel, let scene = currentScene {
+                officeContent(viewModel: viewModel, scene: scene)
+            } else {
+                // Office was closed or not yet created — show placeholder
+                VStack(spacing: MajorTomTheme.Spacing.lg) {
+                    Image(systemName: "building.2.slash")
+                        .font(.system(size: 48))
+                        .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+                    Text("Office not available")
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(MajorTomTheme.Colors.background)
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                if let vm = viewModel {
+                    Text("\(vm.agents.count) agents")
+                        .font(.system(.caption, design: .monospaced, weight: .medium))
+                        .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    sceneManager.closeOffice(for: sessionId)
+                    dismiss()
+                } label: {
+                    Label("Close Office", systemImage: "xmark.circle")
+                        .font(.system(size: 14))
+                        .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+                }
+            }
+        }
+    }
+
+    // MARK: - Office Content
+
+    @ViewBuilder
+    private func officeContent(viewModel: OfficeViewModel, scene: OfficeScene) -> some View {
         ZStack {
             // SpriteKit scene
             SpriteView(scene: scene)
                 .ignoresSafeArea(.all, edges: .bottom)
                 .onChange(of: viewModel.agents) { _, newAgents in
-                    syncScene(with: newAgents)
+                    syncScene(with: newAgents, viewModel: viewModel, scene: scene)
                 }
 
             // Top overlay: agent count + controls
             VStack {
-                topBar
+                topBar(viewModel: viewModel, scene: scene)
                 Spacer()
             }
 
             // Mini-map overlay (shown on long-press of MAP button)
             if showMiniMap {
-                miniMapOverlay
+                miniMapOverlay(scene: scene)
             }
         }
         .onAppear {
             // Resume the SKScene update loop when the Office tab becomes visible.
-            // Paired with `scene.isPaused = true` in `.onDisappear` — idle tabs
-            // should not be running the 60fps SpriteKit render/update loop.
             scene.isPaused = false
             // Wire theme + mood engines and furniture registry to the scene
             scene.themeEngine = viewModel.themeEngine
             scene.moodEngine = viewModel.moodEngine
             // Wire scene's furniture registry into the activity engine
-            // (scene owns it because didMove runs before onAppear)
             viewModel.activityEngine.setFurnitureRegistry(scene.furnitureRegistry)
 
             // Start engines
@@ -85,13 +133,10 @@ struct OfficeView: View {
                 }
             }
 
-            // Start activity cycling — when an activity expires, reassign
+            // Start activity cycling
             viewModel.activityEngine.startCycling { [weak scene, weak viewModel] agentId, _ in
                 guard let viewModel, let scene else { return }
-
-                // Stop the outgoing activity's animation phase
                 viewModel.activityAnimator.stopPhase(for: agentId, furnitureNodes: scene.furnitureNodes)
-
                 guard let agent = viewModel.agents.first(where: { $0.id == agentId }) else { return }
                 let room = scene.currentRoom(for: agentId) ?? ModuleType.crewQuarters.rawValue
                 if let assignment = viewModel.activityEngine.assignActivity(
@@ -100,7 +145,6 @@ struct OfficeView: View {
                     currentRoom: room
                 ) {
                     scene.moveAgentToActivity(id: agentId, assignment: assignment) { sprite in
-                        // Start animation phase when agent arrives at new activity
                         if let definition = ActivityRegistry.shared.activity(byId: assignment.activityId) {
                             viewModel.activityAnimator.startPhase(
                                 agentId: agentId,
@@ -128,10 +172,9 @@ struct OfficeView: View {
             }
         }
         .onDisappear {
-            // Pause the SKScene update loop so a hidden Office tab does not burn
-            // CPU/battery running updateParallax, applyAgentMoods, etc.
+            // Pause the SKScene update loop
             scene.isPaused = true
-            // Stop engines + activity cycling when view disappears
+            // Stop engines + activity cycling
             viewModel.activityAnimator.stopAll(furnitureNodes: scene.furnitureNodes)
             viewModel.themeEngine.stop()
             viewModel.moodEngine.stop()
@@ -164,10 +207,11 @@ struct OfficeView: View {
                             scene.updateAgentName(id: agent.id, name: newName)
                         },
                         onSendMessage: relay != nil ? { message in
-                            guard let sessionId = relay?.currentSession?.id, !sessionId.isEmpty else { return }
+                            let sid = sessionId
+                            guard !sid.isEmpty else { return }
                             Task {
                                 try? await relay?.sendAgentMessage(
-                                    sessionId: sessionId,
+                                    sessionId: sid,
                                     agentId: agent.id,
                                     text: message
                                 )
@@ -188,14 +232,12 @@ struct OfficeView: View {
                     crewRoster: viewModel.crewRoster,
                     onDismiss: {
                         activeSheet = nil
-                        // Repopulate with new preferences
                         viewModel.shuffleCrew()
                     }
                 )
             }
         }
         .onChange(of: activeSheet) { _, newValue in
-            // Sync sheet dismissal back to view model state
             if newValue == nil {
                 if viewModel.selectedAgentId != nil {
                     viewModel.dismissInspector()
@@ -209,9 +251,9 @@ struct OfficeView: View {
 
     // MARK: - Top Bar
 
-    private var topBar: some View {
+    private func topBar(viewModel: OfficeViewModel, scene: OfficeScene) -> some View {
         HStack(spacing: MajorTomTheme.Spacing.sm) {
-            // Map button (opens full mini-map overlay)
+            // Map button
             Button {
                 HapticService.impact(.light)
                 showMiniMap = true
@@ -264,11 +306,8 @@ struct OfficeView: View {
 
     // MARK: - Mini-Map Overlay
 
-    /// Full-screen mini-map overlay showing the 2×4 station grid.
-    /// Tapping a room pair navigates there and dismisses the overlay.
-    private var miniMapOverlay: some View {
+    private func miniMapOverlay(scene: OfficeScene) -> some View {
         ZStack {
-            // Semi-transparent backdrop
             Color.black.opacity(0.75)
                 .ignoresSafeArea()
                 .onTapGesture {
@@ -280,21 +319,18 @@ struct OfficeView: View {
                     .font(.system(.headline, design: .monospaced, weight: .bold))
                     .foregroundStyle(MajorTomTheme.Colors.textSecondary)
 
-                // 2×4 grid of rooms — tap any room to navigate
                 HStack(spacing: 8) {
-                    // Column 1 (top to bottom = row 0 to row 3)
                     VStack(spacing: 4) {
-                        miniMapRoom(.commandBridge, column: 0, row: 0)
-                        miniMapRoom(.engineering, column: 0, row: 1)
-                        miniMapRoom(.crewQuarters, column: 0, row: 2)
-                        miniMapRoom(.galley, column: 0, row: 3)
+                        miniMapRoom(.commandBridge, column: 0, row: 0, scene: scene)
+                        miniMapRoom(.engineering, column: 0, row: 1, scene: scene)
+                        miniMapRoom(.crewQuarters, column: 0, row: 2, scene: scene)
+                        miniMapRoom(.galley, column: 0, row: 3, scene: scene)
                     }
-                    // Column 2
                     VStack(spacing: 4) {
-                        miniMapRoom(.bioDome, column: 1, row: 0)
-                        miniMapRoom(.arboretum, column: 1, row: 1)
-                        miniMapRoom(.trainingBay, column: 1, row: 2)
-                        miniMapRoom(.evaBay, column: 1, row: 3)
+                        miniMapRoom(.bioDome, column: 1, row: 0, scene: scene)
+                        miniMapRoom(.arboretum, column: 1, row: 1, scene: scene)
+                        miniMapRoom(.trainingBay, column: 1, row: 2, scene: scene)
+                        miniMapRoom(.evaBay, column: 1, row: 3, scene: scene)
                     }
                 }
 
@@ -306,33 +342,18 @@ struct OfficeView: View {
         .transition(.opacity)
     }
 
-    /// Camera center for showing two adjacent rows. Derives X from column,
-    /// Y from row pair midpoints using StationLayout dimensions.
     private func cameraCenter(column: Int, tappedRow: Int) -> CGPoint {
         let colX = column == 0 ? StationLayout.col1X : StationLayout.col2X
         let x = colX + StationLayout.roomWidth / 2
-
-        // Each row is roomHeight + corridorHeight. Row pair midpoint:
-        // rows N and N+1 → midY between bottom of N+1 and top of N
         let rh = StationLayout.roomHeight
         let ch = StationLayout.corridorHeight
-
-        // Tapped room becomes the top room, show it + the row below
-        // Exception: last row (3) → show rows 2+3 instead
-        let effectiveRow = min(tappedRow, 2) // Clamp so row 3 maps to pair 2+3
-
-        // Row 0 is at top (highest Y). Row pair N starts at:
-        // topY = sceneHeight - (N * (rh + ch))
-        // bottomY = topY - 2*rh - ch
-        // midY = (topY + bottomY) / 2 = topY - rh - ch/2
+        let effectiveRow = min(tappedRow, 2)
         let topOfPair = StationLayout.sceneHeight - CGFloat(effectiveRow) * (rh + ch)
         let pairY = topOfPair - rh - ch / 2
-
         return CGPoint(x: x, y: pairY)
     }
 
-    /// A single room cell in the mini-map overlay.
-    private func miniMapRoom(_ moduleType: ModuleType, column: Int, row: Int) -> some View {
+    private func miniMapRoom(_ moduleType: ModuleType, column: Int, row: Int, scene: OfficeScene) -> some View {
         return Button {
             let center = cameraCenter(column: column, tappedRow: row)
             scene.snapToCenter(center)
@@ -360,45 +381,36 @@ struct OfficeView: View {
 
     // MARK: - Scene Sync
 
-    /// Diff the current agent list against previous state and update the scene.
-    private func syncScene(with agents: [AgentState]) {
+    private func syncScene(with agents: [AgentState], viewModel: OfficeViewModel, scene: OfficeScene) {
         let currentIds = Set(agents.map(\.id))
 
-        // Add new agents
         for agent in agents where !previousAgentIds.contains(agent.id) {
             scene.addAgent(id: agent.id, name: agent.name, characterType: agent.characterType)
-
-            // Move to desk if assigned
             if let deskIndex = agent.deskIndex {
                 scene.highlightDesk(deskIndex, occupied: true)
                 scene.moveAgentToDesk(id: agent.id, deskIndex: deskIndex)
             }
         }
 
-        // Remove departed agents
         for id in previousAgentIds where !currentIds.contains(id) {
             viewModel.activityAnimator.stopPhase(for: id, furnitureNodes: scene.furnitureNodes)
             scene.removeAgent(id: id)
         }
 
-        // Update status changes
         for agent in agents {
             let previousStatus = previousStatuses[agent.id]
             if previousStatus != agent.status {
-                handleStatusChange(agent: agent, from: previousStatus)
+                handleStatusChange(agent: agent, from: previousStatus, viewModel: viewModel, scene: scene)
             }
         }
 
-        // Update tracking
         previousAgentIds = currentIds
         previousStatuses = Dictionary(uniqueKeysWithValues: agents.map { ($0.id, $0.status) })
     }
 
-    /// Handle an agent's status transition in the scene.
-    private func handleStatusChange(agent: AgentState, from previousStatus: AgentStatus?) {
+    private func handleStatusChange(agent: AgentState, from previousStatus: AgentStatus?, viewModel: OfficeViewModel, scene: OfficeScene) {
         switch agent.status {
         case .spawning:
-            // Already handled in addAgent
             break
 
         case .walking:
@@ -413,7 +425,7 @@ struct OfficeView: View {
             }
 
         case .idle:
-            assignIdleActivity(for: agent)
+            assignIdleActivity(for: agent, viewModel: viewModel, scene: scene)
 
         case .celebrating:
             scene.celebrateAgent(id: agent.id)
@@ -427,19 +439,13 @@ struct OfficeView: View {
         }
     }
 
-    /// Assign an activity to an idle agent. Idle-prefix sprites get a staggered
-    /// delay (0.5–2.5s) so they don't all start walking in the same frame.
-    private func assignIdleActivity(for agent: AgentState) {
+    private func assignIdleActivity(for agent: AgentState, viewModel: OfficeViewModel, scene: OfficeScene) {
         let isIdleSprite = agent.id.hasPrefix("idle-")
 
         let doAssign = { [viewModel, scene] in
-            // Re-verify agent still exists and is idle — staggered tasks can
-            // outlive the agent (remove/claim during the 0.5–2.5s delay would
-            // otherwise occupy furniture for a ghost sprite).
             guard let current = viewModel.agents.first(where: { $0.id == agent.id }),
                   current.status == .idle else { return }
 
-            // Stop any existing animation phase before reassigning
             viewModel.activityAnimator.stopPhase(for: agent.id, furnitureNodes: scene.furnitureNodes)
 
             let room = scene.currentRoom(for: agent.id) ?? ModuleType.crewQuarters.rawValue
@@ -476,14 +482,12 @@ struct OfficeView: View {
         }
 
         if isIdleSprite {
-            // Stagger idle sprites so they don't stampede
             let delay = Double.random(in: 0.5...2.5)
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(delay))
                 doAssign()
             }
         } else {
-            // Real agents assigned immediately
             doAssign()
         }
     }
@@ -501,5 +505,14 @@ struct OfficeView: View {
 }
 
 #Preview {
-    OfficeView(viewModel: OfficeViewModel())
+    NavigationStack {
+        OfficeView(
+            sessionId: "preview",
+            sceneManager: {
+                let mgr = OfficeSceneManager()
+                mgr.createOffice(for: "preview")
+                return mgr
+            }()
+        )
+    }
 }
