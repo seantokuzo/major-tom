@@ -290,19 +290,33 @@ final class OfficeViewModel {
 
     // MARK: - Sprite Protocol Handlers (Wave 2)
 
-    /// Handle `sprite.link` — create a new agent sprite linked to a subagent.
+    /// Handle `sprite.link` — create or upgrade an agent sprite linked to a subagent.
     /// Clone-not-consume: idle sprites are NOT consumed. A new agent sprite instance
     /// is created with the role-mapped CharacterType.
+    ///
+    /// De-duplication: if `agent.spawn` already created an AgentState for this subagentId,
+    /// we UPGRADE the existing agent with sprite link metadata instead of creating a duplicate.
+    /// Primary key is always `subagentId` so that `agent.*` lifecycle handlers find the agent.
     func handleSpriteLink(_ event: SpriteLinkEvent) {
-        // Don't double-create if we already have this sprite handle
-        guard !agents.contains(where: { $0.spriteHandle == event.spriteHandle }) else {
-            // Update existing link if needed
-            if let index = agents.firstIndex(where: { $0.spriteHandle == event.spriteHandle }) {
-                agents[index].linkedSubagentId = event.subagentId
-                agents[index].currentTask = event.task
-                agents[index].canonicalRole = event.canonicalRole
-                agents[index].parentId = event.parentId
+        // Latch sessionId on first sprite event (Wave 3 routing prep)
+        if sessionId == nil {
+            sessionId = event.sessionId
+        }
+
+        // De-dupe: if agent.spawn already created this agent, upgrade it with sprite link info
+        if let existingIndex = agents.firstIndex(where: { $0.id == event.subagentId }) {
+            agents[existingIndex].spriteHandle = event.spriteHandle
+            agents[existingIndex].linkedSubagentId = event.subagentId
+            agents[existingIndex].canonicalRole = event.canonicalRole
+            agents[existingIndex].parentId = event.parentId
+            if let task = Optional(event.task), !task.isEmpty {
+                agents[existingIndex].currentTask = task
             }
+            return
+        }
+
+        // Don't double-create if we already have this sprite handle linked
+        guard !agents.contains(where: { $0.spriteHandle == event.spriteHandle && !isIdleSprite($0.id) }) else {
             return
         }
 
@@ -313,10 +327,11 @@ final class OfficeViewModel {
         )
         sessionRoleBindings = updatedBindings
 
-        let deskIndex = assignNextAvailableDesk(to: event.spriteHandle)
+        // Use subagentId as primary ID so agent.* lifecycle handlers find this agent
+        let deskIndex = assignNextAvailableDesk(to: event.subagentId)
 
         let agent = AgentState(
-            id: event.spriteHandle,
+            id: event.subagentId,
             name: event.canonicalRole.capitalized,
             role: event.canonicalRole,
             characterType: characterType,
@@ -329,12 +344,15 @@ final class OfficeViewModel {
             parentId: event.parentId
         )
         agents.append(agent)
-        moodEngine.addAgent(event.spriteHandle)
+        moodEngine.addAgent(event.subagentId)
     }
 
     /// Handle `sprite.unlink` — despawn the linked sprite.
+    /// Looks up by subagentId first (primary key), falls back to spriteHandle metadata.
     func handleSpriteUnlink(_ event: SpriteUnlinkEvent) {
-        guard let index = agents.firstIndex(where: { $0.spriteHandle == event.spriteHandle }) else {
+        guard let index = agents.firstIndex(where: {
+            $0.id == event.subagentId || $0.spriteHandle == event.spriteHandle
+        }) else {
             return
         }
 
@@ -378,7 +396,13 @@ final class OfficeViewModel {
 
     /// Handle `sprite.state` — bulk restore all sprite mappings (reconnect).
     /// Clears any existing agent sprites (non-idle) and rebuilds from relay state.
+    /// Uses `subagentId` as the primary AgentState.id so agent.* handlers find them.
     func handleSpriteState(_ event: SpriteStateEvent) {
+        // Latch sessionId on reconnect sync (Wave 3 routing prep)
+        if sessionId == nil {
+            sessionId = event.sessionId
+        }
+
         // Remove all existing non-idle agent sprites
         let nonIdleIds = agents.filter { !isIdleSprite($0.id) }.map(\.id)
         for id in nonIdleIds {
@@ -388,7 +412,7 @@ final class OfficeViewModel {
         // Reset role bindings for this session
         sessionRoleBindings = [:]
 
-        // Rebuild from relay mappings
+        // Rebuild from relay mappings — primary key is subagentId
         for mapping in event.mappings {
             let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
                 role: mapping.canonicalRole,
@@ -404,10 +428,10 @@ final class OfficeViewModel {
             default: status = .working
             }
 
-            let deskIndex = assignNextAvailableDesk(to: mapping.spriteHandle)
+            let deskIndex = assignNextAvailableDesk(to: mapping.subagentId)
 
             let agent = AgentState(
-                id: mapping.spriteHandle,
+                id: mapping.subagentId,
                 name: mapping.canonicalRole.capitalized,
                 role: mapping.canonicalRole,
                 characterType: characterType,
@@ -420,7 +444,7 @@ final class OfficeViewModel {
                 parentId: mapping.parentId
             )
             agents.append(agent)
-            moodEngine.addAgent(mapping.spriteHandle)
+            moodEngine.addAgent(mapping.subagentId)
         }
     }
 }
