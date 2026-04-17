@@ -99,15 +99,16 @@ This project uses a **thin orchestrator, fat workers** pattern:
 
 ### PR Review Pipeline
 
-After creating any PR, agents MUST run the review pipeline:
-1. Poll for Copilot review comments (auto-requested)
-2. Address ALL comments, push fixes, reply inline
-3. Re-poll for round 2, fix and push
-4. Repeat up to 3 rounds until clean
-5. After a clean round (no new comments), merge the PR via `gh pr merge --merge`
-6. Pull merged changes to local main
+Canonical rules live in `~/.claude/CLAUDE.md` under **"PR Review Workflow"**. Summary:
 
-See `.agents/skills/pr-review-pipeline/SKILL.md` for full workflow.
+1. **Polling:** 2m first poll, 1m subsequent. Never poll sooner.
+2. **Completion detection:** count reviews with body containing `"Pull request overview"`. Round N is complete when N such reviews exist.
+3. **5-comment threshold:** `<5` comments in the round → merge. `≥5` → request another round.
+4. **Replies:** inline to each comment thread (never batched), with commit SHA for fixes or cited reasoning for pushback.
+5. **Post-merge:** `git checkout main && git pull`, update `docs/STATE.md`, prep next phase prompt.
+6. **Override:** if the user says "wait for me", stop after PR creation — don't poll/merge.
+
+Execution details (bash commands, triage table, reply formats) are in `.agents/skills/pr-review-pipeline/SKILL.md`. That skill MUST align with the canonical rules — if it drifts, fix the skill.
 
 ### Context Management
 

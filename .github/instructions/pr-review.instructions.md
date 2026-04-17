@@ -4,6 +4,17 @@ applyTo: "**/*"
 
 # PR Review — Addressing Copilot Comments
 
+> Canonical polling/threshold rules live in `~/.claude/CLAUDE.md` (PR Review Workflow section) and `CLAUDE.md` (project). This file covers the triage posture for individual comments.
+
+## Polling & Threshold (summary)
+
+- **First poll:** 2 minutes minimum after PR creation or pushing fixes
+- **Subsequent polls:** 1 minute intervals
+- **Completion:** count reviews with body containing `"Pull request overview"` — round N is done when N such reviews exist
+- **Threshold:** `<5` comments in the round → merge. `≥5` → request another round.
+
+Full bash flow: `.agents/skills/pr-review-pipeline/SKILL.md`
+
 ## Comment Categorization
 
 When Copilot reviews a PR, categorize each comment:
@@ -37,14 +48,18 @@ When Copilot reviews a PR, categorize each comment:
 | Future feature requests | **Respond** | Out of scope |
 | Architecture opinions | **Respond** | Design decisions already made |
 | Valid but out of scope | **Defer** | Note for future work |
+| Defensive code for impossible scenarios | **Respond** | Cite framework guarantee |
 
 ## Workflow
 
 ### 1. Fetch Comments
 
 ```bash
-gh api repos/seantokuzo/major-tom/pulls/{number}/comments
+gh api repos/seantokuzo/major-tom/pulls/{number}/comments \
+  --jq '.[] | select(.in_reply_to_id == null) | {id, path, line: (.line // .original_line), body: (.body | split("\n")[0])}'
 ```
+
+Ignore replies from previous rounds — focus on top-level comments only.
 
 ### 2. Categorize
 
@@ -52,16 +67,16 @@ Sort every comment into fix-now / respond / defer.
 
 ### 3. Fix
 
-Address all fix-now items. Run CI after fixes. Commit with descriptive message.
+Address all fix-now items. Verify build after fixes. Commit with descriptive message.
 
-### 4. Reply to EVERY Comment
+### 4. Reply Inline to EVERY Comment
 
-Reply individually to each comment explaining what was done:
+Reply individually to each comment in its thread — **never** as an unlinked PR-level comment.
 
 ```bash
 # Fixed
 gh api repos/seantokuzo/major-tom/pulls/{number}/comments/{id}/replies \
-  -f body="Fixed in commit abc1234."
+  -f body="Fixed in commit abc1234 — brief description of the change."
 
 # Not applicable
 gh api repos/seantokuzo/major-tom/pulls/{number}/comments/{id}/replies \
@@ -69,42 +84,47 @@ gh api repos/seantokuzo/major-tom/pulls/{number}/comments/{id}/replies \
 
 # Deferred
 gh api repos/seantokuzo/major-tom/pulls/{number}/comments/{id}/replies \
-  -f body="Valid point. Noted for Phase 2 when we add retry logic."
+  -f body="Valid point. Tracked as issue #N — tech-debt."
+
+# Pushback (comment is wrong or marginal)
+gh api repos/seantokuzo/major-tom/pulls/{number}/comments/{id}/replies \
+  -f body="Pushing back — {reasoning}. {Framework/type guarantee that makes the comment wrong}."
 ```
 
-### 5. Summary Comment
+### 5. Apply Threshold & Merge or Re-round
 
-After addressing all comments, leave a summary on the PR:
+Count top-level comments in the round you just handled.
 
-```bash
-gh pr comment {number} --body "Addressed Copilot review:
-- Fixed: [list]
-- Responded: [list]
-- Deferred: [list]
+- **`<5` → merge immediately.** `gh pr merge {number} --merge --delete-branch`
+- **`≥5` → request another round.** Poll again with 2m→1m cadence.
 
-All CI passing."
-```
+Do NOT leave a summary PR-level comment — inline replies are the audit trail.
 
 ## Response Templates
 
 ```markdown
 # Fixed
-Fixed in commit abc1234.
+Fixed in commit abc1234 — {what changed}.
 
 # Not applicable
-Not applicable — [specific reason why this doesn't apply to our architecture].
+Not applicable — {specific reason why this doesn't apply to our architecture}.
 
 # Intentional
-Intentional design decision — [reason]. See PLANNING.md [section].
+Intentional design decision — {reason}. See PLANNING.md {section}.
 
 # Deferred
-Valid improvement. Noted for Phase N work.
+Valid improvement. Tracked as issue #N (tech-debt).
+
+# Pushback
+Pushing back — {reasoning}. {Framework/type/convention guarantee}.
+Happy to revisit if this ever fires in the wild.
 ```
 
 ## Key Principles
 
 - **Don't blindly fix everything** — Copilot lacks project context
-- **Always reply** — Close the loop on every comment
-- **Include commit links** — When fixing, reference the specific commit
-- **Batch fixes** — Fix all issues, run CI once, then reply to all
+- **Reply inline to every comment** — close the loop on each thread individually
+- **Include commit SHA** — when fixing, reference the specific commit
+- **Batch fixes, not replies** — fix all issues in one push, then reply inline to each
 - **Be specific** — "Not applicable because X" not just "Not applicable"
+- **No summary comment** — inline replies are the audit trail; PR-level summaries are noise

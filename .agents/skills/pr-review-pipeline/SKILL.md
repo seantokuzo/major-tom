@@ -30,20 +30,39 @@ Automated code review workflow. After creating a PR, run this pipeline to ensure
 
 ### Step 1: Wait for Copilot Review
 
-Copilot is auto-requested as a reviewer on all PRs. Wait for it to post comments.
+Copilot is auto-requested as a reviewer on all PRs — do **not** manually add it.
+
+**Polling cadence (mandatory, canonical in `~/.claude/CLAUDE.md`):**
+- First poll: **2 minutes minimum** after PR creation (or after pushing fix commits)
+- Subsequent polls: **1 minute intervals**
+- Pattern: `trigger → 2m → check → 1m → check → 1m → …`
+
+Polling sooner produces false "no review yet" reports and burns cycles. Do not shortcut this.
+
+**Detecting round completion:**
+
+Each Copilot review produces a review whose body contains the literal string **"Pull request overview"**. Round N is complete when there are **N** such reviews on the PR.
 
 ```bash
-# Poll every 30s for up to 3 minutes
-for i in {1..6}; do
-  COMMENTS=$(gh api repos/{OWNER}/{REPO}/pulls/{PR_NUMBER}/comments --jq 'length')
-  if [ "$COMMENTS" -gt 0 ]; then
-    echo "Found $COMMENTS review comments"
+PR={PR_NUMBER}
+EXPECTED_ROUND=1  # increment this for each subsequent round
+
+# Initial 2-minute wait — do not skip
+sleep 120
+
+while true; do
+  ROUND_COUNT=$(gh api repos/{OWNER}/{REPO}/pulls/$PR/reviews \
+    --jq '[.[] | select(.body != null) | select(.body | test("Pull request overview"; "i"))] | length')
+  if [ "$ROUND_COUNT" -ge "$EXPECTED_ROUND" ]; then
+    echo "Round $EXPECTED_ROUND complete ($ROUND_COUNT overview reviews on PR)"
     break
   fi
-  echo "Waiting for review... (attempt $i/6)"
-  sleep 30
+  echo "Waiting for round $EXPECTED_ROUND review (have $ROUND_COUNT overviews)..."
+  sleep 60
 done
 ```
+
+**Do NOT** use inline comment count as a completion signal — it says nothing about whether Copilot finished analyzing.
 
 ### Step 2: Read All Comments
 
@@ -140,6 +159,8 @@ echo "Round had $ROUND_COUNT comments"
 
 ### Step 8: Re-Request Review for Another Round (only if ≥5 comments)
 
+After pushing fix commits, Copilot is typically auto-re-requested. If it isn't, force it:
+
 ```bash
 # Copilot reviewer login MUST include the [bot] suffix literally
 gh api repos/{OWNER}/{REPO}/pulls/{PR_NUMBER}/requested_reviewers \
@@ -149,17 +170,20 @@ gh api repos/{OWNER}/{REPO}/pulls/{PR_NUMBER}/requested_reviewers \
 EOF
 ```
 
-Then poll for the next round:
+Then poll with the canonical cadence (2m first, 1m subsequent), incrementing the expected round count:
 
 ```bash
-sleep 60
-NEW_REVIEW=$(gh api repos/{OWNER}/{REPO}/pulls/{PR}/reviews \
-  --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]" or .user.login == "Copilot")] | sort_by(.submitted_at) | last | .id')
-
-# If NEW_REVIEW differs from LATEST_REVIEW, a new round landed — go back to Step 2
+EXPECTED_ROUND=2  # or whichever round we're now waiting for (N+1 from previous round)
+sleep 120
+while true; do
+  ROUND_COUNT=$(gh api repos/{OWNER}/{REPO}/pulls/$PR/reviews \
+    --jq '[.[] | select(.body != null) | select(.body | test("Pull request overview"; "i"))] | length')
+  if [ "$ROUND_COUNT" -ge "$EXPECTED_ROUND" ]; then break; fi
+  sleep 60
+done
 ```
 
-Repeat Steps 2–7 until a round lands with `<5` comments.
+Go back to Step 2 and repeat until a round lands with `<5` top-level comments.
 
 ### Step 9: Merge
 
