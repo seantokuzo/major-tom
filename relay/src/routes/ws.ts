@@ -733,7 +733,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
               agentId: m.agentId,
               role: m.role,
               characterType: m.characterType,
-              deskIndex: m.deskIndex,
+              ...(m.deskIndex !== undefined && m.deskIndex >= 0 ? { deskIndex: m.deskIndex } : {}),
               linkedAt: m.linkedAt,
             })),
             roleBindings: resumeSpriteState.roleBindings,
@@ -1845,8 +1845,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           const completeState = spriteMappings.get(sid);
           if (completeState) {
             const idx = completeState.mappings.findIndex(m => m.agentId === event.agentId);
-            if (idx >= 0) {
-              const removed = completeState.mappings[idx];
+            const removed = idx >= 0 ? completeState.mappings[idx] : undefined;
+            if (removed) {
               completeState.mappings.splice(idx, 1);
               completeState.updatedAt = new Date().toISOString();
               spriteMappingPersistence.save(completeState);
@@ -1869,8 +1869,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           const dismissState = spriteMappings.get(sid);
           if (dismissState) {
             const idx = dismissState.mappings.findIndex(m => m.agentId === event.agentId);
-            if (idx >= 0) {
-              const removed = dismissState.mappings[idx];
+            const removed = idx >= 0 ? dismissState.mappings[idx] : undefined;
+            if (removed) {
               dismissState.mappings.splice(idx, 1);
               dismissState.updatedAt = new Date().toISOString();
               spriteMappingPersistence.save(dismissState);
@@ -1939,7 +1939,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     // ── Cold boot cleanup: remove stale sprite mapping files ──
     // On startup, scan for mapping files that don't correspond to a live
     // session and delete them (relay crashed and left orphans).
-    spriteMappingPersistence.listStale((sid) => fleetManager.hasSession(sid))
+    spriteMappingPersistence.listStale((sid) => fleetManager.hasSession(sid) || sessionManager.isPersistedOnly(sid))
       .then(async (stale) => {
         for (const sid of stale) {
           await spriteMappingPersistence.delete(sid);

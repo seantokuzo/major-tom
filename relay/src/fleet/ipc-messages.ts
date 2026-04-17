@@ -86,8 +86,7 @@ export type ParentToChildMessage =
   | IpcAgentMessage
   | IpcContextAdd
   | IpcContextRemove
-  | IpcPermissionMode
-  | IpcSpriteMessage;
+  | IpcPermissionMode;
 
 // ── Child → Parent Messages ────────────────────────────────
 
@@ -226,6 +225,5 @@ export function isParentToChildMessage(msg: unknown): msg is ParentToChildMessag
     'ipc:context.add',
     'ipc:context.remove',
     'ipc:permission.mode',
-    'ipc:sprite.message',
   ].includes(typed.type);
 }

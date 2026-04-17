@@ -1115,7 +1115,7 @@ export interface SpriteMappingEntry {
   agentId: string;
   role: string;
   characterType: string;
-  deskIndex: number;
+  deskIndex?: number;
   linkedAt: string;
 }
 
