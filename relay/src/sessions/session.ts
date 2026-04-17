@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { SessionTranscript } from './session-transcript.js';
 
-export type AdapterType = 'cli' | 'vscode';
+/**
+ * `cli-external` marks sessions registered by Claude Code's SessionStart hook
+ * running inside an iOS terminal tab, as opposed to `cli` sessions started via
+ * iOS `session.start` RPC (Agent SDK) or `vscode` bridge sessions.
+ */
+export type AdapterType = 'cli' | 'vscode' | 'cli-external';
 export type SessionStatus = 'active' | 'idle' | 'closed';
 
 export interface SessionInfo {
@@ -58,8 +63,8 @@ export class Session {
   /** total bytes of all context files */
   contextSize: number = 0;
 
-  constructor(adapter: AdapterType, workingDir: string) {
-    this.id = randomUUID();
+  constructor(adapter: AdapterType, workingDir: string, id?: string) {
+    this.id = id ?? randomUUID();
     this.adapter = adapter;
     this.workingDir = workingDir;
     this.startedAt = new Date().toISOString();

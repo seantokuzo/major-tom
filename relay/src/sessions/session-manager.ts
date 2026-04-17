@@ -42,6 +42,32 @@ export class SessionManager {
     return session;
   }
 
+  /**
+   * Register a claude session discovered via the SessionStart hook inside an
+   * iOS terminal tab. Unlike `create()`, the caller supplies claude's own
+   * session_id (the one the CLI emits on stdin) so that later hook payloads
+   * and stream-events correlate back to the same Session. If a session with
+   * this id already exists it is returned unchanged (hooks can fire twice
+   * in edge cases; idempotence keeps ledger accounting stable).
+   */
+  registerExternal(sessionId: string, workingDir: string): Session {
+    const existing = this.sessions.get(sessionId);
+    if (existing) {
+      logger.debug(
+        { sessionId, adapter: existing.adapter },
+        'registerExternal: session already exists, returning it',
+      );
+      return existing;
+    }
+    const session = new Session('cli-external', workingDir, sessionId);
+    this.sessions.set(session.id, session);
+    logger.info(
+      { sessionId: session.id, adapter: session.adapter, workingDir },
+      'External session registered via SessionStart hook',
+    );
+    return session;
+  }
+
   get(sessionId: string): Session {
     const session = this.sessions.get(sessionId);
     if (!session) {
