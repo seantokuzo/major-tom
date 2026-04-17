@@ -798,20 +798,22 @@ final class AgentSprite: SKSpriteNode {
                 SKAction.run { lbl.text = label },
                 SKAction.fadeIn(withDuration: 0.15),
             ]))
-            // Resize background to fit new label.
-            bg.run(SKAction.run { [weak self, weak bg] in
-                guard let bg else { return }
-                let parent = bg.parent
-                bg.removeFromParent()
-                let newBG = SKShapeNode(rectOf: CGSize(width: bubbleWidth, height: 16), cornerRadius: 4)
-                newBG.fillColor = SKColor(white: 0.1, alpha: 0.85)
-                newBG.strokeColor = SKColor(red: 0.35, green: 0.75, blue: 1.0, alpha: 0.5)
-                newBG.lineWidth = 0.5
-                newBG.position = CGPoint(x: 0, y: bubbleY)
-                newBG.zPosition = 18
-                parent?.addChild(newBG)
-                self?.toolBubbleBG = newBG
-            })
+            // Resize background in-place by updating its path. Avoids the
+            // previous queued-SKAction race where hideToolBubble() could run
+            // before the resize action fired, leaving an orphaned background.
+            let bubbleHeight: CGFloat = 16
+            let rect = CGRect(
+                x: -bubbleWidth / 2,
+                y: -bubbleHeight / 2,
+                width: bubbleWidth,
+                height: bubbleHeight
+            )
+            bg.path = CGPath(
+                roundedRect: rect,
+                cornerWidth: 4,
+                cornerHeight: 4,
+                transform: nil
+            )
         } else {
             // Build fresh
             let bg = SKShapeNode(rectOf: CGSize(width: bubbleWidth, height: 16), cornerRadius: 4)

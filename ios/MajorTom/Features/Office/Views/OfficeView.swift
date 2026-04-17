@@ -54,6 +54,12 @@ struct OfficeView: View {
     /// is holding the slot for 5s). Used to restore when the hold expires.
     @State private var toolBubbleHolds: Set<String> = []
 
+    /// Per-sprite restore tasks for the 5s tool-bubble hold. Tracked so a new
+    /// preview arriving within an existing 5s window cancels the previous
+    /// restore Task — otherwise two overlapping timers would clear the hold
+    /// early.
+    @State private var toolBubbleHoldTasks: [String: Task<Void, Never>] = [:]
+
     /// Snapshot of sprite progress metrics for diffing.
     @State private var previousProgressMetrics: [String: OfficeViewModel.ProgressMetrics] = [:]
 
@@ -154,6 +160,8 @@ struct OfficeView: View {
                     previousToolLabels = [:]
                     previousProgressMetrics = [:]
                     toolBubbleHolds = []
+                    for (_, task) in toolBubbleHoldTasks { task.cancel() }
+                    toolBubbleHoldTasks = [:]
                     syncUnreadGlows(ids: viewModel.unreadResponseSpriteIds, scene: scene)
                     fireBubblePreviews(viewModel.pendingBubblePreviews, viewModel: viewModel, scene: scene)
                     syncRoleAuras(ids: viewModel.spriteAuraActive, viewModel: viewModel, scene: scene)
@@ -468,14 +476,21 @@ struct OfficeView: View {
             if viewModel.spriteToolLabels[spriteId] != nil {
                 scene.hideToolBubble(on: spriteId)
                 toolBubbleHolds.insert(spriteId)
+                // Cancel any existing restore task for this sprite so a second
+                // preview inside the 5s window doesn't let a stale timer clear
+                // the hold early.
+                toolBubbleHoldTasks[spriteId]?.cancel()
                 // After 5s, if the tool is still active, re-show it.
-                Task { @MainActor in
+                let task = Task { @MainActor in
                     try? await Task.sleep(for: .seconds(5))
+                    guard !Task.isCancelled else { return }
                     if let label = viewModel.spriteToolLabels[spriteId] {
                         scene.showToolBubble(on: spriteId, label: label)
                     }
                     toolBubbleHolds.remove(spriteId)
+                    toolBubbleHoldTasks[spriteId] = nil
                 }
+                toolBubbleHoldTasks[spriteId] = task
             }
             scene.showResponsePreviewBubble(on: spriteId, text: shortPreview(text))
             firedPreviewIds.insert(spriteId)

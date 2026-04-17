@@ -15,18 +15,19 @@ enum ToolHumanizer {
     /// Case-insensitive on the tool name.
     static func label(for tool: String, input: [String: AnyCodableValue]? = nil) -> String {
         _ = input  // Reserved for future input-aware labels (file names, commands, etc.)
-        switch tool {
-        case "Read":          return "reading files…"
-        case "Write":         return "writing code…"
-        case "Edit":          return "editing code…"
-        case "Bash":          return "running commands…"
-        case "Grep":          return "searching…"
-        case "Glob":          return "finding files…"
-        case "Task":          return "spawning helper…"
-        case "WebSearch":     return "searching the web…"
-        case "WebFetch":      return "fetching a page…"
-        case "TodoWrite":     return "updating todos…"
-        case "NotebookEdit":  return "editing notebook…"
+        let normalizedTool = tool.lowercased()
+        switch normalizedTool {
+        case "read":          return "reading files…"
+        case "write":         return "writing code…"
+        case "edit":          return "editing code…"
+        case "bash":          return "running commands…"
+        case "grep":          return "searching…"
+        case "glob":          return "finding files…"
+        case "task":          return "spawning helper…"
+        case "websearch":     return "searching the web…"
+        case "webfetch":      return "fetching a page…"
+        case "todowrite":     return "updating todos…"
+        case "notebookedit":  return "editing notebook…"
         default:              return "working…"
         }
     }
