@@ -4,7 +4,7 @@
 
 ## Current Phase (in flight)
 
-**Sprite-Agent Wiring** — Waves 1-4 shipped, Wave 5 (visual diff + notifications) in flight. Spec: `docs/PHASE-SPRITE-AGENT-WIRING.md`. Memory: `project_sprite_agent_wiring_phase.md`.
+**Sprite-Agent Wiring** — Waves 1-5 shipped, Wave 6 (edge cases + battle test) in flight — final wave. Spec: `docs/PHASE-SPRITE-AGENT-WIRING.md`. Memory: `project_sprite_agent_wiring_phase.md`.
 
 ### Sprite-Agent Wiring
 
@@ -17,8 +17,8 @@ Makes the sprite metaphor functionally real — tapping a sprite does something 
 | 3 — Office Manager + Multi-Session | Relay: sprite.state.request query endpoint. iOS: OfficeManagerView, OfficeSceneManager, per-session event routing, LRU scene lifecycle, cold rebuild | SHIPPED (#140, #141) |
 | — | **Review Round** | DONE (#142) — protocol alignment, session cleanup, schema migration |
 | 4 — `/btw` Messaging Delivery | Relay BtwQueue + JSON-safe constraint framing + single-in-flight guard + dropByMessageId. iOS modal flow, dog canned pools, idle human inspector, cross-session banner, green-glow preview. | SHIPPED (#143, #144) |
-| 5 — Visual Differentiation + Notifications | Role aura, tool-event bubbles, progress, local push | IN FLIGHT |
-| 6 — Edge Cases + Battle Test | Race conditions, disconnect/reconnect, persistence cascade | QUEUED |
+| 5 — Visual Differentiation + Notifications | Relay: per-subagent tool events + toolCount/tokenCount metrics. iOS: role aura (locked palette), tool-event bubbles, mini progress, M3 bubble priority, UNUserNotification with Cool Beans action. | SHIPPED (#145, #146) |
+| 6 — Edge Cases + Battle Test | Race conditions, disconnect/reconnect, persistence cascade, fast-complete animations | IN FLIGHT |
 
 ### Optimization phase (COMPLETE)
 
