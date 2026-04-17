@@ -104,7 +104,7 @@ struct OfficeLayout {
     /// chair, tactical display, status screens) all sit at the TOP of the
     /// module, so the lower band is clear.
     ///
-    /// Grid: 6 columns × 3 rows = 18 slots. Sprite width is ~32pt, so 80pt
+    /// Grid: 7 columns × 3 rows = 21 slots. Sprite width is ~32pt, so 80pt
     /// column spacing + 70pt row spacing keeps overflow sprites from overlapping.
     static let overflowPositions: [CGPoint] = {
         var points: [CGPoint] = []

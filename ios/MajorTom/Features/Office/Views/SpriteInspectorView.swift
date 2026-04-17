@@ -36,6 +36,11 @@ struct SpriteInspectorView: View {
     /// despawns while the user had the inspector open (scenario 9 downgrade).
     @State private var agentCompletedToast: String?
 
+    /// Pending hide Task for the toast. Stored so a second toast firing inside
+    /// the 2.5s window cancels the stale hide Task — otherwise the older timer
+    /// clears the newer toast early.
+    @State private var agentCompletedToastHideTask: Task<Void, Never>?
+
     private enum Mode {
         case linked
         case dog
@@ -637,13 +642,19 @@ struct SpriteInspectorView: View {
 
     /// Surface a short "agent completed" banner, clear the draft, and auto-hide
     /// after 2.5s. Triggered when the inspector's linked sprite despawned mid-type.
+    ///
+    /// Cancels any prior hide Task so a second toast firing inside the 2.5s
+    /// window doesn't let a stale timer clear the newer toast early.
     private func showAgentCompletedToast() {
         draft = ""
         HapticService.impact(.soft)
         agentCompletedToast = "Agent completed — /btw isn't available anymore."
-        Task { @MainActor in
+        agentCompletedToastHideTask?.cancel()
+        agentCompletedToastHideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled else { return }
             agentCompletedToast = nil
+            agentCompletedToastHideTask = nil
         }
     }
 }

@@ -66,10 +66,6 @@ struct OfficeView: View {
     /// Snapshot of sprite IDs currently grayed out as disconnected, for diffing.
     @State private var previousDisconnectedIds: Set<String> = []
 
-    /// Pending Task that applies the disconnect gray-out after the 1s debounce.
-    /// Held so a quick reconnect can cancel it without flashing gray sprites.
-    @State private var disconnectDebounceTask: Task<Void, Never>?
-
     /// Activated scene — populated in onAppear, avoids side effects in body.
     @State private var activatedScene: OfficeScene?
 
@@ -595,31 +591,24 @@ struct OfficeView: View {
         previousDisconnectedIds = ids
     }
 
-    /// Debounced disconnect/reconnect handler (S4).
+    /// Debounced disconnect/reconnect handler (S4). The debounce itself lives
+    /// on `OfficeViewModel` so the pending Task survives view appear/disappear
+    /// cycles — this function only dispatches connection-state transitions to
+    /// the view model and triggers relay-side side effects on reconnect.
     ///
-    /// - On `.disconnected` or `.reconnecting`: schedule a 1-second Task that
-    ///   gray-outs all non-idle sprites. A quick reconnect inside the window
-    ///   cancels the Task so nothing flashes.
-    /// - On `.connected`: cancel any pending gray-out, clear any existing
-    ///   gray-out, flush queued sprite messages, and re-request sprite state
-    ///   from the relay so the scene reconciles any subagents that
-    ///   completed/spawned during the drop.
+    /// - On `.disconnected` or `.reconnecting`: ask the view model to start
+    ///   the 1-second debounce. A quick reconnect cancels it before any
+    ///   gray-out is applied.
+    /// - On `.connected`: ask the view model to resolve, then flush queued
+    ///   sprite messages and re-request sprite state from the relay so the
+    ///   scene reconciles any subagents that completed/spawned during the drop.
     private func handleConnectionStateChange(_ newState: ConnectionState?, viewModel: OfficeViewModel) {
         switch newState {
         case .disconnected, .reconnecting:
-            // Cancel any prior debounce Task — we only need one pending.
-            disconnectDebounceTask?.cancel()
-            let vm = viewModel
-            disconnectDebounceTask = Task { @MainActor in
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
-                vm.markAllAgentsDisconnected()
-            }
+            viewModel.beginDisconnectDebounce()
 
         case .connected:
-            disconnectDebounceTask?.cancel()
-            disconnectDebounceTask = nil
-            viewModel.clearDisconnectedState()
+            viewModel.resolveReconnect()
             if let sid = viewModel.sessionId {
                 relay?.flushQueuedSpriteMessages(for: sid)
                 relay?.requestSpriteState(for: sid)

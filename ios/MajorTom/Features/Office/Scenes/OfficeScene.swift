@@ -1832,12 +1832,6 @@ final class OfficeScene: SKScene {
         agentSprites[agentId]?.hideDisconnectedState()
     }
 
-    /// True if the named sprite is currently in the disconnected visual state.
-    /// Used by OfficeView to gate inspector messaging.
-    func isSpriteDisconnected(_ agentId: String) -> Bool {
-        agentSprites[agentId]?.isDisconnected ?? false
-    }
-
     // MARK: - Overflow Placement (Wave 6 — S5)
 
     /// Walk the agent to a programmatic overflow position in the work room

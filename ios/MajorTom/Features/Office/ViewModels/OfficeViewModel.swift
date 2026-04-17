@@ -101,6 +101,16 @@ final class OfficeViewModel {
     /// the idle sprite pool unaffected.
     var disconnectedSpriteIds: Set<String> = []
 
+    /// Pending debounce Task that applies the disconnect gray-out after the
+    /// 1s debounce window. Owned by the view model so it survives view
+    /// appear/disappear cycles — a drop that starts while the Office is
+    /// visible still resolves correctly if the user backgrounds the view.
+    private var disconnectDebounceTask: Task<Void, Never>?
+
+    /// Debounce window before a disconnect paints sprites gray. Short enough
+    /// to surface long drops, long enough to swallow WebSocket blips.
+    private static let disconnectDebounceSeconds: TimeInterval = 1
+
     // MARK: - Overflow Placement (Wave 6 — S5)
 
     /// Overflow positions currently claimed by agent sprites, keyed by agent id.
@@ -400,7 +410,7 @@ final class OfficeViewModel {
 
     /// Claim the first free overflow slot for an agent.
     /// Returns nil if every overflow point is already occupied (shouldn't
-    /// happen in practice — overflow pool is 18, way beyond reasonable
+    /// happen in practice — overflow pool is 21 (7×3), way beyond reasonable
     /// concurrent-subagent count).
     private func claimOverflowPosition(for agentId: String) -> CGPoint? {
         let taken = Set(claimedOverflowPositions.values.map { point in
@@ -481,6 +491,29 @@ final class OfficeViewModel {
     /// Clear the disconnected flag on all sprites (reconcile handled elsewhere).
     func clearDisconnectedState() {
         disconnectedSpriteIds.removeAll()
+    }
+
+    /// Relay dropped or is reconnecting. Schedules the gray-out after the
+    /// debounce window; a quick reconnect cancels it before anything paints.
+    ///
+    /// Lives on the ViewModel (not the view) so the Task survives view
+    /// disappearance — otherwise the sprites would remain stuck in whatever
+    /// state the last render left them in if the user navigated away mid-drop.
+    func beginDisconnectDebounce() {
+        disconnectDebounceTask?.cancel()
+        disconnectDebounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.disconnectDebounceSeconds))
+            guard let self, !Task.isCancelled else { return }
+            self.markAllAgentsDisconnected()
+            self.disconnectDebounceTask = nil
+        }
+    }
+
+    /// Relay reconnected. Cancel any pending debounce and clear gray-out.
+    func resolveReconnect() {
+        disconnectDebounceTask?.cancel()
+        disconnectDebounceTask = nil
+        clearDisconnectedState()
     }
 
     // MARK: - Sprite Protocol Handlers (Wave 2)
