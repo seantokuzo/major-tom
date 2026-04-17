@@ -4,7 +4,7 @@
 
 ## Current Phase (in flight)
 
-**Sprite-Agent Wiring** — Waves 1-5 shipped, Wave 6 (edge cases + battle test) in flight — final wave. Spec: `docs/PHASE-SPRITE-AGENT-WIRING.md`. Memory: `project_sprite_agent_wiring_phase.md`.
+**Sprite-Agent Wiring** — ALL 6 WAVES SHIPPED (2026-04-17). Sprite metaphor is functionally real: tap, /btw, response bubbles, role auras, tool bubbles, progress, local push, disconnect/reconnect, desk overflow, persistence cascade. Spec: `docs/PHASE-SPRITE-AGENT-WIRING.md`. Memory: `project_sprite_agent_wiring_phase.md`.
 
 ### Sprite-Agent Wiring
 
@@ -18,7 +18,7 @@ Makes the sprite metaphor functionally real — tapping a sprite does something 
 | — | **Review Round** | DONE (#142) — protocol alignment, session cleanup, schema migration |
 | 4 — `/btw` Messaging Delivery | Relay BtwQueue + JSON-safe constraint framing + single-in-flight guard + dropByMessageId. iOS modal flow, dog canned pools, idle human inspector, cross-session banner, green-glow preview. | SHIPPED (#143, #144) |
 | 5 — Visual Differentiation + Notifications | Relay: per-subagent tool events + toolCount/tokenCount metrics. iOS: role aura (locked palette), tool-event bubbles, mini progress, M3 bubble priority, UNUserNotification with Cool Beans action. | SHIPPED (#145, #146) |
-| 6 — Edge Cases + Battle Test | Race conditions, disconnect/reconnect, persistence cascade, fast-complete animations | IN FLIGHT |
+| 6 — Edge Cases + Battle Test | Relay: persistence cascade hardening (corrupt-file / disk-full / client-auth fallback), 37 new integration tests. iOS: 21-slot overflow grid, gray-out on disconnect + `sprite.state.request` reconcile, fast-complete animation chain (min 1.5s), scenario-9 tap/send race re-check. | SHIPPED (#147, #148) |
 
 ### Optimization phase (COMPLETE)
 
