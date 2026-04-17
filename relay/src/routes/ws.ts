@@ -1832,6 +1832,14 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   // ── Adapter → Broadcast Event Wiring ─────────────────────
 
   const serverMessageHandler = (message: ServerMessage) => {
+    // Tab-Keyed Offices — tab.* events are metadata about which tabs exist
+    // and which sessions live inside them. Every client (whether attached
+    // to a session or just watching the Office Manager) needs to see them,
+    // even though tab.session.started also carries a sessionId.
+    if (message.type.startsWith('tab.')) {
+      broadcastToAll(message);
+      return;
+    }
     // Route session-scoped messages to session clients, others to all
     if ('sessionId' in message && typeof message.sessionId === 'string') {
       broadcastToSession(message.sessionId, message);
