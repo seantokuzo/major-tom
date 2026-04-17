@@ -757,6 +757,15 @@ struct ToolStartEvent: Codable {
     let sessionId: String
     let tool: String
     let input: [String: AnyCodableValue]?
+    /// Correlation id for matching `tool.complete` back to this start.
+    /// Wave 5: relay emits this for subagent-attributed tool events.
+    var toolUseId: String?
+    /// Subagent that initiated this tool call (relay Wave 5 field).
+    /// When set, iOS routes the tool bubble to the matching sprite.
+    var subagentId: String?
+    /// Stable sprite handle for the subagent (relay Wave 5 field).
+    /// Mirrors `AgentState.spriteHandle` — provided for redundancy / future use.
+    var spriteHandle: String?
 }
 
 struct ToolCompleteEvent: Codable {
@@ -766,6 +775,11 @@ struct ToolCompleteEvent: Codable {
     var toolUseId: String?
     let output: String
     let success: Bool
+    /// Subagent this complete belongs to (relay Wave 5 field).
+    /// Used to hide the matching tool bubble on the correct sprite.
+    var subagentId: String?
+    /// Stable sprite handle for the subagent (relay Wave 5 field).
+    var spriteHandle: String?
 }
 
 struct AgentSpawnEvent: Codable, Identifiable {
@@ -784,12 +798,20 @@ struct AgentWorkingEvent: Codable {
     let sessionId: String
     let agentId: String
     let task: String
+    /// Number of tool calls the subagent has made so far (relay Wave 5 field).
+    var toolCount: Int?
+    /// Token count consumed by the subagent so far (relay Wave 5 field).
+    var tokenCount: Int?
 }
 
 struct AgentIdleEvent: Codable {
     let type: String
     let sessionId: String
     let agentId: String
+    /// Final tool count at this idle checkpoint (relay Wave 5 field).
+    var toolCount: Int?
+    /// Final token count at this idle checkpoint (relay Wave 5 field).
+    var tokenCount: Int?
 }
 
 struct AgentCompleteEvent: Codable {

@@ -71,6 +71,28 @@ final class OfficeViewModel {
     /// scene render (cleared by the view after firing).
     var pendingBubblePreviews: [String: String] = [:]
 
+    // MARK: - Visual Differentiation (Wave 5)
+
+    /// Active tool-event labels by sprite id. Set on `tool.start`, cleared on
+    /// `tool.complete` (matched by `toolUseId`) or on sprite despawn.
+    var spriteToolLabels: [String: String] = [:]
+
+    /// Open `toolUseId`s per sprite — lets `tool.complete` clear the exact
+    /// bubble that `tool.start` raised, even when multiple tools interleave.
+    var spriteOpenToolUseIds: [String: Set<String>] = [:]
+
+    /// Per-sprite progress metrics (toolCount, tokenCount) from
+    /// `agent.working`/`agent.idle`. Missing entry == hide indicator.
+    struct ProgressMetrics: Equatable {
+        var toolCount: Int?
+        var tokenCount: Int?
+    }
+    var spriteProgressMetrics: [String: ProgressMetrics] = [:]
+
+    /// Sprite ids currently "requesting" the role aura. The view diff-renders
+    /// this set against the scene. Managed by working/idle/dismiss handlers.
+    var spriteAuraActive: Set<String> = []
+
     // MARK: - Sprite Pool
 
     private static let idlePrefix = "idle-"
@@ -171,14 +193,29 @@ final class OfficeViewModel {
 
     /// Called when the relay broadcasts `agent.working`.
     /// Agent sits at their desk and starts working.
-    func handleAgentWorking(id: String, task: String) {
+    ///
+    /// Wave 5: optional `toolCount` / `tokenCount` drive the mini progress
+    /// indicator below the sprite. Missing values leave prior metrics intact.
+    func handleAgentWorking(id: String, task: String, toolCount: Int? = nil, tokenCount: Int? = nil) {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
+        guard !isIdleSprite(id) else { return }
         agents[index].status = .working
         agents[index].currentTask = task
 
         // Release any activity station
         activityEngine.releaseActivity(for: id)
         moodEngine.recordActivity(id)
+
+        // Wave 5: role aura is active while working.
+        spriteAuraActive.insert(id)
+
+        // Wave 5: update progress metrics (preserve existing when a field is nil).
+        var metrics = spriteProgressMetrics[id] ?? ProgressMetrics()
+        if let toolCount { metrics.toolCount = toolCount }
+        if let tokenCount { metrics.tokenCount = tokenCount }
+        if metrics.toolCount != nil || metrics.tokenCount != nil {
+            spriteProgressMetrics[id] = metrics
+        }
     }
 
     /// Called when a tool error or permission denial occurs for an agent.
@@ -188,11 +225,31 @@ final class OfficeViewModel {
 
     /// Called when the relay broadcasts `agent.idle`.
     /// Agent gets up and wanders to a break area.
-    func handleAgentIdle(id: String) {
+    ///
+    /// Wave 5: stop the role aura and clear the progress indicator unless an
+    /// unread `/btw` response is still pending (in which case the sprite keeps
+    /// the green glow until the user hits Cool Beans).
+    func handleAgentIdle(id: String, toolCount: Int? = nil, tokenCount: Int? = nil) {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
+        guard !isIdleSprite(id) else { return }
         agents[index].status = .idle
         agents[index].currentTask = nil
         moodEngine.recordIdle(id)
+
+        // Wave 5: role aura is not shown in idle state.
+        spriteAuraActive.remove(id)
+
+        // Wave 5: hide progress indicator unless there's an unread /btw
+        // response — in which case we still want to keep the indicator clean
+        // (green glow is the primary attention cue).
+        if unreadResponseSpriteIds.contains(id) {
+            // Keep any last-reported metrics visible until the user Cool Beans.
+            // Just don't overwrite with the final counts.
+            _ = toolCount
+            _ = tokenCount
+        } else {
+            spriteProgressMetrics.removeValue(forKey: id)
+        }
     }
 
     /// Called when the relay broadcasts `agent.complete`.
@@ -307,6 +364,11 @@ final class OfficeViewModel {
         activityEngine.releaseActivity(for: id)
         moodEngine.removeAgent(id)
         agents.removeAll { $0.id == id }
+        // Wave 5 cleanup — stop any bubbles/indicators pointing at this sprite.
+        spriteAuraActive.remove(id)
+        spriteToolLabels.removeValue(forKey: id)
+        spriteOpenToolUseIds.removeValue(forKey: id)
+        spriteProgressMetrics.removeValue(forKey: id)
         if selectedAgentId == id {
             selectedAgentId = nil
         }
@@ -418,6 +480,49 @@ final class OfficeViewModel {
                 try? await Task.sleep(for: .seconds(1.5))
                 removeAgent(id: agentId)
             }
+        }
+    }
+
+    // MARK: - Tool Bubble Handlers (Wave 5)
+
+    /// Handle a `tool.start` event routed to a specific subagent's sprite.
+    /// Call only when `subagentId` resolves to a known agent. The humanized
+    /// label is shown above the sprite until `tool.complete` for the same
+    /// `toolUseId` arrives (or 30s safety-net expires on the sprite itself).
+    func handleSpriteToolStart(subagentId: String, toolUseId: String?, tool: String, input: [String: AnyCodableValue]?) {
+        // Resolve by subagentId — agent.spawn/sprite.link uses subagentId as the primary key.
+        guard agents.contains(where: { $0.id == subagentId }) else { return }
+        guard !isIdleSprite(subagentId) else { return }
+
+        let label = ToolHumanizer.label(for: tool, input: input)
+        spriteToolLabels[subagentId] = label
+
+        if let id = toolUseId {
+            var open = spriteOpenToolUseIds[subagentId] ?? Set<String>()
+            open.insert(id)
+            spriteOpenToolUseIds[subagentId] = open
+        }
+    }
+
+    /// Handle a `tool.complete` event for a specific subagent's sprite.
+    /// Removes the matching open `toolUseId`. If no other tools are still
+    /// pending, the tool bubble is cleared.
+    func handleSpriteToolComplete(subagentId: String, toolUseId: String?) {
+        guard agents.contains(where: { $0.id == subagentId }) else { return }
+
+        if let id = toolUseId, var open = spriteOpenToolUseIds[subagentId] {
+            open.remove(id)
+            if open.isEmpty {
+                spriteOpenToolUseIds.removeValue(forKey: subagentId)
+                spriteToolLabels.removeValue(forKey: subagentId)
+            } else {
+                spriteOpenToolUseIds[subagentId] = open
+            }
+        } else {
+            // No toolUseId to match — best-effort clear all open ids so the
+            // bubble doesn't stick around forever on pre-Wave-5 relay frames.
+            spriteOpenToolUseIds.removeValue(forKey: subagentId)
+            spriteToolLabels.removeValue(forKey: subagentId)
         }
     }
 

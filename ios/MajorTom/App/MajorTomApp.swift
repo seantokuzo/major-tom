@@ -184,6 +184,14 @@ struct MajorTomApp: App {
                 }
             }
         }
+
+        // Wave 5 — "Cool Beans" action on /btw response notifications clears
+        // the unread state on the matching sprite (same as in-app Cool Beans).
+        notificationService.onBtwCoolBeansAction = { sessionId, subagentId in
+            let vm = officeSceneManager.ensureViewModel(for: sessionId)
+            // The sprite id equals the subagentId for linked sprites.
+            vm.dismissResponse(for: subagentId)
+        }
     }
 
     private func handleShortcutAction(_ action: ShortcutActionKey.Action) {
