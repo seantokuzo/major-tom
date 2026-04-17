@@ -106,7 +106,10 @@ final class RelayService {
     // Auto-approved tools log
     var autoApprovedTools: [AutoApprovedTool] = []
 
-    /// Office view model — receives agent lifecycle events.
+    /// Office view model -- receives agent lifecycle events.
+    /// TODO: [Wave 3] Replace with `officeViewModels: [String: OfficeViewModel]` keyed by sessionId.
+    /// All agent.* and sprite.* events will route to the session-specific OfficeViewModel.
+    /// For now, all events go to this single shared instance (backwards compatible).
     var officeViewModel: OfficeViewModel?
 
     /// Auth service for token management
@@ -713,7 +716,8 @@ final class RelayService {
 
         case .agentSpawn:
             if let event = try? MessageCodec.decode(AgentSpawnEvent.self, from: data) {
-                officeViewModel?.handleAgentSpawn(id: event.agentId, role: event.role, task: event.task)
+                // TODO: [Wave 3] Route to per-session OfficeViewModel using sessionId
+                officeViewModel?.handleAgentSpawn(id: event.agentId, role: event.role, task: event.task, parentId: event.parentId)
                 notificationService?.postAgentSpawnNotification(
                     agentId: event.agentId,
                     role: event.role,
@@ -727,16 +731,19 @@ final class RelayService {
 
         case .agentWorking:
             if let event = try? MessageCodec.decode(AgentWorkingEvent.self, from: data) {
+                // TODO: [Wave 3] Route to per-session OfficeViewModel using sessionId
                 officeViewModel?.handleAgentWorking(id: event.agentId, task: event.task)
             }
 
         case .agentIdle:
             if let event = try? MessageCodec.decode(AgentIdleEvent.self, from: data) {
+                // TODO: [Wave 3] Route to per-session OfficeViewModel using sessionId
                 officeViewModel?.handleAgentIdle(id: event.agentId)
             }
 
         case .agentComplete:
             if let event = try? MessageCodec.decode(AgentCompleteEvent.self, from: data) {
+                // TODO: [Wave 3] Route to per-session OfficeViewModel using sessionId
                 officeViewModel?.handleAgentComplete(id: event.agentId, result: event.result)
                 notificationService?.postAgentCompleteNotification(
                     agentId: event.agentId,
@@ -750,6 +757,7 @@ final class RelayService {
 
         case .agentDismissed:
             if let event = try? MessageCodec.decode(AgentDismissedEvent.self, from: data) {
+                // TODO: [Wave 3] Route to per-session OfficeViewModel using sessionId
                 officeViewModel?.handleAgentDismissed(id: event.agentId)
                 if let sid = currentSession?.id {
                     liveActivityManager?.handleAgentComplete(sessionId: sid)
@@ -1103,6 +1111,26 @@ final class RelayService {
             if let event = try? MessageCodec.decode(CIErrorEvent.self, from: data) {
                 ciError = event.message
                 responseCounter &+= 1
+            }
+
+        // MARK: Sprite-Agent Wiring (Wave 2)
+
+        case .spriteLink:
+            if let event = try? MessageCodec.decode(SpriteLinkEvent.self, from: data) {
+                // TODO: [Wave 3] Route to per-session OfficeViewModel using event.sessionId
+                officeViewModel?.handleSpriteLink(event)
+            }
+
+        case .spriteUnlink:
+            if let event = try? MessageCodec.decode(SpriteUnlinkEvent.self, from: data) {
+                // TODO: [Wave 3] Route to per-session OfficeViewModel using event.sessionId
+                officeViewModel?.handleSpriteUnlink(event)
+            }
+
+        case .spriteState:
+            if let event = try? MessageCodec.decode(SpriteStateEvent.self, from: data) {
+                // TODO: [Wave 3] Route to per-session OfficeViewModel using event.sessionId
+                officeViewModel?.handleSpriteState(event)
             }
 
         case .error:

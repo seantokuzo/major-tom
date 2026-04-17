@@ -114,6 +114,12 @@ enum MessageType: String, Codable {
     case ciRunsResponse = "ci.runs.response"
     case ciRunDetailResponse = "ci.run.detail.response"
     case ciError = "ci.error"
+
+    // Sprite-Agent Wiring (Wave 2)
+    case spriteLink = "sprite.link"
+    case spriteUnlink = "sprite.unlink"
+    case spriteState = "sprite.state"
+
     case error
 }
 
@@ -789,6 +795,48 @@ struct AgentCompleteEvent: Codable {
 struct AgentDismissedEvent: Codable {
     let type: String
     let agentId: String
+}
+
+// MARK: - Sprite-Agent Wiring Events (Wave 2)
+
+/// Relay → iOS: link a sprite to a subagent.
+/// Creates or updates an agent sprite with the given link info.
+struct SpriteLinkEvent: Codable {
+    let type: String
+    let sessionId: String
+    let spriteHandle: String
+    let subagentId: String
+    let canonicalRole: String
+    let task: String
+    var parentId: String?
+}
+
+/// Relay → iOS: unlink a sprite from a subagent (agent completed/dismissed).
+/// Triggers despawn animation on the linked sprite.
+struct SpriteUnlinkEvent: Codable {
+    let type: String
+    let sessionId: String
+    let spriteHandle: String
+    let subagentId: String
+    let reason: String  // "complete", "dismissed", "error", "crashed"
+    var result: String?
+}
+
+/// Relay → iOS: bulk restore all sprite mappings (reconnect / session attach).
+/// Each entry represents one active sprite link.
+struct SpriteStateEvent: Codable {
+    let type: String
+    let sessionId: String
+    let mappings: [SpriteMapping]
+
+    struct SpriteMapping: Codable {
+        let spriteHandle: String
+        let subagentId: String
+        let canonicalRole: String
+        let task: String
+        var parentId: String?
+        let status: String  // "working", "idle", "spawning"
+    }
 }
 
 struct ConnectionStatusEvent: Codable {

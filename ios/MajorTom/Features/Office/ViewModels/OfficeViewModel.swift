@@ -43,23 +43,27 @@ final class OfficeViewModel {
     /// The crew roster — manages which humans are active and user preferences.
     let crewRoster = CrewRoster()
 
+    // MARK: - Sprite-Agent Wiring (Wave 2)
+
+    /// Session ID this Office is bound to.
+    /// TODO: [Wave 3] Each OfficeViewModel will be keyed by sessionId for per-session routing.
+    var sessionId: String?
+
+    /// Per-session role→CharacterType bindings (role-stable binding).
+    /// First spawn for a canonical role locks the CharacterType for the session.
+    var sessionRoleBindings: RoleMapper.SessionBindings = [:]
+
     // MARK: - Sprite Pool
 
     private static let idlePrefix = "idle-"
+
+    /// Tracks which CharacterTypes have rendered idle sprites on screen.
+    /// Used by populateIdleSprites() to manage the cosmetic idle crew.
+    /// NOT used for agent allocation (clone-not-consume model).
     private var availableSprites: Set<CharacterType> = Set(CharacterType.allCases)
 
     private func isIdleSprite(_ id: String) -> Bool {
         id.hasPrefix(Self.idlePrefix)
-    }
-
-    private func claimRandomSprite() -> CharacterType? {
-        guard let picked = availableSprites.randomElement() else { return nil }
-        availableSprites.remove(picked)
-        return picked
-    }
-
-    private func releaseSprite(_ type: CharacterType) {
-        availableSprites.insert(type)
     }
 
     func populateIdleSprites() {
@@ -116,29 +120,18 @@ final class OfficeViewModel {
     // MARK: - Agent Lifecycle Handlers
 
     /// Called when the relay broadcasts `agent.spawn`.
-    /// Creates a new agent, claims a sprite from the idle pool, assigns a desk, sets status to spawning.
-    func handleAgentSpawn(id: String, role: String, task: String) {
+    /// Clone-not-consume: creates a NEW agent sprite instance without consuming idle sprites.
+    /// Uses RoleMapper for deterministic role→CharacterType assignment with session-stable binding.
+    /// Dogs are NEVER assigned as agent sprites.
+    func handleAgentSpawn(id: String, role: String, task: String, parentId: String? = nil) {
         guard !agents.contains(where: { $0.id == id }) else { return }
 
-        let characterType: CharacterType
-        if let claimed = claimRandomSprite() {
-            // Remove the idle sprite for this character. Release its activity
-            // first so any occupied furniture (couch, treadmill, etc.) is freed
-            // — otherwise the engine leaks assignments for the removed sprite.
-            let idleSpriteId = "\(Self.idlePrefix)\(claimed.rawValue)"
-            activityEngine.releaseActivity(for: idleSpriteId)
-            agents.removeAll { $0.id == idleSpriteId }
-            characterType = claimed
-        } else {
-            // Overflow: pull an unrendered human from the crew roster
-            let claimedTypes = Set(agents.map(\.characterType))
-            if let overflow = crewRoster.overflowHuman(excluding: claimedTypes, maxIdleCount: Self.maxIdleHumans) {
-                characterType = overflow
-            } else {
-                // Absolute fallback — all humans exhausted, reuse a dog type
-                characterType = CharacterType.allCases.filter(\.isDog).randomElement() ?? .elvis
-            }
-        }
+        // Resolve CharacterType via role-stable binding (clone-not-consume)
+        let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
+            role: role,
+            sessionBindings: sessionRoleBindings
+        )
+        sessionRoleBindings = updatedBindings
 
         let deskIndex = assignNextAvailableDesk(to: id)
 
@@ -149,7 +142,10 @@ final class OfficeViewModel {
             characterType: characterType,
             status: .spawning,
             currentTask: task,
-            deskIndex: deskIndex
+            deskIndex: deskIndex,
+            linkedSubagentId: id,
+            canonicalRole: role,
+            parentId: parentId
         )
         agents.append(agent)
         moodEngine.addAgent(id)
@@ -182,53 +178,44 @@ final class OfficeViewModel {
     }
 
     /// Called when the relay broadcasts `agent.complete`.
-    /// Agent celebrates, then leaves and returns sprite to idle pool.
+    /// Clone-not-consume: agent sprite celebrates then despawns entirely.
+    /// Idle sprites are unaffected — no return-to-pool needed.
     func handleAgentComplete(id: String, result: String) {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
         guard !isIdleSprite(id) else { return }
 
-        let charType = agents[index].characterType
         agents[index].status = .celebrating
         agents[index].currentTask = result
         moodEngine.recordCompletion(id)
 
-        // After a brief celebration, transition to leaving
+        // After a brief celebration, transition to leaving, then despawn
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
             if let idx = agents.firstIndex(where: { $0.id == id }) {
                 agents[idx].status = .leaving
             }
-            // Remove after walking out via the centralized cleanup path
-            // (releases desk + activity station + mood + selection in one
-            // place), then return the sprite to the idle pool. The inline
-            // cleanup that lived here previously regressed away from
-            // calling `removeAgent(id:)` in the sprite-pool refactor —
-            // Copilot review on PR #89.
             try? await Task.sleep(for: .seconds(1.5))
             removeAgent(id: id)
-            returnToIdlePool(charType)
+            // Clone-not-consume: agent sprite simply despawns.
+            // Idle sprites were never consumed, so no return-to-pool.
         }
     }
 
     /// Called when the relay broadcasts `agent.dismissed`.
-    /// Agent immediately starts leaving, then returns sprite to idle pool.
+    /// Clone-not-consume: agent sprite leaves then despawns entirely.
     func handleAgentDismissed(id: String) {
-        guard let agent = agents.first(where: { $0.id == id }) else { return }
+        guard agents.contains(where: { $0.id == id }) else { return }
         guard !isIdleSprite(id) else { return }
-
-        let charType = agent.characterType
 
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
         agents[index].status = .leaving
         agents[index].currentTask = nil
 
-        // Remove after walking out via the centralized cleanup path,
-        // then return the sprite to the idle pool. Same dedupe as
-        // handleAgentComplete (Copilot review on PR #89).
+        // Agent sprite despawns after walking out.
+        // Clone-not-consume: idle sprites were never consumed, so no return-to-pool.
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
             removeAgent(id: id)
-            returnToIdlePool(charType)
         }
     }
 
@@ -273,34 +260,6 @@ final class OfficeViewModel {
 
     // MARK: - Private Helpers
 
-    /// Return a character type to the idle pool after an agent leaves.
-    /// Overflow humans (not part of the active crew) simply vanish — no re-rendering,
-    /// and crucially not added to `availableSprites` since there's nothing to claim.
-    private func returnToIdlePool(_ charType: CharacterType) {
-        // Overflow human — don't re-render, don't add to claimable pool.
-        if !charType.isDog && !crewRoster.isActiveCrew(charType, maxCount: Self.maxIdleHumans) {
-            return
-        }
-
-        let config = CharacterCatalog.config(for: charType)
-        let idleId = "\(Self.idlePrefix)\(charType.rawValue)"
-
-        // Don't re-create if already exists
-        guard !agents.contains(where: { $0.id == idleId }) else { return }
-
-        let idleAgent = AgentState(
-            id: idleId,
-            name: config.displayName,
-            role: charType.rawValue,
-            characterType: charType,
-            status: .idle,
-            currentTask: nil,
-            deskIndex: nil
-        )
-        agents.append(idleAgent)
-        releaseSprite(charType)  // now there's a rendered idle to claim
-    }
-
     /// Find the next available desk and assign it.
     /// Returns nil if all desks are occupied.
     private func assignNextAvailableDesk(to agentId: String) -> Int? {
@@ -326,6 +285,166 @@ final class OfficeViewModel {
         agents.removeAll { $0.id == id }
         if selectedAgentId == id {
             selectedAgentId = nil
+        }
+    }
+
+    // MARK: - Sprite Protocol Handlers (Wave 2)
+
+    /// Handle `sprite.link` — create or upgrade an agent sprite linked to a subagent.
+    /// Clone-not-consume: idle sprites are NOT consumed. A new agent sprite instance
+    /// is created with the role-mapped CharacterType.
+    ///
+    /// De-duplication: if `agent.spawn` already created an AgentState for this subagentId,
+    /// we UPGRADE the existing agent with sprite link metadata instead of creating a duplicate.
+    /// Primary key is always `subagentId` so that `agent.*` lifecycle handlers find the agent.
+    func handleSpriteLink(_ event: SpriteLinkEvent) {
+        // Latch sessionId on first sprite event (Wave 3 routing prep)
+        if sessionId == nil {
+            sessionId = event.sessionId
+        }
+
+        // De-dupe: if agent.spawn already created this agent, upgrade it with sprite link info
+        if let existingIndex = agents.firstIndex(where: { $0.id == event.subagentId }) {
+            agents[existingIndex].spriteHandle = event.spriteHandle
+            agents[existingIndex].linkedSubagentId = event.subagentId
+            agents[existingIndex].canonicalRole = event.canonicalRole
+            agents[existingIndex].parentId = event.parentId
+            if let task = Optional(event.task), !task.isEmpty {
+                agents[existingIndex].currentTask = task
+            }
+            return
+        }
+
+        // Don't double-create if we already have this sprite handle linked
+        guard !agents.contains(where: { $0.spriteHandle == event.spriteHandle && !isIdleSprite($0.id) }) else {
+            return
+        }
+
+        // Resolve CharacterType via role-stable binding
+        let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
+            role: event.canonicalRole,
+            sessionBindings: sessionRoleBindings
+        )
+        sessionRoleBindings = updatedBindings
+
+        // Use subagentId as primary ID so agent.* lifecycle handlers find this agent
+        let deskIndex = assignNextAvailableDesk(to: event.subagentId)
+
+        let agent = AgentState(
+            id: event.subagentId,
+            name: event.canonicalRole.capitalized,
+            role: event.canonicalRole,
+            characterType: characterType,
+            status: .spawning,
+            currentTask: event.task,
+            deskIndex: deskIndex,
+            linkedSubagentId: event.subagentId,
+            spriteHandle: event.spriteHandle,
+            canonicalRole: event.canonicalRole,
+            parentId: event.parentId
+        )
+        agents.append(agent)
+        moodEngine.addAgent(event.subagentId)
+    }
+
+    /// Handle `sprite.unlink` — despawn the linked sprite.
+    /// Looks up by subagentId first (primary key), falls back to spriteHandle metadata.
+    func handleSpriteUnlink(_ event: SpriteUnlinkEvent) {
+        guard let index = agents.firstIndex(where: {
+            $0.id == event.subagentId || $0.spriteHandle == event.spriteHandle
+        }) else {
+            return
+        }
+
+        let agentId = agents[index].id
+
+        switch event.reason {
+        case "complete":
+            agents[index].status = .celebrating
+            agents[index].currentTask = event.result
+            moodEngine.recordCompletion(agentId)
+
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                if let idx = agents.firstIndex(where: { $0.id == agentId }) {
+                    agents[idx].status = .leaving
+                }
+                try? await Task.sleep(for: .seconds(1.5))
+                removeAgent(id: agentId)
+            }
+
+        case "error", "crashed":
+            agents[index].status = .leaving
+            agents[index].currentTask = event.result ?? "Error"
+            moodEngine.recordError(agentId)
+
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                removeAgent(id: agentId)
+            }
+
+        default:  // "dismissed" or unknown
+            agents[index].status = .leaving
+            agents[index].currentTask = nil
+
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                removeAgent(id: agentId)
+            }
+        }
+    }
+
+    /// Handle `sprite.state` — bulk restore all sprite mappings (reconnect).
+    /// Clears any existing agent sprites (non-idle) and rebuilds from relay state.
+    /// Uses `subagentId` as the primary AgentState.id so agent.* handlers find them.
+    func handleSpriteState(_ event: SpriteStateEvent) {
+        // Latch sessionId on reconnect sync (Wave 3 routing prep)
+        if sessionId == nil {
+            sessionId = event.sessionId
+        }
+
+        // Remove all existing non-idle agent sprites
+        let nonIdleIds = agents.filter { !isIdleSprite($0.id) }.map(\.id)
+        for id in nonIdleIds {
+            removeAgent(id: id)
+        }
+
+        // Reset role bindings for this session
+        sessionRoleBindings = [:]
+
+        // Rebuild from relay mappings — primary key is subagentId
+        for mapping in event.mappings {
+            let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
+                role: mapping.canonicalRole,
+                sessionBindings: sessionRoleBindings
+            )
+            sessionRoleBindings = updatedBindings
+
+            let status: AgentStatus
+            switch mapping.status {
+            case "working": status = .working
+            case "idle": status = .idle
+            case "spawning": status = .spawning
+            default: status = .working
+            }
+
+            let deskIndex = assignNextAvailableDesk(to: mapping.subagentId)
+
+            let agent = AgentState(
+                id: mapping.subagentId,
+                name: mapping.canonicalRole.capitalized,
+                role: mapping.canonicalRole,
+                characterType: characterType,
+                status: status,
+                currentTask: mapping.task,
+                deskIndex: deskIndex,
+                linkedSubagentId: mapping.subagentId,
+                spriteHandle: mapping.spriteHandle,
+                canonicalRole: mapping.canonicalRole,
+                parentId: mapping.parentId
+            )
+            agents.append(agent)
+            moodEngine.addAgent(mapping.subagentId)
         }
     }
 }
