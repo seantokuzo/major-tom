@@ -42,6 +42,7 @@ import {
   SpriteMappingPersistence,
   type PersistedSpriteMappingFile,
 } from '../sprites/sprite-mapping-persistence.js';
+import type { TabRegistry } from '../tabs/tab-registry.js';
 
 interface WsDeps {
   sessionManager: SessionManager;
@@ -70,6 +71,8 @@ interface WsDeps {
   spriteMappingPersistence: SpriteMappingPersistence;
   /** Sprite-agent wiring — role classifier + mapping manager */
   spriteMapper: SpriteMapper;
+  /** Tab-Keyed Offices — optional for back-compat during wiring. */
+  tabRegistry?: TabRegistry;
 }
 
 /**
@@ -97,6 +100,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     shellApprovalQueue,
     spriteMappingPersistence,
     spriteMapper,
+    tabRegistry,
   } = deps;
 
   const notificationDigest = new NotificationDigest(pushManager, notificationConfigManager);
@@ -1249,6 +1253,52 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         }
 
         sendToClient(ws, { type: 'session.list.response', sessions });
+        break;
+      }
+
+      // ── Tab-Keyed Offices — tab.list ─────────────────────
+      // Mirrors session.list shape. SandboxGuard trims tabs whose
+      // workingDir the user can't see, matching the session-filter path.
+      case 'tab.list': {
+        if (!tabRegistry) {
+          sendToClient(ws, { type: 'tab.list.response', tabs: [] });
+          break;
+        }
+        const tabListUserId = presenceManager.getUserId(ws);
+        let tabs = tabRegistry.listTabs(tabListUserId);
+
+        if (sandboxGuard) {
+          const tabListUserRole = presenceManager.getUserRole(ws);
+          if (tabListUserId && tabListUserRole) {
+            const filtered = [];
+            for (const tab of tabs) {
+              if (!tab.workingDir) {
+                if (tabListUserRole === 'admin') filtered.push(tab);
+                continue;
+              }
+              if (await sandboxGuard.canAccess(tabListUserId, tabListUserRole, tab.workingDir)) {
+                filtered.push(tab);
+              }
+            }
+            tabs = filtered;
+          }
+        }
+
+        const tabMessages = tabs.map((tab) => {
+          const sessionsForTab = [...tab.sessionIds]
+            .map((sid) => sessionManager.tryGet(sid))
+            .filter((s): s is NonNullable<typeof s> => s !== undefined)
+            .map((s) => ({ sessionId: s.id, startedAt: s.startedAt }));
+          return {
+            tabId: tab.tabId,
+            workingDirName: tab.workingDir ? basename(tab.workingDir) : '',
+            status: tab.status,
+            createdAt: tab.createdAt,
+            lastSeenAt: tab.lastSeenAt,
+            sessions: sessionsForTab,
+          };
+        });
+        sendToClient(ws, { type: 'tab.list.response', tabs: tabMessages });
         break;
       }
 

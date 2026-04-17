@@ -82,6 +82,10 @@ export interface SessionListMessage {
   type: 'session.list';
 }
 
+export interface TabListMessage {
+  type: 'tab.list';
+}
+
 export interface DeviceListMessage {
   type: 'device.list';
 }
@@ -533,7 +537,8 @@ export type ClientMessage =
   | GitBranchesMessage
   | GitShowMessage
   | SpriteMessageMessage
-  | SpriteStateRequestMessage;
+  | SpriteStateRequestMessage
+  | TabListMessage;
 
 // ── Server → Client (Relay → iOS) ──────────────────────────
 
@@ -784,6 +789,29 @@ export interface SessionMetaMessage {
 export interface SessionListResponseMessage {
   type: 'session.list.response';
   sessions: SessionMetaMessage[];
+}
+
+/** Per-session summary inside a TabMetaMessage. Wave 2 is intentionally
+ * minimal — Wave 3 will add tabId to SessionMetaMessage directly and this
+ * summary can either grow or be replaced. */
+export interface TabSessionSummaryMessage {
+  sessionId: string;
+  startedAt: string;
+}
+
+export interface TabMetaMessage {
+  tabId: string;
+  /** Basename of the tab's working directory, or empty if not captured yet. */
+  workingDirName: string;
+  status: 'active' | 'idle' | 'closed';
+  createdAt: string;
+  lastSeenAt: string;
+  sessions: TabSessionSummaryMessage[];
+}
+
+export interface TabListResponseMessage {
+  type: 'tab.list.response';
+  tabs: TabMetaMessage[];
 }
 
 export interface TranscriptEntry {
@@ -1315,7 +1343,8 @@ type ServerMessageBase =
   | SpriteStateMessage
   | TabSessionStartedMessage
   | TabSessionEndedMessage
-  | TabClosedMessage;
+  | TabClosedMessage
+  | TabListResponseMessage;
 
 /**
  * Every outbound server message may carry an optional `seq` —
