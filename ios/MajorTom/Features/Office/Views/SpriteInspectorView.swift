@@ -88,6 +88,15 @@ struct SpriteInspectorView: View {
             // but keep the .ready state so the user can hit Cool Beans.
             viewModel.markResponseRead(for: agent.id)
         }
+        .task {
+            // Build the SpriteKit scene exactly once per inspector
+            // presentation. Doing this inside `body` via an immediately-
+            // invoked closure risks SwiftUI re-rendering and allocating
+            // multiple scenes before the async state update lands.
+            if spriteScene == nil {
+                spriteScene = InspectorSpriteScene(characterType: agent.characterType)
+            }
+        }
         .onChange(of: agent.id) { _, _ in
             // Sprite switched under us (scenario #2) — discard draft.
             draft = ""
@@ -100,12 +109,14 @@ struct SpriteInspectorView: View {
 
     private var spriteHeader: some View {
         HStack(spacing: MajorTomTheme.Spacing.md) {
-            SpriteView(scene: {
-                if let existing = spriteScene { return existing }
-                let scene = InspectorSpriteScene(characterType: agent.characterType)
-                Task { @MainActor in spriteScene = scene }
-                return scene
-            }())
+            Group {
+                if let spriteScene {
+                    SpriteView(scene: spriteScene)
+                } else {
+                    // Placeholder until `.task` builds the scene (one frame at most).
+                    Color.clear
+                }
+            }
             .frame(width: 80, height: 80)
             .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.medium))
             .overlay(

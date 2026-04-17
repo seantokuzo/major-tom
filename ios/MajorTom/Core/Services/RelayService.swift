@@ -1209,7 +1209,7 @@ final class RelayService {
                             $0.linkedSubagentId == event.subagentId
                         })?.id ?? event.subagentId
                         let spriteName = vm?.agents.first(where: { $0.id == spriteId })?.name
-                            ?? (event.subagentId.prefix(8) + "…")
+                            ?? "\(event.subagentId.prefix(8))…"
                         // Dropped responses have empty `text` on the wire — use the
                         // synthesized text (matches OfficeViewModel.handleSpriteResponse)
                         // so the banner preview isn't empty/misleading.
