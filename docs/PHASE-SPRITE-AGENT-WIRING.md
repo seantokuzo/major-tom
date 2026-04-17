@@ -1,6 +1,6 @@
 # Phase: Sprite ↔ Agent Wiring
 
-> **Status:** Spec frozen. Research phase next, then implementation.
+> **Status:** Wave 1 (Research) COMPLETE. Wave 2 (Data Model + Protocol) in progress.
 > **Prerequisite:** Optimization phase (PR #135) merged. Idle Office at 60fps.
 > **Astronaut tile asset:** `assets/util/create_office_tile.png`
 
@@ -286,36 +286,69 @@ Sprite ↔ subagent mappings are persisted to disk (JSON file per session).
 
 ---
 
-## Research Gates (BEFORE implementation)
+## Research Gates — RESOLVED
 
-| Item | Question | Blocks |
+> Full research: `docs/SPRITE-WIRING-RESEARCH-RELAY.md` and `docs/SPRITE-WIRING-RESEARCH-IOS.md`
+
+| Item | Status | Finding |
 |---|---|---|
-| Agent SDK turn-boundary injection | Can we queue a message and inject at turn end? Does the SDK expose stream-end hooks? What's the API? | Wave 4 (messaging) |
-| Protocol message types | Define exact schemas for `sprite.link`, `sprite.unlink`, `sprite.message`, `sprite.response`, `sprite.state` | Wave 2 (protocol) |
-| Relay message queue design | How does relay hold /btw messages, detect turn boundaries, inject? | Wave 4 (messaging) |
-| Mapping persistence format | JSON file structure per session, cleanup hook points in existing session lifecycle | Wave 2 (data model) |
-| Office Manager SwiftUI | View hierarchy, card layout, SKScene lifecycle management (create/suspend/destroy) | Wave 3 (multi-session) |
-| Local notification setup | `UNNotificationAction` for "Cool Beans", background WebSocket handling, when to fire | Wave 5 (push) |
-| Role → sprite mapping table | Lock the 8 classifier roles → CharacterType assignments | Wave 2 (data model) |
+| Agent SDK turn-boundary injection | YELLOW | No direct subagent session handle. Viable: `PostToolUse` hook with `additionalContext` + queued `send()` at orchestrator turn boundary. **Spike needed before Wave 4.** |
+| Protocol message types | GREEN | 5 new `sprite.*` types fit cleanly into existing conventions |
+| Relay message queue design | YELLOW | Queue is simple. Response correlation via state machine (capture first text after injection). |
+| Mapping persistence format | GREEN | Mirrors `SessionPersistence` pattern. `~/.major-tom/sprite-mappings/{sessionId}.json` |
+| Office Manager SwiftUI | GREEN | NavigationStack, per-session OfficeViewModel, LRU scene cache (2-3 warm, ~50MB each) |
+| Local notification setup | YELLOW | Infra exists, "Cool Beans" action trivial. WebSocket dies ~10s after iOS background. **Compromise: relay queues responses, delivers on reconnect. Local push only during grace period.** |
+| Role → sprite mapping table | GREEN | 14 humans, 8 roles, clean 1:1 mapping with 6 extras for overflow |
+
+### Spec adjustments from research
+
+1. **Local push notifications** downgraded to best-effort during ~10s iOS suspension grace period. Relay queues responses for disconnected clients; delivered as in-app banners on reconnect. APNs deferred to future phase.
+2. **`/btw` injection** goes through orchestrator session (SDK exposes no subagent handle). Constraint framing tells Claude to relay to specific subagent.
+3. **Cross-cutting blockers** identified for Wave 2: agent events need `sessionId`, relay needs "get agents for session X" query, relay must queue `/btw` responses for disconnected clients.
+
+### Role → CharacterType mapping (LOCKED)
+
+| Canonical Role | CharacterType | Rationale |
+|---|---|---|
+| `researcher` | `.botanist` | Science/discovery vibe |
+| `architect` | `.captain` | Authority, big-picture |
+| `qa` | `.doctor` | Diagnostic precision |
+| `devops` | `.mechanic` | Infrastructure ops |
+| `frontend` | `.frontendDev` | Direct match |
+| `backend` | `.backendEngineer` | Direct match |
+| `lead` | `.pm` | Project leadership |
+| `engineer` | `.claudimusPrime` | Generic = ship's AI |
+
+Overflow pool (random fallback): `alienDiplomat`, `bowenYang`, `chef`, `dwight`, `kendrick`, `prince`
 
 ---
 
-## Proposed Waves (pending research)
+## Waves
 
-### Wave 1 — Spec Freeze + Research
-- Answer all research gates above
-- Produce protocol addendum (exact message schemas, sequence diagrams)
-- Technical spike for anything needing prototyping
-- Lock wave structure based on findings
+### Wave 1 — Spec Freeze + Research ✅ COMPLETE
+- All research gates answered
+- Protocol schemas defined (see research docs)
+- Spec adjustments locked
+- Wave structure confirmed
 
-### Wave 2 — Data Model + Protocol
-- Add `linkedSubagentId` to `AgentState` (iOS)
-- Persist `parentId` from `agent.spawn` events
-- New relay message types: `sprite.link`, `sprite.unlink`, `sprite.message`, `sprite.response`, `sprite.state`
-- Mapping persistence (JSON per session) with cleanup lifecycle
-- Hybrid role → sprite mapping (frontmatter → classifier → random)
-- Remove dog fallback in `OfficeViewModel` (duplicate humans instead)
+### Wave 2 — Data Model + Protocol ← IN PROGRESS
+**Two parallel tracks** (zero shared files):
+
+**Relay track** (`sprite-wiring/wave2-relay`):
+- New `sprite.*` protocol message types (5 types) in `messages.ts`
+- Add `sessionId` to all agent event messages
+- Add `sprite.state` query for cold scene rebuild
+- `SpriteMappingPersistence` class (`~/.major-tom/sprite-mappings/`)
+- Role classifier (regex on task description, 8 canonical roles)
+- Cleanup lifecycle hooks (session destroy, agent dismiss, shutdown, cold boot)
+
+**iOS track** (`sprite-wiring/wave2-ios`):
+- Add `linkedSubagentId` to `AgentState`
+- Role → CharacterType mapper (locked table above)
 - Clone-not-consume sprite allocation model
+- Remove dog fallback in `OfficeViewModel` (duplicate humans instead)
+- Per-session OfficeViewModel routing (prep for Wave 3)
+- Persist `parentId` from agent.spawn events
 
 ### Wave 3 — Office Manager + Multi-Session
 - Office Manager SwiftUI view (cards for active Offices + unlinked sessions)
