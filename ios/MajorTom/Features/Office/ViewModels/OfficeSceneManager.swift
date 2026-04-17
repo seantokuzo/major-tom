@@ -16,6 +16,9 @@ final class OfficeSceneManager {
         let viewModel: OfficeViewModel
         var scene: OfficeScene?
         var lastAccessed: Date
+        /// True when `createOffice` was called (full office with scene + idle sprites).
+        /// False for lightweight entries created by `ensureViewModel`.
+        var hasOffice: Bool = false
     }
 
     // MARK: - State
@@ -40,8 +43,25 @@ final class OfficeSceneManager {
     /// Returns the newly created entry. If an Office already exists, returns it.
     @discardableResult
     func createOffice(for sessionId: String) -> OfficeEntry {
-        if let existing = offices[sessionId] {
-            offices[sessionId]?.lastAccessed = Date()
+        if var existing = offices[sessionId] {
+            // If the entry already has a scene (full office), just touch LRU and return.
+            if existing.scene != nil {
+                offices[sessionId]?.lastAccessed = Date()
+                return existing
+            }
+
+            // Upgrade a lightweight ensureViewModel entry: create scene, populate idle sprites,
+            // request sprite state — everything a fresh createOffice would do.
+            let scene = makeScene()
+            existing.scene = scene
+            existing.lastAccessed = Date()
+            existing.hasOffice = true
+            offices[sessionId] = existing
+
+            existing.viewModel.populateIdleSprites()
+            relay?.requestSpriteState(for: sessionId)
+
+            evictIfNeeded(excluding: sessionId)
             return existing
         }
 
@@ -53,7 +73,8 @@ final class OfficeSceneManager {
         let entry = OfficeEntry(
             viewModel: vm,
             scene: scene,
-            lastAccessed: Date()
+            lastAccessed: Date(),
+            hasOffice: true
         )
         offices[sessionId] = entry
 
@@ -150,8 +171,9 @@ final class OfficeSceneManager {
     }
 
     /// Session IDs that have Offices created (for OfficeManagerView).
+    /// Excludes lightweight entries created by `ensureViewModel` that were never upgraded.
     var linkedSessionIds: Set<String> {
-        Set(offices.keys)
+        Set(offices.filter { $0.value.hasOffice }.keys)
     }
 
     // MARK: - Private

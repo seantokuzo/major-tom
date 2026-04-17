@@ -1133,17 +1133,17 @@ final class RelayService {
 
         case .spriteLink:
             if let event = try? MessageCodec.decode(SpriteLinkEvent.self, from: data) {
-                officeSceneManager?.viewModel(for: event.sessionId)?.handleSpriteLink(event)
+                officeSceneManager?.ensureViewModel(for: event.sessionId).handleSpriteLink(event)
             }
 
         case .spriteUnlink:
             if let event = try? MessageCodec.decode(SpriteUnlinkEvent.self, from: data) {
-                officeSceneManager?.viewModel(for: event.sessionId)?.handleSpriteUnlink(event)
+                officeSceneManager?.ensureViewModel(for: event.sessionId).handleSpriteUnlink(event)
             }
 
         case .spriteState:
             if let event = try? MessageCodec.decode(SpriteStateEvent.self, from: data) {
-                officeSceneManager?.viewModel(for: event.sessionId)?.handleSpriteState(event)
+                officeSceneManager?.ensureViewModel(for: event.sessionId).handleSpriteState(event)
             }
 
         case .error:

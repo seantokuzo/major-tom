@@ -71,6 +71,12 @@ struct OfficeView: View {
                 .background(MajorTomTheme.Colors.background)
             }
         }
+        .task {
+            // Activate the scene at the top level so it runs regardless of which
+            // branch rendered (content vs placeholder). If the scene was LRU-evicted,
+            // this triggers a cold rebuild and populates @State so the view re-renders.
+            activatedScene = sceneManager.activateOffice(for: sessionId)
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -117,9 +123,6 @@ struct OfficeView: View {
             }
         }
         .onAppear {
-            // Activate the scene (cold rebuild if evicted) and store in @State.
-            // This avoids calling activateOffice from the view body (which would cause render loops).
-            activatedScene = sceneManager.activateOffice(for: sessionId)
             // Resume the SKScene update loop when the Office tab becomes visible.
             scene.isPaused = false
             // Wire theme + mood engines and furniture registry to the scene
@@ -518,7 +521,8 @@ struct OfficeView: View {
                 let mgr = OfficeSceneManager()
                 mgr.createOffice(for: "preview")
                 return mgr
-            }()
+            }(),
+            relay: nil
         )
     }
 }
