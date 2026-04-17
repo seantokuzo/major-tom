@@ -38,6 +38,9 @@ struct OfficeView: View {
     @State private var previousAgentIds: Set<String> = []
     @State private var previousStatuses: [String: AgentStatus] = [:]
 
+    /// Activated scene — populated in onAppear, avoids side effects in body.
+    @State private var activatedScene: OfficeScene?
+
     @Environment(\.dismiss) private var dismiss
 
     /// Resolved viewModel from the scene manager.
@@ -45,9 +48,9 @@ struct OfficeView: View {
         sceneManager.viewModel(for: sessionId)
     }
 
-    /// Resolved scene from the scene manager (triggers cold rebuild if needed).
+    /// Resolved scene — reads from @State (set in onAppear) or peeks without side effects.
     private var currentScene: OfficeScene? {
-        sceneManager.scene(for: sessionId)
+        activatedScene ?? sceneManager.peekScene(for: sessionId)
     }
 
     var body: some View {
@@ -98,7 +101,7 @@ struct OfficeView: View {
             // SpriteKit scene
             SpriteView(scene: scene)
                 .ignoresSafeArea(.all, edges: .bottom)
-                .onChange(of: viewModel.agents) { _, newAgents in
+                .onChange(of: viewModel.agents, initial: true) { _, newAgents in
                     syncScene(with: newAgents, viewModel: viewModel, scene: scene)
                 }
 
@@ -114,6 +117,9 @@ struct OfficeView: View {
             }
         }
         .onAppear {
+            // Activate the scene (cold rebuild if evicted) and store in @State.
+            // This avoids calling activateOffice from the view body (which would cause render loops).
+            activatedScene = sceneManager.activateOffice(for: sessionId)
             // Resume the SKScene update loop when the Office tab becomes visible.
             scene.isPaused = false
             // Wire theme + mood engines and furniture registry to the scene

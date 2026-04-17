@@ -67,9 +67,18 @@ final class OfficeSceneManager {
         return entry
     }
 
-    /// Returns the scene for a session. If the scene was evicted (cold), rebuilds it
-    /// from the viewModel's current agent state.
-    func scene(for sessionId: String) -> OfficeScene? {
+    /// Side-effect-free scene peek — returns the current scene (or nil) without
+    /// touching LRU timestamps or triggering cold rebuilds.
+    /// Safe to call from SwiftUI computed properties / view body.
+    func peekScene(for sessionId: String) -> OfficeScene? {
+        offices[sessionId]?.scene
+    }
+
+    /// Activates an office for viewing: touches LRU, cold-rebuilds the scene if
+    /// evicted, and syncs existing agent state into a fresh scene.
+    /// Call from `.onAppear` or other imperative contexts — NOT from view body.
+    @discardableResult
+    func activateOffice(for sessionId: String) -> OfficeScene? {
         guard var entry = offices[sessionId] else { return nil }
 
         // Touch LRU timestamp
@@ -85,15 +94,51 @@ final class OfficeSceneManager {
         let scene = makeScene()
         offices[sessionId]?.scene = scene
 
-        // If viewModel has existing agents, the scene will pick them up
-        // via OfficeView's onChange(of: viewModel.agents) sync.
-        // If viewModel has no agents (never received events), request state from relay.
-        if entry.viewModel.agents.filter({ !$0.id.hasPrefix("idle-") }).isEmpty {
+        // Sync any existing agents into the fresh scene so they render immediately
+        // (onChange won't fire for the initial value on a newly created scene).
+        let vm = entry.viewModel
+        for agent in vm.agents {
+            scene.addAgent(id: agent.id, name: agent.name, characterType: agent.characterType)
+            if let deskIndex = agent.deskIndex {
+                scene.highlightDesk(deskIndex, occupied: true)
+                scene.moveAgentToDesk(id: agent.id, deskIndex: deskIndex)
+            }
+            switch agent.status {
+            case .working:
+                scene.updateAgentStatus(id: agent.id, status: .working)
+            case .idle:
+                scene.updateAgentStatus(id: agent.id, status: .idle)
+            default:
+                break
+            }
+        }
+
+        // If viewModel has no real agents, request state from relay.
+        if vm.agents.filter({ !$0.id.hasPrefix("idle-") }).isEmpty {
             relay?.requestSpriteState(for: sessionId)
         }
 
         evictIfNeeded(excluding: sessionId)
         return scene
+    }
+
+    /// Creates a lightweight OfficeViewModel entry (no scene) for a session so
+    /// agent events can accumulate before the user opens an Office.
+    @discardableResult
+    func ensureViewModel(for sessionId: String) -> OfficeViewModel {
+        if let existing = offices[sessionId] {
+            return existing.viewModel
+        }
+        let vm = OfficeViewModel()
+        vm.sessionId = sessionId
+
+        let entry = OfficeEntry(
+            viewModel: vm,
+            scene: nil,
+            lastAccessed: Date()
+        )
+        offices[sessionId] = entry
+        return vm
     }
 
     /// Closes an Office for a session. Destroys both scene and viewModel.
