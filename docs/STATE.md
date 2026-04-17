@@ -4,7 +4,19 @@
 
 ## Current Phase (in flight)
 
-**Sprite-Agent Wiring** — ALL 6 WAVES SHIPPED (2026-04-17). Sprite metaphor is functionally real: tap, /btw, response bubbles, role auras, tool bubbles, progress, local push, disconnect/reconnect, desk overflow, persistence cascade. Spec: `docs/PHASE-SPRITE-AGENT-WIRING.md`. Memory: `project_sprite_agent_wiring_phase.md`.
+**Tab-Keyed Offices** — Wave 1 (Research + Spec Freeze) COMPLETE (2026-04-17). Rekeying Office identity from Claude sessionId → iOS terminal tabId. Auto-register `claude` via native `SessionStart`/`Stop` hooks. Spec: `docs/PHASE-TAB-KEYED-OFFICES.md`. Memory: `project_tab_keyed_offices_phase.md`. Sprite 4-6 QA paused; resumes after this phase.
+
+| Wave | Scope | Status |
+|------|-------|--------|
+| 1 — Research + Spec Freeze | All gates answered, spec at `docs/PHASE-TAB-KEYED-OFFICES.md` | DONE |
+| 2 — Relay Bridge | TabRegistry, SessionStart/Stop hooks, `tab.list` RPC, PTY-close teardown | NEXT |
+| 3 — Protocol + iOS wiring | `tabId` on sprite/agent messages, iOS decoders, behind flag | |
+| 4 — iOS Office Rebind | OfficeSceneManager keyed by tabId, Office Manager lists tabs | |
+| 5 — Session Cycling + Edge Cases | Walk-off/walk-in animations, hard-kill PTY, multi-claude-in-one-tab | |
+
+### Sprite-Agent Wiring (shipped, QA paused)
+
+Makes the sprite metaphor functionally real — tap, /btw, response bubbles, role auras, tool bubbles, progress, local push, disconnect/reconnect, desk overflow, persistence cascade. Spec: `docs/PHASE-SPRITE-AGENT-WIRING.md`.
 
 ### Sprite-Agent Wiring
 
