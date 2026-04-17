@@ -52,6 +52,7 @@ enum MessageType: String, Codable {
     case ciRuns = "ci.runs"
     case ciRunDetail = "ci.run.detail"
     case spriteStateRequest = "sprite.state.request"
+    case spriteMessage = "sprite.message"
 
     // Server → Client
     case output
@@ -120,6 +121,7 @@ enum MessageType: String, Codable {
     case spriteLink = "sprite.link"
     case spriteUnlink = "sprite.unlink"
     case spriteState = "sprite.state"
+    case spriteResponse = "sprite.response"
 
     case error
 }
@@ -850,6 +852,33 @@ struct SpriteStateEvent: Codable {
 struct SpriteStateRequestMessage: Codable {
     let type: String = "sprite.state.request"
     let sessionId: String
+}
+
+/// iOS → Relay: send a `/btw` observation to a linked sprite.
+/// Relay queues for the next subagent turn boundary, answers with
+/// `sprite.response` (`delivered`/`queued`/`dropped`).
+struct SpriteMessageMessage: Codable {
+    let type: String = "sprite.message"
+    let sessionId: String
+    let spriteHandle: String
+    let subagentId: String
+    let text: String
+    let messageId: String
+}
+
+/// Relay → iOS: response to a previously-sent `sprite.message`.
+/// - `delivered`: subagent replied; `text` is the reply body.
+/// - `queued`: accepted but not yet delivered (informational).
+/// - `dropped`: subagent completed/failed before delivery (`dropReason` optional).
+struct SpriteResponseEvent: Codable {
+    let type: String
+    let sessionId: String
+    let spriteHandle: String
+    let subagentId: String
+    let messageId: String
+    let text: String
+    let status: String  // "delivered" | "queued" | "dropped"
+    var dropReason: String?
 }
 
 struct ConnectionStatusEvent: Codable {

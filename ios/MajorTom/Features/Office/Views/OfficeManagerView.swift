@@ -10,6 +10,7 @@ struct OfficeManagerView: View {
     var relay: RelayService
 
     @State private var navigationPath = NavigationPath()
+    @State private var bannerTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -25,6 +26,50 @@ struct OfficeManagerView: View {
                     )
                 }
         }
+        .overlay(alignment: .top) {
+            if let banner = sceneManager.pendingCrossSessionBanner {
+                SpriteResponseBanner(
+                    banner: banner,
+                    onTap: { navigateToBannerSession(banner) },
+                    onDismiss: { cancelBannerAutoHide() }
+                )
+                .padding(.horizontal, MajorTomTheme.Spacing.lg)
+                .padding(.top, MajorTomTheme.Spacing.sm)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: sceneManager.pendingCrossSessionBanner)
+        .onChange(of: sceneManager.pendingCrossSessionBanner) { _, newBanner in
+            rescheduleBannerAutoHide(for: newBanner)
+        }
+    }
+
+    // MARK: - Banner handling (M2)
+
+    private func navigateToBannerSession(_ banner: OfficeSceneManager.CrossSessionBanner) {
+        cancelBannerAutoHide()
+        if sceneManager.viewModel(for: banner.sessionId) == nil
+            || sceneManager.peekScene(for: banner.sessionId) == nil {
+            sceneManager.createOffice(for: banner.sessionId)
+        }
+        navigationPath = NavigationPath()
+        navigationPath.append(banner.sessionId)
+    }
+
+    private func rescheduleBannerAutoHide(for banner: OfficeSceneManager.CrossSessionBanner?) {
+        bannerTask?.cancel()
+        guard banner != nil else { return }
+        bannerTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            sceneManager.dismissCrossSessionBanner()
+        }
+    }
+
+    private func cancelBannerAutoHide() {
+        bannerTask?.cancel()
+        bannerTask = nil
+        sceneManager.dismissCrossSessionBanner()
     }
 
     // MARK: - Content
