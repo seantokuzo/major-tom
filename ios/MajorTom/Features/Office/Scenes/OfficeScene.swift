@@ -1769,6 +1769,23 @@ final class OfficeScene: SKScene {
     func updateAgentName(id: String, name: String) { agentSprites[id]?.updateName(name) }
     func updateAgentStatus(id: String, status: AgentStatus) { agentSprites[id]?.updateStatus(status) }
 
+    // MARK: - /btw Unread-response visuals (Wave 4)
+
+    /// Show the persistent green glow on a sprite (unread sprite.response).
+    func showUnreadResponseGlow(on agentId: String) {
+        agentSprites[agentId]?.showUnreadResponseGlow()
+    }
+
+    /// Remove the persistent green glow (Cool Beans / inspector opened).
+    func hideUnreadResponseGlow(on agentId: String) {
+        agentSprites[agentId]?.hideUnreadResponseGlow()
+    }
+
+    /// Show a 5-second speech-bubble preview above a sprite.
+    func showResponsePreviewBubble(on agentId: String, text: String) {
+        agentSprites[agentId]?.showResponsePreviewBubble(text)
+    }
+
     // MARK: - Desk Highlighting
 
     func highlightDesk(_ deskIndex: Int, occupied: Bool) {

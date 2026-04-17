@@ -29,6 +29,10 @@
 		2211645B8B3E1BF5093FE2CD /* MoodEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 579C4AF5EF7599467490F248 /* MoodEngine.swift */; };
 		3A1B2C4D5E6F78901234ABCD /* CrewRoster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B7C8D9E0F1A23456789BCDE /* CrewRoster.swift */; };
 		87DD0EFFCB5F38F604D8E89D /* RoleMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35CE152195BD660297FCDF44 /* RoleMapper.swift */; };
+		6FAAD79E27E62840B5B1C665 /* DogCannedResponses.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACBC098BB389E8F292B2EFC7 /* DogCannedResponses.swift */; };
+		E2515F6B841E4F68C14D0419 /* SpriteMessagingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433F8F4160504FECAA91BBC2 /* SpriteMessagingState.swift */; };
+		C113A701F7910BAD57011D40 /* SpriteInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B96D3B2D8FF01E0187FC3DD /* SpriteInspectorView.swift */; };
+		78DC1DD071D269A3B9774687 /* SpriteResponseBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D425503318D6BF8ED3144A3 /* SpriteResponseBanner.swift */; };
 		4C3D2E1F0A9B87654321FEDC /* CrewPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D8E9F0A1B2C34567890ABCD /* CrewPickerView.swift */; };
 		22A50E5C5D84EFE896C415FF /* KeybarCustomizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D14F27776863DA81864B0F1 /* KeybarCustomizer.swift */; };
 		236F9F1B1379B823DB4FD5DB /* MajorTomWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCBDA7E064D0179C4FD35A17 /* MajorTomWidgetsBundle.swift */; };
@@ -296,6 +300,10 @@
 		689B672DDD255A39492A755E /* TerminalViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalViewModel.swift; sourceTree = "<group>"; };
 		696B3D1600947ADCE81C436C /* StatusGlanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusGlanceView.swift; sourceTree = "<group>"; };
 		6A6B155FB1E10E586EFA12AC /* AgentInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentInspectorView.swift; sourceTree = "<group>"; };
+		ACBC098BB389E8F292B2EFC7 /* DogCannedResponses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DogCannedResponses.swift; sourceTree = "<group>"; };
+		433F8F4160504FECAA91BBC2 /* SpriteMessagingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteMessagingState.swift; sourceTree = "<group>"; };
+		0B96D3B2D8FF01E0187FC3DD /* SpriteInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteInspectorView.swift; sourceTree = "<group>"; };
+		3D425503318D6BF8ED3144A3 /* SpriteResponseBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteResponseBanner.swift; sourceTree = "<group>"; };
 		6C4FC6C7F8AA0ACAD27D5D54 /* DirectoryPermissionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryPermissionsView.swift; sourceTree = "<group>"; };
 		6D14F27776863DA81864B0F1 /* KeybarCustomizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeybarCustomizer.swift; sourceTree = "<group>"; };
 		6DA07545B6E9F73EED9477FB /* SessionStatusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStatusWidget.swift; sourceTree = "<group>"; };
@@ -819,10 +827,12 @@
 				49975C50EF000FB470E30360 /* CharacterConfig.swift */,
 				282E1D5B477D7DEE32C76B4B /* FurnitureRegistry.swift */,
 				6B7C8D9E0F1A23456789BCDE /* CrewRoster.swift */,
+				ACBC098BB389E8F292B2EFC7 /* DogCannedResponses.swift */,
 				579C4AF5EF7599467490F248 /* MoodEngine.swift */,
 				35CE152195BD660297FCDF44 /* RoleMapper.swift */,
 				B2A5F6ECD6AEA9681C140DA3 /* OfficeLayout.swift */,
 				BB2C3D4E5F6A7B8C9D0E1F2A /* StationLayout.swift */,
+				433F8F4160504FECAA91BBC2 /* SpriteMessagingState.swift */,
 				765796A3C1DAD173DB56A1CC /* ThemeEngine.swift */,
 				BB1C2D3E4F607182939D0E1A /* WaypointPathfinder.swift */,
 			);
@@ -1096,6 +1106,8 @@
 				7D8E9F0A1B2C34567890ABCD /* CrewPickerView.swift */,
 				BD5008821EC7350E4B0F1BCB /* OfficeManagerView.swift */,
 				BD500881DC6249D63A9E0ACA /* OfficeView.swift */,
+				0B96D3B2D8FF01E0187FC3DD /* SpriteInspectorView.swift */,
+				3D425503318D6BF8ED3144A3 /* SpriteResponseBanner.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -1710,6 +1722,10 @@
 				9F2F95450060416CA67BA3FB /* OfficeView.swift in Sources */,
 				1ECF57AE2993044ECCF73DC6 /* OfficeSceneManager.swift in Sources */,
 				1ECF57AD1993033DCCF73DB5 /* OfficeViewModel.swift in Sources */,
+				6FAAD79E27E62840B5B1C665 /* DogCannedResponses.swift in Sources */,
+				E2515F6B841E4F68C14D0419 /* SpriteMessagingState.swift in Sources */,
+				C113A701F7910BAD57011D40 /* SpriteInspectorView.swift in Sources */,
+				78DC1DD071D269A3B9774687 /* SpriteResponseBanner.swift in Sources */,
 				3320719E65C7D12EC787C929 /* PairingView.swift in Sources */,
 				818FA51F81C18CFE08B3C097 /* PairingViewModel.swift in Sources */,
 				105DA16D4A98B26952BC1756 /* PermissionModeView.swift in Sources */,

@@ -38,6 +38,12 @@ struct OfficeView: View {
     @State private var previousAgentIds: Set<String> = []
     @State private var previousStatuses: [String: AgentStatus] = [:]
 
+    /// Snapshot of sprite IDs with the green unread-glow attached, for diffing.
+    @State private var previousUnreadIds: Set<String> = []
+
+    /// Snapshot of bubble-preview sprite IDs that have already been rendered.
+    @State private var firedPreviewIds: Set<String> = []
+
     /// Activated scene — populated in onAppear, avoids side effects in body.
     @State private var activatedScene: OfficeScene?
 
@@ -109,6 +115,17 @@ struct OfficeView: View {
                 .ignoresSafeArea(.all, edges: .bottom)
                 .onChange(of: viewModel.agents, initial: true) { _, newAgents in
                     syncScene(with: newAgents, viewModel: viewModel, scene: scene)
+                }
+                .onChange(of: viewModel.unreadResponseSpriteIds, initial: true) { _, ids in
+                    syncUnreadGlows(ids: ids, scene: scene)
+                }
+                .onChange(of: viewModel.pendingBubblePreviews, initial: false) { _, previews in
+                    fireBubblePreviews(previews, viewModel: viewModel, scene: scene)
+                }
+                .onChange(of: relay?.connectionState) { _, newState in
+                    if newState == .connected, let sid = viewModel.sessionId {
+                        relay?.flushQueuedSpriteMessages(for: sid)
+                    }
                 }
 
             // Top overlay: agent count + controls
@@ -208,24 +225,23 @@ struct OfficeView: View {
             switch sheetType {
             case .inspector:
                 if let agent = viewModel.selectedAgent {
-                    AgentInspectorView(
+                    SpriteInspectorView(
                         agent: agent,
+                        viewModel: viewModel,
                         activityDescription: viewModel.activityEngine.activityDescription(for: agent.id),
                         onRename: { newName in
                             viewModel.renameAgent(id: agent.id, newName: newName)
                             scene.updateAgentName(id: agent.id, name: newName)
                         },
-                        onSendMessage: relay != nil ? { message in
-                            let sid = sessionId
-                            guard !sid.isEmpty else { return }
-                            Task {
-                                try? await relay?.sendAgentMessage(
-                                    sessionId: sid,
-                                    agentId: agent.id,
-                                    text: message
-                                )
+                        onSendLinkedMessage: relay.map { relayRef in
+                            { queued in
+                                let connected = relayRef.connectionState == .connected
+                                if connected {
+                                    Task { await relayRef.sendSpriteMessage(queued) }
+                                }
+                                return connected
                             }
-                        } : nil,
+                        },
                         onDismiss: {
                             HapticService.impact(.medium)
                             viewModel.dismissInspector()
@@ -386,6 +402,41 @@ struct OfficeView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - /btw Visuals Sync (Wave 4)
+
+    /// Apply green-glow adds/removes based on viewModel.unreadResponseSpriteIds.
+    private func syncUnreadGlows(ids: Set<String>, scene: OfficeScene) {
+        let additions = ids.subtracting(previousUnreadIds)
+        let removals = previousUnreadIds.subtracting(ids)
+        for id in additions {
+            scene.showUnreadResponseGlow(on: id)
+        }
+        for id in removals {
+            scene.hideUnreadResponseGlow(on: id)
+        }
+        previousUnreadIds = ids
+    }
+
+    /// Fire pending bubble previews once per sprite.
+    private func fireBubblePreviews(_ previews: [String: String], viewModel: OfficeViewModel, scene: OfficeScene) {
+        for (spriteId, text) in previews where !firedPreviewIds.contains(spriteId) {
+            scene.showResponsePreviewBubble(on: spriteId, text: shortPreview(text))
+            firedPreviewIds.insert(spriteId)
+            viewModel.consumeBubblePreview(for: spriteId)
+        }
+        // Clean up fired IDs that no longer have pending previews (e.g. after
+        // Cool Beans dropped state), so next response re-fires.
+        firedPreviewIds = firedPreviewIds.intersection(Set(previews.keys))
+    }
+
+    /// Truncate long responses for the speech-bubble preview.
+    private func shortPreview(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count <= 80 { return trimmed }
+        let idx = trimmed.index(trimmed.startIndex, offsetBy: 77)
+        return String(trimmed[..<idx]) + "…"
     }
 
     // MARK: - Scene Sync

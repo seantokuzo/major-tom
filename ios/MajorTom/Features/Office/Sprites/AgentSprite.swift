@@ -45,6 +45,10 @@ final class AgentSprite: SKSpriteNode {
     /// The character type determines the sprite texture set.
     let characterType: CharacterType
 
+    /// Green "unread /btw response" glow — set when an unread sprite.response
+    /// is waiting. Overrides default working auras.
+    private var unreadGlowNode: SKNode?
+
     /// The texture-based crew sprite body node.
     private let bodySprite: SKSpriteNode
 
@@ -649,6 +653,49 @@ final class AgentSprite: SKSpriteNode {
     }
 
     // MARK: - Emote System
+
+    // MARK: - Unread /btw Response Glow (Wave 4)
+
+    /// Attach the green "unread /btw response" glow.
+    func showUnreadResponseGlow() {
+        guard unreadGlowNode == nil else { return }
+        let spriteSize = CrewSpriteBuilder.size(for: characterType)
+        let radius = max(spriteSize.width, spriteSize.height) * 0.8
+
+        let glow = SKShapeNode(circleOfRadius: radius)
+        glow.fillColor = SKColor(red: 0.25, green: 0.9, blue: 0.45, alpha: 0.35)
+        glow.strokeColor = SKColor(red: 0.30, green: 1.0, blue: 0.55, alpha: 0.7)
+        glow.lineWidth = 2
+        glow.name = "unreadResponseGlow"
+        glow.zPosition = -0.5
+        glow.alpha = 0
+
+        let fadeIn = SKAction.fadeAlpha(to: 0.85, duration: 0.25)
+        let pulse = SKAction.repeatForever(SKAction.sequence([
+            SKAction.fadeAlpha(to: 0.45, duration: 0.9),
+            SKAction.fadeAlpha(to: 0.85, duration: 0.9),
+        ]))
+        glow.run(SKAction.sequence([fadeIn, pulse]))
+
+        addChild(glow)
+        unreadGlowNode = glow
+    }
+
+    /// Remove the unread glow.
+    func hideUnreadResponseGlow() {
+        guard let glow = unreadGlowNode else { return }
+        glow.removeAllActions()
+        glow.run(SKAction.sequence([
+            SKAction.fadeOut(withDuration: 0.25),
+            SKAction.removeFromParent(),
+        ]))
+        unreadGlowNode = nil
+    }
+
+    /// Preview a /btw response as a speech bubble over the sprite.
+    func showResponsePreviewBubble(_ text: String, duration: TimeInterval = 5.0) {
+        showSpeechBubble(text, duration: duration)
+    }
 
     /// Show an animated emote above the sprite.
     /// The emote pops in, floats upward, then fades out.

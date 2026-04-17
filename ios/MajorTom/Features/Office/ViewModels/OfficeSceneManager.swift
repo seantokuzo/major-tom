@@ -32,6 +32,60 @@ final class OfficeSceneManager {
     /// Relay service reference for sending sprite.state.request on cold rebuild.
     weak var relay: RelayService?
 
+    // MARK: - Cross-session Banner (Wave 4 M2)
+
+    /// Descriptor for a cross-session `/btw` response banner.
+    struct CrossSessionBanner: Identifiable, Equatable {
+        let id: UUID
+        let sessionId: String
+        let sessionName: String
+        let spriteId: String
+        let spriteName: String
+        let preview: String
+
+        init(
+            id: UUID = UUID(),
+            sessionId: String,
+            sessionName: String,
+            spriteId: String,
+            spriteName: String,
+            preview: String
+        ) {
+            self.id = id
+            self.sessionId = sessionId
+            self.sessionName = sessionName
+            self.spriteId = spriteId
+            self.spriteName = spriteName
+            self.preview = preview
+        }
+    }
+
+    /// The banner currently surfaced to the user (nil = hidden). Consumed by
+    /// OfficeManagerView's overlay. Auto-hides on a 3-second task.
+    var pendingCrossSessionBanner: CrossSessionBanner?
+
+    /// Surface a banner for a response that arrived in a non-active session.
+    func showCrossSessionBanner(
+        sessionId: String,
+        sessionName: String,
+        spriteId: String,
+        spriteName: String,
+        preview: String
+    ) {
+        pendingCrossSessionBanner = CrossSessionBanner(
+            sessionId: sessionId,
+            sessionName: sessionName,
+            spriteId: spriteId,
+            spriteName: spriteName,
+            preview: preview
+        )
+    }
+
+    /// Dismiss the banner (tap or auto-hide).
+    func dismissCrossSessionBanner() {
+        pendingCrossSessionBanner = nil
+    }
+
     // MARK: - Public API
 
     /// Returns the OfficeViewModel for a session, or nil if no Office exists.

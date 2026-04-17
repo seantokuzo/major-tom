@@ -69,6 +69,13 @@ struct MajorTomApp: App {
                     }
                 }
             }
+            // Wave 4: flush queued /btw messages when the relay reconnects so
+            // any messages sent offline are delivered without user action.
+            .onChange(of: relay.connectionState) { _, newState in
+                if newState == .connected {
+                    relay.flushAllQueuedSpriteMessages()
+                }
+            }
             // Handle deep links from notifications
             .onChange(of: notificationService.pendingDeepLink) { _, deepLink in
                 guard let deepLink else { return }

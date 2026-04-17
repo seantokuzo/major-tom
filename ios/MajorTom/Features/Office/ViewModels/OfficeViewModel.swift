@@ -52,6 +52,25 @@ final class OfficeViewModel {
     /// First spawn for a canonical role locks the CharacterType for the session.
     var sessionRoleBindings: RoleMapper.SessionBindings = [:]
 
+    // MARK: - Sprite Messaging (Wave 4)
+
+    /// Per-sprite `/btw` modal state, keyed by the sprite's `AgentState.id`
+    /// (which is the `subagentId` for linked sprites and the `idle-<type>` id
+    /// for dogs).
+    var spriteMessagingStates: [String: SpriteMessagingState] = [:]
+
+    /// FIFO queue of sprite messages awaiting relay connectivity.
+    /// Flushed when the socket reconnects.
+    var queuedSpriteMessages: [QueuedSpriteMessage] = []
+
+    /// Sprite IDs that have an unread `/btw` response and should render the
+    /// green glow on their sprite node. Drained on "Cool Beans" or on open.
+    var unreadResponseSpriteIds: Set<String> = []
+
+    /// Sprite IDs that need a one-shot speech-bubble preview on the next
+    /// scene render (cleared by the view after firing).
+    var pendingBubblePreviews: [String: String] = [:]
+
     // MARK: - Sprite Pool
 
     private static let idlePrefix = "idle-"
@@ -183,6 +202,10 @@ final class OfficeViewModel {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
         guard !isIdleSprite(id) else { return }
 
+        // Scenario #4 — if there's a pending /btw for this agent, mark it
+        // dropped so the user isn't left on "Thinking…" forever.
+        markPendingDropped(for: id)
+
         agents[index].status = .celebrating
         agents[index].currentTask = result
         moodEngine.recordCompletion(id)
@@ -205,6 +228,8 @@ final class OfficeViewModel {
     func handleAgentDismissed(id: String) {
         guard agents.contains(where: { $0.id == id }) else { return }
         guard !isIdleSprite(id) else { return }
+
+        markPendingDropped(for: id)
 
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
         agents[index].status = .leaving
@@ -357,6 +382,9 @@ final class OfficeViewModel {
 
         let agentId = agents[index].id
 
+        // Scenario #4 — drop any pending /btw since the subagent is leaving.
+        markPendingDropped(for: agentId)
+
         switch event.reason {
         case "completed":
             agents[index].status = .celebrating
@@ -390,6 +418,176 @@ final class OfficeViewModel {
                 try? await Task.sleep(for: .seconds(1.5))
                 removeAgent(id: agentId)
             }
+        }
+    }
+
+    // MARK: - Sprite Messaging Handlers (Wave 4)
+
+    /// Return the current messaging state for a sprite (`.idle` if none).
+    func messagingState(for spriteId: String) -> SpriteMessagingState {
+        spriteMessagingStates[spriteId] ?? .idle
+    }
+
+    /// Transition a sprite's state.
+    private func setMessagingState(_ state: SpriteMessagingState, for spriteId: String) {
+        if case .idle = state {
+            spriteMessagingStates.removeValue(forKey: spriteId)
+        } else {
+            spriteMessagingStates[spriteId] = state
+        }
+    }
+
+    /// Begin a pending `/btw` for a linked sprite. Caller (RelayService/view) is
+    /// responsible for actually dispatching the WebSocket send when connected.
+    /// Returns the queued message descriptor so the caller can submit it.
+    @discardableResult
+    func beginPendingMessage(
+        spriteId: String,
+        spriteHandle: String,
+        subagentId: String,
+        text: String,
+        isConnected: Bool
+    ) -> QueuedSpriteMessage? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard case .idle = messagingState(for: spriteId) else { return nil }
+
+        let sid = sessionId ?? ""
+        let messageId = UUID().uuidString
+
+        setMessagingState(.pending(messageId: messageId, question: trimmed), for: spriteId)
+
+        let queued = QueuedSpriteMessage(
+            id: messageId,
+            sessionId: sid,
+            spriteHandle: spriteHandle,
+            subagentId: subagentId,
+            text: trimmed,
+            createdAt: Date()
+        )
+        if !isConnected {
+            queuedSpriteMessages.append(queued)
+            return queued
+        }
+        return queued
+    }
+
+    /// Dog canned-response path — no relay roundtrip. Still transitions
+    /// through pending → ready with a ~200ms delay for consistent UX.
+    func sendDogCannedMessage(spriteId: String, text: String, character: CharacterType) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard case .idle = messagingState(for: spriteId) else { return }
+
+        let messageId = UUID().uuidString
+        setMessagingState(.pending(messageId: messageId, question: trimmed), for: spriteId)
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard let self else { return }
+            guard case .pending(let pendingId, let pendingQ) = self.messagingState(for: spriteId),
+                  pendingId == messageId else { return }
+            let reply = DogCannedResponses.randomResponse(for: character)
+            self.setMessagingState(
+                .ready(messageId: pendingId, question: pendingQ, response: reply, wasDropped: false),
+                for: spriteId
+            )
+        }
+    }
+
+    /// Route an incoming `sprite.response` to the matching sprite.
+    func handleSpriteResponse(_ event: SpriteResponseEvent) {
+        guard event.status == "delivered" || event.status == "dropped" else {
+            return  // "queued" is informational — no state change
+        }
+
+        // Find sprite by messageId first (most reliable), fall back to subagentId.
+        let spriteId: String? = {
+            if let direct = spriteMessagingStates.first(where: { $0.value.messageId == event.messageId })?.key {
+                return direct
+            }
+            return agents.first(where: { $0.linkedSubagentId == event.subagentId })?.id
+        }()
+
+        guard let spriteId else { return }
+
+        queuedSpriteMessages.removeAll { $0.id == event.messageId }
+
+        let current = messagingState(for: spriteId)
+        guard case .pending(let pendingId, let question) = current,
+              pendingId == event.messageId else {
+            return
+        }
+
+        let responseText: String
+        let wasDropped: Bool
+        switch event.status {
+        case "delivered":
+            responseText = event.text
+            wasDropped = false
+        case "dropped":
+            responseText = "(Agent completed before delivery)"
+            wasDropped = true
+        default:
+            return
+        }
+
+        setMessagingState(
+            .ready(messageId: pendingId, question: question, response: responseText, wasDropped: wasDropped),
+            for: spriteId
+        )
+
+        // If the inspector isn't open on this sprite, flag unread for green
+        // glow + speech bubble preview. The view handles the preview.
+        if selectedAgentId != spriteId {
+            unreadResponseSpriteIds.insert(spriteId)
+            pendingBubblePreviews[spriteId] = responseText
+        }
+    }
+
+    /// "Cool Beans" dismisses the response back to idle.
+    func dismissResponse(for spriteId: String) {
+        setMessagingState(.idle, for: spriteId)
+        unreadResponseSpriteIds.remove(spriteId)
+    }
+
+    /// Inspector opened on this sprite — if there was an unread response,
+    /// clear the green-glow flag so the sprite stops pulsing.
+    func markResponseRead(for spriteId: String) {
+        unreadResponseSpriteIds.remove(spriteId)
+        pendingBubblePreviews.removeValue(forKey: spriteId)
+    }
+
+    /// Called by the view after it has rendered the bubble preview once.
+    func consumeBubblePreview(for spriteId: String) {
+        pendingBubblePreviews.removeValue(forKey: spriteId)
+    }
+
+    /// Pop all queued messages (FIFO). Caller sends them.
+    func drainQueuedSpriteMessages() -> [QueuedSpriteMessage] {
+        let drained = queuedSpriteMessages
+        queuedSpriteMessages.removeAll()
+        return drained
+    }
+
+    /// Mark any pending /btw for `spriteId` as dropped (scenario #4).
+    /// Surfaces the `(Agent completed before delivery)` text + green glow.
+    func markPendingDropped(for spriteId: String) {
+        guard case .pending(let messageId, let question) = messagingState(for: spriteId) else { return }
+
+        queuedSpriteMessages.removeAll { $0.id == messageId }
+        setMessagingState(
+            .ready(
+                messageId: messageId,
+                question: question,
+                response: "(Agent completed before delivery)",
+                wasDropped: true
+            ),
+            for: spriteId
+        )
+        if selectedAgentId != spriteId {
+            unreadResponseSpriteIds.insert(spriteId)
+            pendingBubblePreviews[spriteId] = "(Agent completed before delivery)"
         }
     }
 

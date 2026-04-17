@@ -302,6 +302,52 @@ final class RelayService {
         }
     }
 
+    // MARK: - Sprite Messaging (Wave 4)
+
+    /// Send a queued `/btw` sprite message to the relay.
+    func sendSpriteMessage(_ message: QueuedSpriteMessage) async {
+        let wire = SpriteMessageMessage(
+            sessionId: message.sessionId,
+            spriteHandle: message.spriteHandle,
+            subagentId: message.subagentId,
+            text: message.text,
+            messageId: message.id
+        )
+        try? await webSocket.send(wire)
+    }
+
+    /// Flush queued sprite messages for a session. Safe to call multiple
+    /// times — drain is atomic per session.
+    func flushQueuedSpriteMessages(for sessionId: String) {
+        guard let vm = officeSceneManager?.viewModel(for: sessionId) else { return }
+        let queued = vm.drainQueuedSpriteMessages()
+        guard !queued.isEmpty else { return }
+        Task {
+            for message in queued {
+                await sendSpriteMessage(message)
+            }
+        }
+    }
+
+    /// Flush queued messages across every active session (post-reconnect).
+    func flushAllQueuedSpriteMessages() {
+        guard let manager = officeSceneManager else { return }
+        for sessionId in manager.offices.keys {
+            flushQueuedSpriteMessages(for: sessionId)
+        }
+    }
+
+    /// Short preview of a `/btw` response for the cross-session banner.
+    /// Trims whitespace, drops newlines, truncates to 60 chars.
+    private func bannerPreview(_ text: String) -> String {
+        let cleaned = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+        if cleaned.count <= 60 { return cleaned }
+        let idx = cleaned.index(cleaned.startIndex, offsetBy: 57)
+        return String(cleaned[..<idx]) + "…"
+    }
+
     // MARK: - Workspace & Context
 
     func requestWorkspaceTree(path: String? = nil) async throws {
@@ -1128,6 +1174,38 @@ final class RelayService {
         case .spriteState:
             if let event = try? MessageCodec.decode(SpriteStateEvent.self, from: data) {
                 officeSceneManager?.ensureViewModel(for: event.sessionId).handleSpriteState(event)
+            }
+
+        case .spriteResponse:
+            if let event = try? MessageCodec.decode(SpriteResponseEvent.self, from: data) {
+                let vm = officeSceneManager?.ensureViewModel(for: event.sessionId)
+                vm?.handleSpriteResponse(event)
+
+                // Only `delivered`/`dropped` affect UI; `queued` is informational.
+                if event.status == "delivered" || event.status == "dropped" {
+                    if currentSession?.id == event.sessionId {
+                        HapticService.notification(.success)
+                    } else {
+                        // Cross-session (M2) — show banner unless the inspector
+                        // for this sprite is open elsewhere (can't happen in
+                        // our single-open-inspector model, so we just surface).
+                        let sessionName = sessionList
+                            .first(where: { $0.id == event.sessionId })?.workingDirName
+                            ?? "Terminal"
+                        let spriteId = vm?.agents.first(where: {
+                            $0.linkedSubagentId == event.subagentId
+                        })?.id ?? event.subagentId
+                        let spriteName = vm?.agents.first(where: { $0.id == spriteId })?.name
+                            ?? (event.subagentId.prefix(8) + "…")
+                        officeSceneManager?.showCrossSessionBanner(
+                            sessionId: event.sessionId,
+                            sessionName: sessionName,
+                            spriteId: spriteId,
+                            spriteName: String(spriteName),
+                            preview: bannerPreview(event.text)
+                        )
+                    }
+                }
             }
 
         case .error:
