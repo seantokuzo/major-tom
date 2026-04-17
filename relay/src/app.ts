@@ -52,6 +52,8 @@ import { ActivityFeed } from './users/activity-feed.js';
 import { SandboxGuard } from './security/sandbox-guard.js';
 import { AuditLog } from './security/audit-log.js';
 import { RateLimiter } from './security/rate-limiter.js';
+import { SpriteMappingPersistence } from './sprites/sprite-mapping-persistence.js';
+import { SpriteMapper } from './sprites/sprite-mapper.js';
 import { getSessionSecret } from './auth/session.js';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -90,6 +92,8 @@ export async function buildApp(config: AppConfig) {
   const healthMonitor = new HealthMonitor(fleetManager, sessionManager);
   const analyticsCollector = new AnalyticsCollector();
   const achievementService = new AchievementService();
+  const spriteMappingPersistence = new SpriteMappingPersistence();
+  const spriteMapper = new SpriteMapper();
 
   // Multi-user services — only created when multi-user mode is enabled
   const userRegistry = config.multiUserEnabled ? new UserRegistry() : undefined;
@@ -370,6 +374,8 @@ export async function buildApp(config: AppConfig) {
     claudeWorkDir: config.claudeWorkDir,
     multiUserEnabled: config.multiUserEnabled,
     shellApprovalQueue,
+    spriteMappingPersistence,
+    spriteMapper,
   }));
 
   // Phase 13 Wave 2 — REST endpoints for approvals (cold-start fetch
@@ -409,6 +415,10 @@ export async function buildApp(config: AppConfig) {
       };
     });
     sessionPersistence.dispose();
+    // Sprite mapping cleanup: delete all mapping files on graceful shutdown
+    // (all sessions are gone, mappings are meaningless without live agents)
+    await spriteMappingPersistence.deleteAll();
+    spriteMappingPersistence.dispose();
     if (annotationStore) {
       await annotationStore.flush();
       annotationStore.dispose();
