@@ -53,7 +53,8 @@ struct SpriteInspectorView: View {
     }
 
     private var hasQueuedLocally: Bool {
-        viewModel.queuedSpriteMessages.contains(where: { $0.subagentId == agent.linkedSubagentId })
+        guard let subagentId = agent.linkedSubagentId else { return false }
+        return viewModel.queuedSpriteMessages.contains(where: { $0.subagentId == subagentId })
     }
 
     // MARK: - Body

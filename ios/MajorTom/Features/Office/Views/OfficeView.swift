@@ -119,8 +119,17 @@ struct OfficeView: View {
                 .onChange(of: viewModel.unreadResponseSpriteIds, initial: true) { _, ids in
                     syncUnreadGlows(ids: ids, scene: scene)
                 }
-                .onChange(of: viewModel.pendingBubblePreviews, initial: false) { _, previews in
+                .onChange(of: viewModel.pendingBubblePreviews, initial: true) { _, previews in
                     fireBubblePreviews(previews, viewModel: viewModel, scene: scene)
+                }
+                .onChange(of: ObjectIdentifier(scene)) { _, _ in
+                    // Scene identity changed (cold rebuild after LRU eviction) —
+                    // reset diffing state so all currently-unread glows/previews
+                    // are re-applied to the fresh scene instead of skipped.
+                    previousUnreadIds = []
+                    firedPreviewIds = []
+                    syncUnreadGlows(ids: viewModel.unreadResponseSpriteIds, scene: scene)
+                    fireBubblePreviews(viewModel.pendingBubblePreviews, viewModel: viewModel, scene: scene)
                 }
                 .onChange(of: relay?.connectionState) { _, newState in
                     if newState == .connected, let sid = viewModel.sessionId {

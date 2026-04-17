@@ -305,6 +305,9 @@ final class RelayService {
     // MARK: - Sprite Messaging (Wave 4)
 
     /// Send a queued `/btw` sprite message to the relay.
+    /// On WebSocket send failure, re-enqueue into the session's local pending
+    /// queue so the next reconnect flush can retry — otherwise the sprite UI
+    /// stays stuck in `.pending` forever.
     func sendSpriteMessage(_ message: QueuedSpriteMessage) async {
         let wire = SpriteMessageMessage(
             sessionId: message.sessionId,
@@ -313,7 +316,17 @@ final class RelayService {
             text: message.text,
             messageId: message.id
         )
-        try? await webSocket.send(wire)
+        do {
+            try await webSocket.send(wire)
+        } catch {
+            // Send failed (socket closed mid-send, I/O error, etc.). Re-enqueue
+            // so the reconnect flush retries. Guard against duplicate enqueue
+            // in case it was already persisted by the offline path.
+            if let vm = officeSceneManager?.viewModel(for: message.sessionId),
+               !vm.queuedSpriteMessages.contains(where: { $0.id == message.id }) {
+                vm.queuedSpriteMessages.append(message)
+            }
+        }
     }
 
     /// Flush queued sprite messages for a session. Safe to call multiple
@@ -1197,12 +1210,19 @@ final class RelayService {
                         })?.id ?? event.subagentId
                         let spriteName = vm?.agents.first(where: { $0.id == spriteId })?.name
                             ?? (event.subagentId.prefix(8) + "…")
+                        // Dropped responses have empty `text` on the wire — use the
+                        // synthesized text (matches OfficeViewModel.handleSpriteResponse)
+                        // so the banner preview isn't empty/misleading.
+                        let previewSource: String = event.status == "dropped"
+                            ? (event.dropReason.map { "(Agent completed before delivery — \($0))" }
+                                ?? "(Agent completed before delivery)")
+                            : event.text
                         officeSceneManager?.showCrossSessionBanner(
                             sessionId: event.sessionId,
                             sessionName: sessionName,
                             spriteId: spriteId,
                             spriteName: String(spriteName),
-                            preview: bannerPreview(event.text)
+                            preview: bannerPreview(previewSource)
                         )
                     }
                 }
