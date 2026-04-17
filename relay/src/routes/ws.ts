@@ -204,9 +204,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   function toWireMapping(m: PersistedSpriteMapping): SpriteMappingEntry {
     return {
       spriteHandle: m.spriteHandle,
-      agentId: m.agentId,
-      role: m.role,
+      subagentId: m.subagentId,
+      canonicalRole: m.canonicalRole,
       characterType: m.characterType,
+      task: '',
       ...(m.deskIndex !== undefined && m.deskIndex >= 0 ? { deskIndex: m.deskIndex } : {}),
       linkedAt: m.linkedAt,
     };
@@ -608,6 +609,22 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           clearTimeout(endTimeout);
           sessionTimeouts.delete(message.sessionId);
         }
+
+        // ── Sprite cleanup: emit unlink for remaining mappings, then delete ──
+        // Must happen BEFORE sessionClients.delete so broadcastToSession reaches clients.
+        const endSpriteState = spriteMappings.get(message.sessionId);
+        if (endSpriteState) {
+          for (const mapping of endSpriteState.mappings) {
+            broadcastToSession(message.sessionId, {
+              type: 'sprite.unlink',
+              sessionId: message.sessionId,
+              spriteHandle: mapping.spriteHandle,
+              subagentId: mapping.subagentId,
+              reason: 'session_ended',
+            });
+          }
+        }
+
         sessionClients.delete(message.sessionId);
 
         const session = sessionManager.tryGet(message.sessionId);
@@ -637,7 +654,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         // so removing first would recreate a fresh (leaked) buffer for this session.
         broadcastToSession(message.sessionId, { type: 'session.ended', sessionId: message.sessionId });
         eventBuffer.removeSession(message.sessionId);
-        // ── Sprite cleanup: delete mapping file when session ends ──
+        // Delete sprite state (unlinks already emitted above)
         spriteMappings.delete(message.sessionId);
         void spriteMappingPersistence.delete(message.sessionId);
         break;
@@ -894,7 +911,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         // Validate the sprite mapping exists for this agent
         const spriteState = spriteMappings.get(message.sessionId);
         const mapping = spriteState?.mappings.find(m =>
-          m.agentId === message.agentId && m.spriteHandle === message.spriteHandle
+          m.subagentId === message.subagentId && m.spriteHandle === message.spriteHandle
         );
         if (!mapping) {
           // Agent may have completed before message arrived (scenario #4 from spec)
@@ -902,7 +919,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             type: 'sprite.response',
             sessionId: message.sessionId,
             spriteHandle: message.spriteHandle,
-            agentId: message.agentId,
+            subagentId: message.subagentId,
             messageId: message.messageId,
             text: '',
             status: 'dropped',
@@ -916,13 +933,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           type: 'sprite.response',
           sessionId: message.sessionId,
           spriteHandle: message.spriteHandle,
-          agentId: message.agentId,
+          subagentId: message.subagentId,
           messageId: message.messageId,
           text: '',
           status: 'queued',
         });
         logger.info(
-          { sessionId: message.sessionId, agentId: message.agentId, spriteHandle: message.spriteHandle },
+          { sessionId: message.sessionId, subagentId: message.subagentId, spriteHandle: message.spriteHandle },
           'Sprite message received — queued for Wave 4 delivery',
         );
         break;
@@ -1869,9 +1886,11 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             type: 'sprite.link',
             sessionId: sid,
             spriteHandle: mapping.spriteHandle,
-            agentId: event.agentId,
-            role: mapping.role,
+            subagentId: event.agentId,
+            canonicalRole: mapping.canonicalRole,
             characterType: mapping.characterType,
+            task: event.task ?? '',
+            parentId: event.parentId,
             deskIndex: mapping.deskIndex >= 0 ? mapping.deskIndex : undefined,
           });
           break;
@@ -1891,7 +1910,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           // ── Sprite wiring: remove mapping + emit sprite.unlink ���─
           const completeState = spriteMappings.get(sid);
           if (completeState) {
-            const idx = completeState.mappings.findIndex(m => m.agentId === event.agentId);
+            const idx = completeState.mappings.findIndex(m => m.subagentId === event.agentId);
             const removed = idx >= 0 ? completeState.mappings[idx] : undefined;
             if (removed) {
               completeState.mappings.splice(idx, 1);
@@ -1901,8 +1920,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
                 type: 'sprite.unlink',
                 sessionId: sid,
                 spriteHandle: removed.spriteHandle,
-                agentId: event.agentId,
-                reason: 'complete',
+                subagentId: event.agentId,
+                reason: 'completed',
               });
             }
           }
@@ -1915,7 +1934,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           // ── Sprite wiring: remove mapping + emit sprite.unlink ──
           const dismissState = spriteMappings.get(sid);
           if (dismissState) {
-            const idx = dismissState.mappings.findIndex(m => m.agentId === event.agentId);
+            const idx = dismissState.mappings.findIndex(m => m.subagentId === event.agentId);
             const removed = idx >= 0 ? dismissState.mappings[idx] : undefined;
             if (removed) {
               dismissState.mappings.splice(idx, 1);
@@ -1925,7 +1944,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
                 type: 'sprite.unlink',
                 sessionId: sid,
                 spriteHandle: removed.spriteHandle,
-                agentId: event.agentId,
+                subagentId: event.agentId,
                 reason: 'dismissed',
               });
             }

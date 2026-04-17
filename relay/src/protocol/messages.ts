@@ -472,7 +472,7 @@ export interface SpriteMessageMessage {
   type: 'sprite.message';
   sessionId: string;
   spriteHandle: string;
-  agentId: string;
+  subagentId: string;
   text: string;
   messageId: string;
 }
@@ -1118,9 +1118,12 @@ export interface GitErrorResponseMessage {
 
 export interface SpriteMappingEntry {
   spriteHandle: string;
-  agentId: string;
-  role: string;
+  subagentId: string;
+  canonicalRole: string;
   characterType: string;
+  task: string;
+  parentId?: string;
+  status?: string;
   deskIndex?: number;
   linkedAt: string;
 }
@@ -1129,9 +1132,11 @@ export interface SpriteLinkMessage {
   type: 'sprite.link';
   sessionId: string;
   spriteHandle: string;
-  agentId: string;
-  role: string;
+  subagentId: string;
+  canonicalRole: string;
   characterType: string;
+  task: string;
+  parentId?: string;
   deskIndex?: number;
 }
 
@@ -1139,15 +1144,15 @@ export interface SpriteUnlinkMessage {
   type: 'sprite.unlink';
   sessionId: string;
   spriteHandle: string;
-  agentId: string;
-  reason: 'complete' | 'dismissed' | 'error' | 'session_ended';
+  subagentId: string;
+  reason: 'completed' | 'dismissed' | 'failed' | 'session_ended';
 }
 
 export interface SpriteResponseMessage {
   type: 'sprite.response';
   sessionId: string;
   spriteHandle: string;
-  agentId: string;
+  subagentId: string;
   messageId: string;
   text: string;
   status: 'delivered' | 'queued' | 'dropped';

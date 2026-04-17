@@ -10,8 +10,8 @@ import { logger } from '../utils/logger.js';
 
 export interface PersistedSpriteMapping {
   spriteHandle: string;
-  agentId: string;
-  role: string;
+  subagentId: string;
+  canonicalRole: string;
   characterType: string;
   deskIndex: number;
   linkedAt: string;
@@ -23,7 +23,6 @@ export interface PersistedSpriteMappingFile {
   updatedAt: string;
   roleBindings: Record<string, string>;
   mappings: PersistedSpriteMapping[];
-  nextDeskIndex: number;
 }
 
 // ── Constants ──────────────────────────────────────────────

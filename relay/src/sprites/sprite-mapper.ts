@@ -34,14 +34,14 @@ export type CanonicalRole = typeof CANONICAL_ROLES[number];
 // Dogs are NEVER used as agent sprites.
 
 const ROLE_CHARACTER_MAP: Record<CanonicalRole, string> = {
-  researcher: 'scientist',
-  architect: 'architect',
-  qa: 'inspector',
+  researcher: 'botanist',
+  architect: 'captain',
+  qa: 'doctor',
   devops: 'mechanic',
   frontend: 'frontendDev',
-  backend: 'backendDev',
-  lead: 'teamLead',
-  engineer: 'engineer',
+  backend: 'backendEngineer',
+  lead: 'pm',
+  engineer: 'claudimusPrime',
 };
 
 // ── Role classification regex patterns ─────────────────────
@@ -142,15 +142,15 @@ export class SpriteMapper {
 
     const mapping: PersistedSpriteMapping = {
       spriteHandle,
-      agentId,
-      role,
+      subagentId: agentId,
+      canonicalRole: role,
       characterType,
       deskIndex,
       linkedAt: new Date().toISOString(),
     };
 
     logger.info(
-      { agentId, role, characterType, deskIndex, spriteHandle, isNewBinding: isNew },
+      { subagentId: agentId, canonicalRole: role, characterType, deskIndex, spriteHandle, isNewBinding: isNew },
       'Sprite mapping created',
     );
 
@@ -167,7 +167,6 @@ export class SpriteMapper {
       updatedAt: new Date().toISOString(),
       roleBindings: {},
       mappings: [],
-      nextDeskIndex: 0,
     };
   }
 }
