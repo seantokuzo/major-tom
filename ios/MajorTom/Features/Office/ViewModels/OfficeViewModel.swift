@@ -308,8 +308,8 @@ final class OfficeViewModel {
             agents[existingIndex].linkedSubagentId = event.subagentId
             agents[existingIndex].canonicalRole = event.canonicalRole
             agents[existingIndex].parentId = event.parentId
-            if let task = Optional(event.task), !task.isEmpty {
-                agents[existingIndex].currentTask = task
+            if !event.task.isEmpty {
+                agents[existingIndex].currentTask = event.task
             }
             return
         }

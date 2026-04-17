@@ -659,6 +659,8 @@ final class RelayService {
                     currentSession = nil
                     updateWidgetData()
                 }
+                // Clean up the office entry for this session
+                officeSceneManager?.closeOffice(for: event.sessionId)
             }
 
         case .sessionListResponse:
@@ -723,59 +725,41 @@ final class RelayService {
 
         case .agentSpawn:
             if let event = try? MessageCodec.decode(AgentSpawnEvent.self, from: data) {
-                // Route to per-session OfficeViewModel — ensureViewModel auto-creates a
-                // lightweight entry so agent state accumulates even before the user opens an Office.
-                if let sid = currentSession?.id {
-                    officeSceneManager?.ensureViewModel(for: sid).handleAgentSpawn(id: event.agentId, role: event.role, task: event.task, parentId: event.parentId)
-                }
+                officeSceneManager?.ensureViewModel(for: event.sessionId).handleAgentSpawn(id: event.agentId, role: event.role, task: event.task, parentId: event.parentId)
                 notificationService?.postAgentSpawnNotification(
                     agentId: event.agentId,
                     role: event.role,
                     task: event.task
                 )
-                if let sid = currentSession?.id {
-                    liveActivityManager?.handleAgentSpawn(sessionId: sid, role: event.role)
-                }
+                liveActivityManager?.handleAgentSpawn(sessionId: event.sessionId, role: event.role)
                 updateWidgetData()
             }
 
         case .agentWorking:
             if let event = try? MessageCodec.decode(AgentWorkingEvent.self, from: data) {
-                if let sid = currentSession?.id {
-                    officeSceneManager?.ensureViewModel(for: sid).handleAgentWorking(id: event.agentId, task: event.task)
-                }
+                officeSceneManager?.ensureViewModel(for: event.sessionId).handleAgentWorking(id: event.agentId, task: event.task)
             }
 
         case .agentIdle:
             if let event = try? MessageCodec.decode(AgentIdleEvent.self, from: data) {
-                if let sid = currentSession?.id {
-                    officeSceneManager?.ensureViewModel(for: sid).handleAgentIdle(id: event.agentId)
-                }
+                officeSceneManager?.ensureViewModel(for: event.sessionId).handleAgentIdle(id: event.agentId)
             }
 
         case .agentComplete:
             if let event = try? MessageCodec.decode(AgentCompleteEvent.self, from: data) {
-                if let sid = currentSession?.id {
-                    officeSceneManager?.ensureViewModel(for: sid).handleAgentComplete(id: event.agentId, result: event.result)
-                }
+                officeSceneManager?.ensureViewModel(for: event.sessionId).handleAgentComplete(id: event.agentId, result: event.result)
                 notificationService?.postAgentCompleteNotification(
                     agentId: event.agentId,
                     result: event.result
                 )
-                if let sid = currentSession?.id {
-                    liveActivityManager?.handleAgentComplete(sessionId: sid)
-                }
+                liveActivityManager?.handleAgentComplete(sessionId: event.sessionId)
                 updateWidgetData()
             }
 
         case .agentDismissed:
             if let event = try? MessageCodec.decode(AgentDismissedEvent.self, from: data) {
-                if let sid = currentSession?.id {
-                    officeSceneManager?.ensureViewModel(for: sid).handleAgentDismissed(id: event.agentId)
-                }
-                if let sid = currentSession?.id {
-                    liveActivityManager?.handleAgentComplete(sessionId: sid)
-                }
+                officeSceneManager?.ensureViewModel(for: event.sessionId).handleAgentDismissed(id: event.agentId)
+                liveActivityManager?.handleAgentComplete(sessionId: event.sessionId)
                 updateWidgetData()
             }
 

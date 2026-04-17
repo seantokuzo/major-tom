@@ -768,6 +768,7 @@ struct ToolCompleteEvent: Codable {
 
 struct AgentSpawnEvent: Codable, Identifiable {
     let type: String
+    let sessionId: String
     let agentId: String
     var parentId: String?
     let task: String
@@ -778,23 +779,27 @@ struct AgentSpawnEvent: Codable, Identifiable {
 
 struct AgentWorkingEvent: Codable {
     let type: String
+    let sessionId: String
     let agentId: String
     let task: String
 }
 
 struct AgentIdleEvent: Codable {
     let type: String
+    let sessionId: String
     let agentId: String
 }
 
 struct AgentCompleteEvent: Codable {
     let type: String
+    let sessionId: String
     let agentId: String
     let result: String
 }
 
 struct AgentDismissedEvent: Codable {
     let type: String
+    let sessionId: String
     let agentId: String
 }
 
