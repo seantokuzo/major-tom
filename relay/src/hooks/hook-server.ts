@@ -26,10 +26,14 @@
  *     no changes to the downstream path
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { basename } from 'node:path';
 import { logger } from '../utils/logger.js';
 import { ApprovalQueue } from './approval-queue.js';
 import type { NotificationBatcher } from '../push/notification-batcher.js';
 import type { AgentEvent } from '../adapters/adapter.interface.js';
+import type { ServerMessage } from '../protocol/messages.js';
+import type { TabRegistry } from '../tabs/tab-registry.js';
+import type { SessionManager } from '../sessions/session-manager.js';
 
 function readBody(req: IncomingMessage, maxBytes = 65_536): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -87,6 +91,25 @@ function decisionToPermissionDecision(decision: string): 'allow' | 'deny' | 'ask
   return 'ask';
 }
 
+/**
+ * Tab-Keyed Offices bridge. Wired from `app.ts`; absent in tests that don't
+ * care about the tab pathway. When absent, `/hooks/session-start` and
+ * `/hooks/stop` respond 200 with `{}` but emit a warn log and skip the
+ * TabRegistry + SessionManager mutations (safe degradation for relay
+ * deployments that disable the feature).
+ */
+export interface TabBridgeDeps {
+  tabRegistry: TabRegistry;
+  sessionManager: SessionManager;
+  /** Broadcast a message to every connected WebSocket client. */
+  broadcast: (message: ServerMessage) => void;
+  /**
+   * Look up the owner userId for a given tabId. Populated at PTY-attach
+   * time by shell.ts; undefined for tabs whose PTY is not yet authenticated.
+   */
+  getUserIdForTab: (tabId: string) => string | undefined;
+}
+
 interface HookServerDeps {
   approvalQueue: ApprovalQueue;
   notificationBatcher?: NotificationBatcher;
@@ -99,6 +122,8 @@ interface HookServerDeps {
    * fleet access (e.g. tests) still work.
    */
   reportAgentLifecycle?: (event: AgentEvent) => void;
+  /** Tab-Keyed Offices — see {@link TabBridgeDeps}. */
+  tabBridge?: TabBridgeDeps;
 }
 
 // ── Hook HTTP Server ────────────────────────────────────────
@@ -115,7 +140,7 @@ export function createHookServer(
     approvalQueueOrDeps instanceof ApprovalQueue
       ? { approvalQueue: approvalQueueOrDeps }
       : approvalQueueOrDeps;
-  const { approvalQueue, notificationBatcher, reportAgentLifecycle } = deps;
+  const { approvalQueue, notificationBatcher, reportAgentLifecycle, tabBridge } = deps;
 
   const server = createServer(async (req, res) => {
     const url = req.url ?? '';
@@ -356,6 +381,145 @@ export function createHookServer(
             'SubagentStop hook received but reportAgentLifecycle not wired — dropping (check createHookServer deps)',
           );
         }
+
+        sendJson(res, 200, {});
+        return;
+      }
+
+      // ── Session-start ────────────────────────────────────
+      // Tab-Keyed Offices — fires on every `claude` boot inside an iOS
+      // terminal tab. Registers the session with both SessionManager
+      // (for the existing session pipeline) and TabRegistry (for the
+      // tab→session mapping), then broadcasts tab.session.started so
+      // the Office Manager can light up the new session without polling.
+      if (method === 'POST' && url === '/hooks/session-start') {
+        const body = await readBody(req);
+        let payload: Record<string, unknown>;
+        try {
+          payload = JSON.parse(body) as Record<string, unknown>;
+        } catch {
+          sendJson(res, 400, { error: 'Invalid JSON in hook payload' });
+          return;
+        }
+
+        const sessionId =
+          typeof payload['session_id'] === 'string' ? (payload['session_id'] as string) : '';
+        const cwd = typeof payload['cwd'] === 'string' ? (payload['cwd'] as string) : '';
+        const tabHeader = req.headers['x-mt-tab'];
+        const tabId =
+          typeof tabHeader === 'string'
+            ? tabHeader
+            : Array.isArray(tabHeader)
+              ? tabHeader[0]
+              : undefined;
+
+        if (!sessionId) {
+          sendJson(res, 400, { error: 'Missing session_id in hook payload' });
+          return;
+        }
+        if (!tabId || tabId === 'unknown') {
+          // Missing X-MT-Tab means the PTY wasn't launched with our tab-id
+          // env (e.g. a `claude` invoked from Ground Control or an ad-hoc
+          // shell). Acknowledge with {} so claude still boots — we just
+          // won't track the session as a tab.
+          logger.info(
+            { sessionId },
+            'SessionStart hook without X-MT-Tab — skipping TabRegistry (legacy path)',
+          );
+          sendJson(res, 200, {});
+          return;
+        }
+
+        if (!tabBridge) {
+          logger.warn(
+            { tabId, sessionId },
+            'SessionStart hook received but tabBridge not wired — dropping (check createHookServer deps)',
+          );
+          sendJson(res, 200, {});
+          return;
+        }
+
+        const userId = tabBridge.getUserIdForTab(tabId);
+        tabBridge.sessionManager.registerExternal(sessionId, cwd);
+        tabBridge.tabRegistry.registerSessionStart(sessionId, tabId, cwd, userId);
+
+        logger.info(
+          { tabId, sessionId, cwd, userId },
+          'SessionStart hook registered tab↔session binding',
+        );
+
+        const startedAt = new Date().toISOString();
+        tabBridge.broadcast({
+          type: 'tab.session.started',
+          tabId,
+          sessionId,
+          workingDirName: cwd ? basename(cwd) : '',
+          startedAt,
+        });
+        tabBridge.broadcast({
+          type: 'session.info',
+          sessionId,
+          adapter: 'cli-external',
+          startedAt,
+        });
+
+        sendJson(res, 200, {});
+        return;
+      }
+
+      // ── Stop (session-end) ───────────────────────────────
+      // Tab-Keyed Offices — Claude Code's session-end hook. Closes the
+      // Session and removes it from the TabRegistry but leaves the
+      // TabMeta alive so dogs stay in the Office; tab teardown happens
+      // only on PTY grace-expire (pty-adapter.ts → tabRegistry.tabClosed).
+      if (method === 'POST' && url === '/hooks/stop') {
+        const body = await readBody(req);
+        let payload: Record<string, unknown>;
+        try {
+          payload = JSON.parse(body) as Record<string, unknown>;
+        } catch {
+          sendJson(res, 400, { error: 'Invalid JSON in hook payload' });
+          return;
+        }
+
+        const sessionId =
+          typeof payload['session_id'] === 'string' ? (payload['session_id'] as string) : '';
+        if (!sessionId) {
+          sendJson(res, 400, { error: 'Missing session_id in hook payload' });
+          return;
+        }
+
+        if (!tabBridge) {
+          logger.warn(
+            { sessionId },
+            'Stop hook received but tabBridge not wired — dropping (check createHookServer deps)',
+          );
+          sendJson(res, 200, {});
+          return;
+        }
+
+        const tab = tabBridge.tabRegistry.getTabForSession(sessionId);
+        tabBridge.sessionManager.tryGet(sessionId)?.close();
+        tabBridge.tabRegistry.registerSessionEnd(sessionId);
+
+        const endedAt = new Date().toISOString();
+        if (tab) {
+          tabBridge.broadcast({
+            type: 'tab.session.ended',
+            tabId: tab.tabId,
+            sessionId,
+            endedAt,
+          });
+        }
+        tabBridge.broadcast({
+          type: 'session.ended',
+          sessionId,
+        });
+
+        logger.info(
+          { tabId: tab?.tabId, sessionId },
+          'Stop hook closed session and updated TabRegistry',
+        );
 
         sendJson(res, 200, {});
         return;

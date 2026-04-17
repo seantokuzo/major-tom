@@ -1216,6 +1216,26 @@ export interface SpriteStateMessage {
   roleBindings: Record<string, string>;
 }
 
+// ── Tab-Keyed Offices (phase §5.3) ───────────────────────────
+// Broadcast when a claude session inside an iOS terminal tab starts. The
+// tab itself is created lazily on the first SessionStart for that tabId.
+export interface TabSessionStartedMessage {
+  type: 'tab.session.started';
+  tabId: string;
+  sessionId: string;
+  workingDirName: string;
+  startedAt: string;
+}
+
+// Broadcast when a claude session ends via the Stop hook. The tab survives
+// until the PTY grace expires — this event only touches the session roster.
+export interface TabSessionEndedMessage {
+  type: 'tab.session.ended';
+  tabId: string;
+  sessionId: string;
+  endedAt: string;
+}
+
 /** Base server message union (without envelope fields). */
 type ServerMessageBase =
   | OutputMessage
@@ -1285,7 +1305,9 @@ type ServerMessageBase =
   | SpriteLinkMessage
   | SpriteUnlinkMessage
   | SpriteResponseMessage
-  | SpriteStateMessage;
+  | SpriteStateMessage
+  | TabSessionStartedMessage
+  | TabSessionEndedMessage;
 
 /**
  * Every outbound server message may carry an optional `seq` —
