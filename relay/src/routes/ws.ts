@@ -920,6 +920,40 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         break;
       }
 
+      // ── Sprite state query (cold scene rebuild) ──────────────
+      case 'sprite.state.request': {
+        const reqSessionId = message.sessionId;
+        let state = spriteMappings.get(reqSessionId);
+        if (!state) {
+          // Try loading from disk (relay may have restarted since last seen)
+          const persisted = await spriteMappingPersistence.load(reqSessionId);
+          if (persisted) {
+            spriteMappings.set(reqSessionId, persisted);
+            state = persisted;
+          }
+        }
+        sendToClient(ws, {
+          type: 'sprite.state',
+          sessionId: reqSessionId,
+          mappings: state?.mappings.length
+            ? state.mappings.map(m => ({
+                spriteHandle: m.spriteHandle,
+                agentId: m.agentId,
+                role: m.role,
+                characterType: m.characterType,
+                ...(m.deskIndex !== undefined && m.deskIndex >= 0 ? { deskIndex: m.deskIndex } : {}),
+                linkedAt: m.linkedAt,
+              }))
+            : [],
+          roleBindings: state?.roleBindings ?? {},
+        });
+        logger.debug(
+          { sessionId: reqSessionId, mappingCount: state?.mappings.length ?? 0 },
+          'Sprite state request fulfilled',
+        );
+        break;
+      }
+
       case 'workspace.tree': {
         const session = message.sessionId
           ? sessionManager.tryGet(message.sessionId)

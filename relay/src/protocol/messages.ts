@@ -477,6 +477,11 @@ export interface SpriteMessageMessage {
   messageId: string;
 }
 
+export interface SpriteStateRequestMessage {
+  type: 'sprite.state.request';
+  sessionId: string;
+}
+
 export type ClientMessage =
   | PromptMessage
   | ApprovalMessage
@@ -527,7 +532,8 @@ export type ClientMessage =
   | GitLogMessage
   | GitBranchesMessage
   | GitShowMessage
-  | SpriteMessageMessage;
+  | SpriteMessageMessage
+  | SpriteStateRequestMessage;
 
 // ── Server → Client (Relay → iOS) ──────────────────────────
 
