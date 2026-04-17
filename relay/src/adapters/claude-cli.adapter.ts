@@ -567,6 +567,22 @@ export class ClaudeCliAdapter implements IAdapter {
    * boundary so the next assistant message can be correlated unambiguously.
    */
   private async drainOneBtw(sessionId: string, sdkSession: SDKSession): Promise<void> {
+    // Single-in-flight guard: if a previous /btw for this session is still
+    // awaiting a response, do NOT inject another one or response
+    // correlation breaks. The next turn boundary (after the response lands
+    // or the entry is dropped) will resume draining.
+    const inFlight = this.btwQueue.findAwaitingForSession(sessionId);
+    if (inFlight) {
+      logger.debug(
+        {
+          sessionId,
+          awaitingMessageId: inFlight.messageId,
+        },
+        'Skipping /btw drain — another /btw still awaiting response for this session',
+      );
+      return;
+    }
+
     const queued = this.btwQueue.peekQueuedForSession(sessionId);
     if (queued.length === 0) return;
     const oldest = queued[0];
@@ -590,8 +606,10 @@ export class ClaudeCliAdapter implements IAdapter {
         { sessionId, subagentId: entry.subagentId, messageId: entry.messageId, err },
         'Failed to inject /btw — dropping',
       );
-      this.btwQueue.dropForSubagent(
-        entry.subagentId,
+      // Drop ONLY this entry so unrelated queued messages for the same
+      // subagent survive to try again on the next turn boundary.
+      this.btwQueue.dropByMessageId(
+        entry.messageId,
         `Injection failed: ${err instanceof Error ? err.message : 'unknown'}`,
       );
     }

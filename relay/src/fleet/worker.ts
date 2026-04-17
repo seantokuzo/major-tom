@@ -608,6 +608,23 @@ async function drainOneBtwForSession(
   sessionId: string,
   sdkSession: SDKSession,
 ): Promise<void> {
+  // Single-in-flight guard: if a previous /btw for this session is still
+  // awaiting a response (e.g. injection yielded tool-calls before any
+  // assistant text), do NOT inject another one or response correlation
+  // breaks. The next turn boundary (after the response lands or the
+  // entry is dropped) will resume draining.
+  const inFlight = btwQueue.findAwaitingForSession(sessionId);
+  if (inFlight) {
+    workerLog.debug(
+      {
+        sessionId,
+        awaitingMessageId: inFlight.messageId,
+      },
+      'Skipping /btw drain — another /btw still awaiting response for this session',
+    );
+    return;
+  }
+
   const queued = btwQueue.peekQueuedForSession(sessionId);
   if (queued.length === 0) return;
 
@@ -634,9 +651,11 @@ async function drainOneBtwForSession(
       { sessionId, subagentId: entry.subagentId, messageId: entry.messageId, err },
       'Failed to inject /btw — dropping',
     );
-    // Drop this entry so client sees a final answer rather than hanging.
-    btwQueue.dropForSubagent(
-      entry.subagentId,
+    // Drop ONLY this entry so the client sees a final answer rather
+    // than hanging, while unrelated queued messages for the same
+    // subagent survive to try again on the next turn boundary.
+    btwQueue.dropByMessageId(
+      entry.messageId,
       `Injection failed: ${err instanceof Error ? err.message : 'unknown'}`,
     );
   }

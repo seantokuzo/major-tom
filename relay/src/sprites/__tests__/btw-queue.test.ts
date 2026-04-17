@@ -16,13 +16,16 @@ describe('buildConstrainedText', () => {
     expect(out).toContain('Do NOT change the subagent');
   });
 
-  it('escapes quotes in user text, role, and task', () => {
+  it('escapes single quotes in user text, role, and task', () => {
     const out = buildConstrainedText({
       role: "it's fine",
       task: "don't worry",
       userText: "don't panic",
     });
-    // Single quotes are escaped so the outer framing stays parseable.
+    // Only single quotes are escaped (double quotes are not — the
+    // surrounding framing uses double quotes around role/task but single
+    // quotes around the user text, so only single quotes need escaping
+    // to keep the structure parseable).
     expect(out).toContain("\\'");
   });
 });
@@ -197,6 +200,64 @@ describe('BtwQueue', () => {
   it('markResponded for unknown messageId returns undefined', () => {
     const q = new BtwQueue();
     expect(q.markResponded('ghost-msg', 'irrelevant')).toBeUndefined();
+  });
+
+  it('dropByMessageId removes only the targeted entry and emits "dropped"', () => {
+    const q = new BtwQueue();
+    q.enqueue({ ...baseInput(), messageId: 'msg-1' });
+    q.enqueue({ ...baseInput(), messageId: 'msg-2' });
+    q.enqueue({ ...baseInput(), messageId: 'msg-3' });
+    const dropped = vi.fn();
+    q.on('dropped', dropped);
+    const removed = q.dropByMessageId('msg-2', 'Injection failed: boom');
+    expect(removed?.messageId).toBe('msg-2');
+    expect(q.sizeFor('agent-1')).toBe(2);
+    expect(dropped).toHaveBeenCalledTimes(1);
+    expect(dropped).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'sess-1',
+      subagentId: 'agent-1',
+      messageId: 'msg-2',
+      reason: 'Injection failed: boom',
+    }));
+    // Remaining entries (msg-1, msg-3) survive.
+    const survivors = q.peekQueuedForSession('sess-1').map(e => e.messageId);
+    expect(survivors).toEqual(['msg-1', 'msg-3']);
+  });
+
+  it('dropByMessageId works on injected and awaiting_response entries', () => {
+    const q = new BtwQueue();
+    q.enqueue({ ...baseInput(), messageId: 'msg-1' });
+    q.enqueue({ ...baseInput(), messageId: 'msg-2' });
+    q.takeNextForSubagent('agent-1'); // msg-1 → injected
+    q.markAwaitingResponse('msg-1');  // msg-1 → awaiting_response
+    const dropped = vi.fn();
+    q.on('dropped', dropped);
+    const removed = q.dropByMessageId('msg-1', 'timed out');
+    expect(removed?.status).toBe('awaiting_response');
+    expect(dropped).toHaveBeenCalledTimes(1);
+    // msg-2 (still queued) is untouched.
+    expect(q.sizeFor('agent-1')).toBe(1);
+    expect(q.peekQueuedForSession('sess-1')[0]?.messageId).toBe('msg-2');
+  });
+
+  it('dropByMessageId returns undefined and emits nothing for unknown id', () => {
+    const q = new BtwQueue();
+    q.enqueue(baseInput());
+    const dropped = vi.fn();
+    q.on('dropped', dropped);
+    const removed = q.dropByMessageId('ghost-msg', 'irrelevant');
+    expect(removed).toBeUndefined();
+    expect(dropped).not.toHaveBeenCalled();
+    expect(q.size).toBe(1);
+  });
+
+  it('dropByMessageId cleans up an empty subagent list', () => {
+    const q = new BtwQueue();
+    q.enqueue({ ...baseInput(), subagentId: 'a1', messageId: 'msg-1' });
+    q.enqueue({ ...baseInput(), subagentId: 'a2', messageId: 'msg-2' });
+    q.dropByMessageId('msg-1', 'gone');
+    expect(q.sizeFor('a1')).toBe(0);
+    expect(q.sizeFor('a2')).toBe(1);
   });
 
   it('multiple subagents, independent queues', () => {

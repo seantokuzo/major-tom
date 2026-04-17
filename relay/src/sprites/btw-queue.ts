@@ -273,9 +273,51 @@ export class BtwQueue extends EventEmitter {
   }
 
   /**
-   * Drop all queued+injected entries for a subagent (e.g. subagent
-   * completed before delivery). Emits 'dropped' for each with the same
-   * reason. Returns the count dropped.
+   * Drop a single entry by its messageId, regardless of which subagent
+   * owns it or what status it is in (queued / injected / awaiting_response).
+   *
+   * Used when a specific /btw entry must be abandoned (e.g. `sdkSession.send`
+   * throws on injection) without collaterally dropping unrelated queued
+   * messages for the same subagent. Emits 'dropped' for the entry that was
+   * removed. Returns the removed entry, or undefined if no match was found.
+   */
+  dropByMessageId(messageId: string, reason: string): BtwQueueEntry | undefined {
+    for (const [subagentId, list] of this.bySubagent) {
+      const idx = list.findIndex(e => e.messageId === messageId);
+      if (idx >= 0) {
+        const entry = list[idx]!;
+        list.splice(idx, 1);
+        if (list.length === 0) this.bySubagent.delete(subagentId);
+        logger.info(
+          {
+            sessionId: entry.sessionId,
+            subagentId,
+            messageId,
+            status: entry.status,
+            reason,
+          },
+          'BtwQueue: dropped (single messageId)',
+        );
+        this.emit('dropped', {
+          sessionId: entry.sessionId,
+          subagentId,
+          spriteHandle: entry.spriteHandle,
+          messageId: entry.messageId,
+          reason,
+        } satisfies BtwQueueEventMap['dropped']);
+        return entry;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Drop ALL entries for a subagent, regardless of status (queued /
+   * injected / awaiting_response). Used when the subagent is unlinked
+   * (complete / failed / dismissed) and nothing more can be delivered —
+   * callers rely on this being a clean teardown of the subagent's queue.
+   * Emits 'dropped' for each entry with the given reason. Returns the
+   * count dropped.
    */
   dropForSubagent(subagentId: string, reason: string): number {
     const list = this.bySubagent.get(subagentId);
@@ -303,8 +345,10 @@ export class BtwQueue extends EventEmitter {
   }
 
   /**
-   * Drop all queued+injected entries for a session (e.g. session.end).
-   * Used by the ws.ts session cleanup path to shed state.
+   * Drop ALL entries for a session, regardless of status (queued /
+   * injected / awaiting_response). Used by the ws.ts session cleanup
+   * path (e.g. session.end) to shed all sprite-message state tied to
+   * the session before it disappears.
    */
   dropForSession(sessionId: string, reason: string): number {
     let total = 0;
