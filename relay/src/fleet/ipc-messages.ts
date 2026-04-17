@@ -68,6 +68,15 @@ export interface IpcPermissionMode {
   godSubMode?: GodSubMode;
 }
 
+export interface IpcSpriteMessage {
+  type: 'ipc:sprite.message';
+  sessionId: string;
+  spriteHandle: string;
+  agentId: string;
+  text: string;
+  messageId: string;
+}
+
 export type ParentToChildMessage =
   | IpcSessionStart
   | IpcSessionDestroy
@@ -77,7 +86,8 @@ export type ParentToChildMessage =
   | IpcAgentMessage
   | IpcContextAdd
   | IpcContextRemove
-  | IpcPermissionMode;
+  | IpcPermissionMode
+  | IpcSpriteMessage;
 
 // ── Child → Parent Messages ────────────────────────────────
 
@@ -133,6 +143,7 @@ export interface IpcToolComplete {
 
 export interface IpcAgentLifecycle {
   type: 'ipc:agent.lifecycle';
+  sessionId: string;
   agentId: string;
   event: 'spawn' | 'working' | 'idle' | 'complete' | 'dismissed';
   task?: string;
@@ -215,5 +226,6 @@ export function isParentToChildMessage(msg: unknown): msg is ParentToChildMessag
     'ipc:context.add',
     'ipc:context.remove',
     'ipc:permission.mode',
+    'ipc:sprite.message',
   ].includes(typed.type);
 }
