@@ -97,7 +97,7 @@ struct OfficeManagerView: View {
     // MARK: - Active Office Card
 
     private func activeOfficeCard(session: SessionMetaInfo) -> some View {
-        let agentCount = sceneManager.viewModel(for: session.id)?.agents.count ?? 0
+        let agentCount = sceneManager.viewModel(for: session.id)?.agents.filter { $0.linkedSubagentId != nil }.count ?? 0
 
         return Button {
             HapticService.selection()

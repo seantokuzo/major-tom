@@ -10,9 +10,11 @@ import { logger } from '../utils/logger.js';
 
 export interface PersistedSpriteMapping {
   spriteHandle: string;
-  agentId: string;
-  role: string;
+  subagentId: string;
+  canonicalRole: string;
   characterType: string;
+  task: string;
+  parentId?: string;
   deskIndex: number;
   linkedAt: string;
 }
@@ -23,7 +25,6 @@ export interface PersistedSpriteMappingFile {
   updatedAt: string;
   roleBindings: Record<string, string>;
   mappings: PersistedSpriteMapping[];
-  nextDeskIndex: number;
 }
 
 // ── Constants ──────────────────────────────────────────────
@@ -99,6 +100,19 @@ export class SpriteMappingPersistence {
       if (parsed.version !== 1 || !parsed.sessionId) {
         logger.warn({ sessionId }, 'Sprite mapping file has invalid schema — ignoring');
         return null;
+      }
+      // Migrate old field names (agentId→subagentId, role→canonicalRole) + supply defaults
+      for (const m of parsed.mappings) {
+        const raw = m as unknown as Record<string, unknown>;
+        if (raw['agentId'] && !raw['subagentId']) {
+          raw['subagentId'] = raw['agentId'];
+          delete raw['agentId'];
+        }
+        if (raw['role'] && !raw['canonicalRole']) {
+          raw['canonicalRole'] = raw['role'];
+          delete raw['role'];
+        }
+        if (!raw['task']) raw['task'] = '';
       }
       return parsed;
     } catch {

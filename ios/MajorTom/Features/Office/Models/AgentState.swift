@@ -134,6 +134,7 @@ extension AgentState: Equatable {
         lhs.linkedSubagentId == rhs.linkedSubagentId &&
         lhs.spriteHandle == rhs.spriteHandle &&
         lhs.canonicalRole == rhs.canonicalRole &&
-        lhs.parentId == rhs.parentId
+        lhs.parentId == rhs.parentId &&
+        lhs.characterType == rhs.characterType
     }
 }

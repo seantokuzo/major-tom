@@ -308,8 +308,8 @@ final class OfficeViewModel {
             agents[existingIndex].linkedSubagentId = event.subagentId
             agents[existingIndex].canonicalRole = event.canonicalRole
             agents[existingIndex].parentId = event.parentId
-            if let task = Optional(event.task), !task.isEmpty {
-                agents[existingIndex].currentTask = task
+            if !event.task.isEmpty {
+                agents[existingIndex].currentTask = event.task
             }
             return
         }
@@ -358,7 +358,7 @@ final class OfficeViewModel {
         let agentId = agents[index].id
 
         switch event.reason {
-        case "complete":
+        case "completed":
             agents[index].status = .celebrating
             agents[index].currentTask = event.result
             moodEngine.recordCompletion(agentId)
@@ -372,7 +372,7 @@ final class OfficeViewModel {
                 removeAgent(id: agentId)
             }
 
-        case "error", "crashed":
+        case "failed":
             agents[index].status = .leaving
             agents[index].currentTask = event.result ?? "Error"
             moodEngine.recordError(agentId)
