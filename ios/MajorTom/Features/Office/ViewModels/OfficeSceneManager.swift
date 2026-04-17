@@ -177,6 +177,9 @@ final class OfficeSceneManager {
             if let deskIndex = agent.deskIndex {
                 scene.highlightDesk(deskIndex, occupied: true)
                 scene.moveAgentToDesk(id: agent.id, deskIndex: deskIndex)
+            } else if let overflowPosition = agent.overflowPosition {
+                // Wave 6 — S5 overflow placement after cold rebuild.
+                scene.moveAgentToOverflow(id: agent.id, position: overflowPosition)
             }
             switch agent.status {
             case .working:

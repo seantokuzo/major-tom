@@ -63,6 +63,13 @@ struct OfficeView: View {
     /// Snapshot of sprite progress metrics for diffing.
     @State private var previousProgressMetrics: [String: OfficeViewModel.ProgressMetrics] = [:]
 
+    /// Snapshot of sprite IDs currently grayed out as disconnected, for diffing.
+    @State private var previousDisconnectedIds: Set<String> = []
+
+    /// Pending Task that applies the disconnect gray-out after the 1s debounce.
+    /// Held so a quick reconnect can cancel it without flashing gray sprites.
+    @State private var disconnectDebounceTask: Task<Void, Never>?
+
     /// Activated scene — populated in onAppear, avoids side effects in body.
     @State private var activatedScene: OfficeScene?
 
@@ -150,6 +157,9 @@ struct OfficeView: View {
                 .onChange(of: viewModel.spriteProgressMetrics, initial: true) { _, metrics in
                     syncProgressMetrics(metrics: metrics, scene: scene)
                 }
+                .onChange(of: viewModel.disconnectedSpriteIds, initial: true) { _, ids in
+                    syncDisconnectedStates(ids: ids, scene: scene)
+                }
                 .onChange(of: ObjectIdentifier(scene)) { _, _ in
                     // Scene identity changed (cold rebuild after LRU eviction) —
                     // reset diffing state so all currently-unread glows/previews
@@ -159,6 +169,7 @@ struct OfficeView: View {
                     previousAuraIds = []
                     previousToolLabels = [:]
                     previousProgressMetrics = [:]
+                    previousDisconnectedIds = []
                     toolBubbleHolds = []
                     for (_, task) in toolBubbleHoldTasks { task.cancel() }
                     toolBubbleHoldTasks = [:]
@@ -167,11 +178,10 @@ struct OfficeView: View {
                     syncRoleAuras(ids: viewModel.spriteAuraActive, viewModel: viewModel, scene: scene)
                     syncToolBubbles(labels: viewModel.spriteToolLabels, scene: scene)
                     syncProgressMetrics(metrics: viewModel.spriteProgressMetrics, scene: scene)
+                    syncDisconnectedStates(ids: viewModel.disconnectedSpriteIds, scene: scene)
                 }
                 .onChange(of: relay?.connectionState) { _, newState in
-                    if newState == .connected, let sid = viewModel.sessionId {
-                        relay?.flushQueuedSpriteMessages(for: sid)
-                    }
+                    handleConnectionStateChange(newState, viewModel: viewModel)
                 }
 
             // Top overlay: agent count + controls
@@ -568,6 +578,58 @@ struct OfficeView: View {
         previousProgressMetrics = metrics
     }
 
+    // MARK: - Wave 6 Sync Helpers
+
+    /// Apply gray-out / restore to sprites based on `disconnectedSpriteIds`.
+    /// Additions get the desaturated "reconnecting" treatment; removals have
+    /// the treatment cleared so the sprite returns to full color.
+    private func syncDisconnectedStates(ids: Set<String>, scene: OfficeScene) {
+        let additions = ids.subtracting(previousDisconnectedIds)
+        let removals = previousDisconnectedIds.subtracting(ids)
+        for id in additions {
+            scene.showDisconnectedState(on: id)
+        }
+        for id in removals {
+            scene.hideDisconnectedState(on: id)
+        }
+        previousDisconnectedIds = ids
+    }
+
+    /// Debounced disconnect/reconnect handler (S4).
+    ///
+    /// - On `.disconnected` or `.reconnecting`: schedule a 1-second Task that
+    ///   gray-outs all non-idle sprites. A quick reconnect inside the window
+    ///   cancels the Task so nothing flashes.
+    /// - On `.connected`: cancel any pending gray-out, clear any existing
+    ///   gray-out, flush queued sprite messages, and re-request sprite state
+    ///   from the relay so the scene reconciles any subagents that
+    ///   completed/spawned during the drop.
+    private func handleConnectionStateChange(_ newState: ConnectionState?, viewModel: OfficeViewModel) {
+        switch newState {
+        case .disconnected, .reconnecting:
+            // Cancel any prior debounce Task — we only need one pending.
+            disconnectDebounceTask?.cancel()
+            let vm = viewModel
+            disconnectDebounceTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                vm.markAllAgentsDisconnected()
+            }
+
+        case .connected:
+            disconnectDebounceTask?.cancel()
+            disconnectDebounceTask = nil
+            viewModel.clearDisconnectedState()
+            if let sid = viewModel.sessionId {
+                relay?.flushQueuedSpriteMessages(for: sid)
+                relay?.requestSpriteState(for: sid)
+            }
+
+        case .connecting, nil:
+            break
+        }
+    }
+
     // MARK: - Scene Sync
 
     private func syncScene(with agents: [AgentState], viewModel: OfficeViewModel, scene: OfficeScene) {
@@ -578,6 +640,9 @@ struct OfficeView: View {
             if let deskIndex = agent.deskIndex {
                 scene.highlightDesk(deskIndex, occupied: true)
                 scene.moveAgentToDesk(id: agent.id, deskIndex: deskIndex)
+            } else if let overflowPosition = agent.overflowPosition {
+                // S5: programmatic overflow placement in Command Bridge floor space.
+                scene.moveAgentToOverflow(id: agent.id, position: overflowPosition)
             }
         }
 
@@ -609,6 +674,9 @@ struct OfficeView: View {
             viewModel.activityAnimator.stopPhase(for: agent.id, furnitureNodes: scene.furnitureNodes)
             if let deskIndex = agent.deskIndex {
                 scene.moveAgentToDesk(id: agent.id, deskIndex: deskIndex)
+            } else if let overflowPosition = agent.overflowPosition {
+                // S5: overflow fallback — walk to the claimed floor position.
+                scene.moveAgentToOverflow(id: agent.id, position: overflowPosition)
             } else {
                 scene.updateAgentStatus(id: agent.id, status: .working)
             }

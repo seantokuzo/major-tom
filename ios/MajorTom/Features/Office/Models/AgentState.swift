@@ -82,6 +82,13 @@ struct AgentState: Identifiable {
     /// Needed for future multi-session routing (Wave 3).
     var parentId: String?
 
+    // MARK: - Overflow Placement (Wave 6 — S5)
+
+    /// Pre-claimed overflow position when all 8 desks are occupied.
+    /// Set when the agent spawns into an empty-desk situation; the scene
+    /// walks the sprite to this point instead of a desk seat.
+    var overflowPosition: CGPoint?
+
     init(
         id: String,
         name: String,
@@ -94,7 +101,8 @@ struct AgentState: Identifiable {
         linkedSubagentId: String? = nil,
         spriteHandle: String? = nil,
         canonicalRole: String? = nil,
-        parentId: String? = nil
+        parentId: String? = nil,
+        overflowPosition: CGPoint? = nil
     ) {
         self.id = id
         self.name = name
@@ -108,6 +116,7 @@ struct AgentState: Identifiable {
         self.spriteHandle = spriteHandle
         self.canonicalRole = canonicalRole
         self.parentId = parentId
+        self.overflowPosition = overflowPosition
     }
 
     /// Time since the agent was spawned, formatted for display.
@@ -135,6 +144,7 @@ extension AgentState: Equatable {
         lhs.spriteHandle == rhs.spriteHandle &&
         lhs.canonicalRole == rhs.canonicalRole &&
         lhs.parentId == rhs.parentId &&
-        lhs.characterType == rhs.characterType
+        lhs.characterType == rhs.characterType &&
+        lhs.overflowPosition == rhs.overflowPosition
     }
 }

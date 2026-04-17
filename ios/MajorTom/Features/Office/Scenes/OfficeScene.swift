@@ -1820,6 +1820,41 @@ final class OfficeScene: SKScene {
         agentSprites[agentId]?.hideProgressIndicator()
     }
 
+    // MARK: - Disconnected State (Wave 6 — S4)
+
+    /// Apply the gray-out/reconnecting treatment to a specific sprite.
+    func showDisconnectedState(on agentId: String) {
+        agentSprites[agentId]?.showDisconnectedState()
+    }
+
+    /// Clear the disconnected treatment on a specific sprite.
+    func hideDisconnectedState(on agentId: String) {
+        agentSprites[agentId]?.hideDisconnectedState()
+    }
+
+    /// True if the named sprite is currently in the disconnected visual state.
+    /// Used by OfficeView to gate inspector messaging.
+    func isSpriteDisconnected(_ agentId: String) -> Bool {
+        agentSprites[agentId]?.isDisconnected ?? false
+    }
+
+    // MARK: - Overflow Placement (Wave 6 — S5)
+
+    /// Walk the agent to a programmatic overflow position in the work room
+    /// (Command Bridge floor). Used when all 8 desks are occupied.
+    func moveAgentToOverflow(id: String, position: CGPoint) {
+        guard let sprite = agentSprites[id] else { return }
+        sprite.stopAnimations()
+        sprite.updateStatus(.walking)
+        gridEngine.releaseAllReservations(for: id)
+        let waypoints = gridEngine.findFullPath(from: sprite.position, to: position, agentId: id)
+        sprite.moveAlongPath(waypoints) {
+            sprite.updateStatus(.working)
+            sprite.updateModule(.commandBridge)
+            sprite.startWorkAnimation()
+        }
+    }
+
     // MARK: - Desk Highlighting
 
     func highlightDesk(_ deskIndex: Int, occupied: Bool) {

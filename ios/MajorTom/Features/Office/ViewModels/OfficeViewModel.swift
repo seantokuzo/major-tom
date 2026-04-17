@@ -93,6 +93,31 @@ final class OfficeViewModel {
     /// this set against the scene. Managed by working/idle/dismiss handlers.
     var spriteAuraActive: Set<String> = []
 
+    // MARK: - Disconnected State (Wave 6 — S4)
+
+    /// Sprite ids currently displayed with the "disconnected" gray-out treatment.
+    /// The view diff-renders this set against the scene. Separate from the
+    /// relay's connectionState so we can debounce brief drops (<1s) and keep
+    /// the idle sprite pool unaffected.
+    var disconnectedSpriteIds: Set<String> = []
+
+    // MARK: - Overflow Placement (Wave 6 — S5)
+
+    /// Overflow positions currently claimed by agent sprites, keyed by agent id.
+    /// When an agent despawns, its position is released for the next spawn.
+    var claimedOverflowPositions: [String: CGPoint] = [:]
+
+    // MARK: - Spawn Timing (Wave 6 — S6)
+
+    /// Per-agent spawn timestamps, used to guarantee a minimum on-screen
+    /// duration before complete/dismissed despawn animations start. Prevents
+    /// the "flash-appear-flash-gone" UX when a subagent finishes in <1s.
+    private var spawnTimestamps: [String: Date] = [:]
+
+    /// Minimum total display time for a newly spawned sprite (spawn + work +
+    /// celebration + poof). Anything faster gets padded out with a Task.sleep.
+    private static let minDisplayDurationSeconds: TimeInterval = 1.5
+
     // MARK: - Sprite Pool
 
     private static let idlePrefix = "idle-"
@@ -173,7 +198,8 @@ final class OfficeViewModel {
         )
         sessionRoleBindings = updatedBindings
 
-        let deskIndex = assignNextAvailableDesk(to: id)
+        // S5 — placement cascade: desk first, then overflow.
+        let placement = assignPlacement(to: id)
 
         let agent = AgentState(
             id: id,
@@ -182,13 +208,15 @@ final class OfficeViewModel {
             characterType: characterType,
             status: .spawning,
             currentTask: task,
-            deskIndex: deskIndex,
+            deskIndex: placement.deskIndex,
             linkedSubagentId: id,
             canonicalRole: role,
-            parentId: parentId
+            parentId: parentId,
+            overflowPosition: placement.overflowPosition
         )
         agents.append(agent)
         moodEngine.addAgent(id)
+        spawnTimestamps[id] = Date()
     }
 
     /// Called when the relay broadcasts `agent.working`.
@@ -255,23 +283,34 @@ final class OfficeViewModel {
     /// Called when the relay broadcasts `agent.complete`.
     /// Clone-not-consume: agent sprite celebrates then despawns entirely.
     /// Idle sprites are unaffected — no return-to-pool needed.
+    ///
+    /// S6 (Wave 6): if the agent spawned <1.5s ago, hold the sprite in
+    /// `.spawning`/`.working` first so the user gets to see the spawn+work
+    /// chain before the celebration and poof-despawn.
     func handleAgentComplete(id: String, result: String) {
-        guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
+        guard agents.firstIndex(where: { $0.id == id }) != nil else { return }
         guard !isIdleSprite(id) else { return }
 
         // Scenario #4 — if there's a pending /btw for this agent, mark it
         // dropped so the user isn't left on "Thinking…" forever.
         markPendingDropped(for: id)
 
-        agents[index].status = .celebrating
-        agents[index].currentTask = result
         moodEngine.recordCompletion(id)
+        let warmup = fastCompleteDelay(for: id)
 
-        // After a brief celebration, transition to leaving, then despawn
+        // After a brief celebration, transition to leaving, then despawn.
+        // Warmup guarantees spawn+work animations run for at least 1.5s.
         Task { @MainActor in
+            if warmup > 0 {
+                try? await Task.sleep(for: .seconds(warmup))
+            }
+            guard let idx1 = agents.firstIndex(where: { $0.id == id }) else { return }
+            agents[idx1].status = .celebrating
+            agents[idx1].currentTask = result
+
             try? await Task.sleep(for: .seconds(2))
-            if let idx = agents.firstIndex(where: { $0.id == id }) {
-                agents[idx].status = .leaving
+            if let idx2 = agents.firstIndex(where: { $0.id == id }) {
+                agents[idx2].status = .leaving
             }
             try? await Task.sleep(for: .seconds(1.5))
             removeAgent(id: id)
@@ -282,19 +321,27 @@ final class OfficeViewModel {
 
     /// Called when the relay broadcasts `agent.dismissed`.
     /// Clone-not-consume: agent sprite leaves then despawns entirely.
+    ///
+    /// S6 (Wave 6): same fast-complete guard as handleAgentComplete — the
+    /// spawn animation always gets a chance to run.
     func handleAgentDismissed(id: String) {
         guard agents.contains(where: { $0.id == id }) else { return }
         guard !isIdleSprite(id) else { return }
 
         markPendingDropped(for: id)
 
-        guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
-        agents[index].status = .leaving
-        agents[index].currentTask = nil
+        let warmup = fastCompleteDelay(for: id)
 
         // Agent sprite despawns after walking out.
         // Clone-not-consume: idle sprites were never consumed, so no return-to-pool.
         Task { @MainActor in
+            if warmup > 0 {
+                try? await Task.sleep(for: .seconds(warmup))
+            }
+            guard let idx = agents.firstIndex(where: { $0.id == id }) else { return }
+            agents[idx].status = .leaving
+            agents[idx].currentTask = nil
+
             try? await Task.sleep(for: .seconds(1.5))
             removeAgent(id: id)
         }
@@ -351,6 +398,39 @@ final class OfficeViewModel {
         return deskIndex
     }
 
+    /// Claim the first free overflow slot for an agent.
+    /// Returns nil if every overflow point is already occupied (shouldn't
+    /// happen in practice — overflow pool is 18, way beyond reasonable
+    /// concurrent-subagent count).
+    private func claimOverflowPosition(for agentId: String) -> CGPoint? {
+        let taken = Set(claimedOverflowPositions.values.map { point in
+            // Round to nearest integer to form a stable dictionary key.
+            CGPoint(x: point.x.rounded(), y: point.y.rounded())
+        })
+        for candidate in OfficeLayout.overflowPositions {
+            let rounded = CGPoint(x: candidate.x.rounded(), y: candidate.y.rounded())
+            if !taken.contains(rounded) {
+                claimedOverflowPositions[agentId] = candidate
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    /// Release an overflow position when an agent leaves.
+    private func releaseOverflow(for agentId: String) {
+        claimedOverflowPositions.removeValue(forKey: agentId)
+    }
+
+    /// Build a placement (desk-first, overflow-fallback) for a spawning agent.
+    /// Returns (deskIndex, overflowPosition) where exactly one is non-nil.
+    private func assignPlacement(to agentId: String) -> (deskIndex: Int?, overflowPosition: CGPoint?) {
+        if let deskIndex = assignNextAvailableDesk(to: agentId) {
+            return (deskIndex, nil)
+        }
+        return (nil, claimOverflowPosition(for: agentId))
+    }
+
     /// Release a desk when an agent leaves.
     private func releaseDesk(for agentId: String) {
         if let deskIndex = desks.firstIndex(where: { $0.occupantId == agentId }) {
@@ -361,6 +441,7 @@ final class OfficeViewModel {
     /// Remove an agent entirely (after they've left the office).
     private func removeAgent(id: String) {
         releaseDesk(for: id)
+        releaseOverflow(for: id)
         activityEngine.releaseActivity(for: id)
         moodEngine.removeAgent(id)
         agents.removeAll { $0.id == id }
@@ -369,9 +450,37 @@ final class OfficeViewModel {
         spriteToolLabels.removeValue(forKey: id)
         spriteOpenToolUseIds.removeValue(forKey: id)
         spriteProgressMetrics.removeValue(forKey: id)
+        // Wave 6 cleanup
+        disconnectedSpriteIds.remove(id)
+        spawnTimestamps.removeValue(forKey: id)
         if selectedAgentId == id {
             selectedAgentId = nil
         }
+    }
+
+    /// Return additional delay (seconds) needed before starting a despawn
+    /// animation so the spawn+work+celebration chain always shows for at least
+    /// `minDisplayDurationSeconds`. Returns 0 when the agent has been around
+    /// long enough or was restored from relay state (no spawn timestamp).
+    private func fastCompleteDelay(for agentId: String) -> TimeInterval {
+        guard let spawnedAt = spawnTimestamps[agentId] else { return 0 }
+        let age = Date().timeIntervalSince(spawnedAt)
+        let remaining = Self.minDisplayDurationSeconds - age
+        return max(0, remaining)
+    }
+
+    // MARK: - Disconnect / Reconnect (Wave 6 — S4)
+
+    /// Mark every non-idle agent sprite as "disconnected from relay". Idle
+    /// sprites keep their colors — they aren't driven by the WebSocket.
+    func markAllAgentsDisconnected() {
+        let nonIdle = agents.filter { !isIdleSprite($0.id) }.map(\.id)
+        disconnectedSpriteIds = Set(nonIdle)
+    }
+
+    /// Clear the disconnected flag on all sprites (reconcile handled elsewhere).
+    func clearDisconnectedState() {
+        disconnectedSpriteIds.removeAll()
     }
 
     // MARK: - Sprite Protocol Handlers (Wave 2)
@@ -414,7 +523,8 @@ final class OfficeViewModel {
         sessionRoleBindings = updatedBindings
 
         // Use subagentId as primary ID so agent.* lifecycle handlers find this agent
-        let deskIndex = assignNextAvailableDesk(to: event.subagentId)
+        // S5 — placement cascade: desk first, then overflow.
+        let placement = assignPlacement(to: event.subagentId)
 
         let agent = AgentState(
             id: event.subagentId,
@@ -423,18 +533,24 @@ final class OfficeViewModel {
             characterType: characterType,
             status: .spawning,
             currentTask: event.task,
-            deskIndex: deskIndex,
+            deskIndex: placement.deskIndex,
             linkedSubagentId: event.subagentId,
             spriteHandle: event.spriteHandle,
             canonicalRole: event.canonicalRole,
-            parentId: event.parentId
+            parentId: event.parentId,
+            overflowPosition: placement.overflowPosition
         )
         agents.append(agent)
         moodEngine.addAgent(event.subagentId)
+        spawnTimestamps[event.subagentId] = Date()
     }
 
     /// Handle `sprite.unlink` — despawn the linked sprite.
     /// Looks up by subagentId first (primary key), falls back to spriteHandle metadata.
+    ///
+    /// S6 (Wave 6): same fast-complete guard — wait out the minimum display
+    /// duration before the despawn animation starts so spawn+work gets a
+    /// chance to render.
     func handleSpriteUnlink(_ event: SpriteUnlinkEvent) {
         guard let index = agents.firstIndex(where: {
             $0.id == event.subagentId || $0.spriteHandle == event.spriteHandle
@@ -447,36 +563,52 @@ final class OfficeViewModel {
         // Scenario #4 — drop any pending /btw since the subagent is leaving.
         markPendingDropped(for: agentId)
 
+        let warmup = fastCompleteDelay(for: agentId)
+
         switch event.reason {
         case "completed":
-            agents[index].status = .celebrating
-            agents[index].currentTask = event.result
             moodEngine.recordCompletion(agentId)
 
             Task { @MainActor in
+                if warmup > 0 {
+                    try? await Task.sleep(for: .seconds(warmup))
+                }
+                guard let idx1 = agents.firstIndex(where: { $0.id == agentId }) else { return }
+                agents[idx1].status = .celebrating
+                agents[idx1].currentTask = event.result
+
                 try? await Task.sleep(for: .seconds(2))
-                if let idx = agents.firstIndex(where: { $0.id == agentId }) {
-                    agents[idx].status = .leaving
+                if let idx2 = agents.firstIndex(where: { $0.id == agentId }) {
+                    agents[idx2].status = .leaving
                 }
                 try? await Task.sleep(for: .seconds(1.5))
                 removeAgent(id: agentId)
             }
 
         case "failed":
-            agents[index].status = .leaving
-            agents[index].currentTask = event.result ?? "Error"
             moodEngine.recordError(agentId)
 
             Task { @MainActor in
+                if warmup > 0 {
+                    try? await Task.sleep(for: .seconds(warmup))
+                }
+                guard let idx = agents.firstIndex(where: { $0.id == agentId }) else { return }
+                agents[idx].status = .leaving
+                agents[idx].currentTask = event.result ?? "Error"
+
                 try? await Task.sleep(for: .seconds(1.5))
                 removeAgent(id: agentId)
             }
 
         default:  // "dismissed" or unknown
-            agents[index].status = .leaving
-            agents[index].currentTask = nil
-
             Task { @MainActor in
+                if warmup > 0 {
+                    try? await Task.sleep(for: .seconds(warmup))
+                }
+                guard let idx = agents.firstIndex(where: { $0.id == agentId }) else { return }
+                agents[idx].status = .leaving
+                agents[idx].currentTask = nil
+
                 try? await Task.sleep(for: .seconds(1.5))
                 removeAgent(id: agentId)
             }
@@ -730,7 +862,8 @@ final class OfficeViewModel {
             default: status = .working
             }
 
-            let deskIndex = assignNextAvailableDesk(to: mapping.subagentId)
+            // S5 — placement cascade: desk first, then overflow.
+            let placement = assignPlacement(to: mapping.subagentId)
 
             let agent = AgentState(
                 id: mapping.subagentId,
@@ -739,14 +872,17 @@ final class OfficeViewModel {
                 characterType: characterType,
                 status: status,
                 currentTask: mapping.task,
-                deskIndex: deskIndex,
+                deskIndex: placement.deskIndex,
                 linkedSubagentId: mapping.subagentId,
                 spriteHandle: mapping.spriteHandle,
                 canonicalRole: mapping.canonicalRole,
-                parentId: mapping.parentId
+                parentId: mapping.parentId,
+                overflowPosition: placement.overflowPosition
             )
             agents.append(agent)
             moodEngine.addAgent(mapping.subagentId)
+            // Reconnect/rebuild: assume these have been around a while — no
+            // need to debounce their celebration. Leave spawnTimestamps clear.
         }
     }
 }

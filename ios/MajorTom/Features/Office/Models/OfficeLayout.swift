@@ -92,6 +92,32 @@ struct OfficeLayout {
         Desk(id: 7, position: CGPoint(x: 500, y: 2250)),
     ]
 
+    // MARK: - Overflow Positions (S5)
+
+    /// Overflow standing positions for agent sprites when all desks are taken.
+    /// Placed in the empty Command Bridge floor space below the lower desk row
+    /// (y=2250). These are programmatic "huddle spots" — sprites stand there
+    /// instead of sitting at a desk.
+    ///
+    /// Command Bridge bounds: x=0–600, y=1980–2620. Desks at y=2250 and y=2450.
+    /// Free span below desks: y=1990–2200 (~210pt tall). Furniture (captain's
+    /// chair, tactical display, status screens) all sit at the TOP of the
+    /// module, so the lower band is clear.
+    ///
+    /// Grid: 6 columns × 3 rows = 18 slots. Sprite width is ~32pt, so 80pt
+    /// column spacing + 70pt row spacing keeps overflow sprites from overlapping.
+    static let overflowPositions: [CGPoint] = {
+        var points: [CGPoint] = []
+        let xs: [CGFloat] = [80, 160, 240, 320, 400, 480, 560]
+        let ys: [CGFloat] = [2030, 2100, 2170]
+        for y in ys {
+            for x in xs {
+                points.append(CGPoint(x: x, y: y))
+            }
+        }
+        return points
+    }()
+
     // MARK: - Helpers
 
     /// Get a random position within an area for idle/break movement.
