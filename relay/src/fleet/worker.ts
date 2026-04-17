@@ -25,6 +25,7 @@ import {
   type ParentToChildMessage,
   type ChildToParentMessage,
 } from './ipc-messages.js';
+import { BtwQueue } from '../sprites/btw-queue.js';
 import pino from 'pino';
 
 // ── Worker-local logger ─────────────────────────────────────
@@ -95,6 +96,38 @@ interface WorkerSession {
 const sessions = new Map<string, WorkerSession>();
 const approvalQueue = new ApprovalQueue();
 const permissionFilter = new PermissionFilter();
+
+// ── Sprite /btw queue (Wave 4) ─────────────────────────────
+// Per-worker BtwQueue. Wires terminal events ('responded', 'dropped') back
+// to the parent relay process via IPC; the parent fans out `sprite.response`
+// to iOS/PWA clients. 'injected' is internal — we only need to tell clients
+// when a message actually landed or went away.
+const btwQueue = new BtwQueue();
+
+btwQueue.on('responded', (ev) => {
+  sendToParent({
+    type: 'ipc:sprite.response',
+    sessionId: ev.sessionId,
+    spriteHandle: ev.spriteHandle,
+    subagentId: ev.subagentId,
+    messageId: ev.messageId,
+    text: ev.text,
+    status: 'delivered',
+  });
+});
+
+btwQueue.on('dropped', (ev) => {
+  sendToParent({
+    type: 'ipc:sprite.response',
+    sessionId: ev.sessionId,
+    spriteHandle: ev.spriteHandle,
+    subagentId: ev.subagentId,
+    messageId: ev.messageId,
+    text: '',
+    status: 'dropped',
+    dropReason: ev.reason,
+  });
+});
 
 /**
  * Drain expired entries from a pending-task map. Called on every
@@ -256,6 +289,22 @@ async function startSession(sessionId: string, _workingDir: string): Promise<voi
                 const stopInput = input as SubagentStopHookInput;
                 const { agent_id: agentId } = stopInput;
 
+                // Wave 4 — drop any /btw messages queued for this
+                // subagent before we notify the parent. Scenario #4:
+                // the agent completed before we could deliver. The
+                // queue emits 'dropped' which sendToParent forwards
+                // as `sprite.response { status: 'dropped' }`.
+                const dropped = btwQueue.dropForSubagent(
+                  agentId,
+                  'Subagent completed before delivery',
+                );
+                if (dropped > 0) {
+                  workerLog.info(
+                    { sessionId, agentId, dropped },
+                    'Dropped /btw messages due to SubagentStop',
+                  );
+                }
+
                 // `last_assistant_message` is available on stopInput
                 // but ws.ts's `dismissed` handler (see routes/ws.ts
                 // agent-lifecycle switch) ignores `event.result` —
@@ -315,6 +364,14 @@ function destroySession(sessionId: string): void {
   const entry = sessions.get(sessionId);
   if (!entry) return;
 
+  // Wave 4 — drop any /btw messages queued for this session. These
+  // entries can't be injected anymore; emit 'dropped' so the client
+  // knows. Scenario: session.end while messages are pending.
+  const droppedCount = btwQueue.dropForSession(sessionId, 'Session ended');
+  if (droppedCount > 0) {
+    workerLog.info({ sessionId, droppedCount }, 'Dropped /btw messages on session destroy');
+  }
+
   entry.streamAbort.abort();
   entry.sdkSession.close();
   sessions.delete(sessionId);
@@ -365,6 +422,10 @@ async function sendAgentMessage(sessionId: string, agentId: string, text: string
 async function cancelSession(sessionId: string): Promise<void> {
   const entry = sessions.get(sessionId);
   if (!entry) return;
+
+  // Wave 4 — drop any /btw messages queued for this session (same rationale
+  // as destroySession).
+  btwQueue.dropForSession(sessionId, 'Session cancelled');
 
   entry.streamAbort.abort();
   entry.sdkSession.close();
@@ -507,6 +568,21 @@ async function consumeStream(
       }
 
       workerLog.debug({ sessionId, messagesInTurn }, 'Turn stream ended, waiting for next turn');
+
+      // Wave 4 — drain any /btw messages queued for this session at the
+      // turn boundary. `stream()` just returned; before looping back to
+      // `stream()` again we can synchronously call `sdkSession.send()`
+      // with the constraint-framed user turn. The NEXT iteration's
+      // assistant text will be captured as the /btw response by
+      // `handleAssistantMessage` / `handleStreamEvent`.
+      //
+      // Spec M1 says a single /btw at a time per sprite, but multiple
+      // sprites in the same session can each have one queued. We inject
+      // only ONE per turn boundary to keep response correlation clean
+      // — the next turn boundary will drain the next one.
+      if (!signal.aborted) {
+        await drainOneBtwForSession(sessionId, sdkSession);
+      }
     }
   } catch (err) {
     if (!signal.aborted) {
@@ -520,6 +596,68 @@ async function consumeStream(
   } finally {
     if (entry) entry.streamAlive = false;
     workerLog.info({ sessionId }, 'Stream consumer exited');
+  }
+}
+
+/**
+ * Drain one queued /btw from the session's queue and send it to the SDK
+ * as a new user turn. Called at turn boundaries in `consumeStream`. Only
+ * one per boundary so response correlation is unambiguous.
+ */
+async function drainOneBtwForSession(
+  sessionId: string,
+  sdkSession: SDKSession,
+): Promise<void> {
+  // Single-in-flight guard: if a previous /btw for this session is still
+  // awaiting a response (e.g. injection yielded tool-calls before any
+  // assistant text), do NOT inject another one or response correlation
+  // breaks. The next turn boundary (after the response lands or the
+  // entry is dropped) will resume draining.
+  const inFlight = btwQueue.findAwaitingForSession(sessionId);
+  if (inFlight) {
+    workerLog.debug(
+      {
+        sessionId,
+        awaitingMessageId: inFlight.messageId,
+      },
+      'Skipping /btw drain — another /btw still awaiting response for this session',
+    );
+    return;
+  }
+
+  const queued = btwQueue.peekQueuedForSession(sessionId);
+  if (queued.length === 0) return;
+
+  // Oldest entry first; one subagent at a time.
+  const oldest = queued[0];
+  if (!oldest) return;
+  const entry = btwQueue.takeNextForSubagent(oldest.subagentId);
+  if (!entry) return;
+
+  try {
+    await sdkSession.send(entry.constrainedText);
+    btwQueue.markAwaitingResponse(entry.messageId);
+    workerLog.info(
+      {
+        sessionId,
+        subagentId: entry.subagentId,
+        messageId: entry.messageId,
+        queuedForMs: Date.now() - entry.queuedAt,
+      },
+      'Injected /btw at turn boundary, awaiting response',
+    );
+  } catch (err) {
+    workerLog.error(
+      { sessionId, subagentId: entry.subagentId, messageId: entry.messageId, err },
+      'Failed to inject /btw — dropping',
+    );
+    // Drop ONLY this entry so the client sees a final answer rather
+    // than hanging, while unrelated queued messages for the same
+    // subagent survive to try again on the next turn boundary.
+    btwQueue.dropByMessageId(
+      entry.messageId,
+      `Injection failed: ${err instanceof Error ? err.message : 'unknown'}`,
+    );
   }
 }
 
@@ -599,6 +737,16 @@ function handleAssistantMessage(sessionId: string, message: SDKMessage): void {
 
   const entry = sessions.get(sessionId);
 
+  // Wave 4 — if a /btw is awaiting a response for this session, capture
+  // the full text content of this assistant message as the response.
+  // This runs alongside the normal output-emission path (we still stream
+  // to the client so the operator can also see it) — the /btw response is
+  // a COPY, not a replacement. Response correlation is imprecise per the
+  // research doc; the constraint framing should keep this to the 1-2
+  // sentences we asked for.
+  const awaiting = btwQueue.findAwaitingForSession(sessionId);
+  let collectedText = '';
+
   for (const block of content) {
     if (block['type'] === 'text') {
       // Only emit full text if we didn't already stream it via deltas
@@ -607,6 +755,10 @@ function handleAssistantMessage(sessionId: string, message: SDKMessage): void {
         if (text) {
           sendToParent({ type: 'ipc:output', sessionId, chunk: text });
         }
+      }
+      if (awaiting) {
+        const t = block['text'];
+        if (typeof t === 'string') collectedText += t;
       }
     }
 
@@ -618,6 +770,11 @@ function handleAssistantMessage(sessionId: string, message: SDKMessage): void {
         input: block['input'] as Record<string, unknown>,
       });
     }
+  }
+
+  // Resolve the awaiting /btw if we captured text.
+  if (awaiting && collectedText.trim().length > 0) {
+    btwQueue.markResponded(awaiting.messageId, collectedText);
   }
 }
 
@@ -759,6 +916,28 @@ function handleParentMessage(msg: ParentToChildMessage): void {
         const queueMode = msg.mode === 'delay' ? 'delay' as const : 'manual' as const;
         approvalQueue.setMode(queueMode, msg.delaySeconds);
       }
+      break;
+
+    case 'ipc:sprite.enqueue':
+      // Wave 4 — parent routed a /btw for one of our sessions. Enqueue it;
+      // the consumeStream turn-boundary drain will pick it up next tick.
+      btwQueue.enqueue({
+        sessionId: msg.sessionId,
+        subagentId: msg.subagentId,
+        spriteHandle: msg.spriteHandle,
+        messageId: msg.messageId,
+        userText: msg.userText,
+        role: msg.role,
+        task: msg.task,
+      });
+      break;
+
+    case 'ipc:sprite.drop':
+      // Wave 4 — parent signalled a sprite unlink (SubagentStop-based drops
+      // happen locally; this is for fan-out from the parent when the sprite
+      // mapping layer decides a mapping is gone, e.g. from agent-lifecycle
+      // paths that bypass SubagentStop).
+      btwQueue.dropForSubagent(msg.subagentId, msg.reason);
       break;
   }
 }

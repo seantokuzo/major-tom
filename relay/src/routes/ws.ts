@@ -911,7 +911,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         break;
       }
 
-      // ── Sprite messaging (Wave 4 will implement actual queue/injection) ──
+      // ── Sprite messaging (Wave 4 — real queue + turn-boundary injection) ──
       case 'sprite.message': {
         // Validate the sprite mapping exists for this agent
         const spriteState = spriteMappings.get(message.sessionId);
@@ -932,8 +932,39 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           });
           break;
         }
-        // Wave 2 acknowledge: confirm receipt. Wave 4 will implement
-        // turn-boundary queueing and actual injection.
+
+        // Route the /btw to the worker owning this session. Worker's
+        // BtwQueue injects at the next turn boundary and emits a
+        // terminal `ipc:sprite.response` back to the parent → re-fanned
+        // out via the `sprite-response` listener below.
+        const routed = fleetManager.enqueueSpriteMessage({
+          sessionId: message.sessionId,
+          subagentId: message.subagentId,
+          spriteHandle: message.spriteHandle,
+          messageId: message.messageId,
+          userText: message.text,
+          role: mapping.canonicalRole,
+          task: mapping.task,
+        });
+        if (!routed) {
+          // No worker for the session — treat as dropped. This is the
+          // session-ended race: mapping existed in memory but the SDK
+          // session went away between mapping-check and enqueue.
+          sendToClient(ws, {
+            type: 'sprite.response',
+            sessionId: message.sessionId,
+            spriteHandle: message.spriteHandle,
+            subagentId: message.subagentId,
+            messageId: message.messageId,
+            text: '',
+            status: 'dropped',
+            dropReason: 'No active session — /btw cannot be delivered',
+          });
+          break;
+        }
+        // Immediate `queued` ack so clients know the relay accepted the
+        // message. The terminal `delivered` / `dropped` response follows
+        // when the turn boundary drains the queue.
         sendToClient(ws, {
           type: 'sprite.response',
           sessionId: message.sessionId,
@@ -944,8 +975,14 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           status: 'queued',
         });
         logger.info(
-          { sessionId: message.sessionId, subagentId: message.subagentId, spriteHandle: message.spriteHandle },
-          'Sprite message received — queued for Wave 4 delivery',
+          {
+            sessionId: message.sessionId,
+            subagentId: message.subagentId,
+            spriteHandle: message.spriteHandle,
+            messageId: message.messageId,
+            textLength: message.text.length,
+          },
+          'Sprite /btw routed to worker queue',
         );
         break;
       }
@@ -1855,6 +1892,33 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       });
     });
 
+    // ── Sprite /btw responses (Wave 4) ──────────────────────
+    // Worker's BtwQueue hit a terminal state (delivered or dropped) —
+    // forward to the session's clients as `sprite.response`.
+    fleetManager.on('sprite-response', (ev) => {
+      broadcastToSession(ev.sessionId, {
+        type: 'sprite.response',
+        sessionId: ev.sessionId,
+        spriteHandle: ev.spriteHandle,
+        subagentId: ev.subagentId,
+        messageId: ev.messageId,
+        text: ev.text,
+        status: ev.status,
+        dropReason: ev.dropReason,
+      });
+      logger.info(
+        {
+          sessionId: ev.sessionId,
+          subagentId: ev.subagentId,
+          messageId: ev.messageId,
+          status: ev.status,
+          dropReason: ev.dropReason,
+          textLength: ev.text.length,
+        },
+        'Sprite /btw terminal state forwarded to clients',
+      );
+    });
+
     fleetManager.on('agent-lifecycle', (event) => {
       const sid = event.sessionId;
       switch (event.event) {
@@ -1929,6 +1993,11 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
                 subagentId: event.agentId,
                 reason: 'completed',
               });
+              // Wave 4 — tell worker to drop any queued /btw for this
+              // subagent. Scenario #4. The SubagentStop hook inside the
+              // worker usually fires first and handles this locally, but
+              // some lifecycle paths skip SubagentStop — be idempotent.
+              fleetManager.dropSpriteForSubagent(sid, event.agentId, 'Subagent completed');
             }
           }
           break;
@@ -1953,6 +2022,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
                 subagentId: event.agentId,
                 reason: 'dismissed',
               });
+              // Wave 4 — same as 'complete' above, drop any queued /btw.
+              fleetManager.dropSpriteForSubagent(sid, event.agentId, 'Subagent dismissed');
             }
           }
           break;
