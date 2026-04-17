@@ -568,6 +568,21 @@ export interface ToolStartMessage {
   sessionId: string;
   tool: string;
   input: Record<string, unknown>;
+  /**
+   * Wave 5 — subagent that owns this tool call, resolved from the SDK
+   * assistant message's `parent_tool_use_id` matched against the
+   * currently-active `SubagentStart` agents. `undefined` = orchestrator-
+   * level tool call (iOS renders bubble on orchestrator context / no-op).
+   */
+  subagentId?: string;
+  /**
+   * Wave 5 — sprite handle bound to `subagentId` via the session's
+   * sprite mapping. Populated by `ws.ts` from `spriteMappings`.
+   * `undefined` when `subagentId` is absent OR no mapping exists.
+   */
+  spriteHandle?: string;
+  /** Wave 5 — SDK `tool_use_id` for correlation with `tool.complete`. */
+  toolUseId?: string;
 }
 
 export interface ToolCompleteMessage {
@@ -577,6 +592,10 @@ export interface ToolCompleteMessage {
   toolUseId?: string;
   output: string;
   success: boolean;
+  /** Wave 5 — subagent that owned this tool call. See `ToolStartMessage.subagentId`. */
+  subagentId?: string;
+  /** Wave 5 — sprite handle bound to `subagentId`. See `ToolStartMessage.spriteHandle`. */
+  spriteHandle?: string;
 }
 
 export interface AgentSpawnMessage {
@@ -593,12 +612,32 @@ export interface AgentWorkingMessage {
   sessionId: string;
   agentId: string;
   task: string;
+  /**
+   * Wave 5 — cumulative tool calls attributed to this subagent so far.
+   * Incremented for each `tool_use` block emitted inside a subagent's
+   * assistant turn (identified via `parent_tool_use_id`). `undefined` on
+   * paths that don't have metrics yet (back-compat safe).
+   */
+  toolCount?: number;
+  /**
+   * Wave 5 — cumulative input+output tokens attributed to this subagent.
+   * Accumulated from assistant-message `usage` blocks whose
+   * `parent_tool_use_id` matches the subagent's owning Task. `undefined`
+   * if tokens can't be attributed (SDK doesn't always expose per-subagent
+   * usage — orchestrator-level usage is available but wasn't attributable
+   * here).
+   */
+  tokenCount?: number;
 }
 
 export interface AgentIdleMessage {
   type: 'agent.idle';
   sessionId: string;
   agentId: string;
+  /** Wave 5 — cumulative tool calls. See `AgentWorkingMessage.toolCount`. */
+  toolCount?: number;
+  /** Wave 5 — cumulative tokens. See `AgentWorkingMessage.tokenCount`. */
+  tokenCount?: number;
 }
 
 export interface AgentCompleteMessage {

@@ -13,6 +13,10 @@ export interface ToolInfo {
   tool: string;
   input: Record<string, unknown>;
   sessionId: string;
+  /** Wave 5 — subagent that owns this tool call (from parent_tool_use_id). */
+  subagentId?: string;
+  /** Wave 5 — SDK tool_use_id for correlation with the matching ToolResult. */
+  toolUseId?: string;
 }
 
 export interface ToolResult {
@@ -20,6 +24,10 @@ export interface ToolResult {
   output: string;
   success: boolean;
   sessionId: string;
+  /** Wave 5 — subagent that owned this tool call. Same value as the paired ToolInfo. */
+  subagentId?: string;
+  /** Wave 5 — SDK tool_use_id for correlation with the opening ToolInfo. */
+  toolUseId?: string;
 }
 
 export interface AgentEvent {
@@ -30,6 +38,10 @@ export interface AgentEvent {
   role?: string;
   parentId?: string;
   result?: string;
+  /** Wave 5 — cumulative tool calls attributed to this subagent. */
+  toolCount?: number;
+  /** Wave 5 — cumulative tokens attributed to this subagent (may be undefined if unattributable). */
+  tokenCount?: number;
 }
 
 export interface SessionResult {

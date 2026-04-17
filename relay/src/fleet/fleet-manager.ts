@@ -423,6 +423,8 @@ export class FleetManager {
           tool: msg.tool,
           input: msg.input,
           sessionId: msg.sessionId,
+          subagentId: msg.subagentId,
+          toolUseId: msg.toolUseId,
         } satisfies ToolInfo);
         break;
 
@@ -432,6 +434,8 @@ export class FleetManager {
           output: msg.output,
           success: msg.success,
           sessionId: msg.sessionId,
+          subagentId: msg.subagentId,
+          toolUseId: msg.toolUseId,
         } satisfies ToolResult);
         break;
 
@@ -444,6 +448,8 @@ export class FleetManager {
           role: msg.role,
           parentId: msg.parentId,
           result: msg.result,
+          toolCount: msg.toolCount,
+          tokenCount: msg.tokenCount,
         } satisfies AgentEvent);
         break;
 

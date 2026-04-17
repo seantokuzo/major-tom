@@ -161,6 +161,10 @@ export interface IpcToolStart {
   sessionId: string;
   tool: string;
   input: Record<string, unknown>;
+  /** Wave 5 — subagent that owns this tool call (from parent_tool_use_id). */
+  subagentId?: string;
+  /** Wave 5 — SDK tool_use_id for correlation. */
+  toolUseId?: string;
 }
 
 export interface IpcToolComplete {
@@ -169,6 +173,10 @@ export interface IpcToolComplete {
   tool: string;
   output: string;
   success: boolean;
+  /** Wave 5 — subagent that owned this tool call. */
+  subagentId?: string;
+  /** Wave 5 — SDK tool_use_id for correlation. */
+  toolUseId?: string;
 }
 
 export interface IpcAgentLifecycle {
@@ -180,6 +188,10 @@ export interface IpcAgentLifecycle {
   role?: string;
   parentId?: string;
   result?: string;
+  /** Wave 5 — cumulative tool calls attributed to this subagent. */
+  toolCount?: number;
+  /** Wave 5 — cumulative tokens attributed to this subagent. */
+  tokenCount?: number;
 }
 
 export interface IpcSessionResult {
