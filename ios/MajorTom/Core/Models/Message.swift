@@ -51,6 +51,7 @@ enum MessageType: String, Codable {
     case githubIssueDetail = "github.issue.detail"
     case ciRuns = "ci.runs"
     case ciRunDetail = "ci.run.detail"
+    case spriteStateRequest = "sprite.state.request"
 
     // Server → Client
     case output
@@ -837,6 +838,13 @@ struct SpriteStateEvent: Codable {
         var parentId: String?
         let status: String  // "working", "idle", "spawning"
     }
+}
+
+/// iOS → Relay: request current sprite mappings for a session.
+/// Relay responds with a `sprite.state` event containing all active links.
+struct SpriteStateRequestMessage: Codable {
+    let type: String = "sprite.state.request"
+    let sessionId: String
 }
 
 struct ConnectionStatusEvent: Codable {

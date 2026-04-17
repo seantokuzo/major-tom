@@ -45,8 +45,7 @@ final class OfficeViewModel {
 
     // MARK: - Sprite-Agent Wiring (Wave 2)
 
-    /// Session ID this Office is bound to.
-    /// TODO: [Wave 3] Each OfficeViewModel will be keyed by sessionId for per-session routing.
+    /// Session ID this Office is bound to (set by OfficeSceneManager on creation).
     var sessionId: String?
 
     /// Per-session role→CharacterType bindings (role-stable binding).
@@ -298,7 +297,7 @@ final class OfficeViewModel {
     /// we UPGRADE the existing agent with sprite link metadata instead of creating a duplicate.
     /// Primary key is always `subagentId` so that `agent.*` lifecycle handlers find the agent.
     func handleSpriteLink(_ event: SpriteLinkEvent) {
-        // Latch sessionId on first sprite event (Wave 3 routing prep)
+        // Latch sessionId if not already set (e.g. pre-Wave-3 compat)
         if sessionId == nil {
             sessionId = event.sessionId
         }
@@ -398,7 +397,7 @@ final class OfficeViewModel {
     /// Clears any existing agent sprites (non-idle) and rebuilds from relay state.
     /// Uses `subagentId` as the primary AgentState.id so agent.* handlers find them.
     func handleSpriteState(_ event: SpriteStateEvent) {
-        // Latch sessionId on reconnect sync (Wave 3 routing prep)
+        // Latch sessionId if not already set (e.g. pre-Wave-3 compat)
         if sessionId == nil {
             sessionId = event.sessionId
         }
