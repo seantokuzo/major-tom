@@ -1105,6 +1105,26 @@ final class RelayService {
                 responseCounter &+= 1
             }
 
+        // MARK: Sprite-Agent Wiring (Wave 2)
+
+        case .spriteLink:
+            if let event = try? MessageCodec.decode(SpriteLinkEvent.self, from: data) {
+                // TODO: [Wave 3] Route to per-session OfficeViewModel using event.sessionId
+                officeViewModel?.handleSpriteLink(event)
+            }
+
+        case .spriteUnlink:
+            if let event = try? MessageCodec.decode(SpriteUnlinkEvent.self, from: data) {
+                // TODO: [Wave 3] Route to per-session OfficeViewModel using event.sessionId
+                officeViewModel?.handleSpriteUnlink(event)
+            }
+
+        case .spriteState:
+            if let event = try? MessageCodec.decode(SpriteStateEvent.self, from: data) {
+                // TODO: [Wave 3] Route to per-session OfficeViewModel using event.sessionId
+                officeViewModel?.handleSpriteState(event)
+            }
+
         case .error:
             if let event = try? MessageCodec.decode(ErrorEvent.self, from: data) {
                 let msg = ChatMessage(role: .system, content: "Error: \(event.message)")

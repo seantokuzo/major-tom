@@ -43,6 +43,16 @@ final class OfficeViewModel {
     /// The crew roster — manages which humans are active and user preferences.
     let crewRoster = CrewRoster()
 
+    // MARK: - Sprite-Agent Wiring (Wave 2)
+
+    /// Session ID this Office is bound to.
+    /// TODO: [Wave 3] Each OfficeViewModel will be keyed by sessionId for per-session routing.
+    var sessionId: String?
+
+    /// Per-session role→CharacterType bindings (role-stable binding).
+    /// First spawn for a canonical role locks the CharacterType for the session.
+    var sessionRoleBindings: RoleMapper.SessionBindings = [:]
+
     // MARK: - Sprite Pool
 
     private static let idlePrefix = "idle-"
@@ -326,6 +336,142 @@ final class OfficeViewModel {
         agents.removeAll { $0.id == id }
         if selectedAgentId == id {
             selectedAgentId = nil
+        }
+    }
+
+    // MARK: - Sprite Protocol Handlers (Wave 2)
+
+    /// Handle `sprite.link` — create a new agent sprite linked to a subagent.
+    /// Clone-not-consume: idle sprites are NOT consumed. A new agent sprite instance
+    /// is created with the role-mapped CharacterType.
+    func handleSpriteLink(_ event: SpriteLinkEvent) {
+        // Don't double-create if we already have this sprite handle
+        guard !agents.contains(where: { $0.spriteHandle == event.spriteHandle }) else {
+            // Update existing link if needed
+            if let index = agents.firstIndex(where: { $0.spriteHandle == event.spriteHandle }) {
+                agents[index].linkedSubagentId = event.subagentId
+                agents[index].currentTask = event.task
+                agents[index].canonicalRole = event.canonicalRole
+                agents[index].parentId = event.parentId
+            }
+            return
+        }
+
+        // Resolve CharacterType via role-stable binding
+        let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
+            role: event.canonicalRole,
+            sessionBindings: sessionRoleBindings
+        )
+        sessionRoleBindings = updatedBindings
+
+        let deskIndex = assignNextAvailableDesk(to: event.spriteHandle)
+
+        let agent = AgentState(
+            id: event.spriteHandle,
+            name: event.canonicalRole.capitalized,
+            role: event.canonicalRole,
+            characterType: characterType,
+            status: .spawning,
+            currentTask: event.task,
+            deskIndex: deskIndex,
+            linkedSubagentId: event.subagentId,
+            spriteHandle: event.spriteHandle,
+            canonicalRole: event.canonicalRole,
+            parentId: event.parentId
+        )
+        agents.append(agent)
+        moodEngine.addAgent(event.spriteHandle)
+    }
+
+    /// Handle `sprite.unlink` — despawn the linked sprite.
+    func handleSpriteUnlink(_ event: SpriteUnlinkEvent) {
+        guard let index = agents.firstIndex(where: { $0.spriteHandle == event.spriteHandle }) else {
+            return
+        }
+
+        let agentId = agents[index].id
+
+        switch event.reason {
+        case "complete":
+            agents[index].status = .celebrating
+            agents[index].currentTask = event.result
+            moodEngine.recordCompletion(agentId)
+
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                if let idx = agents.firstIndex(where: { $0.id == agentId }) {
+                    agents[idx].status = .leaving
+                }
+                try? await Task.sleep(for: .seconds(1.5))
+                removeAgent(id: agentId)
+            }
+
+        case "error", "crashed":
+            agents[index].status = .leaving
+            agents[index].currentTask = event.result ?? "Error"
+            moodEngine.recordError(agentId)
+
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                removeAgent(id: agentId)
+            }
+
+        default:  // "dismissed" or unknown
+            agents[index].status = .leaving
+            agents[index].currentTask = nil
+
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                removeAgent(id: agentId)
+            }
+        }
+    }
+
+    /// Handle `sprite.state` — bulk restore all sprite mappings (reconnect).
+    /// Clears any existing agent sprites (non-idle) and rebuilds from relay state.
+    func handleSpriteState(_ event: SpriteStateEvent) {
+        // Remove all existing non-idle agent sprites
+        let nonIdleIds = agents.filter { !isIdleSprite($0.id) }.map(\.id)
+        for id in nonIdleIds {
+            removeAgent(id: id)
+        }
+
+        // Reset role bindings for this session
+        sessionRoleBindings = [:]
+
+        // Rebuild from relay mappings
+        for mapping in event.mappings {
+            let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
+                role: mapping.canonicalRole,
+                sessionBindings: sessionRoleBindings
+            )
+            sessionRoleBindings = updatedBindings
+
+            let status: AgentStatus
+            switch mapping.status {
+            case "working": status = .working
+            case "idle": status = .idle
+            case "spawning": status = .spawning
+            default: status = .working
+            }
+
+            let deskIndex = assignNextAvailableDesk(to: mapping.spriteHandle)
+
+            let agent = AgentState(
+                id: mapping.spriteHandle,
+                name: mapping.canonicalRole.capitalized,
+                role: mapping.canonicalRole,
+                characterType: characterType,
+                status: status,
+                currentTask: mapping.task,
+                deskIndex: deskIndex,
+                linkedSubagentId: mapping.subagentId,
+                spriteHandle: mapping.spriteHandle,
+                canonicalRole: mapping.canonicalRole,
+                parentId: mapping.parentId
+            )
+            agents.append(agent)
+            moodEngine.addAgent(mapping.spriteHandle)
         }
     }
 }

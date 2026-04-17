@@ -65,6 +65,23 @@ struct AgentState: Identifiable {
     var deskIndex: Int?
     let spawnedAt: Date
 
+    // MARK: - Sprite-Agent Wiring (Wave 2)
+
+    /// The subagent ID this sprite is linked to (nil for idle/cosmetic sprites).
+    var linkedSubagentId: String?
+
+    /// Unique instance ID from relay — supports clone-not-consume model
+    /// where multiple agent sprites can share the same CharacterType.
+    var spriteHandle: String?
+
+    /// The classified canonical role (researcher, architect, qa, devops,
+    /// frontend, backend, lead, engineer) used by RoleMapper.
+    var canonicalRole: String?
+
+    /// The parent agent ID from the spawn event (orchestrator that spawned this subagent).
+    /// Needed for future multi-session routing (Wave 3).
+    var parentId: String?
+
     init(
         id: String,
         name: String,
@@ -73,7 +90,11 @@ struct AgentState: Identifiable {
         status: AgentStatus = .spawning,
         currentTask: String? = nil,
         deskIndex: Int? = nil,
-        spawnedAt: Date = Date()
+        spawnedAt: Date = Date(),
+        linkedSubagentId: String? = nil,
+        spriteHandle: String? = nil,
+        canonicalRole: String? = nil,
+        parentId: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -83,6 +104,10 @@ struct AgentState: Identifiable {
         self.currentTask = currentTask
         self.deskIndex = deskIndex
         self.spawnedAt = spawnedAt
+        self.linkedSubagentId = linkedSubagentId
+        self.spriteHandle = spriteHandle
+        self.canonicalRole = canonicalRole
+        self.parentId = parentId
     }
 
     /// Time since the agent was spawned, formatted for display.
@@ -105,6 +130,10 @@ extension AgentState: Equatable {
         lhs.name == rhs.name &&
         lhs.status == rhs.status &&
         lhs.currentTask == rhs.currentTask &&
-        lhs.deskIndex == rhs.deskIndex
+        lhs.deskIndex == rhs.deskIndex &&
+        lhs.linkedSubagentId == rhs.linkedSubagentId &&
+        lhs.spriteHandle == rhs.spriteHandle &&
+        lhs.canonicalRole == rhs.canonicalRole &&
+        lhs.parentId == rhs.parentId
     }
 }
