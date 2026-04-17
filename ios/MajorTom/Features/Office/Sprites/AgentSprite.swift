@@ -912,6 +912,74 @@ final class AgentSprite: SKSpriteNode {
         progressLabel = nil
     }
 
+    // MARK: - Disconnected State (Wave 6 — S4)
+
+    /// Internal visual-treatment flag for this sprite's "disconnected from
+    /// relay" styling. OfficeView drives show/hide by diffing
+    /// `OfficeViewModel.disconnectedSpriteIds` and calling
+    /// `showDisconnectedState()` / `hideDisconnectedState()` on the scene;
+    /// this flag is the idempotency guard that prevents those methods from
+    /// re-applying (or re-clearing) the same visual state. It is NOT the
+    /// source of truth consumed by OfficeView or SpriteInspectorView — those
+    /// read `viewModel.disconnectedSpriteIds` directly.
+    private(set) var isDisconnected: Bool = false
+
+    /// Small "~" indicator hovering above the name label while disconnected.
+    private var disconnectIndicator: SKLabelNode?
+
+    /// Apply the "disconnected from relay" visual treatment: desaturate the
+    /// body, dim the whole sprite slightly, and hover a pulsing "~" indicator
+    /// above the name label.
+    ///
+    /// Uses `colorBlendFactor` + `color` on the body sprite for a cheap
+    /// desaturation — no SKEffectNode pipeline required.
+    func showDisconnectedState() {
+        guard !isDisconnected else { return }
+        isDisconnected = true
+
+        bodySprite.color = SKColor(white: 0.4, alpha: 1)
+        bodySprite.colorBlendFactor = 0.65
+
+        run(SKAction.fadeAlpha(to: 0.7, duration: 0.2), withKey: "disconnectFade")
+
+        if disconnectIndicator == nil {
+            let indicator = SKLabelNode(fontNamed: "Menlo-Bold")
+            indicator.text = "~"
+            indicator.fontSize = 10
+            indicator.fontColor = SKColor(red: 0.85, green: 0.75, blue: 0.35, alpha: 0.9)
+            indicator.horizontalAlignmentMode = .center
+            indicator.verticalAlignmentMode = .bottom
+            let spriteSize = CrewSpriteBuilder.size(for: characterType)
+            indicator.position = CGPoint(x: 0, y: spriteSize.height / 2 + 14)
+            indicator.zPosition = 22
+            indicator.alpha = 0
+            addChild(indicator)
+
+            let pulse = SKAction.repeatForever(SKAction.sequence([
+                SKAction.fadeAlpha(to: 0.4, duration: 0.6),
+                SKAction.fadeAlpha(to: 0.95, duration: 0.6),
+            ]))
+            indicator.run(pulse)
+            disconnectIndicator = indicator
+        }
+    }
+
+    /// Restore normal sprite coloring after reconnect.
+    func hideDisconnectedState() {
+        guard isDisconnected else { return }
+        isDisconnected = false
+
+        bodySprite.colorBlendFactor = 0
+        run(SKAction.fadeAlpha(to: 1.0, duration: 0.2), withKey: "disconnectFade")
+
+        disconnectIndicator?.removeAllActions()
+        disconnectIndicator?.run(SKAction.sequence([
+            SKAction.fadeOut(withDuration: 0.2),
+            SKAction.removeFromParent(),
+        ]))
+        disconnectIndicator = nil
+    }
+
     /// Format `{toolCount} tools · {tokenCount}k tokens` with k/M suffix
     /// on the token count (one decimal). Returns nil when neither is present.
     static func formatProgressText(toolCount: Int?, tokenCount: Int?) -> String? {

@@ -32,28 +32,50 @@ struct SpriteInspectorView: View {
     @State private var questionExpanded: Bool = false
     @State private var spriteScene: InspectorSpriteScene?
 
+    /// Transient "agent completed" banner shown for ~2.5s when a linked agent
+    /// despawns while the user had the inspector open (scenario 9 downgrade).
+    @State private var agentCompletedToast: String?
+
+    /// Pending hide Task for the toast. Stored so a second toast firing inside
+    /// the 2.5s window cancels the stale hide Task — otherwise the older timer
+    /// clears the newer toast early.
+    @State private var agentCompletedToastHideTask: Task<Void, Never>?
+
     private enum Mode {
         case linked
         case dog
         case idleHuman
     }
 
+    /// Live lookup of the current agent from the view model. If the agent has
+    /// been despawned (agent.complete fired while the inspector was open), we
+    /// fall back to the cached `agent` so the view can still render the sheet
+    /// while showing the "agent completed" toast.
+    private var currentAgent: AgentState {
+        viewModel.agents.first(where: { $0.id == agent.id }) ?? agent
+    }
+
+    /// Scenario 9: mode is computed from the LIVE agent state. A sprite that
+    /// was idle when tapped but became linked before send is now `.linked`.
+    /// Conversely, a sprite that was linked at tap but has since completed is
+    /// now `.idleHuman` (or `.dog`).
     private var mode: Mode {
-        if agent.linkedSubagentId != nil {
+        let live = currentAgent
+        if live.linkedSubagentId != nil {
             return .linked
         }
-        if agent.characterType.isDog {
+        if live.characterType.isDog {
             return .dog
         }
         return .idleHuman
     }
 
     private var messagingState: SpriteMessagingState {
-        viewModel.messagingState(for: agent.id)
+        viewModel.messagingState(for: currentAgent.id)
     }
 
     private var hasQueuedLocally: Bool {
-        guard let subagentId = agent.linkedSubagentId else { return false }
+        guard let subagentId = currentAgent.linkedSubagentId else { return false }
         return viewModel.queuedSpriteMessages.contains(where: { $0.subagentId == subagentId })
     }
 
@@ -72,6 +94,10 @@ struct SpriteInspectorView: View {
             }
 
             detailRows
+
+            if let toast = agentCompletedToast {
+                agentCompletedBanner(toast)
+            }
 
             Spacer(minLength: MajorTomTheme.Spacing.sm)
 
@@ -103,6 +129,30 @@ struct SpriteInspectorView: View {
             responseExpanded = false
             questionExpanded = false
         }
+        // Scenario 9 downgrade — was linked at tap, now idle.
+        .onChange(of: currentAgent.linkedSubagentId) { oldValue, newValue in
+            // We only care about the linked → unlinked transition on the same sprite.
+            if oldValue != nil, newValue == nil, !draft.isEmpty {
+                showAgentCompletedToast()
+            }
+        }
+    }
+
+    /// Inline banner surfaced when the linked sprite despawned mid-type.
+    private func agentCompletedBanner(_ text: String) -> some View {
+        HStack(spacing: MajorTomTheme.Spacing.sm) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(MajorTomTheme.Colors.warning)
+                .font(.system(size: 12))
+            Text(text)
+                .font(MajorTomTheme.Typography.caption)
+                .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+            Spacer()
+        }
+        .padding(MajorTomTheme.Spacing.sm)
+        .background(MajorTomTheme.Colors.warning.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.small))
+        .transition(.opacity)
     }
 
     // MARK: - Header
@@ -143,10 +193,11 @@ struct SpriteInspectorView: View {
     private var statusBadge: some View {
         let label: String
         let color: Color
+        let live = currentAgent
         switch mode {
         case .linked:
-            label = agent.status.rawValue.uppercased()
-            color = statusColor(for: agent.status)
+            label = live.status.rawValue.uppercased()
+            color = statusColor(for: live.status)
         case .dog:
             label = "DOG"
             color = MajorTomTheme.Colors.accent
@@ -177,17 +228,18 @@ struct SpriteInspectorView: View {
     // MARK: - Role + Task
 
     private var roleAndTask: some View {
-        VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.sm) {
+        let live = currentAgent
+        return VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.sm) {
             HStack(spacing: MajorTomTheme.Spacing.sm) {
                 Image(systemName: "person.badge.key.fill")
                     .font(.system(size: 14))
                     .foregroundStyle(MajorTomTheme.Colors.accent)
-                Text((agent.canonicalRole ?? agent.role).capitalized)
+                Text((live.canonicalRole ?? live.role).capitalized)
                     .font(MajorTomTheme.Typography.headline)
                     .foregroundStyle(MajorTomTheme.Colors.textPrimary)
             }
 
-            if let task = agent.currentTask {
+            if let task = live.currentTask {
                 HStack(alignment: .top, spacing: MajorTomTheme.Spacing.sm) {
                     Image(systemName: "chevron.right.circle.fill")
                         .font(.system(size: 12))
@@ -221,10 +273,15 @@ struct SpriteInspectorView: View {
     }
 
     private var detailRows: some View {
-        VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.sm) {
-            detailRow(label: "Agent ID", value: String(agent.id.prefix(12)) + "...")
-            detailRow(label: "Desk", value: agent.deskIndex.map { "Desk \($0 + 1)" } ?? "None")
-            detailRow(label: "Uptime", value: agent.uptime)
+        let live = currentAgent
+        return VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.sm) {
+            detailRow(label: "Agent ID", value: String(live.id.prefix(12)) + "...")
+            detailRow(
+                label: "Desk",
+                value: live.deskIndex.map { "Desk \($0 + 1)" }
+                    ?? (live.overflowPosition != nil ? "Overflow" : "None")
+            )
+            detailRow(label: "Uptime", value: live.uptime)
         }
     }
 
@@ -242,15 +299,49 @@ struct SpriteInspectorView: View {
 
     // MARK: - Mode content
 
+    /// True when the relay disconnected and the sprite was flagged via
+    /// `OfficeViewModel.markAllAgentsDisconnected`. Used to swap the /btw
+    /// input for an informational "relay offline" panel.
+    private var isDisconnected: Bool {
+        viewModel.disconnectedSpriteIds.contains(currentAgent.id)
+    }
+
     @ViewBuilder
     private var content: some View {
-        switch mode {
-        case .linked:
-            linkedModeContent
-        case .dog:
-            dogModeContent
-        case .idleHuman:
-            idleHumanContent
+        if isDisconnected && mode == .linked {
+            disconnectedLinkedContent
+        } else {
+            switch mode {
+            case .linked:
+                linkedModeContent
+            case .dog:
+                dogModeContent
+            case .idleHuman:
+                idleHumanContent
+            }
+        }
+    }
+
+    /// S4 info panel shown while the relay is disconnected and the sprite is
+    /// gray-out. /btw is unavailable until reconnect.
+    private var disconnectedLinkedContent: some View {
+        VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.xs) {
+            HStack(spacing: 6) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 10))
+                    .foregroundStyle(MajorTomTheme.Colors.warning)
+                Text("Disconnected from relay")
+                    .font(MajorTomTheme.Typography.caption)
+                    .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+                Spacer()
+            }
+            Text("We'll reconnect automatically. /btw will be available again once we're back online.")
+                .font(MajorTomTheme.Typography.caption)
+                .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                .padding(MajorTomTheme.Spacing.sm)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(MajorTomTheme.Colors.background)
+                .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.small))
         }
     }
 
@@ -502,11 +593,21 @@ struct SpriteInspectorView: View {
     // MARK: - Send actions
 
     private func sendLinkedDraft() {
-        guard let handle = agent.spriteHandle,
-              let subagentId = agent.linkedSubagentId,
+        // Scenario 9 — re-check linkage at send time using the live agent.
+        // If the sprite is STILL linked, proceed with the /btw send. If it
+        // flipped to idle mid-type (subagent finished), surface a brief toast
+        // and clear the draft so the user understands the downgrade.
+        let live = currentAgent
+        guard let handle = live.spriteHandle,
+              let subagentId = live.linkedSubagentId,
               let send = onSendLinkedMessage,
               !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else { return }
+        else {
+            if live.linkedSubagentId == nil {
+                showAgentCompletedToast()
+            }
+            return
+        }
 
         let text = draft
         draft = ""
@@ -514,7 +615,7 @@ struct SpriteInspectorView: View {
 
         // Always transition to .pending; the caller decides send vs queue.
         guard let queued = viewModel.beginPendingMessage(
-            spriteId: agent.id,
+            spriteId: live.id,
             spriteHandle: handle,
             subagentId: subagentId,
             text: text,
@@ -535,7 +636,26 @@ struct SpriteInspectorView: View {
         let text = draft
         draft = ""
         HapticService.impact(.light)
-        viewModel.sendDogCannedMessage(spriteId: agent.id, text: text, character: agent.characterType)
+        let live = currentAgent
+        viewModel.sendDogCannedMessage(spriteId: live.id, text: text, character: live.characterType)
+    }
+
+    /// Surface a short "agent completed" banner, clear the draft, and auto-hide
+    /// after 2.5s. Triggered when the inspector's linked sprite despawned mid-type.
+    ///
+    /// Cancels any prior hide Task so a second toast firing inside the 2.5s
+    /// window doesn't let a stale timer clear the newer toast early.
+    private func showAgentCompletedToast() {
+        draft = ""
+        HapticService.impact(.soft)
+        agentCompletedToast = "Agent completed — /btw isn't available anymore."
+        agentCompletedToastHideTask?.cancel()
+        agentCompletedToastHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled else { return }
+            agentCompletedToast = nil
+            agentCompletedToastHideTask = nil
+        }
     }
 }
 
