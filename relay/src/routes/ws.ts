@@ -344,8 +344,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       // Clean up sprite mappings for the timed-out session.
       // fleetManager.destroySession(...) already told the worker to run
       // `btwQueue.dropForSession(sessionId, 'Session ended')` which emits
-      // 'dropped' for each pending /btw with the spec reason
-      // "Session ended (grace period expired)" semantics.
+      // 'dropped' for each pending /btw with the reason string
+      // "Session ended" (grace period expired — see SESSION_TIMEOUT_MS above).
       spriteMappings.delete(sessionId);
       void spriteMappingPersistence.delete(sessionId);
     }, SESSION_TIMEOUT_MS);

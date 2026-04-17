@@ -600,33 +600,41 @@ describe('Wave 6 — disk-full resilience (end-to-end)', () => {
     // in-memory state remains authoritative.
     const enospc = Object.assign(new Error('no space'), { code: 'ENOSPC' });
     const faultyFs = { writeFile: vi.fn().mockRejectedValue(enospc) };
-    const persistence = new SpriteMappingPersistence({ baseDir, fs: faultyFs });
-    const h = newHarness(persistence);
+    // Fake timers so the 2s debounce inside SpriteMappingPersistence
+    // fires deterministically instead of making CI wait on wall-clock.
+    vi.useFakeTimers();
+    try {
+      const persistence = new SpriteMappingPersistence({ baseDir, fs: faultyFs });
+      const h = newHarness(persistence);
 
-    // Spawn → in-memory state populated even though disk write fails.
-    h.spawnAgent('sess-x', 'agent-x', 'build the form');
-    expect(h.spriteMappings.get('sess-x')!.mappings).toHaveLength(1);
+      // Spawn → in-memory state populated even though disk write fails.
+      h.spawnAgent('sess-x', 'agent-x', 'build the form');
+      expect(h.spriteMappings.get('sess-x')!.mappings).toHaveLength(1);
 
-    // Enqueue /btw — works because the mapping exists in memory.
-    const entry = h.enqueueBtw({
-      sessionId: 'sess-x',
-      subagentId: 'agent-x',
-      spriteHandle: h.spriteMappings.get('sess-x')!.mappings[0]!.spriteHandle,
-      messageId: 'msg-enospc',
-      userText: 'update?',
-      role: 'frontend',
-      task: 'form',
-    });
-    expect(entry).not.toBeNull();
-    expect(h.btwQueue.size).toBe(1);
+      // Enqueue /btw — works because the mapping exists in memory.
+      const entry = h.enqueueBtw({
+        sessionId: 'sess-x',
+        subagentId: 'agent-x',
+        spriteHandle: h.spriteMappings.get('sess-x')!.mappings[0]!.spriteHandle,
+        messageId: 'msg-enospc',
+        userText: 'update?',
+        role: 'frontend',
+        task: 'form',
+      });
+      expect(entry).not.toBeNull();
+      expect(h.btwQueue.size).toBe(1);
 
-    // Unlink — still works, still emits drop.
-    h.unlinkAgent('sess-x', 'agent-x', 'completed');
-    expect(h.btwQueue.size).toBe(0);
+      // Unlink — still works, still emits drop.
+      h.unlinkAgent('sess-x', 'agent-x', 'completed');
+      expect(h.btwQueue.size).toBe(0);
 
-    // Force the debounce to flush any trailing saves.
-    await new Promise((r) => setTimeout(r, 2100));
-    persistence.dispose();
+      // Force the debounce to flush any trailing saves. advanceTimersByTimeAsync
+      // also flushes the microtasks queued by writeToDisk's await chain.
+      await vi.advanceTimersByTimeAsync(2100);
+      persistence.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -13,7 +13,7 @@
 //   - Session-end delete path.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, readFile, writeFile, readdir, unlink, stat, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile, readdir, stat, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -317,9 +317,13 @@ describe('SpriteMappingPersistence — filePath sanitization', () => {
     await rm(baseDir, { recursive: true, force: true });
   });
 
-  // Path-traversal attempts silently no-op: filePath() throws internally,
-  // but the catch blocks in load() / delete() swallow it — safer than
-  // propagating an exception and leaking "which sessionIds are valid".
+  // Path-traversal attempts: filePath() throws internally. load() and
+  // delete() catch it (the thrown Error has no `.code === 'ENOENT'`) and
+  // funnel it through the non-ENOENT WARN-log branch — so the operation
+  // doesn't throw, but a WARN line IS emitted. save() runs inside the
+  // debounce timer so its internal catch swallows the throw silently.
+  // We tolerate the WARN: it helps operators spot suspect sessionIds
+  // without leaking "which sessionIds are valid" to the caller.
 
   it('delete on an invalid session ID silently no-ops', async () => {
     await expect(persistence.delete('../../../etc/passwd')).resolves.toBeUndefined();
@@ -352,6 +356,3 @@ async function persistenceReadOrNull(path: string): Promise<string | null> {
   }
 }
 
-// Keep unused imports warning at bay — we keep `unlink` imported for future
-// use; marker so lint doesn't flip on it.
-void unlink;
