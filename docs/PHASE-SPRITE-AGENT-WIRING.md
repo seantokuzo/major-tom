@@ -331,7 +331,7 @@ Overflow pool (random fallback): `alienDiplomat`, `bowenYang`, `chef`, `dwight`,
 - Spec adjustments locked
 - Wave structure confirmed
 
-### Wave 2 — Data Model + Protocol ← IN PROGRESS
+### Wave 2 — Data Model + Protocol ✅ COMPLETE
 **Two parallel tracks** (zero shared files):
 
 **Relay track** (`sprite-wiring/wave2-relay`):
@@ -350,10 +350,10 @@ Overflow pool (random fallback): `alienDiplomat`, `bowenYang`, `chef`, `dwight`,
 - Per-session OfficeViewModel routing (prep for Wave 3)
 - Persist `parentId` from agent.spawn events
 
-### Wave 3 — Office Manager + Multi-Session
+### Wave 3 — Office Manager + Multi-Session ✅ COMPLETE
+- Relay: `sprite.state.request` query endpoint (PR #140) — session-auth-checked, in-memory + disk fallback, viewer-allowed, shared `toWireMapping()` helper
+- iOS: `OfficeSceneManager` + `OfficeManagerView` + per-session event routing (PR #141) — LRU scene lifecycle, `ensureViewModel` for state accumulation, `hasOffice` flag, cold rebuild via `activateOffice(for:)`
 - Office Manager SwiftUI view (cards for active Offices + unlinked sessions)
-- Astronaut tile for unlinked session cards
-- Room screenshot/snapshot for active Office cards
 - Per-session SKScene lifecycle (create/suspend/destroy)
 - "Close Office" flow (visual teardown, zero terminal effect)
 - SKScene rebuild from relay state on re-creation
