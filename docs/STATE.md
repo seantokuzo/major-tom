@@ -4,22 +4,36 @@
 
 ## Current Phase (in flight)
 
-**Terminal Reboot** shipped (PR #130) — relay now runs plain PTY per tab, tmux scaffolding deleted. Spec: `docs/TERMINAL-PROTOCOL-SPEC.md`. Active phase sequence:
+**Sprite-Agent Wiring** — spec/planning phase, no implementation yet. Spec: `docs/PHASE-SPRITE-AGENT-WIRING.md`. Memory: `project_sprite_agent_wiring_phase.md`. Waiting on Q1-Q5 decisions before Wave 1 closes.
 
-1. **Terminal Polish Pass** — three iOS terminal QoL fixes (first-prompt `\W`, reconnect retry, renameable tabs). Spec: `docs/PHASE-TERMINAL-POLISH.md`. Memory: `project_terminal_polish_phase.md`. Runs *before* optimization Wave 2.
-2. **Optimization phase** — iOS battery drain fix. Wave 1 measurement tooling SHIPPED (PR #129). Memory: `project_optimization_phase.md`. Waves 2–5 queued behind Terminal Polish.
+### Sprite-Agent Wiring (NEXT — spec-first)
 
-### Optimization phase (NEXT — queued)
-
-Research 2026-04-14 refuted the "PNG is killing us" hypothesis. Real hotspots are SKAction allocation churn + per-frame overhead, not texture format. Sprite-redraw experiment scrapped.
+Makes the sprite metaphor functionally real — tapping a sprite does something deterministic, messaging is routed with defined semantics, multi-session Office has a coherent story. Spec-first: five open design questions (Office scope, link tightness, messaging semantics, idle-sprite behavior, visual differentiation) must be answered before implementation.
 
 | Wave | Scope | Status |
 |------|-------|--------|
-| 1 — Measurement | SpriteKit HUD + Instruments baseline | IN PROGRESS |
-| 2 — Cheap wins | ignoresSiblingOrder, cache parallax refs, frame budget | QUEUED |
-| 3 — SKAction pooling | Reuse action graphs in AgentSprite, dirty-flag mood | QUEUED |
-| 4 — Culling + atlas split + tile map | Pause offscreen, split CrewSprites, SKTileMapNode floor | QUEUED |
-| 5 — Verify | Re-measure. Target: Instruments energy "Low" | QUEUED |
+| 1 — Decisions & Spec Freeze | Answer Q1-Q5, enumerate remaining scenarios, lock protocol | IN PROGRESS |
+| 2 — Data Model + Protocol | `linkedSubagentId` wiring, persist `parentId`, new relay messages | QUEUED |
+| 3 — Multi-Session Scoping | Depends on Q1 decision | QUEUED |
+| 4 — Messaging Delivery | Relay-side `/btw` injection, queueing, ack | QUEUED |
+| 5 — UI Polish | Visual differentiation, speech bubbles, drafts across switches | QUEUED |
+| 6 — Edge Cases + Battle Test | Race conditions, disconnect/reconnect, concurrent sends | QUEUED |
+
+### Optimization phase (COMPLETE)
+
+Wave 2 hit target: **idle Office FPS 11.74 → 59.99 on-device** (PR #135, merged 2026-04-16). Parallax cache + idle-camera early-exit + scene pause off-tab + Live Activities opt-in. Remaining Wave 2/3 items (buildGrid audit, ignoresSiblingOrder) deprioritized — target already met; measure-first if the next phase regresses perf. Memory: `project_optimization_phase.md`. Baseline: `docs/PERF-BASELINE.md`.
+
+| Wave | Scope | Status |
+|------|-------|--------|
+| 1 — Measurement | SpriteKit HUD + Instruments baseline | SHIPPED (#129) |
+| 2 — Cheap wins | Parallax cache, idle-camera exit, scene pause off-tab, LA opt-in | SHIPPED (#135) |
+| 3 — SKAction pooling | Deprioritized — target met without it | DEFERRED |
+| 4 — Culling + atlas split + tile map | Deprioritized — target met without it | DEFERRED |
+| 5 — Verify | Remeasurement done 2026-04-16 — 5x jump | DONE |
+
+### Terminal Polish (COMPLETE)
+
+Three iOS terminal QoL fixes (first-prompt `\W`, reconnect retry, renameable tabs) shipped PRs #131 + #132. Tab-switch crash-loop, xterm overlap, ring-replay all fixed. Memory: `project_terminal_polish_phase.md`.
 
 ### Life Engine phase (complete)
 
