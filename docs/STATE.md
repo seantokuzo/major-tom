@@ -4,7 +4,7 @@
 
 ## Current Phase (in flight)
 
-**Sprite-Agent Wiring** — Waves 1-3 shipped, review round before Wave 4. Spec: `docs/PHASE-SPRITE-AGENT-WIRING.md`. Memory: `project_sprite_agent_wiring_phase.md`.
+**Sprite-Agent Wiring** — Waves 1-3 shipped + review round complete, Wave 4 next. Spec: `docs/PHASE-SPRITE-AGENT-WIRING.md`. Memory: `project_sprite_agent_wiring_phase.md`.
 
 ### Sprite-Agent Wiring
 
@@ -15,8 +15,8 @@ Makes the sprite metaphor functionally real — tapping a sprite does something 
 | 1 — Research + Spec Freeze | All 7 research gates answered, spec updated | SHIPPED (#137) |
 | 2 — Data Model + Protocol | Relay: sprite.* messages, persistence, classifier, sessionId on events. iOS: RoleMapper, clone-not-consume, remove dog fallback | SHIPPED (#138, #139) |
 | 3 — Office Manager + Multi-Session | Relay: sprite.state.request query endpoint. iOS: OfficeManagerView, OfficeSceneManager, per-session event routing, LRU scene lifecycle, cold rebuild | SHIPPED (#140, #141) |
-| — | **Review Round** | Run `.agents/skills/wave-review-round/SKILL.md` against Waves 1-3 before proceeding |
-| 4 — `/btw` Messaging Delivery | Relay queue, turn-boundary injection spike, modal flow, dog responses | QUEUED |
+| — | **Review Round** | DONE (#142) — protocol alignment, session cleanup, schema migration |
+| 4 — `/btw` Messaging Delivery | Relay queue, turn-boundary injection spike, modal flow, dog responses | NEXT |
 | 5 — Visual Differentiation + Notifications | Role aura, tool-event bubbles, progress, local push | QUEUED |
 | 6 — Edge Cases + Battle Test | Race conditions, disconnect/reconnect, persistence cascade | QUEUED |
 
