@@ -56,20 +56,14 @@ final class OfficeViewModel {
     // MARK: - Sprite Pool
 
     private static let idlePrefix = "idle-"
+
+    /// Tracks which CharacterTypes have rendered idle sprites on screen.
+    /// Used by populateIdleSprites() to manage the cosmetic idle crew.
+    /// NOT used for agent allocation (clone-not-consume model).
     private var availableSprites: Set<CharacterType> = Set(CharacterType.allCases)
 
     private func isIdleSprite(_ id: String) -> Bool {
         id.hasPrefix(Self.idlePrefix)
-    }
-
-    private func claimRandomSprite() -> CharacterType? {
-        guard let picked = availableSprites.randomElement() else { return nil }
-        availableSprites.remove(picked)
-        return picked
-    }
-
-    private func releaseSprite(_ type: CharacterType) {
-        availableSprites.insert(type)
     }
 
     func populateIdleSprites() {
@@ -126,29 +120,18 @@ final class OfficeViewModel {
     // MARK: - Agent Lifecycle Handlers
 
     /// Called when the relay broadcasts `agent.spawn`.
-    /// Creates a new agent, claims a sprite from the idle pool, assigns a desk, sets status to spawning.
-    func handleAgentSpawn(id: String, role: String, task: String) {
+    /// Clone-not-consume: creates a NEW agent sprite instance without consuming idle sprites.
+    /// Uses RoleMapper for deterministic role→CharacterType assignment with session-stable binding.
+    /// Dogs are NEVER assigned as agent sprites.
+    func handleAgentSpawn(id: String, role: String, task: String, parentId: String? = nil) {
         guard !agents.contains(where: { $0.id == id }) else { return }
 
-        let characterType: CharacterType
-        if let claimed = claimRandomSprite() {
-            // Remove the idle sprite for this character. Release its activity
-            // first so any occupied furniture (couch, treadmill, etc.) is freed
-            // — otherwise the engine leaks assignments for the removed sprite.
-            let idleSpriteId = "\(Self.idlePrefix)\(claimed.rawValue)"
-            activityEngine.releaseActivity(for: idleSpriteId)
-            agents.removeAll { $0.id == idleSpriteId }
-            characterType = claimed
-        } else {
-            // Overflow: pull an unrendered human from the crew roster
-            let claimedTypes = Set(agents.map(\.characterType))
-            if let overflow = crewRoster.overflowHuman(excluding: claimedTypes, maxIdleCount: Self.maxIdleHumans) {
-                characterType = overflow
-            } else {
-                // Absolute fallback — all humans exhausted, reuse a dog type
-                characterType = CharacterType.allCases.filter(\.isDog).randomElement() ?? .elvis
-            }
-        }
+        // Resolve CharacterType via role-stable binding (clone-not-consume)
+        let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
+            role: role,
+            sessionBindings: sessionRoleBindings
+        )
+        sessionRoleBindings = updatedBindings
 
         let deskIndex = assignNextAvailableDesk(to: id)
 
@@ -159,7 +142,10 @@ final class OfficeViewModel {
             characterType: characterType,
             status: .spawning,
             currentTask: task,
-            deskIndex: deskIndex
+            deskIndex: deskIndex,
+            linkedSubagentId: id,
+            canonicalRole: role,
+            parentId: parentId
         )
         agents.append(agent)
         moodEngine.addAgent(id)
@@ -192,53 +178,44 @@ final class OfficeViewModel {
     }
 
     /// Called when the relay broadcasts `agent.complete`.
-    /// Agent celebrates, then leaves and returns sprite to idle pool.
+    /// Clone-not-consume: agent sprite celebrates then despawns entirely.
+    /// Idle sprites are unaffected — no return-to-pool needed.
     func handleAgentComplete(id: String, result: String) {
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
         guard !isIdleSprite(id) else { return }
 
-        let charType = agents[index].characterType
         agents[index].status = .celebrating
         agents[index].currentTask = result
         moodEngine.recordCompletion(id)
 
-        // After a brief celebration, transition to leaving
+        // After a brief celebration, transition to leaving, then despawn
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
             if let idx = agents.firstIndex(where: { $0.id == id }) {
                 agents[idx].status = .leaving
             }
-            // Remove after walking out via the centralized cleanup path
-            // (releases desk + activity station + mood + selection in one
-            // place), then return the sprite to the idle pool. The inline
-            // cleanup that lived here previously regressed away from
-            // calling `removeAgent(id:)` in the sprite-pool refactor —
-            // Copilot review on PR #89.
             try? await Task.sleep(for: .seconds(1.5))
             removeAgent(id: id)
-            returnToIdlePool(charType)
+            // Clone-not-consume: agent sprite simply despawns.
+            // Idle sprites were never consumed, so no return-to-pool.
         }
     }
 
     /// Called when the relay broadcasts `agent.dismissed`.
-    /// Agent immediately starts leaving, then returns sprite to idle pool.
+    /// Clone-not-consume: agent sprite leaves then despawns entirely.
     func handleAgentDismissed(id: String) {
-        guard let agent = agents.first(where: { $0.id == id }) else { return }
+        guard agents.contains(where: { $0.id == id }) else { return }
         guard !isIdleSprite(id) else { return }
-
-        let charType = agent.characterType
 
         guard let index = agents.firstIndex(where: { $0.id == id }) else { return }
         agents[index].status = .leaving
         agents[index].currentTask = nil
 
-        // Remove after walking out via the centralized cleanup path,
-        // then return the sprite to the idle pool. Same dedupe as
-        // handleAgentComplete (Copilot review on PR #89).
+        // Agent sprite despawns after walking out.
+        // Clone-not-consume: idle sprites were never consumed, so no return-to-pool.
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
             removeAgent(id: id)
-            returnToIdlePool(charType)
         }
     }
 
@@ -282,34 +259,6 @@ final class OfficeViewModel {
     }
 
     // MARK: - Private Helpers
-
-    /// Return a character type to the idle pool after an agent leaves.
-    /// Overflow humans (not part of the active crew) simply vanish — no re-rendering,
-    /// and crucially not added to `availableSprites` since there's nothing to claim.
-    private func returnToIdlePool(_ charType: CharacterType) {
-        // Overflow human — don't re-render, don't add to claimable pool.
-        if !charType.isDog && !crewRoster.isActiveCrew(charType, maxCount: Self.maxIdleHumans) {
-            return
-        }
-
-        let config = CharacterCatalog.config(for: charType)
-        let idleId = "\(Self.idlePrefix)\(charType.rawValue)"
-
-        // Don't re-create if already exists
-        guard !agents.contains(where: { $0.id == idleId }) else { return }
-
-        let idleAgent = AgentState(
-            id: idleId,
-            name: config.displayName,
-            role: charType.rawValue,
-            characterType: charType,
-            status: .idle,
-            currentTask: nil,
-            deskIndex: nil
-        )
-        agents.append(idleAgent)
-        releaseSprite(charType)  // now there's a rendered idle to claim
-    }
 
     /// Find the next available desk and assign it.
     /// Returns nil if all desks are occupied.
