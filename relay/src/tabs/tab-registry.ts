@@ -5,9 +5,14 @@
 // with the sessions running inside. This registry is the source of truth for that
 // mapping on the relay side.
 //
-// Wave 2: in-memory only. Disk persistence added in the next commit.
+// Disk persistence is optional (opt-in via constructor). When configured, every
+// session-lifecycle mutation triggers a fire-and-forget save; tabClosed deletes
+// the tab's on-disk file. restoreFromDisk() on app bootstrap rehydrates known
+// tabs but clears their session state (no live sessions survive a relay
+// restart — the first SessionStart hook afterward re-fills them).
 
 import { logger } from '../utils/logger.js';
+import type { TabRegistryPersistence } from './tab-registry-persistence.js';
 
 export type TabStatus = 'active' | 'idle' | 'closed';
 
@@ -25,6 +30,31 @@ export class TabRegistry {
   private tabs = new Map<string, TabMeta>();
   /** sessionId → tabId reverse index for O(1) lookup. */
   private sessionToTab = new Map<string, string>();
+
+  constructor(private readonly persistence?: TabRegistryPersistence) {}
+
+  /**
+   * Rehydrate known tabs from disk. Live sessions do not survive a relay
+   * restart — the restored tabs start with sessionIds = {} and status 'idle';
+   * the first SessionStart hook after restart re-populates them.
+   */
+  async restoreFromDisk(): Promise<void> {
+    if (!this.persistence) return;
+    const files = await this.persistence.loadAll();
+    for (const f of files) {
+      const meta: TabMeta = {
+        tabId: f.tabId,
+        userId: f.userId,
+        workingDir: f.workingDir,
+        createdAt: f.createdAt,
+        lastSeenAt: f.lastSeenAt,
+        sessionIds: new Set<string>(),
+        status: 'idle',
+      };
+      this.tabs.set(f.tabId, meta);
+    }
+    logger.info({ count: files.length }, 'TabRegistry restored from disk');
+  }
 
   /**
    * Record that a claude session just started inside a tab. Creates the TabMeta
@@ -58,6 +88,7 @@ export class TabRegistry {
     tab.sessionIds.add(sessionId);
     tab.status = 'active';
     this.sessionToTab.set(sessionId, tabId);
+    this.schedulePersist(tab);
     return tab;
   }
 
@@ -76,6 +107,7 @@ export class TabRegistry {
     if (tab.sessionIds.size === 0 && tab.status !== 'closed') {
       tab.status = 'idle';
     }
+    this.schedulePersist(tab);
     return tab;
   }
 
@@ -90,6 +122,9 @@ export class TabRegistry {
       this.sessionToTab.delete(sid);
     }
     this.tabs.delete(tabId);
+    if (this.persistence) {
+      void this.persistence.delete(tabId);
+    }
     logger.info({ tabId }, 'Tab closed (PTY grace expired)');
     return tab;
   }
@@ -122,5 +157,10 @@ export class TabRegistry {
     const tab = this.tabs.get(tabId);
     if (!tab) return;
     tab.lastSeenAt = new Date().toISOString();
+  }
+
+  private schedulePersist(tab: TabMeta): void {
+    if (!this.persistence) return;
+    void this.persistence.save(tab);
   }
 }
