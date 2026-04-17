@@ -13,6 +13,8 @@ export interface PersistedSpriteMapping {
   subagentId: string;
   canonicalRole: string;
   characterType: string;
+  task: string;
+  parentId?: string;
   deskIndex: number;
   linkedAt: string;
 }

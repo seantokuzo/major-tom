@@ -134,6 +134,7 @@ export class SpriteMapper {
     task: string,
     sessionBindings: Record<string, string>,
     currentMappings: PersistedSpriteMapping[],
+    parentId?: string,
   ): { mapping: PersistedSpriteMapping; role: CanonicalRole; isNewBinding: boolean } {
     const role = this.classifyRole(task);
     const { characterType, isNew } = this.resolveCharacterType(role, sessionBindings);
@@ -145,6 +146,8 @@ export class SpriteMapper {
       subagentId: agentId,
       canonicalRole: role,
       characterType,
+      task,
+      parentId,
       deskIndex,
       linkedAt: new Date().toISOString(),
     };

@@ -202,12 +202,17 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   // ── Sprite mapping wire-format helper ────────────────────
   /** Convert persisted mapping to wire-format SpriteMappingEntry. */
   function toWireMapping(m: PersistedSpriteMapping): SpriteMappingEntry {
+    // Look up live status from agent tracker; fall back to 'working' for persisted-only mappings
+    const liveAgent = agentTracker.get(m.subagentId);
+    const status = liveAgent?.status === 'idle' ? 'idle' : liveAgent?.status === 'spawned' ? 'spawning' : 'working';
     return {
       spriteHandle: m.spriteHandle,
       subagentId: m.subagentId,
       canonicalRole: m.canonicalRole,
       characterType: m.characterType,
-      task: '',
+      task: m.task,
+      parentId: m.parentId,
+      status,
       ...(m.deskIndex !== undefined && m.deskIndex >= 0 ? { deskIndex: m.deskIndex } : {}),
       linkedAt: m.linkedAt,
     };
@@ -625,8 +630,6 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           }
         }
 
-        sessionClients.delete(message.sessionId);
-
         const session = sessionManager.tryGet(message.sessionId);
         if (session) {
           // Record session end in analytics
@@ -650,13 +653,15 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           fleetManager.destroySession(message.sessionId);
         }
         healthMonitor.untrackSession(message.sessionId);
-        // Broadcast BEFORE removing buffer — broadcastToSession() records events by sessionId,
-        // so removing first would recreate a fresh (leaked) buffer for this session.
+        // Broadcast BEFORE removing clients or buffer — broadcastToSession() needs
+        // sessionClients to deliver, and eventBuffer to record.
         broadcastToSession(message.sessionId, { type: 'session.ended', sessionId: message.sessionId });
         eventBuffer.removeSession(message.sessionId);
         // Delete sprite state (unlinks already emitted above)
         spriteMappings.delete(message.sessionId);
         void spriteMappingPersistence.delete(message.sessionId);
+        // Remove client tracking LAST — after all session-scoped broadcasts
+        sessionClients.delete(message.sessionId);
         break;
       }
 
@@ -1873,6 +1878,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             event.task ?? '',
             spriteState.roleBindings,
             spriteState.mappings,
+            event.parentId,
           );
           // Lock role binding if this is a new one
           if (isNewBinding) {
@@ -1907,7 +1913,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           agentTracker.complete(event.agentId, event.result ?? '');
           broadcastToAll({ type: 'agent.complete', sessionId: sid, agentId: event.agentId, result: event.result ?? '' });
 
-          // ── Sprite wiring: remove mapping + emit sprite.unlink ���─
+          // ── Sprite wiring: remove mapping + emit sprite.unlink ──
           const completeState = spriteMappings.get(sid);
           if (completeState) {
             const idx = completeState.mappings.findIndex(m => m.subagentId === event.agentId);

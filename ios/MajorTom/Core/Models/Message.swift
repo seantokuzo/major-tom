@@ -824,7 +824,7 @@ struct SpriteUnlinkEvent: Codable {
     let sessionId: String
     let spriteHandle: String
     let subagentId: String
-    let reason: String  // "complete", "dismissed", "error", "crashed"
+    let reason: String  // "completed", "dismissed", "failed", "session_ended"
     var result: String?
 }
 
