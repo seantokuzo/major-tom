@@ -88,8 +88,13 @@ export class TabRegistryPersistence {
     }
   }
 
-  /** Write current TabMeta to disk. Never throws. */
+  /**
+   * Write current TabMeta to disk. Throws only on invalid tabId (programmer
+   * error / attempted path traversal); swallows I/O errors so the live
+   * in-memory state is never forced to recover from a disk hiccup.
+   */
   async save(meta: TabMeta): Promise<void> {
+    const path = this.filePath(meta.tabId);
     const file: PersistedTabFile = {
       version: 1,
       tabId: meta.tabId,
@@ -102,11 +107,7 @@ export class TabRegistryPersistence {
     };
     try {
       await this.ensureDir();
-      await this.fs.writeFile(
-        this.filePath(meta.tabId),
-        JSON.stringify(file, null, 2),
-        'utf-8',
-      );
+      await this.fs.writeFile(path, JSON.stringify(file, null, 2), 'utf-8');
       logger.debug({ tabId: meta.tabId, sessionCount: file.sessionIds.length }, 'Tab persisted');
     } catch (err) {
       const code = errnoCode(err);
