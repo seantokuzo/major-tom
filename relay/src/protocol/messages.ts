@@ -651,6 +651,17 @@ export interface AgentDismissedMessage {
   type: 'agent.dismissed';
   sessionId: string;
   agentId: string;
+  /**
+   * Wave 5 — final cumulative tool calls captured at the moment the
+   * subagent was dismissed. See `AgentWorkingMessage.toolCount`.
+   */
+  toolCount?: number;
+  /**
+   * Wave 5 — final cumulative tokens captured at dismissal. May be
+   * undefined if no tokens were ever attributed — see
+   * `AgentWorkingMessage.tokenCount`.
+   */
+  tokenCount?: number;
 }
 
 export interface ConnectionStatusMessage {

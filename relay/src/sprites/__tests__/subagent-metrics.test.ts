@@ -71,11 +71,12 @@ describe('SubagentMetricsStore', () => {
     expect(store.snapshot('nobody')).toBeUndefined();
   });
 
-  it('snapshot() returns tokenCount=undefined before any attribution but defined=0 once hasTokens flips', () => {
+  it('snapshot() keeps tokenCount undefined until the first positive add flips hasTokens', () => {
     // Contract: iOS distinguishes "no data" (undefined) from "attributed
     // zero". Since addTokens ignores non-positive amounts, the only way
-    // hasTokens ever flips is with a positive add. So an explicit 0
-    // never reaches the wire — desirable for Wave 5 sprite UI rendering.
+    // hasTokens ever flips is with a positive add — so the first
+    // defined value on the wire is always > 0, never an explicit 0.
+    // Desirable for Wave 5 sprite UI rendering.
     const store = new SubagentMetricsStore();
     store.create('agent-1', 'task');
     expect(store.snapshot('agent-1')?.tokenCount).toBeUndefined();

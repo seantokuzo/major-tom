@@ -120,6 +120,24 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     return state;
   }
 
+  /**
+   * Wave 5 — look up the sprite handle bound to a subagent in a given
+   * session's mapping. Returns `undefined` when the subagentId is
+   * missing or when no mapping exists yet (iOS treats undefined as
+   * "no sprite to attach bubble to"). Shared by tool.start /
+   * tool.complete so attribution is symmetric on both ends of a tool
+   * call.
+   */
+  function resolveSpriteHandle(
+    sessionId: string,
+    subagentId: string | undefined,
+  ): string | undefined {
+    if (!subagentId) return undefined;
+    return spriteMappings
+      .get(sessionId)
+      ?.mappings.find((m) => m.subagentId === subagentId)?.spriteHandle;
+  }
+
   // ── Per-client metadata for admin status endpoint ──────────
   interface ClientMeta { ip: string; userAgent: string; connectedAt: string }
   const clientMetas = new Map<WebSocket, ClientMeta>();
@@ -1814,11 +1832,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       // sprite-mapping state (adapter / worker don't), so this is the
       // only place it can happen. `undefined` handle is fine — iOS
       // treats it as "no sprite to attach bubble to".
-      const spriteHandle = info.subagentId
-        ? spriteMappings
-            .get(info.sessionId)
-            ?.mappings.find((m) => m.subagentId === info.subagentId)?.spriteHandle
-        : undefined;
+      const spriteHandle = resolveSpriteHandle(info.sessionId, info.subagentId);
 
       broadcastToSession(info.sessionId, {
         type: 'tool.start',
@@ -1856,11 +1870,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       }
       // Wave 5 — same sprite-handle resolution as tool.start so iOS sees
       // symmetric attribution on both ends of a tool call.
-      const spriteHandle = result.subagentId
-        ? spriteMappings
-            .get(result.sessionId)
-            ?.mappings.find((m) => m.subagentId === result.subagentId)?.spriteHandle
-        : undefined;
+      const spriteHandle = resolveSpriteHandle(result.sessionId, result.subagentId);
       broadcastToSession(result.sessionId, {
         type: 'tool.complete',
         sessionId: result.sessionId,
@@ -2055,7 +2065,16 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         }
         case 'dismissed': {
           agentTracker.dismiss(event.agentId);
-          broadcastToAll({ type: 'agent.dismissed', sessionId: sid, agentId: event.agentId });
+          broadcastToAll({
+            type: 'agent.dismissed',
+            sessionId: sid,
+            agentId: event.agentId,
+            // Wave 5 — forward final metrics captured by adapter/worker
+            // at SubagentStop. `undefined` means "no data" (adapter path
+            // that didn't wire metrics, or attribution failure).
+            toolCount: event.toolCount,
+            tokenCount: event.tokenCount,
+          });
 
           // ── Sprite wiring: remove mapping + emit sprite.unlink ──
           const dismissState = spriteMappings.get(sid);

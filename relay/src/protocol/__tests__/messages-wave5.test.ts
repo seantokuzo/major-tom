@@ -10,6 +10,7 @@ import type {
   ToolCompleteMessage,
   AgentWorkingMessage,
   AgentIdleMessage,
+  AgentDismissedMessage,
 } from '../messages.js';
 
 describe('Wave 5 protocol shapes — ToolStartMessage', () => {
@@ -132,5 +133,43 @@ describe('Wave 5 protocol shapes — AgentIdleMessage', () => {
     };
     expect(msg.toolCount).toBe(7);
     expect(msg.tokenCount).toBe(2048);
+  });
+});
+
+describe('Wave 5 protocol shapes — AgentDismissedMessage', () => {
+  it('accepts a minimal payload (backward-compatible — no metrics)', () => {
+    const msg: AgentDismissedMessage = {
+      type: 'agent.dismissed',
+      sessionId: 'sess-1',
+      agentId: 'agent-1',
+    };
+    expect(msg.toolCount).toBeUndefined();
+    expect(msg.tokenCount).toBeUndefined();
+  });
+
+  it('accepts final metrics carried at dismissal', () => {
+    const msg: AgentDismissedMessage = {
+      type: 'agent.dismissed',
+      sessionId: 'sess-1',
+      agentId: 'agent-1',
+      toolCount: 4,
+      tokenCount: 987,
+    };
+    expect(msg.toolCount).toBe(4);
+    expect(msg.tokenCount).toBe(987);
+  });
+
+  it('accepts toolCount alone when tokens were never attributed', () => {
+    // Spec mirrors AgentWorkingMessage: tokenCount may be undefined when
+    // no tokens were ever attributed to this subagent; toolCount is
+    // always countable.
+    const msg: AgentDismissedMessage = {
+      type: 'agent.dismissed',
+      sessionId: 'sess-1',
+      agentId: 'agent-1',
+      toolCount: 2,
+    };
+    expect(msg.toolCount).toBe(2);
+    expect(msg.tokenCount).toBeUndefined();
   });
 });
