@@ -1123,7 +1123,7 @@ export interface SpriteMappingEntry {
   characterType: string;
   task: string;
   parentId?: string;
-  status?: string;
+  status: 'working' | 'idle' | 'spawning';
   deskIndex?: number;
   linkedAt: string;
 }

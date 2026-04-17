@@ -101,6 +101,19 @@ export class SpriteMappingPersistence {
         logger.warn({ sessionId }, 'Sprite mapping file has invalid schema — ignoring');
         return null;
       }
+      // Migrate old field names (agentId→subagentId, role→canonicalRole) + supply defaults
+      for (const m of parsed.mappings) {
+        const raw = m as unknown as Record<string, unknown>;
+        if (raw['agentId'] && !raw['subagentId']) {
+          raw['subagentId'] = raw['agentId'];
+          delete raw['agentId'];
+        }
+        if (raw['role'] && !raw['canonicalRole']) {
+          raw['canonicalRole'] = raw['role'];
+          delete raw['role'];
+        }
+        if (!raw['task']) raw['task'] = '';
+      }
       return parsed;
     } catch {
       return null;
