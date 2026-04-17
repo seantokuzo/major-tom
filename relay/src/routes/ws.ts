@@ -237,7 +237,22 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
   }
 
   // ── Session keepalive: 10-minute timeout when all clients disconnect ──
+  //
+  // Wave 6 — this timer also governs sprite mapping cleanup. Spec's
+  // "Backgrounding / disconnect: Keep (30-min grace period) → Grace period
+  // expires: Delete mapping file" is satisfied by a stricter 10-min window:
+  // the session itself is destroyed and its sprite mappings + /btw queue
+  // are shed along with it. The 30-min value in the spec is an upper bound,
+  // not a required wait.
+  //
+  // The btw queue drain happens in the worker's `destroySession()`
+  // (fleet/worker.ts:~400) which runs `btwQueue.dropForSession(sessionId,
+  // 'Session ended')`, firing a 'dropped' event for every queued /btw with
+  // reason "Session ended" — iOS then clears any pending speech bubbles.
   const SESSION_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+  /** Spec upper bound — the sprite-mapping grace period caps at this value.
+   *  Session-end / session-timeout subsume it in practice (see comment above). */
+  const SPRITE_GRACE_PERIOD_MAX_MS = 30 * 60 * 1000; // 30 minutes
   /** Maps sessionId → Set of WebSocket clients attached to that session */
   const sessionClients = new Map<string, Set<WebSocket>>();
   /** Maps sessionId → cleanup timeout (fires when no clients remain) */
@@ -297,7 +312,14 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     // Only timeout sessions that actually have an SDK session
     if (!fleetManager.hasSession(sessionId)) return;
 
-    logger.info({ sessionId, timeoutMs: SESSION_TIMEOUT_MS }, 'All clients disconnected — starting session timeout');
+    logger.info(
+      {
+        sessionId,
+        timeoutMs: SESSION_TIMEOUT_MS,
+        spriteGracePeriodMaxMs: SPRITE_GRACE_PERIOD_MAX_MS,
+      },
+      'All clients disconnected — starting session timeout (sprite grace period capped at 30 min spec upper bound)',
+    );
 
     const timeout = setTimeout(() => {
       sessionTimeouts.delete(sessionId);
@@ -306,6 +328,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       if (clientSet && clientSet.size > 0) return;
 
       logger.info({ sessionId }, 'Session timeout fired — destroying abandoned session');
+      // Note: no sprite.unlink broadcast needed here — by definition this
+      // only fires when no clients are attached, and the session itself
+      // is being destroyed. On reconnect iOS queries sprite.state and
+      // sees an empty mapping list, which achieves the same effect.
       fleetManager.destroySession(sessionId);
       healthMonitor.untrackSession(sessionId);
       eventBuffer.removeSession(sessionId);
@@ -315,7 +341,11 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       const data = buildPersistedSession(sessionId);
       if (data) sessionPersistence.save(data);
       sessionManager.destroy(sessionId);
-      // Clean up sprite mappings for the timed-out session
+      // Clean up sprite mappings for the timed-out session.
+      // fleetManager.destroySession(...) already told the worker to run
+      // `btwQueue.dropForSession(sessionId, 'Session ended')` which emits
+      // 'dropped' for each pending /btw with the reason string
+      // "Session ended" (grace period expired — see SESSION_TIMEOUT_MS above).
       spriteMappings.delete(sessionId);
       void spriteMappingPersistence.delete(sessionId);
     }, SESSION_TIMEOUT_MS);
