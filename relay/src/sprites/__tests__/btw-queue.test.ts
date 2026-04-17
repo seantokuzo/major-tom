@@ -9,24 +9,72 @@ describe('buildConstrainedText', () => {
       userText: 'any progress on that form?',
     });
     expect(out).toContain('non-blocking observation');
+    // role, task, and userText are JSON.stringify'd → plain values come
+    // out wrapped in double quotes.
     expect(out).toContain('subagent "frontend"');
     expect(out).toContain('task: "build a form"');
-    expect(out).toContain("'any progress on that form?'");
+    expect(out).toContain('"any progress on that form?"');
     expect(out).toContain('1-2 sentences');
     expect(out).toContain('Do NOT change the subagent');
   });
 
-  it('escapes single quotes in user text, role, and task', () => {
+  it('encodes user text, role, and task with JSON-safe escaping', () => {
+    // Single quotes are a no-op for JSON.stringify — no backslash escape
+    // happens because they are not JSON metacharacters inside a double-
+    // quoted string.
     const out = buildConstrainedText({
       role: "it's fine",
       task: "don't worry",
       userText: "don't panic",
     });
-    // Only single quotes are escaped (double quotes are not — the
-    // surrounding framing uses double quotes around role/task but single
-    // quotes around the user text, so only single quotes need escaping
-    // to keep the structure parseable).
-    expect(out).toContain("\\'");
+    expect(out).toContain(`"it's fine"`);
+    expect(out).toContain(`"don't worry"`);
+    expect(out).toContain(`"don't panic"`);
+  });
+
+  it('escapes embedded double quotes via JSON.stringify', () => {
+    const out = buildConstrainedText({
+      role: 'say "hi"',
+      task: 'finish the "form"',
+      userText: 'he said "hello"',
+    });
+    // JSON-encoded embedded double quotes → \" inside the wrapping quotes.
+    expect(out).toContain('"say \\"hi\\""');
+    expect(out).toContain('"finish the \\"form\\""');
+    expect(out).toContain('"he said \\"hello\\""');
+    // Framing integrity: the full output is still a well-formed sentence
+    // with the expected framing tokens.
+    expect(out).toContain('non-blocking observation');
+    expect(out).toContain('Do NOT change the subagent');
+  });
+
+  it('escapes embedded backslashes via JSON.stringify', () => {
+    const out = buildConstrainedText({
+      role: 'path\\writer',
+      task: 'handle C:\\temp',
+      userText: 'one\\two\\three',
+    });
+    // JSON-encoded backslashes → each raw \ doubles to \\ inside quotes.
+    expect(out).toContain('"path\\\\writer"');
+    expect(out).toContain('"handle C:\\\\temp"');
+    expect(out).toContain('"one\\\\two\\\\three"');
+  });
+
+  it('escapes embedded newlines and tabs via JSON.stringify', () => {
+    const out = buildConstrainedText({
+      role: 'line1\nline2',
+      task: 'col1\tcol2',
+      userText: 'hello\nworld\twith\ttabs',
+    });
+    // JSON encodes literal newlines as the two-char sequence \n, and
+    // literal tabs as \t — so the produced framing never contains a raw
+    // control character and stays on one line.
+    expect(out).toContain('"line1\\nline2"');
+    expect(out).toContain('"col1\\tcol2"');
+    expect(out).toContain('"hello\\nworld\\twith\\ttabs"');
+    // No raw newlines / tabs leaked through.
+    expect(out).not.toMatch(/\n/);
+    expect(out).not.toMatch(/\t/);
   });
 });
 

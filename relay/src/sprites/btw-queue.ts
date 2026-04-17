@@ -68,14 +68,18 @@ export function buildConstrainedText(opts: {
   userText: string;
 }): string {
   const { role, task, userText } = opts;
-  // Escape single quotes to keep the framing parseable to Claude without
-  // breaking the surrounding structure.
-  const safeRole = role.replace(/'/g, "\\'");
-  const safeTask = task.replace(/'/g, "\\'");
-  const safeUser = userText.replace(/'/g, "\\'");
+  // Use JSON.stringify to produce properly-escaped, double-quoted strings.
+  // This handles embedded double quotes, backslashes, newlines, tabs, and
+  // any other control characters correctly — the framing stays well-formed
+  // regardless of what text the user or agent sends. JSON.stringify already
+  // includes the surrounding quotes, so the template literal does not add
+  // its own.
+  const safeRole = JSON.stringify(role);
+  const safeTask = JSON.stringify(task);
+  const safeUser = JSON.stringify(userText);
   return (
     `The user sent a non-blocking observation via sprite tap to subagent ` +
-    `"${safeRole}" (task: "${safeTask}"): '${safeUser}'. ` +
+    `${safeRole} (task: ${safeTask}): ${safeUser}. ` +
     `Respond in 1-2 sentences about the subagent's current progress. ` +
     `Do NOT change the subagent's task, plan, or approach. ` +
     `Continue exactly as planned.`
