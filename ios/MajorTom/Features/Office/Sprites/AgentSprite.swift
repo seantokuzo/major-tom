@@ -914,9 +914,14 @@ final class AgentSprite: SKSpriteNode {
 
     // MARK: - Disconnected State (Wave 6 — S4)
 
-    /// Whether the sprite is currently displayed in the disconnected visual
-    /// treatment. Read by OfficeView / inspector to swap messaging paths for
-    /// a "relay offline" message.
+    /// Internal visual-treatment flag for this sprite's "disconnected from
+    /// relay" styling. OfficeView drives show/hide by diffing
+    /// `OfficeViewModel.disconnectedSpriteIds` and calling
+    /// `showDisconnectedState()` / `hideDisconnectedState()` on the scene;
+    /// this flag is the idempotency guard that prevents those methods from
+    /// re-applying (or re-clearing) the same visual state. It is NOT the
+    /// source of truth consumed by OfficeView or SpriteInspectorView — those
+    /// read `viewModel.disconnectedSpriteIds` directly.
     private(set) var isDisconnected: Bool = false
 
     /// Small "~" indicator hovering above the name label while disconnected.

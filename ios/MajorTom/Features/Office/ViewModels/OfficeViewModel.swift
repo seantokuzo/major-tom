@@ -115,7 +115,7 @@ final class OfficeViewModel {
 
     /// Overflow positions currently claimed by agent sprites, keyed by agent id.
     /// When an agent despawns, its position is released for the next spawn.
-    var claimedOverflowPositions: [String: CGPoint] = [:]
+    private var claimedOverflowPositions: [String: CGPoint] = [:]
 
     // MARK: - Spawn Timing (Wave 6 — S6)
 
