@@ -26,6 +26,7 @@ import {
   type ChildToParentMessage,
 } from './ipc-messages.js';
 import { BtwQueue } from '../sprites/btw-queue.js';
+import { SubagentMetricsStore } from '../sprites/subagent-metrics.js';
 import pino from 'pino';
 
 // ── Worker-local logger ─────────────────────────────────────
@@ -91,6 +92,10 @@ interface WorkerSession {
   contextFiles: Map<string, string>;
   /** Phase 13 Wave 3 — correlate PreToolUse(Task) → SubagentStart by arrival order. */
   pendingTaskByToolUseId: Map<string, PendingTaskEntry>;
+  /** Wave 5 — maps Task tool_use_id → subagent_id for parent_tool_use_id lookup. */
+  subagentByTaskToolUseId: Map<string, string>;
+  /** Wave 5 — per-subagent cumulative tool + token counters. */
+  metrics: SubagentMetricsStore;
 }
 
 const sessions = new Map<string, WorkerSession>();
@@ -156,12 +161,13 @@ function gcPendingTasks(map: Map<string, PendingTaskEntry>): void {
  */
 function consumeOldestPendingTask(
   map: Map<string, PendingTaskEntry>,
-): PendingTaskEntry | undefined {
+): { toolUseId: string; entry: PendingTaskEntry } | undefined {
   const firstKey = map.keys().next();
   if (firstKey.done) return undefined;
   const value = map.get(firstKey.value);
+  if (!value) return undefined;
   map.delete(firstKey.value);
-  return value;
+  return { toolUseId: firstKey.value, entry: value };
 }
 
 // ── IPC send helper ─────────────────────────────────────────
@@ -253,12 +259,17 @@ async function startSession(sessionId: string, _workingDir: string): Promise<voi
                 gcPendingTasks(entry.pendingTaskByToolUseId);
                 const pending = consumeOldestPendingTask(entry.pendingTaskByToolUseId);
 
-                const taskDesc = pending?.description ?? '';
+                const taskDesc = pending?.entry.description ?? '';
                 if (!pending) {
                   workerLog.warn(
                     { agentId, agentType, sessionId },
                     'sprite-label correlation miss — SubagentStart fired without a pending PreToolUse(Task) entry',
                   );
+                } else {
+                  // Wave 5 — record Task tool_use_id → subagentId so
+                  // later assistant messages with parent_tool_use_id
+                  // pointing at this Task can be attributed.
+                  entry.subagentByTaskToolUseId.set(pending.toolUseId, agentId);
                 }
 
                 // Fall back to agent_type as the label if we couldn't
@@ -267,6 +278,9 @@ async function startSession(sessionId: string, _workingDir: string): Promise<voi
                 // both give the sprite layer something meaningful.
                 const label = taskDesc || agentType;
                 const role = taskDesc ? classifyAgentRole(taskDesc) : agentType;
+
+                // Wave 5 — initialise per-subagent counters.
+                entry.metrics.create(agentId, label);
 
                 sendToParent({
                   type: 'ipc:agent.lifecycle',
@@ -305,6 +319,19 @@ async function startSession(sessionId: string, _workingDir: string): Promise<voi
                   );
                 }
 
+                // Wave 5 — snapshot final counters before purging state.
+                const entrySession = sessions.get(sessionId);
+                const finalSnap = entrySession?.metrics.remove(agentId);
+
+                if (entrySession) {
+                  for (const [toolUseId, sid] of entrySession.subagentByTaskToolUseId) {
+                    if (sid === agentId) {
+                      entrySession.subagentByTaskToolUseId.delete(toolUseId);
+                      break;
+                    }
+                  }
+                }
+
                 // `last_assistant_message` is available on stopInput
                 // but ws.ts's `dismissed` handler (see routes/ws.ts
                 // agent-lifecycle switch) ignores `event.result` —
@@ -314,6 +341,8 @@ async function startSession(sessionId: string, _workingDir: string): Promise<voi
                   sessionId,
                   agentId,
                   event: 'dismissed',
+                  toolCount: finalSnap?.toolCount,
+                  tokenCount: finalSnap?.tokenCount,
                 });
                 return {};
               },
@@ -336,6 +365,8 @@ async function startSession(sessionId: string, _workingDir: string): Promise<voi
       streamAlive: false,
       contextFiles: new Map(),
       pendingTaskByToolUseId,
+      subagentByTaskToolUseId: new Map(),
+      metrics: new SubagentMetricsStore(),
     };
     sessions.set(sessionId, entry);
 
@@ -737,6 +768,17 @@ function handleAssistantMessage(sessionId: string, message: SDKMessage): void {
 
   const entry = sessions.get(sessionId);
 
+  // Wave 5 — resolve subagentId from SDK `parent_tool_use_id` (points at
+  // the owning Task tool's tool_use_id) via the map seeded in
+  // SubagentStart. `null`/missing = orchestrator-level turn.
+  const parentToolUseId =
+    typeof msg['parent_tool_use_id'] === 'string'
+      ? (msg['parent_tool_use_id'] as string)
+      : undefined;
+  const subagentId = parentToolUseId
+    ? entry?.subagentByTaskToolUseId.get(parentToolUseId)
+    : undefined;
+
   // Wave 4 — if a /btw is awaiting a response for this session, capture
   // the full text content of this assistant message as the response.
   // This runs alongside the normal output-emission path (we still stream
@@ -746,6 +788,7 @@ function handleAssistantMessage(sessionId: string, message: SDKMessage): void {
   // sentences we asked for.
   const awaiting = btwQueue.findAwaitingForSession(sessionId);
   let collectedText = '';
+  let sawToolUse = false;
 
   for (const block of content) {
     if (block['type'] === 'text') {
@@ -763,11 +806,50 @@ function handleAssistantMessage(sessionId: string, message: SDKMessage): void {
     }
 
     if (block['type'] === 'tool_use') {
+      const toolUseId =
+        typeof block['id'] === 'string' ? (block['id'] as string) : undefined;
+      // Wave 5 — tick counter before emit so the follow-up agent.working
+      // event reflects this call.
+      if (subagentId && entry) {
+        entry.metrics.tickTool(subagentId);
+      }
       sendToParent({
         type: 'ipc:tool.start',
         sessionId,
         tool: block['name'] as string,
         input: block['input'] as Record<string, unknown>,
+        subagentId,
+        toolUseId,
+      });
+      sawToolUse = true;
+    }
+  }
+
+  // Wave 5 — token attribution. BetaMessage.usage = this message's
+  // input+output tokens. Attribute when subagent is known; orchestrator-
+  // level usage is handled by SDKResultMessage and NOT counted here.
+  if (subagentId && entry) {
+    const usage = betaMessage['usage'] as Record<string, unknown> | undefined;
+    if (usage) {
+      entry.metrics.addTokens(subagentId, Number(usage['input_tokens']));
+      entry.metrics.addTokens(subagentId, Number(usage['output_tokens']));
+    }
+  }
+
+  // Wave 5 — broadcast an agent.working with live counters whenever a
+  // subagent's tool count ticks. No new wire type; iOS listens to the
+  // existing agent.working stream and now sees metric deltas.
+  if (subagentId && sawToolUse && entry) {
+    const snap = entry.metrics.snapshot(subagentId);
+    if (snap) {
+      sendToParent({
+        type: 'ipc:agent.lifecycle',
+        sessionId,
+        agentId: subagentId,
+        event: 'working',
+        task: entry.metrics.getTask(subagentId) ?? '',
+        toolCount: snap.toolCount,
+        tokenCount: snap.tokenCount,
       });
     }
   }

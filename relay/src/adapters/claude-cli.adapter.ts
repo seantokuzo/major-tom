@@ -24,6 +24,7 @@ import type {
 import { agentTracker } from '../events/agent-tracker.js';
 import { logger } from '../utils/logger.js';
 import { BtwQueue, type BtwQueueEventMap } from '../sprites/btw-queue.js';
+import { SubagentMetricsStore } from '../sprites/subagent-metrics.js';
 
 // ── Claude Code SDK Adapter ─────────────────────────────────
 // Uses the official Agent SDK's v2 session API.
@@ -65,6 +66,17 @@ interface SdkSessionEntry {
   streamAlive: boolean;
   /** Phase 13 Wave 3 — correlate PreToolUse(Task) → SubagentStart by arrival order. */
   pendingTaskByToolUseId: Map<string, PendingTaskEntry>;
+  /**
+   * Wave 5 — maps a Task tool_use_id → subagent_id. Populated in
+   * SubagentStart by consuming the FIFO-oldest PreToolUse(Task) entry
+   * and pairing its tool_use_id with the SubagentStart's agent_id.
+   * Used by `handleAssistantMessage` to resolve the assistant
+   * message's `parent_tool_use_id` (which points at a Task tool call)
+   * into the owning subagentId.
+   */
+  subagentByTaskToolUseId: Map<string, string>;
+  /** Wave 5 — per-subagent cumulative tool + token counters. */
+  metrics: SubagentMetricsStore;
 }
 
 /**
@@ -95,12 +107,13 @@ function gcPendingTasks(map: Map<string, PendingTaskEntry>): void {
  */
 function consumeOldestPendingTask(
   map: Map<string, PendingTaskEntry>,
-): PendingTaskEntry | undefined {
+): { toolUseId: string; entry: PendingTaskEntry } | undefined {
   const firstKey = map.keys().next();
   if (firstKey.done) return undefined;
   const value = map.get(firstKey.value);
+  if (!value) return undefined;
   map.delete(firstKey.value);
-  return value;
+  return { toolUseId: firstKey.value, entry: value };
 }
 
 // ── Agent role classification from task description ──────────
@@ -273,16 +286,24 @@ export class ClaudeCliAdapter implements IAdapter {
                 gcPendingTasks(entry.pendingTaskByToolUseId);
                 const pending = consumeOldestPendingTask(entry.pendingTaskByToolUseId);
 
-                const taskDesc = pending?.description ?? '';
+                const taskDesc = pending?.entry.description ?? '';
                 if (!pending) {
                   logger.warn(
                     { agentId, agentType, sessionId: session.id },
                     'sprite-label correlation miss — SubagentStart fired without a pending PreToolUse(Task) entry',
                   );
+                } else {
+                  // Wave 5 — record Task tool_use_id → subagentId so
+                  // later tool events (carrying parent_tool_use_id that
+                  // points at this Task) can be attributed.
+                  entry.subagentByTaskToolUseId.set(pending.toolUseId, agentId);
                 }
 
                 const label = taskDesc || agentType;
                 const role = taskDesc ? classifyAgentRole(taskDesc) : agentType;
+
+                // Wave 5 — initialise per-subagent counters.
+                entry.metrics.create(agentId, label);
 
                 emitter.emit('agent-lifecycle', {
                   sessionId: session.id,
@@ -312,6 +333,23 @@ export class ClaudeCliAdapter implements IAdapter {
                   'Subagent completed before delivery',
                 );
 
+                // Wave 5 — snapshot final counters before we purge state,
+                // so iOS can show "agent finished with N tools / X tokens"
+                // without needing to read a different event.
+                const entrySession = this.sessions.get(session.id);
+                const finalSnap = entrySession?.metrics.remove(agentId);
+
+                // Clean up the Task→subagent mapping entry. Keyed by Task
+                // tool_use_id; walk once to find it.
+                if (entrySession) {
+                  for (const [toolUseId, sid] of entrySession.subagentByTaskToolUseId) {
+                    if (sid === agentId) {
+                      entrySession.subagentByTaskToolUseId.delete(toolUseId);
+                      break;
+                    }
+                  }
+                }
+
                 // `last_assistant_message` is available on stopInput
                 // but ws.ts's `dismissed` handler (see routes/ws.ts
                 // agent-lifecycle switch) ignores `event.result` —
@@ -320,6 +358,8 @@ export class ClaudeCliAdapter implements IAdapter {
                   sessionId: session.id,
                   agentId,
                   event: 'dismissed',
+                  toolCount: finalSnap?.toolCount,
+                  tokenCount: finalSnap?.tokenCount,
                 } satisfies AgentEvent);
                 return {};
               },
@@ -341,6 +381,8 @@ export class ClaudeCliAdapter implements IAdapter {
       hasStreamedText: false,
       streamAlive: false,
       pendingTaskByToolUseId,
+      subagentByTaskToolUseId: new Map(),
+      metrics: new SubagentMetricsStore(),
     };
     this.sessions.set(session.id, entry);
 
@@ -691,11 +733,25 @@ export class ClaudeCliAdapter implements IAdapter {
 
     const entry = this.sessions.get(sessionId);
 
+    // Wave 5 — SDK assistant messages carry `parent_tool_use_id` at the
+    // top level. When set, this message was generated by a subagent
+    // invoked through a Task tool; the id points at that Task's
+    // tool_use_id. Resolve it to the owning subagentId via the map
+    // populated in SubagentStart. `null` / missing = orchestrator.
+    const parentToolUseId =
+      typeof msg['parent_tool_use_id'] === 'string'
+        ? (msg['parent_tool_use_id'] as string)
+        : undefined;
+    const subagentId = parentToolUseId
+      ? entry?.subagentByTaskToolUseId.get(parentToolUseId)
+      : undefined;
+
     // Wave 4 — if a /btw is awaiting a response, capture the full text of
     // this assistant message as the response. Emits 'responded' which this
     // adapter forwards as `sprite-response { status: 'delivered' }`.
     const awaiting = this.btwQueue.findAwaitingForSession(sessionId);
     let collectedText = '';
+    let sawToolUse = false;
 
     for (const block of content) {
       if (block['type'] === 'text') {
@@ -713,11 +769,53 @@ export class ClaudeCliAdapter implements IAdapter {
       }
 
       if (block['type'] === 'tool_use') {
+        const toolUseId =
+          typeof block['id'] === 'string' ? (block['id'] as string) : undefined;
+        // Wave 5 — tick the subagent's tool counter before emitting so
+        // the follow-up `agent.working` event (below) reflects this
+        // call. Keep tick-before-emit ordering stable across the two
+        // events for iOS consumers.
+        if (subagentId && entry) {
+          entry.metrics.tickTool(subagentId);
+        }
         this.emitter.emit('tool-start', {
           tool: block['name'] as string,
           input: block['input'] as Record<string, unknown>,
           sessionId,
+          subagentId,
+          toolUseId,
         } satisfies ToolInfo);
+        sawToolUse = true;
+      }
+    }
+
+    // Wave 5 — token attribution. BetaMessage.usage has input/output
+    // tokens for *this* assistant message. Attribute only when we can
+    // resolve a subagent (parent_tool_use_id set + known). Orchestrator-
+    // level usage is handled separately via SDKResultMessage.
+    if (subagentId && entry) {
+      const usage = betaMessage['usage'] as Record<string, unknown> | undefined;
+      if (usage) {
+        entry.metrics.addTokens(subagentId, Number(usage['input_tokens']));
+        entry.metrics.addTokens(subagentId, Number(usage['output_tokens']));
+      }
+    }
+
+    // Wave 5 — emit `agent.working` alongside tool emissions so iOS gets
+    // live metric updates without a new wire type. We emit only when
+    // *this* assistant message produced a tool call (otherwise nothing
+    // observable changed that warrants a broadcast).
+    if (subagentId && sawToolUse && entry) {
+      const snap = entry.metrics.snapshot(subagentId);
+      if (snap) {
+        this.emitter.emit('agent-lifecycle', {
+          sessionId,
+          agentId: subagentId,
+          event: 'working',
+          task: entry.metrics.getTask(subagentId) ?? '',
+          toolCount: snap.toolCount,
+          tokenCount: snap.tokenCount,
+        } satisfies AgentEvent);
       }
     }
 

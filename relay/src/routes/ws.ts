@@ -120,6 +120,24 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     return state;
   }
 
+  /**
+   * Wave 5 — look up the sprite handle bound to a subagent in a given
+   * session's mapping. Returns `undefined` when the subagentId is
+   * missing or when no mapping exists yet (iOS treats undefined as
+   * "no sprite to attach bubble to"). Shared by tool.start /
+   * tool.complete so attribution is symmetric on both ends of a tool
+   * call.
+   */
+  function resolveSpriteHandle(
+    sessionId: string,
+    subagentId: string | undefined,
+  ): string | undefined {
+    if (!subagentId) return undefined;
+    return spriteMappings
+      .get(sessionId)
+      ?.mappings.find((m) => m.subagentId === subagentId)?.spriteHandle;
+  }
+
   // ── Per-client metadata for admin status endpoint ──────────
   interface ClientMeta { ip: string; userAgent: string; connectedAt: string }
   const clientMetas = new Map<WebSocket, ClientMeta>();
@@ -1808,12 +1826,35 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       analyticsCollector.trackToolUsage(info.sessionId, info.tool);
       // Track achievement: tool usage
       achievementService.checkEvent('tool.start', { tool: info.tool });
+
+      // Wave 5 — resolve sprite handle from the session's sprite mapping
+      // when the tool is attributable to a subagent. ws.ts owns the
+      // sprite-mapping state (adapter / worker don't), so this is the
+      // only place it can happen. `undefined` handle is fine — iOS
+      // treats it as "no sprite to attach bubble to".
+      const spriteHandle = resolveSpriteHandle(info.sessionId, info.subagentId);
+
       broadcastToSession(info.sessionId, {
         type: 'tool.start',
         sessionId: info.sessionId,
         tool: info.tool,
         input: info.input,
+        subagentId: info.subagentId,
+        spriteHandle,
+        toolUseId: info.toolUseId,
       });
+      if (info.subagentId) {
+        logger.debug(
+          {
+            sessionId: info.sessionId,
+            tool: info.tool,
+            subagentId: info.subagentId,
+            spriteHandle,
+            toolUseId: info.toolUseId,
+          },
+          'tool.start attributed to subagent',
+        );
+      }
     });
 
     fleetManager.on('tool-complete', (result) => {
@@ -1827,12 +1868,18 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         });
         triggerPersistence(result.sessionId);
       }
+      // Wave 5 — same sprite-handle resolution as tool.start so iOS sees
+      // symmetric attribution on both ends of a tool call.
+      const spriteHandle = resolveSpriteHandle(result.sessionId, result.subagentId);
       broadcastToSession(result.sessionId, {
         type: 'tool.complete',
         sessionId: result.sessionId,
         tool: result.tool,
         output: result.output,
         success: result.success,
+        subagentId: result.subagentId,
+        spriteHandle,
+        toolUseId: result.toolUseId,
       });
     });
 
@@ -1967,11 +2014,25 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         }
         case 'working':
           agentTracker.working(event.agentId, event.task ?? '');
-          broadcastToAll({ type: 'agent.working', sessionId: sid, agentId: event.agentId, task: event.task ?? '' });
+          broadcastToAll({
+            type: 'agent.working',
+            sessionId: sid,
+            agentId: event.agentId,
+            task: event.task ?? '',
+            // Wave 5 — live per-subagent metrics piggyback on this event.
+            toolCount: event.toolCount,
+            tokenCount: event.tokenCount,
+          });
           break;
         case 'idle':
           agentTracker.idle(event.agentId);
-          broadcastToAll({ type: 'agent.idle', sessionId: sid, agentId: event.agentId });
+          broadcastToAll({
+            type: 'agent.idle',
+            sessionId: sid,
+            agentId: event.agentId,
+            toolCount: event.toolCount,
+            tokenCount: event.tokenCount,
+          });
           break;
         case 'complete': {
           agentTracker.complete(event.agentId, event.result ?? '');
@@ -2004,7 +2065,16 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         }
         case 'dismissed': {
           agentTracker.dismiss(event.agentId);
-          broadcastToAll({ type: 'agent.dismissed', sessionId: sid, agentId: event.agentId });
+          broadcastToAll({
+            type: 'agent.dismissed',
+            sessionId: sid,
+            agentId: event.agentId,
+            // Wave 5 — forward final metrics captured by adapter/worker
+            // at SubagentStop. `undefined` means "no data" (adapter path
+            // that didn't wire metrics, or attribution failure).
+            toolCount: event.toolCount,
+            tokenCount: event.tokenCount,
+          });
 
           // ── Sprite wiring: remove mapping + emit sprite.unlink ──
           const dismissState = spriteMappings.get(sid);
