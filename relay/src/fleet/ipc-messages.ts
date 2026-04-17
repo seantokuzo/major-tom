@@ -77,6 +77,34 @@ export interface IpcSpriteMessage {
   messageId: string;
 }
 
+/**
+ * Parent → Child: enqueue a /btw message for turn-boundary injection.
+ * Worker owns the queue; parent routes here after looking up the session's
+ * worker. The `role` + `task` come from the sprite mapping so the worker
+ * can build the constraint framing without loading mapping state itself.
+ */
+export interface IpcSpriteEnqueue {
+  type: 'ipc:sprite.enqueue';
+  sessionId: string;
+  subagentId: string;
+  spriteHandle: string;
+  messageId: string;
+  userText: string;
+  role: string;
+  task: string;
+}
+
+/**
+ * Parent → Child: drop queued /btw entries for a subagent (fires when the
+ * sprite layer unlinks before delivery — scenario #4).
+ */
+export interface IpcSpriteDrop {
+  type: 'ipc:sprite.drop';
+  sessionId: string;
+  subagentId: string;
+  reason: string;
+}
+
 export type ParentToChildMessage =
   | IpcSessionStart
   | IpcSessionDestroy
@@ -87,7 +115,9 @@ export type ParentToChildMessage =
   | IpcContextAdd
   | IpcContextRemove
   | IpcPermissionMode
-  | IpcSpriteMessage;
+  | IpcSpriteMessage
+  | IpcSpriteEnqueue
+  | IpcSpriteDrop;
 
 // ── Child → Parent Messages ────────────────────────────────
 
@@ -174,6 +204,22 @@ export interface IpcWorkerError {
   error: string;
 }
 
+/**
+ * Child → Parent: a /btw message reached terminal state (delivered to
+ * the client or dropped because the subagent went away first). The parent
+ * fans this out to iOS/PWA clients as `sprite.response`.
+ */
+export interface IpcSpriteResponse {
+  type: 'ipc:sprite.response';
+  sessionId: string;
+  spriteHandle: string;
+  subagentId: string;
+  messageId: string;
+  text: string;
+  status: 'delivered' | 'dropped';
+  dropReason?: string;
+}
+
 export type ChildToParentMessage =
   | IpcSessionStarted
   | IpcSessionError
@@ -185,7 +231,8 @@ export type ChildToParentMessage =
   | IpcAgentLifecycle
   | IpcSessionResult
   | IpcWorkerReady
-  | IpcWorkerError;
+  | IpcWorkerError
+  | IpcSpriteResponse;
 
 // ── Union of all IPC messages ──────────────────────────────
 
@@ -209,6 +256,7 @@ export function isChildToParentMessage(msg: unknown): msg is ChildToParentMessag
     'ipc:session.result',
     'ipc:worker.ready',
     'ipc:worker.error',
+    'ipc:sprite.response',
   ].includes(typed.type);
 }
 
@@ -227,5 +275,7 @@ export function isParentToChildMessage(msg: unknown): msg is ParentToChildMessag
     'ipc:context.remove',
     'ipc:permission.mode',
     'ipc:sprite.message',
+    'ipc:sprite.enqueue',
+    'ipc:sprite.drop',
   ].includes(typed.type);
 }

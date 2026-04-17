@@ -23,6 +23,7 @@ import type {
 } from './adapter.interface.js';
 import { agentTracker } from '../events/agent-tracker.js';
 import { logger } from '../utils/logger.js';
+import { BtwQueue, type BtwQueueEventMap } from '../sprites/btw-queue.js';
 
 // ── Claude Code SDK Adapter ─────────────────────────────────
 // Uses the official Agent SDK's v2 session API.
@@ -130,6 +131,20 @@ export interface AutoAllowEvent {
   toolUseId: string;
 }
 
+/**
+ * Sprite-response event type exposed by ClaudeCliAdapter. Keeps ws.ts
+ * decoupled from the internal BtwQueue event shape.
+ */
+export interface SpriteResponseEvent {
+  sessionId: string;
+  spriteHandle: string;
+  subagentId: string;
+  messageId: string;
+  text: string;
+  status: 'delivered' | 'dropped';
+  dropReason?: string;
+}
+
 export class ClaudeCliAdapter implements IAdapter {
   readonly type = 'cli' as const;
   private emitter = new EventEmitter();
@@ -137,11 +152,37 @@ export class ClaudeCliAdapter implements IAdapter {
   private sessionManager: SessionManager;
   private approvalQueue: ApprovalQueue;
   readonly permissionFilter: PermissionFilter;
+  /** Wave 4 — /btw queue. See `relay/src/sprites/btw-queue.ts`. */
+  readonly btwQueue = new BtwQueue();
 
   constructor(sessionManager: SessionManager, approvalQueue: ApprovalQueue) {
     this.sessionManager = sessionManager;
     this.approvalQueue = approvalQueue;
     this.permissionFilter = new PermissionFilter();
+
+    // Fan queue terminal events out through the adapter's main emitter so
+    // ws.ts can subscribe with a single `on('sprite-response', ...)`.
+    this.btwQueue.on('responded', (ev: BtwQueueEventMap['responded']) => {
+      this.emitter.emit('sprite-response', {
+        sessionId: ev.sessionId,
+        spriteHandle: ev.spriteHandle,
+        subagentId: ev.subagentId,
+        messageId: ev.messageId,
+        text: ev.text,
+        status: 'delivered',
+      } satisfies SpriteResponseEvent);
+    });
+    this.btwQueue.on('dropped', (ev: BtwQueueEventMap['dropped']) => {
+      this.emitter.emit('sprite-response', {
+        sessionId: ev.sessionId,
+        spriteHandle: ev.spriteHandle,
+        subagentId: ev.subagentId,
+        messageId: ev.messageId,
+        text: '',
+        status: 'dropped',
+        dropReason: ev.reason,
+      } satisfies SpriteResponseEvent);
+    });
   }
 
   async start(workingDir: string): Promise<Session> {
@@ -263,6 +304,14 @@ export class ClaudeCliAdapter implements IAdapter {
                 const stopInput = input as SubagentStopHookInput;
                 const { agent_id: agentId } = stopInput;
 
+                // Wave 4 — drop any /btw messages queued for this subagent.
+                // Scenario #4: agent finished before we could deliver. Emits
+                // 'dropped' which the adapter forwards as sprite-response.
+                this.btwQueue.dropForSubagent(
+                  agentId,
+                  'Subagent completed before delivery',
+                );
+
                 // `last_assistant_message` is available on stopInput
                 // but ws.ts's `dismissed` handler (see routes/ws.ts
                 // agent-lifecycle switch) ignores `event.result` —
@@ -348,9 +397,43 @@ export class ClaudeCliAdapter implements IAdapter {
     logger.info({ sessionId, agentId, textLength: text.length }, 'Agent message sent via SDK');
   }
 
+  /**
+   * Wave 4 — enqueue a /btw sprite message for turn-boundary injection.
+   * Used by ws.ts when a client sends `sprite.message`. The queue emits
+   * 'responded' or 'dropped' which fans out as `sprite-response` events
+   * to ws.ts.
+   */
+  enqueueSpriteMessage(input: {
+    sessionId: string;
+    subagentId: string;
+    spriteHandle: string;
+    messageId: string;
+    userText: string;
+    role: string;
+    task: string;
+  }): void {
+    if (!this.sessions.has(input.sessionId)) {
+      // Session not alive here — this is the single-worker path and the
+      // session didn't exist. Emit dropped so caller sees a terminal state.
+      this.btwQueue.enqueue(input);
+      this.btwQueue.dropForSubagent(input.subagentId, 'Session not alive');
+      return;
+    }
+    this.btwQueue.enqueue(input);
+  }
+
+  /** Wave 4 — drop /btw entries for a subagent that's been unlinked. */
+  dropSpriteForSubagent(subagentId: string, reason: string): void {
+    this.btwQueue.dropForSubagent(subagentId, reason);
+  }
+
   async cancelOperation(sessionId: string): Promise<void> {
     const entry = this.sessions.get(sessionId);
     if (!entry) return;
+
+    // Wave 4 — drop pending /btw entries. They can't be delivered once the
+    // SDK session closes.
+    this.btwQueue.dropForSession(sessionId, 'Session cancelled');
 
     // Close the SDK session (kills the underlying Claude process) and
     // abort the stream consumption loop so we stop processing events.
@@ -461,6 +544,12 @@ export class ClaudeCliAdapter implements IAdapter {
         // Turn complete (stream yielded `result` and returned).
         // Loop back to call stream() again for the next turn.
         logger.debug({ sessionId, messagesInTurn }, 'Turn stream ended, waiting for next turn');
+
+        // Wave 4 — drain one queued /btw at the turn boundary. See the
+        // identical path in fleet/worker.ts for the design rationale.
+        if (!signal.aborted) {
+          await this.drainOneBtw(sessionId, sdkSession);
+        }
       }
     } catch (err) {
       if (!signal.aborted) {
@@ -470,6 +559,41 @@ export class ClaudeCliAdapter implements IAdapter {
     } finally {
       if (entry) entry.streamAlive = false;
       logger.info({ sessionId }, 'Stream consumer exited');
+    }
+  }
+
+  /**
+   * Drain one queued /btw for this session at a turn boundary. One per
+   * boundary so the next assistant message can be correlated unambiguously.
+   */
+  private async drainOneBtw(sessionId: string, sdkSession: SDKSession): Promise<void> {
+    const queued = this.btwQueue.peekQueuedForSession(sessionId);
+    if (queued.length === 0) return;
+    const oldest = queued[0];
+    if (!oldest) return;
+    const entry = this.btwQueue.takeNextForSubagent(oldest.subagentId);
+    if (!entry) return;
+    try {
+      await sdkSession.send(entry.constrainedText);
+      this.btwQueue.markAwaitingResponse(entry.messageId);
+      logger.info(
+        {
+          sessionId,
+          subagentId: entry.subagentId,
+          messageId: entry.messageId,
+          queuedForMs: Date.now() - entry.queuedAt,
+        },
+        'Injected /btw at turn boundary, awaiting response',
+      );
+    } catch (err) {
+      logger.error(
+        { sessionId, subagentId: entry.subagentId, messageId: entry.messageId, err },
+        'Failed to inject /btw — dropping',
+      );
+      this.btwQueue.dropForSubagent(
+        entry.subagentId,
+        `Injection failed: ${err instanceof Error ? err.message : 'unknown'}`,
+      );
     }
   }
 
@@ -549,6 +673,12 @@ export class ClaudeCliAdapter implements IAdapter {
 
     const entry = this.sessions.get(sessionId);
 
+    // Wave 4 — if a /btw is awaiting a response, capture the full text of
+    // this assistant message as the response. Emits 'responded' which this
+    // adapter forwards as `sprite-response { status: 'delivered' }`.
+    const awaiting = this.btwQueue.findAwaitingForSession(sessionId);
+    let collectedText = '';
+
     for (const block of content) {
       if (block['type'] === 'text') {
         // Only emit full text if we didn't already stream it via deltas
@@ -557,6 +687,10 @@ export class ClaudeCliAdapter implements IAdapter {
           if (text) {
             this.emitter.emit('output', sessionId, text);
           }
+        }
+        if (awaiting) {
+          const t = block['text'];
+          if (typeof t === 'string') collectedText += t;
         }
       }
 
@@ -567,6 +701,10 @@ export class ClaudeCliAdapter implements IAdapter {
           sessionId,
         } satisfies ToolInfo);
       }
+    }
+
+    if (awaiting && collectedText.trim().length > 0) {
+      this.btwQueue.markResponded(awaiting.messageId, collectedText);
     }
   }
 
@@ -673,6 +811,8 @@ export class ClaudeCliAdapter implements IAdapter {
   destroySession(sessionId: string): void {
     const entry = this.sessions.get(sessionId);
     if (!entry) return;
+    // Wave 4 — drop any /btw entries for the session being destroyed.
+    this.btwQueue.dropForSession(sessionId, 'Session destroyed');
     entry.streamAbort.abort();
     entry.sdkSession.close();
     entry.session.close();
@@ -689,6 +829,7 @@ export class ClaudeCliAdapter implements IAdapter {
   on(event: 'tool-complete', handler: (result: ToolResult) => void): void;
   on(event: 'agent-lifecycle', handler: (event: AgentEvent) => void): void;
   on(event: 'session-result', handler: (result: SessionResult) => void): void;
+  on(event: 'sprite-response', handler: (ev: SpriteResponseEvent) => void): void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   on(event: string, handler: (...args: any[]) => void): void {
     this.emitter.on(event, handler);

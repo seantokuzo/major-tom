@@ -35,7 +35,7 @@ import type {
   AgentEvent,
   SessionResult,
 } from '../adapters/adapter.interface.js';
-import type { AutoAllowEvent } from '../adapters/claude-cli.adapter.js';
+import type { AutoAllowEvent, SpriteResponseEvent } from '../adapters/claude-cli.adapter.js';
 import type { ApprovalDecision } from '../hooks/approval-queue.js';
 import {
   isChildToParentMessage,
@@ -461,6 +461,21 @@ export class FleetManager {
       case 'ipc:worker.error':
         logger.error({ workerId: msg.workerId, error: msg.error }, 'Worker-level error');
         break;
+
+      case 'ipc:sprite.response':
+        // Wave 4 — worker's BtwQueue hit a terminal state for a /btw.
+        // Re-emit as an adapter-shaped event so ws.ts can forward it
+        // to iOS/PWA clients uniformly with the single-worker path.
+        this.emitter.emit('sprite-response', {
+          sessionId: msg.sessionId,
+          spriteHandle: msg.spriteHandle,
+          subagentId: msg.subagentId,
+          messageId: msg.messageId,
+          text: msg.text,
+          status: msg.status,
+          dropReason: msg.dropReason,
+        } satisfies SpriteResponseEvent);
+        break;
     }
   }
 
@@ -541,6 +556,53 @@ export class FleetManager {
       sessionId,
       agentId,
       text,
+    });
+  }
+
+  /**
+   * Wave 4 — enqueue a /btw sprite message. The worker owning `sessionId`
+   * receives it via IPC and injects at the next turn boundary.
+   * Returns true if routed, false if no worker was found (caller should
+   * emit a `dropped` sprite.response directly).
+   */
+  enqueueSpriteMessage(input: {
+    sessionId: string;
+    subagentId: string;
+    spriteHandle: string;
+    messageId: string;
+    userText: string;
+    role: string;
+    task: string;
+  }): boolean {
+    const entry = this.getWorkerForSession(input.sessionId);
+    if (!entry) return false;
+    this.sendToWorker(entry, {
+      type: 'ipc:sprite.enqueue',
+      sessionId: input.sessionId,
+      subagentId: input.subagentId,
+      spriteHandle: input.spriteHandle,
+      messageId: input.messageId,
+      userText: input.userText,
+      role: input.role,
+      task: input.task,
+    });
+    return true;
+  }
+
+  /**
+   * Wave 4 — tell the worker to drop any /btw entries queued for a
+   * subagent. Called when the sprite layer detects an unlink from a
+   * non-SubagentStop path (the SubagentStop hook inside the worker
+   * already handles that case locally).
+   */
+  dropSpriteForSubagent(sessionId: string, subagentId: string, reason: string): void {
+    const entry = this.getWorkerForSession(sessionId);
+    if (!entry) return;
+    this.sendToWorker(entry, {
+      type: 'ipc:sprite.drop',
+      sessionId,
+      subagentId,
+      reason,
     });
   }
 
@@ -770,6 +832,7 @@ export class FleetManager {
   on(event: 'tool-complete', handler: (result: ToolResult) => void): void;
   on(event: 'agent-lifecycle', handler: (event: AgentEvent) => void): void;
   on(event: 'session-result', handler: (result: SessionResult) => void): void;
+  on(event: 'sprite-response', handler: (ev: SpriteResponseEvent) => void): void;
   on(event: 'worker-spawned', handler: (info: { workerId: string; workingDir: string; dirName: string }) => void): void;
   on(event: 'worker-crashed', handler: (info: { workerId: string; workingDir: string; dirName: string; restartCount: number }) => void): void;
   on(event: 'worker-restarted', handler: (info: { workerId: string; workingDir: string; dirName: string; restartCount: number }) => void): void;
