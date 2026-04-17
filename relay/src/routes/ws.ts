@@ -21,7 +21,8 @@ import { encodeServerMessage, safeDecode } from '../protocol/codec.js';
 import { truncateMetaField } from '../sessions/session-transcript.js';
 import { EventBufferManager } from '../sessions/event-buffer.js';
 import { scanWorkspaceTree } from '../workspace/tree-scanner.js';
-import type { ClientMessage, ServerMessage, FileNode } from '../protocol/messages.js';
+import type { ClientMessage, ServerMessage, FileNode, SpriteMappingEntry } from '../protocol/messages.js';
+import type { PersistedSpriteMapping } from '../sprites/sprite-mapping-persistence.js';
 import { createFsHandlers, type FsServerMessage } from './fs.js';
 import { createGitHandlers, type GitServerMessage } from './git.js';
 import { createGitHubHandlers, type GitHubServerMessage } from './github.js';
@@ -198,6 +199,19 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     }
   });
 
+  // ── Sprite mapping wire-format helper ────────────────────
+  /** Convert persisted mapping to wire-format SpriteMappingEntry. */
+  function toWireMapping(m: PersistedSpriteMapping): SpriteMappingEntry {
+    return {
+      spriteHandle: m.spriteHandle,
+      agentId: m.agentId,
+      role: m.role,
+      characterType: m.characterType,
+      ...(m.deskIndex !== undefined && m.deskIndex >= 0 ? { deskIndex: m.deskIndex } : {}),
+      linkedAt: m.linkedAt,
+    };
+  }
+
   // ── Session keepalive: 10-minute timeout when all clients disconnect ──
   const SESSION_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
   /** Maps sessionId → Set of WebSocket clients attached to that session */
@@ -345,6 +359,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     'session.attach', 'session.list', 'session.resume', 'achievement.list',
     'fleet.status', 'workspace.tree', 'fs.ls', 'fs.readFile', 'fs.cwd',
     'presence.watch', 'presence.unwatch', 'user.list', 'activity.list',
+    'sprite.state.request',
     'annotation.list',
     'git.status', 'git.diff', 'git.log', 'git.branches', 'git.show',
     'github.pullRequests', 'github.pullRequest.detail', 'github.issues', 'github.issue.detail',
@@ -728,14 +743,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           sendToClient(ws, {
             type: 'sprite.state',
             sessionId: resumeSessionId,
-            mappings: resumeSpriteState.mappings.map(m => ({
-              spriteHandle: m.spriteHandle,
-              agentId: m.agentId,
-              role: m.role,
-              characterType: m.characterType,
-              ...(m.deskIndex !== undefined && m.deskIndex >= 0 ? { deskIndex: m.deskIndex } : {}),
-              linkedAt: m.linkedAt,
-            })),
+            mappings: resumeSpriteState.mappings.map(toWireMapping),
             roleBindings: resumeSpriteState.roleBindings,
           });
         }
@@ -916,6 +924,45 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         logger.info(
           { sessionId: message.sessionId, agentId: message.agentId, spriteHandle: message.spriteHandle },
           'Sprite message received — queued for Wave 4 delivery',
+        );
+        break;
+      }
+
+      // ── Sprite state query (cold scene rebuild) ──────────────
+      case 'sprite.state.request': {
+        const reqSessionId = message.sessionId;
+
+        // Verify the requesting client is attached to this session
+        const attachedSessionId = clientSessions.get(ws);
+        if (attachedSessionId !== reqSessionId) {
+          sendToClient(ws, {
+            type: 'error',
+            code: 'FORBIDDEN',
+            message: 'Cannot query sprite state for a session you are not attached to',
+          });
+          break;
+        }
+
+        let state = spriteMappings.get(reqSessionId);
+        if (!state) {
+          // Try loading from disk (relay may have restarted since last seen)
+          const persisted = await spriteMappingPersistence.load(reqSessionId);
+          if (persisted) {
+            spriteMappings.set(reqSessionId, persisted);
+            state = persisted;
+          }
+        }
+        sendToClient(ws, {
+          type: 'sprite.state',
+          sessionId: reqSessionId,
+          mappings: state?.mappings.length
+            ? state.mappings.map(toWireMapping)
+            : [],
+          roleBindings: state?.roleBindings ?? {},
+        });
+        logger.debug(
+          { sessionId: reqSessionId, mappingCount: state?.mappings.length ?? 0 },
+          'Sprite state request fulfilled',
         );
         break;
       }
