@@ -237,6 +237,7 @@ async function startSession(sessionId: string, _workingDir: string): Promise<voi
 
                 sendToParent({
                   type: 'ipc:agent.lifecycle',
+                  sessionId,
                   agentId,
                   event: 'spawn',
                   task: label,
@@ -261,6 +262,7 @@ async function startSession(sessionId: string, _workingDir: string): Promise<voi
                 // only `complete` forwards it. Don't pass dead data.
                 sendToParent({
                   type: 'ipc:agent.lifecycle',
+                  sessionId,
                   agentId,
                   event: 'dismissed',
                 });

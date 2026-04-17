@@ -244,6 +244,7 @@ export class ClaudeCliAdapter implements IAdapter {
                 const role = taskDesc ? classifyAgentRole(taskDesc) : agentType;
 
                 emitter.emit('agent-lifecycle', {
+                  sessionId: session.id,
                   agentId,
                   event: 'spawn',
                   task: label,
@@ -267,6 +268,7 @@ export class ClaudeCliAdapter implements IAdapter {
                 // agent-lifecycle switch) ignores `event.result` —
                 // only `complete` forwards it. Don't pass dead data.
                 emitter.emit('agent-lifecycle', {
+                  sessionId: session.id,
                   agentId,
                   event: 'dismissed',
                 } satisfies AgentEvent);

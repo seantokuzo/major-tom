@@ -282,8 +282,15 @@ export function createHookServer(
           'SubagentStart hook received',
         );
 
+        // session_id from the Claude hook payload — best-effort mapping to Major Tom sessionId.
+        // In fleet mode the worker knows the real sessionId; in PTY mode this is the Claude SDK
+        // session_id which the downstream handler uses for routing.
+        const hookSessionId =
+          typeof payload['session_id'] === 'string' ? (payload['session_id'] as string) : 'unknown';
+
         if (reportAgentLifecycle) {
           reportAgentLifecycle({
+            sessionId: hookSessionId,
             agentId,
             event: 'spawn',
             task: agentType,
@@ -334,8 +341,12 @@ export function createHookServer(
           'SubagentStop hook received',
         );
 
+        const stopSessionId =
+          typeof payload['session_id'] === 'string' ? (payload['session_id'] as string) : 'unknown';
+
         if (reportAgentLifecycle) {
           reportAgentLifecycle({
+            sessionId: stopSessionId,
             agentId,
             event: 'dismissed',
           });

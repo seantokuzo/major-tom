@@ -68,6 +68,15 @@ export interface IpcPermissionMode {
   godSubMode?: GodSubMode;
 }
 
+export interface IpcSpriteMessage {
+  type: 'ipc:sprite.message';
+  sessionId: string;
+  spriteHandle: string;
+  agentId: string;
+  text: string;
+  messageId: string;
+}
+
 export type ParentToChildMessage =
   | IpcSessionStart
   | IpcSessionDestroy
@@ -133,6 +142,7 @@ export interface IpcToolComplete {
 
 export interface IpcAgentLifecycle {
   type: 'ipc:agent.lifecycle';
+  sessionId: string;
   agentId: string;
   event: 'spawn' | 'working' | 'idle' | 'complete' | 'dismissed';
   task?: string;

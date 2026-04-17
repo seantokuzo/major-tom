@@ -36,6 +36,11 @@ import type { RateLimiter } from '../security/rate-limiter.js';
 import type { UserRole } from '../users/types.js';
 import { logger } from '../utils/logger.js';
 import type { ApprovalQueue } from '../hooks/approval-queue.js';
+import { SpriteMapper } from '../sprites/sprite-mapper.js';
+import {
+  SpriteMappingPersistence,
+  type PersistedSpriteMappingFile,
+} from '../sprites/sprite-mapping-persistence.js';
 
 interface WsDeps {
   sessionManager: SessionManager;
@@ -60,6 +65,10 @@ interface WsDeps {
    * The WS approval handler tries this queue first before falling back to fleet.
    */
   shellApprovalQueue: ApprovalQueue;
+  /** Sprite-agent wiring — persistence layer for sprite↔agent mappings */
+  spriteMappingPersistence: SpriteMappingPersistence;
+  /** Sprite-agent wiring — role classifier + mapping manager */
+  spriteMapper: SpriteMapper;
 }
 
 /**
@@ -85,12 +94,30 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     claudeWorkDir,
     multiUserEnabled,
     shellApprovalQueue,
+    spriteMappingPersistence,
+    spriteMapper,
   } = deps;
 
   const notificationDigest = new NotificationDigest(pushManager, notificationConfigManager);
   const eventBuffer = new EventBufferManager();
   const clients = new Set<WebSocket>();
   const presenceManager = new PresenceManager();
+
+  // ── Sprite mapping in-memory state (per session) ──────────
+  // In-memory cache of persisted sprite mapping files. Authoritative source
+  // is disk (via spriteMappingPersistence), but we keep a hot copy here for
+  // fast reads during agent spawn/dismiss and client reconnect.
+  const spriteMappings = new Map<string, PersistedSpriteMappingFile>();
+
+  /** Get or create the in-memory sprite mapping state for a session */
+  function getOrCreateSpriteState(sessionId: string): PersistedSpriteMappingFile {
+    let state = spriteMappings.get(sessionId);
+    if (!state) {
+      state = spriteMapper.createEmptyFile(sessionId);
+      spriteMappings.set(sessionId, state);
+    }
+    return state;
+  }
 
   // ── Per-client metadata for admin status endpoint ──────────
   interface ClientMeta { ip: string; userAgent: string; connectedAt: string }
@@ -250,6 +277,9 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       const data = buildPersistedSession(sessionId);
       if (data) sessionPersistence.save(data);
       sessionManager.destroy(sessionId);
+      // Clean up sprite mappings for the timed-out session
+      spriteMappings.delete(sessionId);
+      void spriteMappingPersistence.delete(sessionId);
     }, SESSION_TIMEOUT_MS);
 
     sessionTimeouts.set(sessionId, timeout);
@@ -592,6 +622,9 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         // so removing first would recreate a fresh (leaked) buffer for this session.
         broadcastToSession(message.sessionId, { type: 'session.ended', sessionId: message.sessionId });
         eventBuffer.removeSession(message.sessionId);
+        // ── Sprite cleanup: delete mapping file when session ends ──
+        spriteMappings.delete(message.sessionId);
+        void spriteMappingPersistence.delete(message.sessionId);
         break;
       }
 
@@ -678,6 +711,34 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           delaySeconds: modeState.delaySeconds,
           godSubMode: modeState.godSubMode,
         });
+
+        // ── Sprite state on reconnect ──────────────────────
+        // Load from in-memory cache or disk and send current sprite mappings
+        // so the iOS client can rebuild its Office scene.
+        let resumeSpriteState = spriteMappings.get(resumeSessionId);
+        if (!resumeSpriteState) {
+          // Try loading from disk (relay may have restarted)
+          const persisted = await spriteMappingPersistence.load(resumeSessionId);
+          if (persisted) {
+            spriteMappings.set(resumeSessionId, persisted);
+            resumeSpriteState = persisted;
+          }
+        }
+        if (resumeSpriteState && resumeSpriteState.mappings.length > 0) {
+          sendToClient(ws, {
+            type: 'sprite.state',
+            sessionId: resumeSessionId,
+            mappings: resumeSpriteState.mappings.map(m => ({
+              spriteHandle: m.spriteHandle,
+              agentId: m.agentId,
+              role: m.role,
+              characterType: m.characterType,
+              ...(m.deskIndex !== undefined && m.deskIndex >= 0 ? { deskIndex: m.deskIndex } : {}),
+              linkedAt: m.linkedAt,
+            })),
+            roleBindings: resumeSpriteState.roleBindings,
+          });
+        }
 
         const currentSeq = eventBuffer.getCurrentSeq(resumeSessionId);
         sendToClient(ws, {
@@ -817,6 +878,45 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
 
       case 'agent.message': {
         await fleetManager.sendAgentMessage(message.sessionId, message.agentId, message.text);
+        break;
+      }
+
+      // ── Sprite messaging (Wave 4 will implement actual queue/injection) ──
+      case 'sprite.message': {
+        // Validate the sprite mapping exists for this agent
+        const spriteState = spriteMappings.get(message.sessionId);
+        const mapping = spriteState?.mappings.find(m =>
+          m.agentId === message.agentId && m.spriteHandle === message.spriteHandle
+        );
+        if (!mapping) {
+          // Agent may have completed before message arrived (scenario #4 from spec)
+          sendToClient(ws, {
+            type: 'sprite.response',
+            sessionId: message.sessionId,
+            spriteHandle: message.spriteHandle,
+            agentId: message.agentId,
+            messageId: message.messageId,
+            text: '',
+            status: 'dropped',
+            dropReason: 'Agent not found or already completed',
+          });
+          break;
+        }
+        // Wave 2 acknowledge: confirm receipt. Wave 4 will implement
+        // turn-boundary queueing and actual injection.
+        sendToClient(ws, {
+          type: 'sprite.response',
+          sessionId: message.sessionId,
+          spriteHandle: message.spriteHandle,
+          agentId: message.agentId,
+          messageId: message.messageId,
+          text: '',
+          status: 'queued',
+        });
+        logger.info(
+          { sessionId: message.sessionId, agentId: message.agentId, spriteHandle: message.spriteHandle },
+          'Sprite message received — queued for Wave 4 delivery',
+        );
         break;
       }
 
@@ -1687,35 +1787,104 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     });
 
     fleetManager.on('agent-lifecycle', (event) => {
+      const sid = event.sessionId;
       switch (event.event) {
-        case 'spawn':
-          agentTracker.spawn(event.agentId, event.role ?? 'subagent', event.task ?? '', event.parentId);
+        case 'spawn': {
+          agentTracker.spawn(event.agentId, event.role ?? 'subagent', event.task ?? '', sid, event.parentId);
           // Track achievement: agent spawned
           achievementService.checkEvent('agent.spawn');
           broadcastToAll({
             type: 'agent.spawn',
+            sessionId: sid,
             agentId: event.agentId,
             parentId: event.parentId,
             task: event.task ?? '',
             role: event.role ?? 'subagent',
           });
+
+          // ── Sprite wiring: create mapping + emit sprite.link ──
+          const spriteState = getOrCreateSpriteState(sid);
+          const { mapping, role: classifiedRole, isNewBinding } = spriteMapper.createMapping(
+            event.agentId,
+            event.task ?? '',
+            spriteState.roleBindings,
+            spriteState.mappings,
+          );
+          // Lock role binding if this is a new one
+          if (isNewBinding) {
+            spriteState.roleBindings[classifiedRole] = mapping.characterType;
+          }
+          spriteState.mappings.push(mapping);
+          spriteState.updatedAt = new Date().toISOString();
+          spriteMappingPersistence.save(spriteState);
+
+          broadcastToSession(sid, {
+            type: 'sprite.link',
+            sessionId: sid,
+            spriteHandle: mapping.spriteHandle,
+            agentId: event.agentId,
+            role: mapping.role,
+            characterType: mapping.characterType,
+            deskIndex: mapping.deskIndex >= 0 ? mapping.deskIndex : undefined,
+          });
           break;
+        }
         case 'working':
           agentTracker.working(event.agentId, event.task ?? '');
-          broadcastToAll({ type: 'agent.working', agentId: event.agentId, task: event.task ?? '' });
+          broadcastToAll({ type: 'agent.working', sessionId: sid, agentId: event.agentId, task: event.task ?? '' });
           break;
         case 'idle':
           agentTracker.idle(event.agentId);
-          broadcastToAll({ type: 'agent.idle', agentId: event.agentId });
+          broadcastToAll({ type: 'agent.idle', sessionId: sid, agentId: event.agentId });
           break;
-        case 'complete':
+        case 'complete': {
           agentTracker.complete(event.agentId, event.result ?? '');
-          broadcastToAll({ type: 'agent.complete', agentId: event.agentId, result: event.result ?? '' });
+          broadcastToAll({ type: 'agent.complete', sessionId: sid, agentId: event.agentId, result: event.result ?? '' });
+
+          // ── Sprite wiring: remove mapping + emit sprite.unlink ���─
+          const completeState = spriteMappings.get(sid);
+          if (completeState) {
+            const idx = completeState.mappings.findIndex(m => m.agentId === event.agentId);
+            const removed = idx >= 0 ? completeState.mappings[idx] : undefined;
+            if (removed) {
+              completeState.mappings.splice(idx, 1);
+              completeState.updatedAt = new Date().toISOString();
+              spriteMappingPersistence.save(completeState);
+              broadcastToSession(sid, {
+                type: 'sprite.unlink',
+                sessionId: sid,
+                spriteHandle: removed.spriteHandle,
+                agentId: event.agentId,
+                reason: 'complete',
+              });
+            }
+          }
           break;
-        case 'dismissed':
+        }
+        case 'dismissed': {
           agentTracker.dismiss(event.agentId);
-          broadcastToAll({ type: 'agent.dismissed', agentId: event.agentId });
+          broadcastToAll({ type: 'agent.dismissed', sessionId: sid, agentId: event.agentId });
+
+          // ── Sprite wiring: remove mapping + emit sprite.unlink ──
+          const dismissState = spriteMappings.get(sid);
+          if (dismissState) {
+            const idx = dismissState.mappings.findIndex(m => m.agentId === event.agentId);
+            const removed = idx >= 0 ? dismissState.mappings[idx] : undefined;
+            if (removed) {
+              dismissState.mappings.splice(idx, 1);
+              dismissState.updatedAt = new Date().toISOString();
+              spriteMappingPersistence.save(dismissState);
+              broadcastToSession(sid, {
+                type: 'sprite.unlink',
+                sessionId: sid,
+                spriteHandle: removed.spriteHandle,
+                agentId: event.agentId,
+                reason: 'dismissed',
+              });
+            }
+          }
           break;
+        }
       }
     });
 
@@ -1766,6 +1935,23 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     });
 
     eventBus.on('server.message', serverMessageHandler);
+
+    // ── Cold boot cleanup: remove stale sprite mapping files ──
+    // On startup, scan for mapping files that don't correspond to a live
+    // session and delete them (relay crashed and left orphans).
+    spriteMappingPersistence.listStale((sid) => fleetManager.hasSession(sid) || sessionManager.isPersistedOnly(sid))
+      .then(async (stale) => {
+        for (const sid of stale) {
+          await spriteMappingPersistence.delete(sid);
+          logger.info({ sessionId: sid }, 'Deleted stale sprite mapping file (cold boot cleanup)');
+        }
+        if (stale.length > 0) {
+          logger.info({ count: stale.length }, 'Cold boot sprite mapping cleanup complete');
+        }
+      })
+      .catch((err: unknown) => {
+        logger.warn({ err }, 'Failed to clean stale sprite mapping files on boot');
+      });
   }
 
   // ── Plugin Registration ──────────────────────────────────

@@ -466,6 +466,16 @@ export interface SandboxClearUserPathsMessage {
   userId: string;
 }
 
+// ── Sprite messaging (client → server) ───────────────────────
+
+export interface SpriteMessageMessage {
+  type: 'sprite.message';
+  sessionId: string;
+  spriteHandle: string;
+  agentId: string;
+  text: string;
+  messageId: string;
+}
 
 export type ClientMessage =
   | PromptMessage
@@ -516,7 +526,8 @@ export type ClientMessage =
   | GitDiffMessage
   | GitLogMessage
   | GitBranchesMessage
-  | GitShowMessage;
+  | GitShowMessage
+  | SpriteMessageMessage;
 
 // ── Server → Client (Relay → iOS) ──────────────────────────
 
@@ -564,6 +575,7 @@ export interface ToolCompleteMessage {
 
 export interface AgentSpawnMessage {
   type: 'agent.spawn';
+  sessionId: string;
   agentId: string;
   parentId?: string;
   task: string;
@@ -572,23 +584,27 @@ export interface AgentSpawnMessage {
 
 export interface AgentWorkingMessage {
   type: 'agent.working';
+  sessionId: string;
   agentId: string;
   task: string;
 }
 
 export interface AgentIdleMessage {
   type: 'agent.idle';
+  sessionId: string;
   agentId: string;
 }
 
 export interface AgentCompleteMessage {
   type: 'agent.complete';
+  sessionId: string;
   agentId: string;
   result: string;
 }
 
 export interface AgentDismissedMessage {
   type: 'agent.dismissed';
+  sessionId: string;
   agentId: string;
 }
 
@@ -1092,6 +1108,53 @@ export interface GitErrorResponseMessage {
   message: string;
 }
 
+// ── Sprite wiring messages (server → client) ─────────────────
+
+export interface SpriteMappingEntry {
+  spriteHandle: string;
+  agentId: string;
+  role: string;
+  characterType: string;
+  deskIndex?: number;
+  linkedAt: string;
+}
+
+export interface SpriteLinkMessage {
+  type: 'sprite.link';
+  sessionId: string;
+  spriteHandle: string;
+  agentId: string;
+  role: string;
+  characterType: string;
+  deskIndex?: number;
+}
+
+export interface SpriteUnlinkMessage {
+  type: 'sprite.unlink';
+  sessionId: string;
+  spriteHandle: string;
+  agentId: string;
+  reason: 'complete' | 'dismissed' | 'error' | 'session_ended';
+}
+
+export interface SpriteResponseMessage {
+  type: 'sprite.response';
+  sessionId: string;
+  spriteHandle: string;
+  agentId: string;
+  messageId: string;
+  text: string;
+  status: 'delivered' | 'queued' | 'dropped';
+  dropReason?: string;
+}
+
+export interface SpriteStateMessage {
+  type: 'sprite.state';
+  sessionId: string;
+  mappings: SpriteMappingEntry[];
+  roleBindings: Record<string, string>;
+}
+
 /** Base server message union (without envelope fields). */
 type ServerMessageBase =
   | OutputMessage
@@ -1157,7 +1220,11 @@ type ServerMessageBase =
   | GitLogResponseMessage
   | GitBranchesResponseMessage
   | GitShowResponseMessage
-  | GitErrorResponseMessage;
+  | GitErrorResponseMessage
+  | SpriteLinkMessage
+  | SpriteUnlinkMessage
+  | SpriteResponseMessage
+  | SpriteStateMessage;
 
 /**
  * Every outbound server message may carry an optional `seq` —

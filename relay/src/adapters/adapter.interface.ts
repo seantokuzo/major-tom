@@ -23,6 +23,7 @@ export interface ToolResult {
 }
 
 export interface AgentEvent {
+  sessionId: string;
   agentId: string;
   event: 'spawn' | 'working' | 'idle' | 'complete' | 'dismissed';
   task?: string;

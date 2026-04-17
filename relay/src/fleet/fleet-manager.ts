@@ -437,6 +437,7 @@ export class FleetManager {
 
       case 'ipc:agent.lifecycle':
         this.emitter.emit('agent-lifecycle', {
+          sessionId: msg.sessionId,
           agentId: msg.agentId,
           event: msg.event,
           task: msg.task,

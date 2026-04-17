@@ -4,6 +4,7 @@ import { eventBus } from './event-bus.js';
 // ── Agent state tracking for office visualization ───────────
 
 export interface AgentState {
+  sessionId: string;
   agentId: string;
   parentId?: string;
   role: string;
@@ -24,9 +25,15 @@ class AgentTracker {
     return this.agents.get(agentId);
   }
 
-  spawn(agentId: string, role: string, task: string, parentId?: string): void {
+  /** Get all agents for a specific session */
+  getBySession(sessionId: string): AgentState[] {
+    return [...this.agents.values()].filter(a => a.sessionId === sessionId);
+  }
+
+  spawn(agentId: string, role: string, task: string, sessionId: string, parentId?: string): void {
     const now = new Date().toISOString();
     const state: AgentState = {
+      sessionId,
       agentId,
       parentId,
       role,
@@ -36,10 +43,11 @@ class AgentTracker {
       updatedAt: now,
     };
     this.agents.set(agentId, state);
-    logger.info({ agentId, role, task }, 'Agent spawned');
+    logger.info({ agentId, role, task, sessionId }, 'Agent spawned');
 
     eventBus.emit('agent.spawn', {
       type: 'agent.spawn',
+      sessionId,
       agentId,
       parentId,
       task,
@@ -54,7 +62,7 @@ class AgentTracker {
     agent.task = task;
     agent.updatedAt = new Date().toISOString();
 
-    eventBus.emit('agent.working', { type: 'agent.working', agentId, task });
+    eventBus.emit('agent.working', { type: 'agent.working', sessionId: agent.sessionId, agentId, task });
   }
 
   idle(agentId: string): void {
@@ -63,7 +71,7 @@ class AgentTracker {
     agent.status = 'idle';
     agent.updatedAt = new Date().toISOString();
 
-    eventBus.emit('agent.idle', { type: 'agent.idle', agentId });
+    eventBus.emit('agent.idle', { type: 'agent.idle', sessionId: agent.sessionId, agentId });
   }
 
   complete(agentId: string, result: string): void {
@@ -72,7 +80,7 @@ class AgentTracker {
     agent.status = 'complete';
     agent.updatedAt = new Date().toISOString();
 
-    eventBus.emit('agent.complete', { type: 'agent.complete', agentId, result });
+    eventBus.emit('agent.complete', { type: 'agent.complete', sessionId: agent.sessionId, agentId, result });
   }
 
   dismiss(agentId: string): void {
@@ -82,7 +90,7 @@ class AgentTracker {
     agent.updatedAt = new Date().toISOString();
     this.agents.delete(agentId);
 
-    eventBus.emit('agent.dismissed', { type: 'agent.dismissed', agentId });
+    eventBus.emit('agent.dismissed', { type: 'agent.dismissed', sessionId: agent.sessionId, agentId });
   }
 }
 
