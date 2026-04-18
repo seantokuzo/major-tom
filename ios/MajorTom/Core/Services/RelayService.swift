@@ -733,8 +733,16 @@ final class RelayService {
                     currentSession = nil
                     updateWidgetData()
                 }
-                // Clean up the office entry for this session
-                officeSceneManager?.closeOffice(for: event.sessionId)
+                // Clean up the office entry — but only for legacy / synthetic
+                // Offices whose key is this sessionId. Tab-backed Offices are
+                // torn down by `tab.closed` after PTY grace expires; the
+                // walk-off for the ending session is driven by
+                // `tab.session.ended`, which has already fired by this point.
+                let vm = officeSceneManager?.viewModel(for: event.sessionId)
+                let isTabBacked = vm?.tabId != nil && vm?.tabId != event.sessionId
+                if !isTabBacked {
+                    officeSceneManager?.closeOffice(for: event.sessionId)
+                }
             }
 
         case .sessionListResponse:
@@ -1288,16 +1296,25 @@ final class RelayService {
         case .tabSessionStarted:
             if let event = try? MessageCodec.decode(TabSessionStartedEvent.self, from: data) {
                 tabRegistryStore.apply(started: event)
+                officeSceneManager?.handleTabSessionStarted(
+                    tabId: event.tabId,
+                    sessionId: event.sessionId
+                )
             }
 
         case .tabSessionEnded:
             if let event = try? MessageCodec.decode(TabSessionEndedEvent.self, from: data) {
                 tabRegistryStore.apply(ended: event)
+                officeSceneManager?.handleTabSessionEnded(
+                    tabId: event.tabId,
+                    sessionId: event.sessionId
+                )
             }
 
         case .tabClosed:
             if let event = try? MessageCodec.decode(TabClosedEvent.self, from: data) {
                 tabRegistryStore.remove(tabId: event.tabId)
+                officeSceneManager?.closeOffice(for: event.tabId)
             }
 
         case .tabListResponse:

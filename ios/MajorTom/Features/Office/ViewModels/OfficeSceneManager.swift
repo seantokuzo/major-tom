@@ -248,11 +248,17 @@ final class OfficeSceneManager {
             if tabId != nil, existing.viewModel.tabId == nil {
                 existing.viewModel.tabId = officeKey
             }
+            existing.viewModel.activeSessionIds.insert(sessionId)
+            if existing.viewModel.sessionId == nil {
+                existing.viewModel.sessionId = sessionId
+            }
             return existing.viewModel
         }
 
         let vm = OfficeViewModel()
         vm.tabId = officeKey
+        vm.sessionId = sessionId
+        vm.activeSessionIds.insert(sessionId)
 
         let entry = OfficeEntry(
             viewModel: vm,
@@ -261,6 +267,56 @@ final class OfficeSceneManager {
         )
         offices[officeKey] = entry
         return vm
+    }
+
+    // MARK: - Tab Session Lifecycle (Wave 4)
+
+    /// Called when the relay broadcasts `tab.session.started`. Records the
+    /// session in the owning Office's roster (if the Office already exists)
+    /// and seeds the session→tab reverse cache so subsequent events for this
+    /// session route correctly even if they arrive without a `tabId` hint.
+    func handleTabSessionStarted(tabId: String, sessionId: String) {
+        sessionToOfficeKey[sessionId] = tabId
+
+        if let vm = offices[tabId]?.viewModel {
+            vm.activeSessionIds.insert(sessionId)
+            if vm.sessionId == nil {
+                vm.sessionId = sessionId
+            }
+            if vm.tabId == nil {
+                vm.tabId = tabId
+            }
+        }
+        // If the Office hasn't been materialized yet (user hasn't tapped
+        // "Available Tabs" or no agent events have landed), it will be
+        // created lazily by `ensureViewModel` and `createOffice`. The cache
+        // above guarantees those paths land in the right Office key.
+    }
+
+    /// Called when the relay broadcasts `tab.session.ended`. Drops the
+    /// session from the Office's roster and walks off any active humans.
+    /// Dogs (idle sprites) stay. The Office itself survives — tab teardown
+    /// happens on `tab.closed` after PTY grace expires.
+    func handleTabSessionEnded(tabId: String, sessionId: String) {
+        sessionToOfficeKey.removeValue(forKey: sessionId)
+
+        guard let vm = offices[tabId]?.viewModel else { return }
+        vm.activeSessionIds.remove(sessionId)
+
+        // If the session that just ended was the VM's primary sessionId,
+        // rotate to any remaining active session so sprite messaging +
+        // state-request paths still have a valid binding.
+        if vm.sessionId == sessionId {
+            vm.sessionId = vm.activeSessionIds.first
+        }
+
+        // Walk off every non-idle agent sprite. Wave 4 intentionally walks
+        // off *all* humans rather than filtering to the ending session —
+        // Wave 5 refines this once agents carry a session binding.
+        let humanIds = vm.agents.filter { !$0.id.hasPrefix("idle-") }.map(\.id)
+        for id in humanIds {
+            vm.handleAgentDismissed(id: id)
+        }
     }
 
     /// Closes an Office. Destroys both scene and viewModel.
