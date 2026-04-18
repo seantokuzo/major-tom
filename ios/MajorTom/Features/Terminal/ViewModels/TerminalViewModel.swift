@@ -144,34 +144,30 @@ final class TerminalViewModel {
         self.auth = auth
         self.keybarViewModel = KeybarViewModel(auth: auth)
 
-        // Restore persisted tab IDs, or create default.
-        // Previously, every app launch generated a random UUID → new tabId
-        // → fresh PTY on the relay. By persisting and restoring tab IDs we
-        // reconnect to the SAME PTY sessions across launches (assuming the
-        // relay still holds them through its 30-min disconnect grace).
+        // Restore persisted tab IDs. Tab-Keyed Offices (Wave 4) — we no
+        // longer auto-spawn a default tab on empty; the user explicitly
+        // creates every terminal via the "New Terminal" action. Previously
+        // a cold launch without saved tabs materialized an unwanted PTY
+        // (and sometimes an unwanted Office card) before the user did
+        // anything intentional.
         let defaults = UserDefaults.standard
         let savedTabIds = defaults.stringArray(forKey: Self.persistedTabIdsKey) ?? []
         let savedActiveId = defaults.string(forKey: Self.persistedActiveTabIdKey)
         let savedUserTitles = defaults.dictionary(forKey: Self.persistedTabUserTitlesKey) as? [String: String] ?? [:]
 
-        if !savedTabIds.isEmpty {
-            self.tabs = savedTabIds.map { tabId in
-                TerminalTab(
-                    tabId: tabId,
-                    title: "Terminal",
-                    userTitle: savedUserTitles[tabId],
-                    isActive: tabId == savedActiveId
-                )
-            }
-            // Ensure at least one tab is active.
-            if !self.tabs.contains(where: { $0.isActive }) {
-                self.tabs[0].isActive = true
-            }
-        } else {
-            // First launch — create a default tab and persist it.
-            let initialTab = TerminalTab(title: "Terminal", isActive: true)
-            self.tabs = [initialTab]
-            persistTabIds()
+        self.tabs = savedTabIds.map { tabId in
+            TerminalTab(
+                tabId: tabId,
+                title: "Terminal",
+                userTitle: savedUserTitles[tabId],
+                isActive: tabId == savedActiveId
+            )
+        }
+
+        // If there are tabs but none are marked active, activate the first
+        // so a subsequent connect knows which PTY to attach to.
+        if !self.tabs.isEmpty, !self.tabs.contains(where: { $0.isActive }) {
+            self.tabs[0].isActive = true
         }
     }
 
@@ -247,11 +243,11 @@ final class TerminalViewModel {
             let before = tabs.count
             tabs = tabs.filter { relaySessions.contains($0.tabId) }
 
-            // If all our tabs were pruned, create a fresh default.
-            if tabs.isEmpty {
-                let newTab = TerminalTab(title: "Terminal", isActive: true)
-                tabs = [newTab]
-            } else if !tabs.contains(where: { $0.isActive }) {
+            // Tab-Keyed Offices (Wave 4) — if every local tab got pruned we
+            // leave `tabs` empty and let the TerminalView show its empty
+            // state. No more auto-spawning a fresh default PTY the user
+            // never asked for.
+            if !tabs.isEmpty, !tabs.contains(where: { $0.isActive }) {
                 tabs[0].isActive = true
             }
 
@@ -284,20 +280,22 @@ final class TerminalViewModel {
 
     /// Close a tab by its ID.
     ///
-    /// If the closed tab was active, switches to the nearest neighbor.
-    /// If it was the last tab, creates a fresh one (never zero tabs).
+    /// Tab-Keyed Offices (Wave 4) — closing the last tab leaves `tabs`
+    /// empty; TerminalView shows an explicit "New Terminal" empty state
+    /// rather than auto-spawning a fresh PTY. If the closed tab was the
+    /// active one (and others remain), we switch to the nearest neighbor.
     func closeTab(id: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
 
         let wasActive = tabs[index].isActive
         tabs.remove(at: index)
 
-        // Never allow zero tabs — create a fresh one.
         if tabs.isEmpty {
-            let newTab = TerminalTab(title: "Terminal", isActive: true)
-            tabs.append(newTab)
             persistTabIds()
-            pendingTabSwitch = newTab.tabId
+            // Clear any pending switch — there's nothing to connect to.
+            pendingTabSwitch = nil
+            connectionState = .disconnected
+            isReady = false
             return
         }
 

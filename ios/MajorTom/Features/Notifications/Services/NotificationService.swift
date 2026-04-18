@@ -32,8 +32,9 @@ final class NotificationService: NSObject {
     var onApprovalAction: ((String, Bool) -> Void)?
 
     /// Wave 5 — invoked when the user taps the "Cool Beans" action on a
-    /// `/btw` response notification. Parameters: sessionId, subagentId.
-    var onBtwCoolBeansAction: ((String, String) -> Void)?
+    /// `/btw` response notification.
+    /// Parameters: sessionId, subagentId, tabId (nil for legacy sessions).
+    var onBtwCoolBeansAction: ((String, String, String?) -> Void)?
 
     private let center = UNUserNotificationCenter.current()
 
@@ -207,12 +208,18 @@ final class NotificationService: NSObject {
     /// Title: `"[{role}] {spriteName}"`, body: first ~120 chars of the response.
     /// Carries session/subagent identifiers so the "Cool Beans" action can
     /// clear the matching unread state.
+    ///
+    /// Tab-Keyed Offices (Wave 4): `tabId` is included in the payload when
+    /// the originating session is bound to a terminal tab. The deep link
+    /// resolves to the owning Office so "Cool Beans" and the default tap
+    /// action land in the right place.
     func postBtwResponseNotification(
         sessionId: String,
         subagentId: String,
         role: String,
         spriteName: String,
-        response: String
+        response: String,
+        tabId: String? = nil
     ) {
         guard isAuthorized else { return }
 
@@ -221,11 +228,16 @@ final class NotificationService: NSObject {
         content.body = Self.truncatedBody(response)
         content.sound = .default
         content.categoryIdentifier = NotificationCategory.btwResponse.rawValue
-        content.userInfo = [
+        let deepLink = tabId.map { "majortom://office/\($0)" } ?? "majortom://office"
+        var userInfo: [AnyHashable: Any] = [
             "sessionId": sessionId,
             "subagentId": subagentId,
-            "deepLink": "majortom://office"
+            "deepLink": deepLink
         ]
+        if let tabId {
+            userInfo["tabId"] = tabId
+        }
+        content.userInfo = userInfo
 
         let request = UNNotificationRequest(
             identifier: "btw-\(subagentId)-\(UUID().uuidString)",
@@ -295,9 +307,13 @@ extension NotificationService: UNUserNotificationCenterDelegate {
 
             case NotificationAction.coolBeans.rawValue:
                 // Wave 5 — clear the unread /btw state for the originating sprite.
+                // Wave 4 — `tabId` lets us route to the exact Office even
+                // when the same subagentId exists across concurrent sessions
+                // in the same tab.
                 if let sessionId = userInfo["sessionId"] as? String,
                    let subagentId = userInfo["subagentId"] as? String {
-                    onBtwCoolBeansAction?(sessionId, subagentId)
+                    let tabId = userInfo["tabId"] as? String
+                    onBtwCoolBeansAction?(sessionId, subagentId, tabId)
                 }
 
             case UNNotificationDefaultActionIdentifier:
@@ -329,7 +345,9 @@ struct NotificationDeepLink: Equatable {
 
     var isApproval: Bool { url.starts(with: "majortom://approval/") }
     var isSession: Bool { url.starts(with: "majortom://session/") }
-    var isOffice: Bool { url == "majortom://office" }
+    var isOffice: Bool {
+        url == "majortom://office" || url.starts(with: "majortom://office/")
+    }
 
     var approvalRequestId: String? {
         guard isApproval else { return nil }
@@ -339,5 +357,15 @@ struct NotificationDeepLink: Equatable {
     var sessionId: String? {
         guard isSession else { return nil }
         return String(url.dropFirst("majortom://session/".count))
+    }
+
+    /// Tab-Keyed Offices (Wave 4): extracts the tabId from
+    /// `majortom://office/{tabId}` deep links. Returns nil for the generic
+    /// `majortom://office` URL.
+    var officeTabId: String? {
+        let prefix = "majortom://office/"
+        guard url.starts(with: prefix) else { return nil }
+        let tabId = String(url.dropFirst(prefix.count))
+        return tabId.isEmpty ? nil : tabId
     }
 }
