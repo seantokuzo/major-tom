@@ -66,7 +66,27 @@ final class OfficeViewModel {
 
     /// Per-session role→CharacterType bindings (role-stable binding).
     /// First spawn for a canonical role locks the CharacterType for the session.
-    var sessionRoleBindings: RoleMapper.SessionBindings = [:]
+    ///
+    /// Wave 5 (Gate A — multi-claude-in-one-tab): keyed by `sessionId` so
+    /// sibling sessions living in the same Office don't stomp each other's
+    /// role→character maps. The empty-string key holds bindings for events
+    /// that arrive without a `sessionId` (pre-Wave-3 legacy paths) so the
+    /// role-stable guarantee still applies to them in isolation.
+    var sessionRoleBindingsByKey: [String: RoleMapper.SessionBindings] = [:]
+
+    /// Accessor — returns (and lazily creates) the role bindings for a
+    /// specific `sessionId`. `nil` routes to the empty-string bucket so
+    /// legacy events that never carried a sessionId still get a stable
+    /// binding set without contaminating real sessions' maps.
+    private func roleBindings(for sessionId: String?) -> RoleMapper.SessionBindings {
+        sessionRoleBindingsByKey[sessionId ?? ""] ?? [:]
+    }
+
+    /// Write an updated binding set for a specific `sessionId` — symmetric
+    /// with `roleBindings(for:)`.
+    private func setRoleBindings(_ bindings: RoleMapper.SessionBindings, for sessionId: String?) {
+        sessionRoleBindingsByKey[sessionId ?? ""] = bindings
+    }
 
     // MARK: - Sprite Messaging (Wave 4)
 
@@ -221,12 +241,14 @@ final class OfficeViewModel {
     func handleAgentSpawn(id: String, role: String, task: String, parentId: String? = nil, sessionId: String? = nil) {
         guard !agents.contains(where: { $0.id == id }) else { return }
 
-        // Resolve CharacterType via role-stable binding (clone-not-consume)
+        // Resolve CharacterType via role-stable binding (clone-not-consume).
+        // Wave 5 Gate A: bindings are per-session so sibling sessions in the
+        // same tab don't collide on role→character locks.
         let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
             role: role,
-            sessionBindings: sessionRoleBindings
+            sessionBindings: roleBindings(for: sessionId)
         )
-        sessionRoleBindings = updatedBindings
+        setRoleBindings(updatedBindings, for: sessionId)
 
         // S5 — placement cascade: desk first, then overflow.
         let placement = assignPlacement(to: id)
@@ -573,12 +595,13 @@ final class OfficeViewModel {
             return
         }
 
-        // Resolve CharacterType via role-stable binding
+        // Resolve CharacterType via role-stable binding (Wave 5 Gate A:
+        // scoped to the event's sessionId so sibling sessions don't collide).
         let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
             role: event.canonicalRole,
-            sessionBindings: sessionRoleBindings
+            sessionBindings: roleBindings(for: event.sessionId)
         )
-        sessionRoleBindings = updatedBindings
+        setRoleBindings(updatedBindings, for: event.sessionId)
 
         // Use subagentId as primary ID so agent.* lifecycle handlers find this agent
         // S5 — placement cascade: desk first, then overflow.
@@ -736,6 +759,15 @@ final class OfficeViewModel {
     /// Begin a pending `/btw` for a linked sprite. Caller (RelayService/view) is
     /// responsible for actually dispatching the WebSocket send when connected.
     /// Returns the queued message descriptor so the caller can submit it.
+    ///
+    /// Wave 5 (Gate A — multi-claude-in-one-tab): the queued message is
+    /// stamped with the **tapped agent's** `sessionId` when available, NOT
+    /// the Office's "primary" `vm.sessionId`. Sibling sessions in the same
+    /// tab each have their own agents, and tapping one of them must route
+    /// its `/btw` back to the owning session even if the VM's primary
+    /// pointer has rotated. Falls back to `vm.sessionId` only when the
+    /// tapped agent has no stamped sessionId (pre-Wave-3 legacy entry or
+    /// stale rehydrate state).
     @discardableResult
     func beginPendingMessage(
         spriteId: String,
@@ -748,7 +780,11 @@ final class OfficeViewModel {
         guard !trimmed.isEmpty else { return nil }
         guard case .idle = messagingState(for: spriteId) else { return nil }
 
-        let sid = sessionId ?? ""
+        // Route per-agent: prefer the tapped sprite's own sessionId, fall
+        // back to the VM's primary sessionId (legacy/unstamped agents), and
+        // finally to an empty string if neither is set.
+        let agentSessionId = agents.first(where: { $0.id == spriteId })?.sessionId
+        let sid = agentSessionId ?? sessionId ?? ""
         let messageId = UUID().uuidString
 
         setMessagingState(.pending(messageId: messageId, question: trimmed), for: spriteId)
@@ -916,19 +952,19 @@ final class OfficeViewModel {
             removeAgent(id: id)
         }
 
-        // Role bindings are keyed per-session downstream of RoleMapper; a
-        // rebuild for one session legitimately replays those bindings. In
-        // the Gate A case role-stable binding still works because the
-        // clone-not-consume model shares CharacterTypes across sessions.
-        sessionRoleBindings = [:]
+        // Wave 5 Gate A: only reset bindings for the session being
+        // rehydrated. Sibling sessions living in the same Office keep their
+        // role→character locks so their subsequent spawn/link events stay
+        // stable.
+        setRoleBindings([:], for: event.sessionId)
 
         // Rebuild from relay mappings — primary key is subagentId
         for mapping in event.mappings {
             let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
                 role: mapping.canonicalRole,
-                sessionBindings: sessionRoleBindings
+                sessionBindings: roleBindings(for: event.sessionId)
             )
-            sessionRoleBindings = updatedBindings
+            setRoleBindings(updatedBindings, for: event.sessionId)
 
             let status: AgentStatus
             switch mapping.status {

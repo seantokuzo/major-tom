@@ -97,9 +97,10 @@ struct AgentState: Identifiable {
     /// spawn path.
     ///
     /// NOTE: deliberately **not** included in the custom `Equatable` below —
-    /// sessionId is set once at spawn and never changes afterwards, so
-    /// omitting it keeps `.onChange(of: viewModel.agents)` diffing cheap and
-    /// avoids spurious walk-in triggers.
+    /// sessionId may be populated at spawn or latched later when an existing
+    /// agent is upgraded on `sprite.link`, but once set it is expected to
+    /// remain stable. Omitting it keeps `.onChange(of: viewModel.agents)`
+    /// diffing cheap and avoids spurious walk-in triggers.
     var sessionId: String?
 
     // MARK: - Overflow Placement (Wave 6 — S5)

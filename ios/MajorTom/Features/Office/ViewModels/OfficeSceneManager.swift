@@ -376,9 +376,9 @@ final class OfficeSceneManager {
 
     /// Wave 5: graceful teardown on `tab.closed`. Walks off every agent
     /// scoped to any session in the tab, then tears down the Office after
-    /// `tabClosedTeardownGraceSeconds` so the dismiss animation has time to
-    /// finish (matches the ~1.5s walk-to-door + despawn timeline inside
-    /// `handleAgentDismissed`).
+    /// `tabClosedTeardownGraceMilliseconds` so the dismiss animation has
+    /// time to finish (matches the ~1.5s walk-to-door + despawn timeline
+    /// inside `handleAgentDismissed`).
     ///
     /// Covers the hard-kill PTY path: when the relay broadcasts
     /// `tab.closed` without a preceding `tab.session.ended` (e.g. PTY grace
