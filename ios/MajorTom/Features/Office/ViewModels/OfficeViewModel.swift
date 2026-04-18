@@ -888,21 +888,38 @@ final class OfficeViewModel {
     }
 
     /// Handle `sprite.state` — bulk restore all sprite mappings (reconnect).
-    /// Clears any existing agent sprites (non-idle) and rebuilds from relay state.
-    /// Uses `subagentId` as the primary AgentState.id so agent.* handlers find them.
+    /// Clears existing agent sprites **belonging to this event's sessionId**
+    /// and rebuilds them from relay state. Uses `subagentId` as the primary
+    /// AgentState.id so agent.* handlers find them.
+    ///
+    /// Wave 5 (Gate A — multi-claude-in-one-tab): the earlier "clear ALL
+    /// non-idle agents" behavior deleted sibling-session sprites from the
+    /// same Office whenever any session sent a sprite.state. Now the clear
+    /// is scoped to agents whose `sessionId` matches the event — agents
+    /// belonging to other concurrent sessions in the tab survive.
     func handleSpriteState(_ event: SpriteStateEvent) {
         // Latch sessionId if not already set (e.g. pre-Wave-3 compat)
         if sessionId == nil {
             sessionId = event.sessionId
         }
 
-        // Remove all existing non-idle agent sprites
-        let nonIdleIds = agents.filter { !isIdleSprite($0.id) }.map(\.id)
-        for id in nonIdleIds {
+        // Remove existing non-idle agent sprites scoped to this session.
+        // Agents with `sessionId == nil` (pre-Wave-3 legacy) are also wiped
+        // here — they share the event's session by virtue of having no
+        // other provenance, and leaving them behind would mask relay state.
+        let scopedIds = agents
+            .filter {
+                !isIdleSprite($0.id) && ($0.sessionId == event.sessionId || $0.sessionId == nil)
+            }
+            .map(\.id)
+        for id in scopedIds {
             removeAgent(id: id)
         }
 
-        // Reset role bindings for this session
+        // Role bindings are keyed per-session downstream of RoleMapper; a
+        // rebuild for one session legitimately replays those bindings. In
+        // the Gate A case role-stable binding still works because the
+        // clone-not-consume model shares CharacterTypes across sessions.
         sessionRoleBindings = [:]
 
         // Rebuild from relay mappings — primary key is subagentId
