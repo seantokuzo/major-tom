@@ -1265,7 +1265,15 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           }
         }
 
-        sendToClient(ws, { type: 'session.list.response', sessions });
+        // Tab-Keyed Offices (phase §5.2) — annotate each meta with its
+        // bound tabId so iOS can group session-list entries by tab.
+        // Legacy cli/vscode sessions yield undefined and the field is
+        // omitted on the wire (back-compat preserved).
+        const sessionsWithTabId = sessions.map((meta) => ({
+          ...meta,
+          tabId: tabIdFor(meta.id),
+        }));
+        sendToClient(ws, { type: 'session.list.response', sessions: sessionsWithTabId });
         break;
       }
 
