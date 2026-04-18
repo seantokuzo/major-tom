@@ -14,7 +14,7 @@
  *     preserved.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, readdir, readFile, writeFile, stat, mkdir, unlink } from 'node:fs/promises';
+import { mkdtemp, rm, readdir, readFile, writeFile, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -87,13 +87,56 @@ describe('runSpriteMappingMigration', () => {
     expect(infoSpy).not.toHaveBeenCalled();
   });
 
-  it('no-ops silently on a missing directory (fresh install)', async () => {
+  it('seeds the directory and sentinel on fresh install (ENOENT baseDir)', async () => {
+    // Post-review fix: fresh-install used to return without writing a
+    // sentinel. That let `SpriteMappingPersistence.ensureDir()` create the
+    // directory on its own, which left the *next* boot seeing dir-but-no-
+    // sentinel — and it would wipe post-migration mapping files as "legacy".
+    // Migration now creates the dir + stamps the sentinel up front.
     const ghost = join(baseDir, 'never-created');
     await runSpriteMappingMigration({ baseDir: ghost });
 
-    // Migration should not create the directory on its own.
-    await expect(stat(ghost)).rejects.toMatchObject({ code: 'ENOENT' });
-    expect(infoSpy).not.toHaveBeenCalled();
+    const entries = await readdir(ghost);
+    expect(entries).toEqual([SPRITE_MIGRATION_SENTINEL]);
+
+    const stamp = await readFile(join(ghost, SPRITE_MIGRATION_SENTINEL), 'utf-8');
+    expect(stamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+
+    // Info log confirms the fresh-install path was taken.
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    const [, msg] = infoSpy.mock.calls[0]!;
+    expect(msg).toContain('fresh install');
+  });
+
+  it('fails closed (skips sweep) on non-ENOENT sentinel stat failure', async () => {
+    // Post-review fix: if `stat(sentinelPath)` fails with EACCES/EIO/etc,
+    // the sentinel *might* exist but we can't confirm. Proceeding to sweep
+    // would delete post-migration mapping files on a transient glitch.
+    await writeJson(baseDir, 'post-migration-file.json', { v: 1 });
+
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+    const realStat = stat;
+    const flakyStat: MigrationFsOps['stat'] = async (p, ...rest) => {
+      if (String(p).endsWith(SPRITE_MIGRATION_SENTINEL)) {
+        throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+      }
+      return realStat(p, ...rest);
+    };
+
+    try {
+      await runSpriteMappingMigration({ baseDir, fs: { stat: flakyStat } });
+
+      // Sweep must NOT have run — the mapping file survives.
+      const remaining = await readdir(baseDir);
+      expect(remaining).toContain('post-migration-file.json');
+      // No sentinel written (we don't know whether one already exists).
+      expect(remaining).not.toContain(SPRITE_MIGRATION_SENTINEL);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(infoSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it('empty directory still stamps the sentinel and logs cleared 0', async () => {
@@ -186,5 +229,3 @@ describe('runSpriteMappingMigration — FS injection surface', () => {
   });
 });
 
-// Ensure `mkdir` re-export compiles (unused-import guard).
-void mkdir;

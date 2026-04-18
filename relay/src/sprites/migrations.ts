@@ -87,22 +87,47 @@ export async function runSpriteMappingMigration(
   const fs: MigrationFsOps = { ...DEFAULT_FS, ...opts.fs };
   const sentinelPath = join(baseDir, SPRITE_MIGRATION_SENTINEL);
 
-  // 1. Fresh install — directory doesn't exist. Nothing to migrate.
+  // 1. Probe the base directory. On fresh install (ENOENT) we create the
+  // directory and stamp the sentinel immediately — otherwise a later boot
+  // would see dir-but-no-sentinel (once SpriteMappingPersistence writes its
+  // first mapping) and wipe those new files as "legacy".
+  let baseDirExisted = true;
   try {
     await fs.stat(baseDir);
   } catch (err) {
     const code = errnoCode(err);
     if (code === 'ENOENT') {
+      baseDirExisted = false;
+    } else {
+      logger.error(
+        { err, baseDir, code },
+        'Sprite mapping migration: unable to stat directory — skipping',
+      );
       return;
     }
-    logger.error(
-      { err, baseDir, code },
-      'Sprite mapping migration: unable to stat directory — skipping',
-    );
+  }
+
+  if (!baseDirExisted) {
+    try {
+      await fs.mkdir(baseDir, { recursive: true });
+      await fs.writeFile(sentinelPath, new Date().toISOString(), 'utf-8');
+      logger.info(
+        { baseDir },
+        'Sprite mapping migration: fresh install — directory seeded, sentinel stamped',
+      );
+    } catch (err) {
+      logger.error(
+        { err, baseDir, code: errnoCode(err) },
+        'Sprite mapping migration: failed to seed fresh-install sentinel — migration will re-run next boot',
+      );
+    }
     return;
   }
 
   // 2. Sentinel present — migration already ran. Skip silently (debug only).
+  // A non-ENOENT stat failure (EACCES, EIO, ...) means the sentinel *might*
+  // exist but we can't confirm. Fail closed: skip the sweep so a transient
+  // filesystem glitch can't wipe post-migration mapping files.
   try {
     await fs.stat(sentinelPath);
     logger.debug(
@@ -115,8 +140,9 @@ export async function runSpriteMappingMigration(
     if (code !== 'ENOENT') {
       logger.warn(
         { err, baseDir, code },
-        'Sprite mapping migration: could not stat sentinel — proceeding with sweep',
+        'Sprite mapping migration: could not stat sentinel — skipping sweep (fail-closed)',
       );
+      return;
     }
   }
 
