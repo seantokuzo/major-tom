@@ -23,6 +23,8 @@ interface ShellRouteDeps {
 interface ShellAuthResult {
   authed: boolean;
   email?: string;
+  /** Effective owner id — matches presenceManager's `payload.userId ?? payload.sub` convention. */
+  userId?: string;
 }
 
 /**
@@ -45,7 +47,8 @@ async function authenticateShellRequest(
   if (sessionCookie) {
     try {
       const payload = await verifySessionToken(sessionCookie);
-      return { authed: true, email: payload.email };
+      const userId = payload.userId ?? payload.sub;
+      return { authed: true, email: payload.email, ...(userId ? { userId } : {}) };
     } catch {
       // Fall through to token fallback
     }
@@ -54,13 +57,32 @@ async function authenticateShellRequest(
   if (queryToken && queryToken !== legacyAuthToken) {
     try {
       const payload = await verifySessionToken(queryToken);
-      return { authed: true, email: payload.email };
+      const userId = payload.userId ?? payload.sub;
+      return { authed: true, email: payload.email, ...(userId ? { userId } : {}) };
     } catch {
       // Token invalid
     }
   }
 
   return { authed: false };
+}
+
+/**
+ * Tab-Keyed Offices — `tabId → userId` correlation for hook-server lookups.
+ * Populated on every authenticated PTY attach; cleared when the PTY's 30-min
+ * disconnect grace expires (wired from app.ts via the pty-adapter callback).
+ * Module-scoped so both the shell route (writer) and the hook bridge
+ * (reader) can share it without threading it through every dep bundle.
+ */
+const tabIdToUserId = new Map<string, string>();
+
+export function getUserIdForTab(tabId: string): string | undefined {
+  return tabIdToUserId.get(tabId);
+}
+
+/** Remove the tab→user binding. Called when the PTY is truly gone. */
+export function clearUserIdForTab(tabId: string): void {
+  tabIdToUserId.delete(tabId);
 }
 
 /** Valid tabIds: 1-64 chars of `[a-zA-Z0-9._-]`. */
@@ -126,11 +148,14 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
         const sessionCookie = request.cookies?.[SESSION_COOKIE];
         const { token: queryToken, cols: colsQ, rows: rowsQ } = request.query;
 
-        const { authed, email } = await authenticateShellRequest(sessionCookie, queryToken);
+        const { authed, email, userId } = await authenticateShellRequest(sessionCookie, queryToken);
         if (!authed) {
           logger.warn({ tabId, ip: request.ip }, 'Shell WS unauthenticated — closing');
           socket.close(1008, 'Authentication required');
           return;
+        }
+        if (userId) {
+          tabIdToUserId.set(tabId, userId);
         }
 
         const parsedCols = parseDim(colsQ);

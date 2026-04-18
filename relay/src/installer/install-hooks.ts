@@ -106,6 +106,30 @@ const SETTINGS_JSON = JSON.stringify(
           ],
         },
       ],
+      // Tab-Keyed Offices — SessionStart registers the tab↔session
+      // binding with the relay. Stop is Claude Code's session-end
+      // hook (per docs/STREAM-EVENTS.md:252). Both are fire-and-forget,
+      // no timeout needed — they never block.
+      SessionStart: [
+        {
+          hooks: [
+            {
+              type: 'command',
+              command: '$CLAUDE_CONFIG_DIR/hooks/session-start.sh',
+            },
+          ],
+        },
+      ],
+      Stop: [
+        {
+          hooks: [
+            {
+              type: 'command',
+              command: '$CLAUDE_CONFIG_DIR/hooks/stop.sh',
+            },
+          ],
+        },
+      ],
     },
   },
   null,
@@ -143,6 +167,19 @@ const HOOK_FILES: HookFileSpec[] = [
   {
     relativePath: join('hooks', 'subagent-stop.sh'),
     templateFilename: 'subagent-stop.sh',
+    executable: true,
+  },
+  // Tab-Keyed Offices — SessionStart / Stop hook scripts. The
+  // content-hashed settings.json update above pulls these in on
+  // any running relay's next startup; no manual reinstall.
+  {
+    relativePath: join('hooks', 'session-start.sh'),
+    templateFilename: 'session-start.sh',
+    executable: true,
+  },
+  {
+    relativePath: join('hooks', 'stop.sh'),
+    templateFilename: 'stop.sh',
     executable: true,
   },
 ];

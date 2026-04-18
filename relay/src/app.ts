@@ -20,7 +20,7 @@ import { createNotificationConfigRoutes } from './routes/notification-config.js'
 import { createAnalyticsRoutes } from './routes/analytics.js';
 import { createAchievementRoutes } from './routes/achievements.js';
 import { createWsRoute } from './routes/ws.js';
-import { createShellRoute } from './routes/shell.js';
+import { createShellRoute, clearUserIdForTab, getUserIdForTab } from './routes/shell.js';
 import { createApiApprovalsRoutes } from './routes/api-approvals.js';
 import { createPreferencesRoutes } from './routes/preferences.js';
 import { PtyAdapter } from './adapters/pty-adapter.js';
@@ -54,6 +54,8 @@ import { AuditLog } from './security/audit-log.js';
 import { RateLimiter } from './security/rate-limiter.js';
 import { SpriteMappingPersistence } from './sprites/sprite-mapping-persistence.js';
 import { SpriteMapper } from './sprites/sprite-mapper.js';
+import { TabRegistry } from './tabs/tab-registry.js';
+import { TabRegistryPersistence } from './tabs/tab-registry-persistence.js';
 import { getSessionSecret } from './auth/session.js';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -94,6 +96,10 @@ export async function buildApp(config: AppConfig) {
   const achievementService = new AchievementService();
   const spriteMappingPersistence = new SpriteMappingPersistence();
   const spriteMapper = new SpriteMapper();
+  // Tab-Keyed Offices — TabRegistry is the source of truth for the
+  // tab↔session mapping that backs the iOS Office metaphor.
+  const tabRegistryPersistence = new TabRegistryPersistence();
+  const tabRegistry = new TabRegistry(tabRegistryPersistence);
 
   // Multi-user services — only created when multi-user mode is enabled
   const userRegistry = config.multiUserEnabled ? new UserRegistry() : undefined;
@@ -111,6 +117,9 @@ export async function buildApp(config: AppConfig) {
   // Restore persisted data
   await sessionManager.restoreFromDisk().catch((err: unknown) => {
     logger.error({ err }, 'Failed to restore sessions from disk, starting anyway');
+  });
+  await tabRegistry.restoreFromDisk().catch((err: unknown) => {
+    logger.error({ err }, 'Failed to restore tabs from disk, starting anyway');
   });
   await pushManager.restoreFromDisk().catch((err: unknown) => {
     logger.error({ err }, 'Failed to restore push subscriptions from disk, starting anyway');
@@ -209,6 +218,15 @@ export async function buildApp(config: AppConfig) {
         // fleetManager.on('agent-lifecycle') and does the full
         // tracker + broadcast dance.
         reportAgentLifecycle: (event) => fleetManager.reportAgentLifecycle(event),
+        // Tab-Keyed Offices — SessionStart/Stop hooks drive TabRegistry
+        // and fan out tab-scoped events via the eventBus. The server
+        // message handler in ws.ts routes tab.* events to all clients.
+        tabBridge: {
+          tabRegistry,
+          sessionManager,
+          broadcast: (msg) => eventBus.emit('server.message', msg),
+          getUserIdForTab,
+        },
       },
       config.hookPort,
     );
@@ -327,6 +345,15 @@ export async function buildApp(config: AppConfig) {
     bufferBytes: parseNonNegativeInt(process.env['MAJOR_TOM_PTY_BUFFER_BYTES']),
     inputMaxBytes: parseNonNegativeInt(process.env['MAJOR_TOM_PTY_INPUT_MAX']),
     cwd: config.claudeWorkDir,
+    // Tab-Keyed Offices — PTY grace-expire / natural exit is when the
+    // tab is truly gone. Clear the shell.ts userId map, drop the
+    // TabRegistry entry, and broadcast tab.closed so the iOS Office
+    // tears down with the same lifecycle as if the user closed it.
+    onTabClosed: (tabId) => {
+      clearUserIdForTab(tabId);
+      tabRegistry.tabClosed(tabId);
+      eventBus.emit('server.message', { type: 'tab.closed', tabId });
+    },
   });
   shellApprovalQueue.setHybridWriter((tabId, data) => ptyAdapter.write(tabId, data));
 
@@ -376,6 +403,7 @@ export async function buildApp(config: AppConfig) {
     shellApprovalQueue,
     spriteMappingPersistence,
     spriteMapper,
+    tabRegistry,
   }));
 
   // Phase 13 Wave 2 — REST endpoints for approvals (cold-start fetch
