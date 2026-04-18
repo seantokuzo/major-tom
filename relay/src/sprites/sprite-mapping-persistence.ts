@@ -56,7 +56,13 @@ export interface PersistedSpriteMappingFile {
 
 // ── Constants ──────────────────────────────────────────────
 
-const DEFAULT_MAPPINGS_DIR = join(homedir(), '.major-tom', 'sprite-mappings');
+/**
+ * Canonical on-disk location for persisted sprite mappings. Exported so the
+ * Wave 5 migration helper (`./migrations.ts`) can sweep the same directory
+ * without duplicating the path literal. Individual instances still accept a
+ * `baseDir` override for tests.
+ */
+export const DEFAULT_MAPPINGS_DIR = join(homedir(), '.major-tom', 'sprite-mappings');
 const DEBOUNCE_MS = 2000;
 
 export interface SpriteMappingPersistenceOptions {

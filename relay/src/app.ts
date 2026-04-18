@@ -54,6 +54,7 @@ import { AuditLog } from './security/audit-log.js';
 import { RateLimiter } from './security/rate-limiter.js';
 import { SpriteMappingPersistence } from './sprites/sprite-mapping-persistence.js';
 import { SpriteMapper } from './sprites/sprite-mapper.js';
+import { runSpriteMappingMigration } from './sprites/migrations.js';
 import { TabRegistry } from './tabs/tab-registry.js';
 import { TabRegistryPersistence } from './tabs/tab-registry-persistence.js';
 import { getSessionSecret } from './auth/session.js';
@@ -84,6 +85,13 @@ export interface AppConfig {
 export async function buildApp(config: AppConfig) {
   // Initialize session secret early (auto-generates if needed)
   getSessionSecret();
+
+  // Tab-Keyed Offices Wave 5 (Gate B) — one-shot sweep of legacy sprite-
+  // mapping files. Must run BEFORE `new SpriteMappingPersistence()` because
+  // that constructor kicks off `ensureDir()` asynchronously; if the
+  // persistence layer creates the directory first, the migration's
+  // fresh-install detection races and could leave the sentinel unwritten.
+  await runSpriteMappingMigration();
 
   // ── Core services ──────────────────────────────────────
   const sessionPersistence = new SessionPersistence();

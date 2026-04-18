@@ -503,3 +503,130 @@ describe('PtyAdapter constants', () => {
     expect(DEFAULT_INPUT_MAX_BYTES).toBe(64 * 1024);
   });
 });
+
+// ── Tab-Keyed Offices Wave 5 — hard-kill `tab.closed` fan-out ──
+//
+// The relay contract (spec §8 L5/L10/L12 + §10 Wave 5 row) says `tab.closed`
+// MUST fire on the broadcast bus whenever a PTY is evicted, even if the
+// claude process crashed / was SIGKILLed without a preceding graceful
+// `tab.session.ended`. iOS's Wave 5 hard-kill path depends on this to walk
+// humans off before tearing down the Office. These tests codify the
+// invariant — the behavior already lives in `evict()` wiring onTabClosed;
+// without coverage, a future refactor could silently drop the fan-out.
+
+describe('PtyAdapter onTabClosed (hard-kill tab.closed path)', () => {
+  it('fires onTabClosed with the tabId when grace expires without prior graceful end', async () => {
+    const closed: string[] = [];
+    const a = makeAdapter({
+      graceMs: 60,
+      onTabClosed: (tabId) => closed.push(tabId),
+    });
+    try {
+      const client = makeClient();
+      a.attach('tab-hardkill', client, ATTACH_DEFAULTS);
+      expect(closed).toEqual([]); // nothing fired yet
+
+      // Detach → grace timer starts → PTY terminates → evict → onTabClosed.
+      // Crucially, no `tab.session.ended` was ever emitted on this tab —
+      // this is the iOS walk-off-on-hard-kill invariant.
+      a.detach('tab-hardkill', client);
+
+      await waitFor(() => expect(closed).toEqual(['tab-hardkill']), 1_500);
+      expect(a.has('tab-hardkill')).toBe(false);
+    } finally {
+      a.dispose();
+    }
+  });
+
+  it('fires onTabClosed once on an immediate kill (SIGKILL path, no grace)', () => {
+    const closed: string[] = [];
+    // Injected spawn so kill() returns synchronously without a real PTY
+    // dance — we only care about the fan-out invariant.
+    const fakePty = {
+      pid: 42, cols: 80, rows: 24,
+      onData() {}, onExit() {},
+      kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+    };
+    const a = new PtyAdapter({
+      spawn: (() => fakePty) as never,
+      graceMs: 10_000,
+      onTabClosed: (tabId) => closed.push(tabId),
+    });
+    try {
+      a.attach('tab-sigkill', makeClient(), ATTACH_DEFAULTS);
+      a.kill('tab-sigkill');
+      expect(closed).toEqual(['tab-sigkill']);
+      expect(a.has('tab-sigkill')).toBe(false);
+    } finally {
+      a.dispose();
+    }
+  });
+
+  it('fires onTabClosed on natural PTY exit (process died, no session.ended)', () => {
+    const closed: string[] = [];
+    const onExitCbs: Array<(e: { exitCode: number; signal?: number }) => void> = [];
+    const fakePty = {
+      pid: 99, cols: 80, rows: 24,
+      onData() {},
+      onExit(cb: (e: { exitCode: number; signal?: number }) => void) { onExitCbs.push(cb); },
+      kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+    };
+    const a = new PtyAdapter({
+      spawn: (() => fakePty) as never,
+      graceMs: 10_000,
+      onTabClosed: (tabId) => closed.push(tabId),
+    });
+    try {
+      a.attach('tab-natural-exit', makeClient(), ATTACH_DEFAULTS);
+      onExitCbs[0]?.({ exitCode: 137, signal: 9 as number }); // SIGKILL exit
+      expect(closed).toEqual(['tab-natural-exit']);
+      expect(a.has('tab-natural-exit')).toBe(false);
+    } finally {
+      a.dispose();
+    }
+  });
+
+  it('does NOT fire onTabClosed from dispose() (whole-relay shutdown path)', () => {
+    const closed: string[] = [];
+    const fakePty = {
+      pid: 7, cols: 80, rows: 24,
+      onData() {}, onExit() {},
+      kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+    };
+    const a = new PtyAdapter({
+      spawn: (() => fakePty) as never,
+      graceMs: 10_000,
+      onTabClosed: (tabId) => closed.push(tabId),
+    });
+    a.attach('tab-relay-shutdown', makeClient(), ATTACH_DEFAULTS);
+    // Whole-relay shutdown — individual tab.closed fan-out is suppressed so
+    // we don't spam clients with N events while the server itself is going
+    // down. See PtyAdapterOptions.onTabClosed JSDoc.
+    a.dispose();
+    expect(closed).toEqual([]);
+  });
+
+  it('fires onTabClosed exactly once when a second kill follows eviction', () => {
+    const closed: string[] = [];
+    const fakePty = {
+      pid: 1, cols: 80, rows: 24,
+      onData() {}, onExit() {},
+      kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+    };
+    const a = new PtyAdapter({
+      spawn: (() => fakePty) as never,
+      graceMs: 10_000,
+      onTabClosed: (tabId) => closed.push(tabId),
+    });
+    try {
+      a.attach('tab-double-kill', makeClient(), ATTACH_DEFAULTS);
+      a.kill('tab-double-kill');
+      // Racing second kill (e.g. route handler fires kill while grace timer
+      // also fires): must not broadcast tab.closed twice.
+      a.kill('tab-double-kill');
+      expect(closed).toEqual(['tab-double-kill']);
+    } finally {
+      a.dispose();
+    }
+  });
+});
