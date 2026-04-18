@@ -8,6 +8,7 @@ struct MajorTomApp: App {
     @State private var notificationService = NotificationService()
     @State private var liveActivityManager = LiveActivityManager()
     @State private var watchConnectivity = PhoneWatchConnectivityService()
+    @State private var titleStore = TabTitleStore()
     @State private var achievementsViewModel: AchievementsViewModel?
     @State private var selectedTab: AppTab = .terminal
     @Environment(\.scenePhase) private var scenePhase
@@ -132,13 +133,13 @@ struct MajorTomApp: App {
 
     private var mainTabView: some View {
         TabView(selection: $selectedTab) {
-            TerminalView(auth: auth, liveActivityManager: liveActivityManager, watchConnectivity: watchConnectivity)
+            TerminalView(auth: auth, liveActivityManager: liveActivityManager, watchConnectivity: watchConnectivity, titleStore: titleStore)
                 .tabItem {
                     Label("Terminal", systemImage: "apple.terminal")
                 }
                 .tag(AppTab.terminal)
 
-            OfficeManagerView(sceneManager: officeSceneManager, relay: relay)
+            OfficeManagerView(sceneManager: officeSceneManager, relay: relay, titleStore: titleStore)
                 .tabItem {
                     Label("Office", systemImage: "building.2")
                 }

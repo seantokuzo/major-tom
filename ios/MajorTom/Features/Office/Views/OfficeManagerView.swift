@@ -14,9 +14,21 @@ import SwiftUI
 struct OfficeManagerView: View {
     var sceneManager: OfficeSceneManager
     var relay: RelayService
+    var titleStore: TabTitleStore
 
     @State private var navigationPath = NavigationPath()
     @State private var bannerTask: Task<Void, Never>?
+    @State private var renameTarget: TabMeta?
+    @State private var renameDraft: String = ""
+
+    /// Name shown on office cards — user-supplied title wins, otherwise
+    /// fall back to the shell-supplied working directory basename, and
+    /// then to a generic "Terminal" label.
+    private func displayName(for tab: TabMeta) -> String {
+        if let user = titleStore.title(for: tab.tabId) { return user }
+        if !tab.workingDirName.isEmpty { return tab.workingDirName }
+        return "Terminal"
+    }
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -55,6 +67,28 @@ struct OfficeManagerView: View {
         .animation(.easeInOut(duration: 0.2), value: sceneManager.pendingCrossSessionBanner)
         .onChange(of: sceneManager.pendingCrossSessionBanner) { _, newBanner in
             rescheduleBannerAutoHide(for: newBanner)
+        }
+        .alert(
+            "Rename Office",
+            isPresented: renameAlertBinding,
+            presenting: renameTarget
+        ) { tab in
+            TextField("Office name", text: $renameDraft)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled(true)
+            Button("Save") {
+                titleStore.setTitle(renameDraft, for: tab.tabId)
+                renameTarget = nil
+            }
+            Button("Reset", role: .destructive) {
+                titleStore.setTitle(nil, for: tab.tabId)
+                renameTarget = nil
+            }
+            Button("Cancel", role: .cancel) {
+                renameTarget = nil
+            }
+        } message: { _ in
+            Text("This renames the terminal tab too — they share a name.")
         }
     }
 
@@ -175,7 +209,7 @@ struct OfficeManagerView: View {
     private func activeOfficeCard(tab: TabMeta) -> some View {
         let vm = sceneManager.viewModel(for: tab.tabId)
         let agentCount = vm?.agents.filter { $0.linkedSubagentId != nil }.count ?? 0
-        let displayName = tab.workingDirName.isEmpty ? "Terminal" : tab.workingDirName
+        let name = displayName(for: tab)
 
         return Button {
             HapticService.selection()
@@ -192,7 +226,7 @@ struct OfficeManagerView: View {
 
                 // Info
                 VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.xs) {
-                    Text(displayName)
+                    Text(name)
                         .font(.system(.body, design: .monospaced, weight: .semibold))
                         .foregroundStyle(MajorTomTheme.Colors.textPrimary)
                         .lineLimit(1)
@@ -225,12 +259,33 @@ struct OfficeManagerView: View {
             )
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                beginRename(for: tab)
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            if titleStore.title(for: tab.tabId) != nil {
+                Button(role: .destructive) {
+                    titleStore.setTitle(nil, for: tab.tabId)
+                } label: {
+                    Label("Reset Name", systemImage: "arrow.uturn.backward")
+                }
+            }
+            Divider()
+            Button(role: .destructive) {
+                HapticService.impact(.medium)
+                sceneManager.closeOffice(for: tab.tabId)
+            } label: {
+                Label("Close Office", systemImage: "xmark.square")
+            }
+        }
     }
 
     // MARK: - Available Tab Card
 
     private func availableTabCard(tab: TabMeta) -> some View {
-        let displayName = tab.workingDirName.isEmpty ? "Terminal" : tab.workingDirName
+        let name = displayName(for: tab)
         return Button {
             HapticService.selection()
             sceneManager.createOffice(for: tab.tabId)
@@ -247,7 +302,7 @@ struct OfficeManagerView: View {
 
                 // Info
                 VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.xs) {
-                    Text(displayName)
+                    Text(name)
                         .font(.system(.body, design: .monospaced, weight: .medium))
                         .foregroundStyle(MajorTomTheme.Colors.textSecondary)
                         .lineLimit(1)
@@ -276,6 +331,35 @@ struct OfficeManagerView: View {
             )
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                beginRename(for: tab)
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            if titleStore.title(for: tab.tabId) != nil {
+                Button(role: .destructive) {
+                    titleStore.setTitle(nil, for: tab.tabId)
+                } label: {
+                    Label("Reset Name", systemImage: "arrow.uturn.backward")
+                }
+            }
+        }
+    }
+
+    // MARK: - Rename
+
+    private func beginRename(for tab: TabMeta) {
+        HapticService.impact(.medium)
+        renameDraft = titleStore.title(for: tab.tabId) ?? ""
+        renameTarget = tab
+    }
+
+    private var renameAlertBinding: Binding<Bool> {
+        Binding(
+            get: { renameTarget != nil },
+            set: { if !$0 { renameTarget = nil } }
+        )
     }
 
     // MARK: - Status Badge

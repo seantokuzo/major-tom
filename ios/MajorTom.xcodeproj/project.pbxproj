@@ -53,6 +53,7 @@
 		37B30E58E624F3CBE82F1B31 /* ComplicationProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07490C24A54CBCD38D4F2308 /* ComplicationProvider.swift */; };
 		38E33EB668F17E0408DEBF7C /* DelayCountdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 735C53A97B86E2331E03A4F0 /* DelayCountdownView.swift */; };
 		3C07EFEF4D80196CACF66B4F /* RelayService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EF58FBAC8341407F9E3E7A0 /* RelayService.swift */; };
+		9A1B2C3D4E5F60718293ABCD /* TabTitleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A1B2C3D4E5F60718293BCDE /* TabTitleStore.swift */; };
 		3DC3F97C0E915D4328BA3D23 /* xterm-addon-fit.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 70D288C1139CE55F81CA6B84 /* xterm-addon-fit.min.js */; };
 		3EBF323994DDFA263A66D119 /* FleetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C243979CB87B28424C0EC73 /* FleetViewModel.swift */; };
 		3F2C8C3720ABDE4346DD4010 /* PhoneWatchConnectivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F93EA76007AD19338D6B61 /* PhoneWatchConnectivityService.swift */; };
@@ -318,6 +319,7 @@
 		6E652FADA594D09DB757B828 /* SessionCountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCountView.swift; sourceTree = "<group>"; };
 		6ED47D05EBAEFF05755F1CF6 /* SessionListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListViewModel.swift; sourceTree = "<group>"; };
 		6EF58FBAC8341407F9E3E7A0 /* RelayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayService.swift; sourceTree = "<group>"; };
+		9A1B2C3D4E5F60718293BCDE /* TabTitleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabTitleStore.swift; sourceTree = "<group>"; };
 		70D288C1139CE55F81CA6B84 /* xterm-addon-fit.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "xterm-addon-fit.min.js"; sourceTree = "<group>"; };
 		72D88CD4F990BB00B9695888 /* ActivitySelectionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivitySelectionEngine.swift; sourceTree = "<group>"; };
 		735C53A97B86E2331E03A4F0 /* DelayCountdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelayCountdownView.swift; sourceTree = "<group>"; };
@@ -860,6 +862,7 @@
 				1972DF8FED85D9290EA3F331 /* PerfHUDPreferences.swift */,
 				28F93EA76007AD19338D6B61 /* PhoneWatchConnectivityService.swift */,
 				6EF58FBAC8341407F9E3E7A0 /* RelayService.swift */,
+				9A1B2C3D4E5F60718293BCDE /* TabTitleStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -1755,6 +1758,7 @@
 				35BC4313A2E9AFEBD7B113B0 /* PromptTemplate.swift in Sources */,
 				95294489029F6CCA66271C3B /* RateLimitSettingsView.swift in Sources */,
 				3C07EFEF4D80196CACF66B4F /* RelayService.swift in Sources */,
+				9A1B2C3D4E5F60718293ABCD /* TabTitleStore.swift in Sources */,
 				ECD4CC99C031E1B803D88C76 /* Session.swift in Sources */,
 				7800B5EFB116E5708F3A6300 /* SessionCostRankingView.swift in Sources */,
 				8FBFC47F6355543CB70F368F /* SessionListView.swift in Sources */,

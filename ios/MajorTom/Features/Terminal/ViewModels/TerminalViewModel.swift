@@ -79,9 +79,10 @@ final class TerminalViewModel {
     }
 
     /// Terminal title shown in the status bar. Prefers a user rename
-    /// (`userTitle`) over the xterm-supplied shell title.
+    /// from `TabTitleStore` over the xterm-supplied shell title.
     var terminalTitle: String {
-        activeTab?.displayTitle ?? "Terminal"
+        guard let tab = activeTab else { return "Terminal" }
+        return titleStore.title(for: tab.tabId) ?? tab.title
     }
 
     /// Current terminal dimensions.
@@ -129,6 +130,12 @@ final class TerminalViewModel {
     /// Reference to the auth service for relay URL and token.
     private let auth: AuthService
 
+    /// Shared store of user-supplied tab titles. Bidirectional — the
+    /// Office Manager writes here too and this VM sees the change via
+    /// SwiftUI observation, so tab.displayTitle reflects it at render
+    /// time.
+    let titleStore: TabTitleStore
+
     // MARK: - Tab Persistence
 
     /// UserDefaults key for persisted tab IDs (string array).
@@ -137,11 +144,9 @@ final class TerminalViewModel {
     /// UserDefaults key for the active tab ID (string).
     private static let persistedActiveTabIdKey = "mt-terminal-active-tab-id"
 
-    /// UserDefaults key for user-supplied tab renames ([tabId: userTitle]).
-    private static let persistedTabUserTitlesKey = "mt-terminal-tab-user-titles"
-
-    init(auth: AuthService) {
+    init(auth: AuthService, titleStore: TabTitleStore) {
         self.auth = auth
+        self.titleStore = titleStore
         self.keybarViewModel = KeybarViewModel(auth: auth)
 
         // Restore persisted tab IDs. Tab-Keyed Offices (Wave 4) — we no
@@ -153,13 +158,11 @@ final class TerminalViewModel {
         let defaults = UserDefaults.standard
         let savedTabIds = defaults.stringArray(forKey: Self.persistedTabIdsKey) ?? []
         let savedActiveId = defaults.string(forKey: Self.persistedActiveTabIdKey)
-        let savedUserTitles = defaults.dictionary(forKey: Self.persistedTabUserTitlesKey) as? [String: String] ?? [:]
 
         self.tabs = savedTabIds.map { tabId in
             TerminalTab(
                 tabId: tabId,
                 title: "Terminal",
-                userTitle: savedUserTitles[tabId],
                 isActive: tabId == savedActiveId
             )
         }
@@ -171,30 +174,26 @@ final class TerminalViewModel {
         }
     }
 
-    /// Persist current tab IDs, active tab, and user rename overrides.
+    /// Persist current tab IDs + active tab. User titles live in
+    /// `TabTitleStore` (shared with Office Manager) and persist themselves.
     private func persistTabIds() {
         let defaults = UserDefaults.standard
         defaults.set(tabs.map(\.tabId), forKey: Self.persistedTabIdsKey)
         defaults.set(activeTab?.tabId, forKey: Self.persistedActiveTabIdKey)
-        let userTitles: [String: String] = tabs.reduce(into: [:]) { acc, tab in
-            if let custom = tab.userTitle, !custom.isEmpty {
-                acc[tab.tabId] = custom
-            }
-        }
-        if userTitles.isEmpty {
-            defaults.removeObject(forKey: Self.persistedTabUserTitlesKey)
-        } else {
-            defaults.set(userTitles, forKey: Self.persistedTabUserTitlesKey)
-        }
+        titleStore.prune(keeping: Set(tabs.map(\.tabId)))
     }
 
     /// Apply a user-supplied rename to the given tab. Passing `nil` or an
     /// empty string clears the override, falling back to the xterm title.
     func renameTab(id: UUID, to newTitle: String?) {
-        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-        let trimmed = newTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
-        tabs[index].userTitle = (trimmed?.isEmpty == false) ? trimmed : nil
-        persistTabIds()
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        titleStore.setTitle(newTitle, for: tab.tabId)
+    }
+
+    /// Rename by tabId (used by the Office Manager, which knows tabIds
+    /// but not the client-side UUIDs).
+    func renameTab(tabId: String, to newTitle: String?) {
+        titleStore.setTitle(newTitle, for: tabId)
     }
 
     /// Reconcile persisted tabs with the relay's live PTY sessions.
@@ -455,7 +454,7 @@ final class TerminalViewModel {
                 }
             }
 
-        case .disconnected(let code, _):
+        case .disconnected(let code, let reason):
             // Clean close (1000/1001) stays as .disconnected. Transient
             // drops are non-fatal — the JS layer's bounded auto-retry
             // (3 attempts, 500ms→1s→2s) kicks in underneath. We reflect
@@ -463,6 +462,15 @@ final class TerminalViewModel {
             // Only `.retryExhausted` flips to .error.
             if code == 1000 || code == 1001 {
                 connectionState = .disconnected
+                // PTY exited (user typed `exit`, Ctrl+D, or the shell
+                // process died). The relay closes the WS with 1000 +
+                // reason="pty-exited" — Termius-style auto-close on exit.
+                // Match on reason substring to tolerate future refinement
+                // of the reason string.
+                if reason.localizedCaseInsensitiveContains("pty-exited"),
+                   let activeId = activeTab?.id {
+                    closeTab(id: activeId)
+                }
             } else {
                 connectionState = .connecting
             }
