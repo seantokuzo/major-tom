@@ -284,11 +284,20 @@ final class TerminalViewModel {
     /// empty; TerminalView shows an explicit "New Terminal" empty state
     /// rather than auto-spawning a fresh PTY. If the closed tab was the
     /// active one (and others remain), we switch to the nearest neighbor.
+    ///
+    /// Tab-Keyed Offices (Wave 5 follow-up) — explicitly kill the PTY on
+    /// the relay via `POST /shell/:tabId/kill` so the server tears down
+    /// the tab immediately and broadcasts `tab.closed`. Without this, the
+    /// 30-minute PTY grace keeps the Office alive on iOS even though the
+    /// user intended a permanent close.
     func closeTab(id: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
 
         let wasActive = tabs[index].isActive
+        let closedTabId = tabs[index].tabId
         tabs.remove(at: index)
+
+        Task { await killTabOnRelay(tabId: closedTabId) }
 
         if tabs.isEmpty {
             persistTabIds()
@@ -306,6 +315,29 @@ final class TerminalViewModel {
             pendingTabSwitch = tabs[newIndex].tabId
         }
         persistTabIds()
+    }
+
+    /// Fire-and-forget explicit PTY kill on the relay. Any failure is
+    /// logged and swallowed — the PTY will eventually expire via the
+    /// 30-minute grace timer, which is the existing fallback behavior.
+    private func killTabOnRelay(tabId: String) async {
+        let base = relayBaseURL
+        guard let url = URL(string: "\(base)/shell/\(tabId)/kill") else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        if let token = authToken {
+            request.setValue("mt-session=\(token)", forHTTPHeaderField: "Cookie")
+        }
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode != 204, http.statusCode != 404 {
+                print("[TerminalViewModel] PTY kill for \(tabId) returned status \(http.statusCode)")
+            }
+        } catch {
+            print("[TerminalViewModel] PTY kill for \(tabId) failed: \(error.localizedDescription)")
+        }
     }
 
     /// Request to close a tab — shows confirmation dialog.
