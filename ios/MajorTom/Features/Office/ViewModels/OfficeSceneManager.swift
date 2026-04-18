@@ -150,6 +150,7 @@ final class OfficeSceneManager {
             existing.hasOffice = true
             offices[tabId] = existing
 
+            seedRosterFromTabRegistry(vm: existing.viewModel, officeKey: tabId)
             existing.viewModel.populateIdleSprites()
             requestSpriteStateForAllSessions(in: existing.viewModel)
 
@@ -169,6 +170,11 @@ final class OfficeSceneManager {
             hasOffice: true
         )
         offices[tabId] = entry
+
+        // Seed the session roster from TabRegistryStore so sprite state requests
+        // target real sessionIds (not the tabId by mistake) when an Office is
+        // materialized straight from the tab list before any tagged event lands.
+        seedRosterFromTabRegistry(vm: vm, officeKey: tabId)
 
         // Populate idle sprites for the fresh office
         vm.populateIdleSprites()
@@ -351,7 +357,10 @@ final class OfficeSceneManager {
     /// Keys (tabId or synthetic sessionId) of offices that have a full scene.
     /// Excludes lightweight entries created by `ensureViewModel` that were
     /// never upgraded via `createOffice`.
-    var linkedSessionIds: Set<String> {
+    ///
+    /// Renamed from `linkedSessionIds` — the returned strings are office
+    /// keys, not sessionIds, after the Wave 4 rekey.
+    var linkedOfficeKeys: Set<String> {
         Set(offices.filter { $0.value.hasOffice }.keys)
     }
 
@@ -395,9 +404,15 @@ final class OfficeSceneManager {
 
     /// Ask the relay to re-send sprite state for every session currently
     /// hosted by this Office. Covers both the single-session common case and
-    /// Wave 5 multi-session tabs. Falls back to the cached
-    /// `sessionToOfficeKey` reverse map when the VM hasn't populated its
-    /// `activeSessionIds` yet (e.g. cold rebuild before the first event).
+    /// Wave 5 multi-session tabs. Falls back through:
+    /// 1. VM's `activeSessionIds` roster — seeded by events and
+    ///    `seedRosterFromTabRegistry`.
+    /// 2. The cached `sessionToOfficeKey` reverse map.
+    /// 3. The Office key itself — **only** when the key is not a known
+    ///    tabId in `TabRegistryStore` (i.e. legacy synthetic-sessionId
+    ///    Office). This prevents requesting sprite state for a bogus
+    ///    sessionId equal to the tabId when a real tab's roster hasn't
+    ///    been populated yet.
     private func requestSpriteStateForAllSessions(in vm: OfficeViewModel) {
         guard let relay else { return }
         let tabKey = vm.tabId
@@ -410,11 +425,33 @@ final class OfficeSceneManager {
             )
         }
         if sessionIds.isEmpty, let tabKey {
-            // Legacy: the key IS the sessionId.
-            sessionIds = [tabKey]
+            // Legacy fallback: the key IS the sessionId — but only when
+            // the key isn't registered as a real tab, otherwise we'd be
+            // asking the relay for sprite state on a tabId (wrong).
+            if relay.tabRegistryStore.tabs[tabKey] == nil {
+                sessionIds = [tabKey]
+            }
         }
         for sid in sessionIds {
             relay.requestSpriteState(for: sid)
+        }
+    }
+
+    /// Seed the VM's session roster from `TabRegistryStore` metadata so
+    /// sprite state requests target real sessionIds immediately — avoiding
+    /// the race where `createOffice(for: tabId)` fires before any
+    /// `tab.session.started` / sprite / agent events have populated the
+    /// in-memory roster.
+    private func seedRosterFromTabRegistry(vm: OfficeViewModel, officeKey: String) {
+        guard let relay, let tab = relay.tabRegistryStore.tabs[officeKey] else {
+            return
+        }
+        for summary in tab.sessions {
+            vm.activeSessionIds.insert(summary.sessionId)
+            sessionToOfficeKey[summary.sessionId] = officeKey
+        }
+        if vm.sessionId == nil {
+            vm.sessionId = tab.sessions.first?.sessionId
         }
     }
 

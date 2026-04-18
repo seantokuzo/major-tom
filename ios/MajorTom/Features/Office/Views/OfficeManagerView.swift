@@ -93,7 +93,7 @@ struct OfficeManagerView: View {
 
     @ViewBuilder
     private var scrollContent: some View {
-        let activeIds = sceneManager.linkedSessionIds
+        let activeIds = sceneManager.linkedOfficeKeys
         let allTabs = sortedTabs(relay.tabRegistryStore.tabs)
         let activeTabs = allTabs.filter { activeIds.contains($0.tabId) }
         let availableTabs = allTabs.filter {
