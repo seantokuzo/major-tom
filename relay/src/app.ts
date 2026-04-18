@@ -54,6 +54,7 @@ import { AuditLog } from './security/audit-log.js';
 import { RateLimiter } from './security/rate-limiter.js';
 import { SpriteMappingPersistence } from './sprites/sprite-mapping-persistence.js';
 import { SpriteMapper } from './sprites/sprite-mapper.js';
+import { runSpriteMappingMigration } from './sprites/migrations.js';
 import { TabRegistry } from './tabs/tab-registry.js';
 import { TabRegistryPersistence } from './tabs/tab-registry-persistence.js';
 import { getSessionSecret } from './auth/session.js';
@@ -113,6 +114,12 @@ export async function buildApp(config: AppConfig) {
 
   // Start health monitoring
   healthMonitor.start();
+
+  // Tab-Keyed Offices Wave 5 (Gate B) — one-shot sweep of legacy sprite-
+  // mapping files on relay boot. Guarded by a `.migrated-v4` sentinel so
+  // subsequent boots are no-ops. Must run BEFORE SpriteMapper starts
+  // loading mappings so live sessions never see a partially-swept dir.
+  await runSpriteMappingMigration();
 
   // Restore persisted data
   await sessionManager.restoreFromDisk().catch((err: unknown) => {
