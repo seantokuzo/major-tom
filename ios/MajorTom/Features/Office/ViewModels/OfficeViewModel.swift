@@ -46,7 +46,23 @@ final class OfficeViewModel {
     // MARK: - Sprite-Agent Wiring (Wave 2)
 
     /// Session ID this Office is bound to (set by OfficeSceneManager on creation).
+    ///
+    /// For tab-backed Offices this reflects the most-recently-active session
+    /// in the tab — used by sprite messaging + `sprite.state.request` calls.
+    /// `activeSessionIds` is the authoritative roster of sessions currently
+    /// alive in this Office.
     var sessionId: String?
+
+    /// Tab-Keyed Offices (Wave 4) — the `tabId` this Office is bound to (or
+    /// a synthetic tabId == sessionId for legacy `cli`/`vscode` sessions).
+    /// Drives the new Office Manager UI and the sprite/agent event routing.
+    var tabId: String?
+
+    /// Tab-Keyed Offices (Wave 4) — all Claude sessions currently active
+    /// inside this tab. Humans are scoped `(tabId, sessionId)`; dogs live at
+    /// the tab level. Populated/drained by `tab.session.started` /
+    /// `tab.session.ended` handling in Wave 4 wiring.
+    var activeSessionIds: Set<String> = []
 
     /// Per-session role→CharacterType bindings (role-stable binding).
     /// First spawn for a canonical role locks the CharacterType for the session.

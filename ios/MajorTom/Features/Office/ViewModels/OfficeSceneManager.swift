@@ -3,8 +3,18 @@ import SpriteKit
 
 // MARK: - Office Scene Manager
 
-/// Manages per-session OfficeViewModel + OfficeScene pairs.
-/// Each active session can have its own Office with independent agent state and scene.
+/// Manages per-tab OfficeViewModel + OfficeScene pairs.
+///
+/// **Tab-Keyed Offices (Wave 4):** the `offices` dictionary is keyed by
+/// **tabId** — the identifier of the iOS terminal tab hosting the Claude
+/// session(s). Each tab has one Office; an Office can host multiple
+/// concurrent sessions (Gate A).
+///
+/// **Legacy / fallback:** sessions that never bind to a tab (the legacy
+/// `cli` and `vscode` adapter paths) fall back to using their `sessionId`
+/// as a synthetic tabId — those Offices continue to work without any
+/// TabRegistry binding.
+///
 /// Scenes are LRU-evicted beyond `maxWarmScenes` to control memory (~30-60MB each).
 @Observable
 @MainActor
@@ -23,8 +33,15 @@ final class OfficeSceneManager {
 
     // MARK: - State
 
-    /// Per-session offices keyed by sessionId.
+    /// Per-tab offices keyed by **tabId** (or by sessionId as a synthetic
+    /// tabId for legacy `cli`/`vscode` sessions — see type docs above).
     private(set) var offices: [String: OfficeEntry] = [:]
+
+    /// Reverse-lookup cache for `sessionId → office key`. Populated whenever
+    /// an event lands with a known `tabId` so later events arriving without
+    /// one still route to the same Office. For legacy sessions the entry is
+    /// `sessionId → sessionId` (self-mapped).
+    private var sessionToOfficeKey: [String: String] = [:]
 
     /// Maximum number of warm (in-memory) scenes before LRU eviction kicks in.
     static let maxWarmScenes = 2
@@ -88,19 +105,27 @@ final class OfficeSceneManager {
 
     // MARK: - Public API
 
-    /// Returns the OfficeViewModel for a session, or nil if no Office exists.
-    func viewModel(for sessionId: String) -> OfficeViewModel? {
-        offices[sessionId]?.viewModel
+    /// Returns the OfficeViewModel for an Office key. The key may be either a
+    /// tabId (tab-backed Office) or a sessionId (legacy synthetic Office).
+    /// A sessionId that has been routed to a real tab resolves via the
+    /// internal session→tab cache.
+    func viewModel(for key: String) -> OfficeViewModel? {
+        if let vm = offices[key]?.viewModel { return vm }
+        if let tabKey = sessionToOfficeKey[key] {
+            return offices[tabKey]?.viewModel
+        }
+        return nil
     }
 
-    /// Creates a new Office for a session (viewModel + scene).
+    /// Creates a new Office keyed by the given tabId. For legacy `cli`/`vscode`
+    /// sessions the caller passes the sessionId directly as a synthetic tabId.
     /// Returns the newly created entry. If an Office already exists, returns it.
     @discardableResult
-    func createOffice(for sessionId: String) -> OfficeEntry {
-        if var existing = offices[sessionId] {
+    func createOffice(for tabId: String) -> OfficeEntry {
+        if var existing = offices[tabId] {
             // If the entry already has a scene (full office), just touch LRU and return.
             if existing.scene != nil {
-                offices[sessionId]?.lastAccessed = Date()
+                offices[tabId]?.lastAccessed = Date()
                 return existing
             }
 
@@ -110,17 +135,17 @@ final class OfficeSceneManager {
             existing.scene = scene
             existing.lastAccessed = Date()
             existing.hasOffice = true
-            offices[sessionId] = existing
+            offices[tabId] = existing
 
             existing.viewModel.populateIdleSprites()
-            relay?.requestSpriteState(for: sessionId)
+            requestSpriteStateForAllSessions(in: existing.viewModel)
 
-            evictIfNeeded(excluding: sessionId)
+            evictIfNeeded(excluding: tabId)
             return existing
         }
 
         let vm = OfficeViewModel()
-        vm.sessionId = sessionId
+        vm.tabId = tabId
 
         let scene = makeScene()
 
@@ -130,35 +155,40 @@ final class OfficeSceneManager {
             lastAccessed: Date(),
             hasOffice: true
         )
-        offices[sessionId] = entry
+        offices[tabId] = entry
 
         // Populate idle sprites for the fresh office
         vm.populateIdleSprites()
 
-        // Request current sprite state from relay for this session
-        relay?.requestSpriteState(for: sessionId)
+        // If events have already cached a session under this key, request state for it.
+        requestSpriteStateForAllSessions(in: vm)
 
-        evictIfNeeded(excluding: sessionId)
+        evictIfNeeded(excluding: tabId)
         return entry
     }
 
     /// Side-effect-free scene peek — returns the current scene (or nil) without
     /// touching LRU timestamps or triggering cold rebuilds.
     /// Safe to call from SwiftUI computed properties / view body.
-    func peekScene(for sessionId: String) -> OfficeScene? {
-        offices[sessionId]?.scene
+    func peekScene(for key: String) -> OfficeScene? {
+        if let scene = offices[key]?.scene { return scene }
+        if let tabKey = sessionToOfficeKey[key] {
+            return offices[tabKey]?.scene
+        }
+        return nil
     }
 
     /// Activates an office for viewing: touches LRU, cold-rebuilds the scene if
     /// evicted, and syncs existing agent state into a fresh scene.
     /// Call from `.onAppear` or other imperative contexts — NOT from view body.
     @discardableResult
-    func activateOffice(for sessionId: String) -> OfficeScene? {
-        guard var entry = offices[sessionId] else { return nil }
+    func activateOffice(for tabId: String) -> OfficeScene? {
+        let key = resolvedOfficeKey(tabId)
+        guard var entry = offices[key] else { return nil }
 
         // Touch LRU timestamp
         entry.lastAccessed = Date()
-        offices[sessionId] = entry
+        offices[key] = entry
 
         // If scene exists, return it
         if let scene = entry.scene {
@@ -167,7 +197,7 @@ final class OfficeSceneManager {
 
         // Cold rebuild: create a new scene, restore from viewModel state
         let scene = makeScene()
-        offices[sessionId]?.scene = scene
+        offices[key]?.scene = scene
 
         // Sync any existing agents into the fresh scene so they render immediately
         // (onChange won't fire for the initial value on a newly created scene).
@@ -191,44 +221,67 @@ final class OfficeSceneManager {
             }
         }
 
-        // If viewModel has no real agents, request state from relay.
+        // If viewModel has no real agents, request state from relay for each
+        // known session in this Office.
         if vm.agents.filter({ !$0.id.hasPrefix("idle-") }).isEmpty {
-            relay?.requestSpriteState(for: sessionId)
+            requestSpriteStateForAllSessions(in: vm)
         }
 
-        evictIfNeeded(excluding: sessionId)
+        evictIfNeeded(excluding: key)
         return scene
     }
 
-    /// Creates a lightweight OfficeViewModel entry (no scene) for a session so
-    /// agent events can accumulate before the user opens an Office.
+    /// Creates a lightweight OfficeViewModel entry (no scene) for the Office
+    /// hosting this session so agent events can accumulate before the user
+    /// opens an Office.
+    ///
+    /// Routes by **tabId** when provided (Wave 4 `cli-external` sessions) and
+    /// falls back to the TabRegistryStore or the sessionId itself for legacy
+    /// `cli`/`vscode` sessions. The session→office key mapping is cached so
+    /// subsequent events without a `tabId` still land in the same Office.
     @discardableResult
-    func ensureViewModel(for sessionId: String) -> OfficeViewModel {
-        if let existing = offices[sessionId] {
+    func ensureViewModel(for sessionId: String, tabId: String? = nil) -> OfficeViewModel {
+        let officeKey = resolveOfficeKey(sessionId: sessionId, tabIdHint: tabId)
+        sessionToOfficeKey[sessionId] = officeKey
+
+        if let existing = offices[officeKey] {
+            if tabId != nil, existing.viewModel.tabId == nil {
+                existing.viewModel.tabId = officeKey
+            }
             return existing.viewModel
         }
+
         let vm = OfficeViewModel()
-        vm.sessionId = sessionId
+        vm.tabId = officeKey
 
         let entry = OfficeEntry(
             viewModel: vm,
             scene: nil,
             lastAccessed: Date()
         )
-        offices[sessionId] = entry
+        offices[officeKey] = entry
         return vm
     }
 
-    /// Closes an Office for a session. Destroys both scene and viewModel.
+    /// Closes an Office. Destroys both scene and viewModel.
     /// Does NOT affect the terminal session on the relay.
-    func closeOffice(for sessionId: String) {
-        guard let entry = offices[sessionId] else { return }
+    ///
+    /// Legacy sessions: pass the sessionId directly (acts as the synthetic
+    /// office key). Tab-backed sessions: pass the tabId.
+    func closeOffice(for key: String) {
+        let officeKey = resolvedOfficeKey(key)
+        guard let entry = offices[officeKey] else { return }
         entry.scene?.isPaused = true
-        offices.removeValue(forKey: sessionId)
+        offices.removeValue(forKey: officeKey)
+
+        // Drop any reverse-lookup entries pointing at this Office so future
+        // events for those sessions don't leak into a stale key.
+        sessionToOfficeKey = sessionToOfficeKey.filter { $0.value != officeKey }
     }
 
-    /// Session IDs that have Offices created (for OfficeManagerView).
-    /// Excludes lightweight entries created by `ensureViewModel` that were never upgraded.
+    /// Keys (tabId or synthetic sessionId) of offices that have a full scene.
+    /// Excludes lightweight entries created by `ensureViewModel` that were
+    /// never upgraded via `createOffice`.
     var linkedSessionIds: Set<String> {
         Set(offices.filter { $0.value.hasOffice }.keys)
     }
@@ -243,9 +296,62 @@ final class OfficeSceneManager {
         return scene
     }
 
+    /// Translate an incoming identifier (tabId or sessionId) into the actual
+    /// `offices` dictionary key. Used by UI-facing entry points where the
+    /// caller may have either flavor.
+    private func resolvedOfficeKey(_ key: String) -> String {
+        if offices[key] != nil { return key }
+        if let mapped = sessionToOfficeKey[key], offices[mapped] != nil {
+            return mapped
+        }
+        return key
+    }
+
+    /// Resolve the Office key for an event tagged with `sessionId` and an
+    /// optional `tabId` hint. Preference order:
+    /// 1. Explicit `tabId` from the wire (Wave 4 `cli-external` sessions).
+    /// 2. Locally cached `sessionToOfficeKey` (from an earlier tagged event).
+    /// 3. `TabRegistryStore.getTabForSession` (the authoritative mapping if
+    ///    the client has already seen a `tab.session.started` broadcast).
+    /// 4. `sessionId` itself — synthetic tabId for legacy sessions that
+    ///    never bind to a terminal tab.
+    private func resolveOfficeKey(sessionId: String, tabIdHint: String?) -> String {
+        if let tabIdHint { return tabIdHint }
+        if let cached = sessionToOfficeKey[sessionId] { return cached }
+        if let tab = relay?.tabRegistryStore.getTabForSession(sessionId) {
+            return tab.tabId
+        }
+        return sessionId
+    }
+
+    /// Ask the relay to re-send sprite state for every session currently
+    /// hosted by this Office. Covers both the single-session common case and
+    /// Wave 5 multi-session tabs. Falls back to the cached
+    /// `sessionToOfficeKey` reverse map when the VM hasn't populated its
+    /// `activeSessionIds` yet (e.g. cold rebuild before the first event).
+    private func requestSpriteStateForAllSessions(in vm: OfficeViewModel) {
+        guard let relay else { return }
+        let tabKey = vm.tabId
+        var sessionIds = vm.activeSessionIds
+        if sessionIds.isEmpty, let tabKey {
+            sessionIds = Set(
+                sessionToOfficeKey
+                    .filter { $0.value == tabKey }
+                    .map(\.key)
+            )
+        }
+        if sessionIds.isEmpty, let tabKey {
+            // Legacy: the key IS the sessionId.
+            sessionIds = [tabKey]
+        }
+        for sid in sessionIds {
+            relay.requestSpriteState(for: sid)
+        }
+    }
+
     /// LRU eviction: destroy scenes beyond maxWarmScenes (keep viewModel alive).
-    private func evictIfNeeded(excluding activeSessionId: String) {
-        let warmEntries = offices.filter { $0.value.scene != nil && $0.key != activeSessionId }
+    private func evictIfNeeded(excluding activeOfficeKey: String) {
+        let warmEntries = offices.filter { $0.value.scene != nil && $0.key != activeOfficeKey }
 
         guard warmEntries.count >= Self.maxWarmScenes else { return }
 

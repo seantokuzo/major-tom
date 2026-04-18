@@ -39,6 +39,19 @@ final class TabRegistryStore {
         tabs.removeValue(forKey: tabId)
     }
 
+    // MARK: - Lookup
+
+    /// Reverse-lookup: find the tab that hosts a given session, or nil when
+    /// the session belongs to a legacy `cli`/`vscode` adapter or hasn't yet
+    /// been registered in the cache. Used by `OfficeSceneManager` to route
+    /// sprite/agent events whose `tabId` field is missing (Wave 4 fallback
+    /// path — see spec §7.1).
+    func getTabForSession(_ sessionId: String) -> TabMeta? {
+        tabs.values.first { tab in
+            tab.sessions.contains { $0.sessionId == sessionId }
+        }
+    }
+
     /// Apply a `tab.session.started` event. If the tab is already in the
     /// cache, bump `lastSeenAt` and add the session to its roster. If not,
     /// seed a minimal `TabMeta` so the event isn't lost — a subsequent

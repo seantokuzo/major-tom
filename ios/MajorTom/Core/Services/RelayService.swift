@@ -769,6 +769,9 @@ final class RelayService {
                     liveActivityManager?.handleToolStart(sessionId: sid, toolName: event.tool)
                 }
                 // Wave 5: route per-sprite tool bubble when relay tags the event.
+                // Tool events don't carry `tabId` on the wire; `ensureViewModel`
+                // falls back via the session→tab cache populated by prior
+                // sprite/agent events in the same session.
                 if let subagentId = event.subagentId {
                     officeSceneManager?.ensureViewModel(for: event.sessionId)
                         .handleSpriteToolStart(
@@ -805,6 +808,9 @@ final class RelayService {
                     liveActivityManager?.handleToolComplete(sessionId: sid)
                 }
                 // Wave 5: hide per-sprite tool bubble if relay tagged the event.
+                // Tool events don't carry `tabId` on the wire; `ensureViewModel`
+                // falls back via the session→tab cache populated by prior
+                // sprite/agent events in the same session.
                 if let subagentId = event.subagentId {
                     officeSceneManager?.ensureViewModel(for: event.sessionId)
                         .handleSpriteToolComplete(
@@ -817,7 +823,7 @@ final class RelayService {
 
         case .agentSpawn:
             if let event = try? MessageCodec.decode(AgentSpawnEvent.self, from: data) {
-                officeSceneManager?.ensureViewModel(for: event.sessionId).handleAgentSpawn(id: event.agentId, role: event.role, task: event.task, parentId: event.parentId)
+                officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId).handleAgentSpawn(id: event.agentId, role: event.role, task: event.task, parentId: event.parentId)
                 notificationService?.postAgentSpawnNotification(
                     agentId: event.agentId,
                     role: event.role,
@@ -829,7 +835,7 @@ final class RelayService {
 
         case .agentWorking:
             if let event = try? MessageCodec.decode(AgentWorkingEvent.self, from: data) {
-                officeSceneManager?.ensureViewModel(for: event.sessionId)
+                officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId)
                     .handleAgentWorking(
                         id: event.agentId,
                         task: event.task,
@@ -840,7 +846,7 @@ final class RelayService {
 
         case .agentIdle:
             if let event = try? MessageCodec.decode(AgentIdleEvent.self, from: data) {
-                officeSceneManager?.ensureViewModel(for: event.sessionId)
+                officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId)
                     .handleAgentIdle(
                         id: event.agentId,
                         toolCount: event.toolCount,
@@ -850,7 +856,7 @@ final class RelayService {
 
         case .agentComplete:
             if let event = try? MessageCodec.decode(AgentCompleteEvent.self, from: data) {
-                officeSceneManager?.ensureViewModel(for: event.sessionId).handleAgentComplete(id: event.agentId, result: event.result)
+                officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId).handleAgentComplete(id: event.agentId, result: event.result)
                 notificationService?.postAgentCompleteNotification(
                     agentId: event.agentId,
                     result: event.result
@@ -861,7 +867,7 @@ final class RelayService {
 
         case .agentDismissed:
             if let event = try? MessageCodec.decode(AgentDismissedEvent.self, from: data) {
-                officeSceneManager?.ensureViewModel(for: event.sessionId).handleAgentDismissed(id: event.agentId)
+                officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId).handleAgentDismissed(id: event.agentId)
                 liveActivityManager?.handleAgentComplete(sessionId: event.sessionId)
                 updateWidgetData()
             }
@@ -1220,22 +1226,22 @@ final class RelayService {
 
         case .spriteLink:
             if let event = try? MessageCodec.decode(SpriteLinkEvent.self, from: data) {
-                officeSceneManager?.ensureViewModel(for: event.sessionId).handleSpriteLink(event)
+                officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId).handleSpriteLink(event)
             }
 
         case .spriteUnlink:
             if let event = try? MessageCodec.decode(SpriteUnlinkEvent.self, from: data) {
-                officeSceneManager?.ensureViewModel(for: event.sessionId).handleSpriteUnlink(event)
+                officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId).handleSpriteUnlink(event)
             }
 
         case .spriteState:
             if let event = try? MessageCodec.decode(SpriteStateEvent.self, from: data) {
-                officeSceneManager?.ensureViewModel(for: event.sessionId).handleSpriteState(event)
+                officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId).handleSpriteState(event)
             }
 
         case .spriteResponse:
             if let event = try? MessageCodec.decode(SpriteResponseEvent.self, from: data) {
-                let vm = officeSceneManager?.ensureViewModel(for: event.sessionId)
+                let vm = officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId)
                 vm?.handleSpriteResponse(event)
 
                 // Only `delivered`/`dropped` affect UI; `queued` is informational.
