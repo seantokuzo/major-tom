@@ -45,10 +45,18 @@ struct MajorTomApp: App {
                 // Also set up the "user toggled off -> end all" observer.
                 liveActivityManager.observePreferenceChanges()
                 Task { await liveActivityManager.cleanupOrphanedActivities() }
-                // Fetch auth methods on launch for already-paired devices
+                // Fetch auth methods + connect primary WebSocket on launch for
+                // already-paired devices. AuthService loads credentials from the
+                // Keychain synchronously in init(), so `isPaired` is already
+                // `true` when the view first mounts on a cold launch — the
+                // `.onChange(of: auth.isPaired)` handler below only catches the
+                // false → true transition, so without this we'd never establish
+                // the primary `/ws` connection and sprite/tab events would
+                // never reach the client.
                 if auth.isPaired {
                     Task {
                         await relay.fetchAuthMethods(serverURL: auth.serverURL)
+                        try? await relay.connect(to: auth.serverURL)
                     }
                 }
             }
