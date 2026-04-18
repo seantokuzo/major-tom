@@ -19,8 +19,14 @@ final class TabRegistryStore {
     // MARK: - Mutation
 
     /// Replace the full cache with a fresh `tab.list.response` payload.
+    /// Duplicate `tabId` entries are merged by keeping the last occurrence —
+    /// the relay's TabRegistry should not emit duplicates, but network-fed
+    /// data is defended against runtime traps here.
     func replaceAll(with response: TabListResponseEvent) {
-        tabs = Dictionary(uniqueKeysWithValues: response.tabs.map { ($0.tabId, $0) })
+        tabs = Dictionary(
+            response.tabs.map { ($0.tabId, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
     }
 
     /// Insert or update a full `TabMeta` (e.g., pushed ad-hoc by the relay).
