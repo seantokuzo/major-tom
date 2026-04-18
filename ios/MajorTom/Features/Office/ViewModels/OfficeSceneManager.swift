@@ -313,9 +313,11 @@ final class OfficeSceneManager {
     }
 
     /// Called when the relay broadcasts `tab.session.ended`. Drops the
-    /// session from the Office's roster and walks off any active humans.
-    /// Dogs (idle sprites) stay. The Office itself survives — tab teardown
-    /// happens on `tab.closed` after PTY grace expires.
+    /// session from the Office's roster and walks off any active humans
+    /// **scoped to the ending session**. Dogs (idle sprites) stay, and
+    /// humans belonging to any other session still alive in this tab stay
+    /// too (Gate A — multi-claude in one tab). The Office itself survives;
+    /// tab teardown happens on `tab.closed` after PTY grace expires.
     func handleTabSessionEnded(tabId: String, sessionId: String) {
         sessionToOfficeKey.removeValue(forKey: sessionId)
 
@@ -329,11 +331,16 @@ final class OfficeSceneManager {
             vm.sessionId = vm.activeSessionIds.first
         }
 
-        // Walk off every non-idle agent sprite. Wave 4 intentionally walks
-        // off *all* humans rather than filtering to the ending session —
-        // Wave 5 refines this once agents carry a session binding.
-        let humanIds = vm.agents.filter { !$0.id.hasPrefix("idle-") }.map(\.id)
-        for id in humanIds {
+        // Wave 5: walk off only the agents whose originating session is the
+        // one that just ended. Agents bound to sibling sessions in the same
+        // tab (Gate A) survive, as do dogs (sessionId == nil). Any agent that
+        // slipped in pre-Wave-3 without a sessionId would also survive here —
+        // acceptable since such legacy agents are rare and get cleaned up by
+        // the full-tab walk-off on `tab.closed` (Commit 4).
+        let endingIds = vm.agents
+            .filter { !$0.id.hasPrefix("idle-") && $0.sessionId == sessionId }
+            .map(\.id)
+        for id in endingIds {
             vm.handleAgentDismissed(id: id)
         }
     }
