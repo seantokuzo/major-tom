@@ -214,7 +214,11 @@ final class OfficeViewModel {
     /// Clone-not-consume: creates a NEW agent sprite instance without consuming idle sprites.
     /// Uses RoleMapper for deterministic role→CharacterType assignment with session-stable binding.
     /// Dogs are NEVER assigned as agent sprites.
-    func handleAgentSpawn(id: String, role: String, task: String, parentId: String? = nil) {
+    ///
+    /// Wave 5: `sessionId` binds the agent to its originating Claude session so
+    /// `tab.session.ended` can walk off only that session's humans. Preserved
+    /// across every subsequent state transition in this VM.
+    func handleAgentSpawn(id: String, role: String, task: String, parentId: String? = nil, sessionId: String? = nil) {
         guard !agents.contains(where: { $0.id == id }) else { return }
 
         // Resolve CharacterType via role-stable binding (clone-not-consume)
@@ -238,6 +242,7 @@ final class OfficeViewModel {
             linkedSubagentId: id,
             canonicalRole: role,
             parentId: parentId,
+            sessionId: sessionId,
             overflowPosition: placement.overflowPosition
         )
         agents.append(agent)
@@ -553,6 +558,10 @@ final class OfficeViewModel {
             agents[existingIndex].linkedSubagentId = event.subagentId
             agents[existingIndex].canonicalRole = event.canonicalRole
             agents[existingIndex].parentId = event.parentId
+            // Wave 5: latch sessionId if the prior spawn event didn't carry one.
+            if agents[existingIndex].sessionId == nil {
+                agents[existingIndex].sessionId = event.sessionId
+            }
             if !event.task.isEmpty {
                 agents[existingIndex].currentTask = event.task
             }
@@ -587,6 +596,7 @@ final class OfficeViewModel {
             spriteHandle: event.spriteHandle,
             canonicalRole: event.canonicalRole,
             parentId: event.parentId,
+            sessionId: event.sessionId,
             overflowPosition: placement.overflowPosition
         )
         agents.append(agent)
@@ -914,6 +924,10 @@ final class OfficeViewModel {
             // S5 — placement cascade: desk first, then overflow.
             let placement = assignPlacement(to: mapping.subagentId)
 
+            // Wave 5: `SpriteStateEvent.SpriteMapping` does not carry sessionId
+            // or tabId on the wire — only the enclosing event does. Stamp the
+            // event's top-level sessionId onto every rebuilt agent so
+            // `tab.session.ended` walk-off can scope correctly.
             let agent = AgentState(
                 id: mapping.subagentId,
                 name: mapping.canonicalRole.capitalized,
@@ -926,6 +940,7 @@ final class OfficeViewModel {
                 spriteHandle: mapping.spriteHandle,
                 canonicalRole: mapping.canonicalRole,
                 parentId: mapping.parentId,
+                sessionId: event.sessionId,
                 overflowPosition: placement.overflowPosition
             )
             agents.append(agent)

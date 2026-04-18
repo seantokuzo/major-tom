@@ -831,7 +831,7 @@ final class RelayService {
 
         case .agentSpawn:
             if let event = try? MessageCodec.decode(AgentSpawnEvent.self, from: data) {
-                officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId).handleAgentSpawn(id: event.agentId, role: event.role, task: event.task, parentId: event.parentId)
+                officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId).handleAgentSpawn(id: event.agentId, role: event.role, task: event.task, parentId: event.parentId, sessionId: event.sessionId)
                 notificationService?.postAgentSpawnNotification(
                     agentId: event.agentId,
                     role: event.role,

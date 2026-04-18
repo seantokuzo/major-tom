@@ -82,6 +82,26 @@ struct AgentState: Identifiable {
     /// Needed for future multi-session routing (Wave 3).
     var parentId: String?
 
+    // MARK: - Tab-Keyed Offices (Wave 5)
+
+    /// The Claude `sessionId` that originated this agent.
+    ///
+    /// Populated on `agent.spawn` / `sprite.link` / `sprite.state` rehydration
+    /// and **preserved** across every state transition. Used by
+    /// `OfficeSceneManager.handleTabSessionEnded` to walk off only the agents
+    /// whose originating session ended — dogs (idle sprites) and agents
+    /// scoped to any other still-active session in the tab stay put.
+    ///
+    /// `nil` for idle cosmetic sprites (dogs + crew pool) and for agents that
+    /// slipped in before Wave 3 plumbing propagated the sessionId onto their
+    /// spawn path.
+    ///
+    /// NOTE: deliberately **not** included in the custom `Equatable` below —
+    /// sessionId is set once at spawn and never changes afterwards, so
+    /// omitting it keeps `.onChange(of: viewModel.agents)` diffing cheap and
+    /// avoids spurious walk-in triggers.
+    var sessionId: String?
+
     // MARK: - Overflow Placement (Wave 6 — S5)
 
     /// Pre-claimed overflow position when all 8 desks are occupied.
@@ -102,6 +122,7 @@ struct AgentState: Identifiable {
         spriteHandle: String? = nil,
         canonicalRole: String? = nil,
         parentId: String? = nil,
+        sessionId: String? = nil,
         overflowPosition: CGPoint? = nil
     ) {
         self.id = id
@@ -116,6 +137,7 @@ struct AgentState: Identifiable {
         self.spriteHandle = spriteHandle
         self.canonicalRole = canonicalRole
         self.parentId = parentId
+        self.sessionId = sessionId
         self.overflowPosition = overflowPosition
     }
 
