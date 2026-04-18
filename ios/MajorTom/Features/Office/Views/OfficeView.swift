@@ -22,9 +22,12 @@ private enum OfficeSheetType: Identifiable {
 
 /// SwiftUI wrapper for the SpriteKit office scene.
 /// Manages the bridge between OfficeViewModel state changes and the SKScene.
-/// Now session-aware: gets its viewModel and scene from OfficeSceneManager.
+///
+/// Tab-Keyed Offices (Wave 4) — keyed by `tabId`, not sessionId. A tab can
+/// host multiple concurrent Claude sessions; legacy cli/vscode Offices use
+/// their sessionId as a synthetic tabId (resolved inside `OfficeSceneManager`).
 struct OfficeView: View {
-    let sessionId: String
+    let tabId: String
     var sceneManager: OfficeSceneManager
     var relay: RelayService?
 
@@ -73,12 +76,12 @@ struct OfficeView: View {
 
     /// Resolved viewModel from the scene manager.
     private var viewModel: OfficeViewModel? {
-        sceneManager.viewModel(for: sessionId)
+        sceneManager.viewModel(for: tabId)
     }
 
     /// Resolved scene — reads from @State (set in onAppear) or peeks without side effects.
     private var currentScene: OfficeScene? {
-        activatedScene ?? sceneManager.peekScene(for: sessionId)
+        activatedScene ?? sceneManager.peekScene(for: tabId)
     }
 
     var body: some View {
@@ -103,7 +106,7 @@ struct OfficeView: View {
             // Activate the scene at the top level so it runs regardless of which
             // branch rendered (content vs placeholder). If the scene was LRU-evicted,
             // this triggers a cold rebuild and populates @State so the view re-renders.
-            activatedScene = sceneManager.activateOffice(for: sessionId)
+            activatedScene = sceneManager.activateOffice(for: tabId)
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -116,7 +119,7 @@ struct OfficeView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    sceneManager.closeOffice(for: sessionId)
+                    sceneManager.closeOffice(for: tabId)
                     dismiss()
                 } label: {
                     Label("Close Office", systemImage: "xmark.circle")
@@ -753,7 +756,7 @@ struct OfficeView: View {
 #Preview {
     NavigationStack {
         OfficeView(
-            sessionId: "preview",
+            tabId: "preview",
             sceneManager: {
                 let mgr = OfficeSceneManager()
                 mgr.createOffice(for: "preview")

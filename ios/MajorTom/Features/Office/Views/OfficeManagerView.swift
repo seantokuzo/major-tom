@@ -26,7 +26,7 @@ struct OfficeManagerView: View {
                 .background(MajorTomTheme.Colors.background)
                 .navigationDestination(for: String.self) { tabId in
                     OfficeView(
-                        sessionId: tabId,
+                        tabId: tabId,
                         sceneManager: sceneManager,
                         relay: relay
                     )
