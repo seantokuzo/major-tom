@@ -374,6 +374,54 @@ final class OfficeSceneManager {
         sessionToOfficeKey = sessionToOfficeKey.filter { $0.value != officeKey }
     }
 
+    /// Wave 5: graceful teardown on `tab.closed`. Walks off every agent
+    /// scoped to any session in the tab, then tears down the Office after
+    /// `tabClosedTeardownGraceSeconds` so the dismiss animation has time to
+    /// finish (matches the ~1.5s walk-to-door + despawn timeline inside
+    /// `handleAgentDismissed`).
+    ///
+    /// Covers the hard-kill PTY path: when the relay broadcasts
+    /// `tab.closed` without a preceding `tab.session.ended` (e.g. PTY grace
+    /// expired mid-session), this is the only place humans get walked off
+    /// before the Office evaporates. If `tab.session.ended` already fired
+    /// for a session, its dismiss Tasks are still in flight — we don't
+    /// cancel those, and the idempotent `handleAgentDismissed` guard
+    /// (`guard agents.contains(where:)`) keeps re-firing harmless.
+    func handleTabClosed(tabId: String) {
+        let officeKey = resolvedOfficeKey(tabId)
+
+        guard let vm = offices[officeKey]?.viewModel else {
+            // No Office materialized — nothing to walk off. Clean up the
+            // reverse cache below for consistency.
+            sessionToOfficeKey = sessionToOfficeKey.filter { $0.value != officeKey }
+            return
+        }
+
+        // Walk off every non-idle sprite in the Office regardless of
+        // sessionId. Dogs (idle sprites) stay put for the grace window and
+        // get torn down with the scene.
+        let humanIds = vm.agents
+            .filter { !$0.id.hasPrefix("idle-") }
+            .map(\.id)
+        for id in humanIds {
+            vm.handleAgentDismissed(id: id)
+        }
+
+        // Delay the actual Office teardown so the dismiss animations have
+        // time to play out. If there are no humans to walk off we still
+        // apply the grace (cheap), which keeps the code path trivially
+        // predictable.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(Self.tabClosedTeardownGraceMilliseconds))
+            self?.closeOffice(for: officeKey)
+        }
+    }
+
+    /// Grace window between the `tab.closed` walk-off and the Office
+    /// teardown. Matches the sprite dismiss animation timeline in
+    /// `handleAgentDismissed` (warmup + 1.5s leaving pose).
+    private static let tabClosedTeardownGraceMilliseconds: Int = 1_500
+
     /// Keys (tabId or synthetic sessionId) of offices that have a full scene.
     /// Excludes lightweight entries created by `ensureViewModel` that were
     /// never upgraded via `createOffice`.

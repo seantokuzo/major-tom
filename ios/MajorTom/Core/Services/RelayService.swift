@@ -1316,7 +1316,11 @@ final class RelayService {
         case .tabClosed:
             if let event = try? MessageCodec.decode(TabClosedEvent.self, from: data) {
                 tabRegistryStore.remove(tabId: event.tabId)
-                officeSceneManager?.closeOffice(for: event.tabId)
+                // Wave 5: walk humans off before tearing the Office down.
+                // Covers the hard-kill PTY path where no graceful
+                // `tab.session.ended` precedes `tab.closed`. The scene
+                // manager handles the dismiss-then-close sequence.
+                officeSceneManager?.handleTabClosed(tabId: event.tabId)
             }
 
         case .tabListResponse:
