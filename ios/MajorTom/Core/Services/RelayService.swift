@@ -231,6 +231,14 @@ final class RelayService {
         try await webSocket.send(message)
     }
 
+    /// Tab-Keyed Offices (Wave 3) — ask the relay for the full list of
+    /// registered tabs. Relay broadcasts `tab.list.response`, which is
+    /// decoded into `tabRegistryStore` by the message router.
+    func requestTabList() async throws {
+        let message = TabListRequestMessage()
+        try await webSocket.send(message)
+    }
+
     // MARK: - Chat
 
     func sendPrompt(_ text: String, context: [String]? = nil) async throws {
