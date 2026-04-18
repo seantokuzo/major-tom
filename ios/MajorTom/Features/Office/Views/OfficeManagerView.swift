@@ -2,9 +2,15 @@ import SwiftUI
 
 // MARK: - Office Manager View
 
-/// Root view for the Office tab. Displays a card grid of sessions,
-/// letting users create/navigate per-session Offices.
-/// Uses NavigationStack to push into individual OfficeViews.
+/// Root view for the Office tab. Displays a card grid of terminal tabs
+/// hosting Claude sessions, letting users create/navigate per-tab Offices.
+/// Uses NavigationStack to push into individual OfficeViews (keyed by tabId).
+///
+/// Tab-Keyed Offices (Wave 4) — the data source is `relay.tabRegistryStore`,
+/// populated by `tab.list.response` + `tab.session.*` broadcasts from the
+/// relay. Legacy `cli`/`vscode` SDK sessions are not surfaced here (they
+/// continue to work via the synthetic-tabId fallback path inside
+/// `OfficeSceneManager`, but aren't listed as tabs).
 struct OfficeManagerView: View {
     var sceneManager: OfficeSceneManager
     var relay: RelayService
@@ -18,12 +24,20 @@ struct OfficeManagerView: View {
                 .navigationTitle("Offices")
                 .navigationBarTitleDisplayMode(.large)
                 .background(MajorTomTheme.Colors.background)
-                .navigationDestination(for: String.self) { sessionId in
+                .navigationDestination(for: String.self) { tabId in
                     OfficeView(
-                        sessionId: sessionId,
+                        sessionId: tabId,
                         sceneManager: sceneManager,
                         relay: relay
                     )
+                }
+                .task {
+                    // Fetch the latest tab list when the Office tab becomes
+                    // visible. Fixes the "sessionList never populated" bug
+                    // the session-keyed Office Manager had — the old code
+                    // relied on sessionList being pushed by the relay
+                    // pre-connection, which didn't always happen.
+                    try? await relay.requestTabList()
                 }
         }
         .overlay(alignment: .top) {
@@ -48,12 +62,16 @@ struct OfficeManagerView: View {
 
     private func navigateToBannerSession(_ banner: OfficeSceneManager.CrossSessionBanner) {
         cancelBannerAutoHide()
-        if sceneManager.viewModel(for: banner.sessionId) == nil
-            || sceneManager.peekScene(for: banner.sessionId) == nil {
-            sceneManager.createOffice(for: banner.sessionId)
+        // Banner still carries sessionId today — routed through the smart
+        // lookup on OfficeSceneManager. Wave 4 commit #5 threads tabId
+        // onto the banner so cross-session taps navigate by tabId.
+        let target = banner.sessionId
+        if sceneManager.viewModel(for: target) == nil
+            || sceneManager.peekScene(for: target) == nil {
+            sceneManager.createOffice(for: target)
         }
         navigationPath = NavigationPath()
-        navigationPath.append(banner.sessionId)
+        navigationPath.append(target)
     }
 
     private func rescheduleBannerAutoHide(for banner: OfficeSceneManager.CrossSessionBanner?) {
@@ -77,28 +95,32 @@ struct OfficeManagerView: View {
     @ViewBuilder
     private var scrollContent: some View {
         let activeIds = sceneManager.linkedSessionIds
-        let allSessions = relay.sessionList
-        let activeSessions = allSessions.filter { activeIds.contains($0.id) }
-        let unlinkedSessions = allSessions.filter { !activeIds.contains($0.id) }
+        let allTabs = sortedTabs(relay.tabRegistryStore.tabs)
+        let activeTabs = allTabs.filter { activeIds.contains($0.tabId) }
+        let availableTabs = allTabs.filter {
+            !activeIds.contains($0.tabId)
+                && !$0.sessions.isEmpty
+                && $0.status != "closed"
+        }
 
-        if allSessions.isEmpty {
+        if allTabs.isEmpty {
             emptyState
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: MajorTomTheme.Spacing.lg) {
-                    // Active offices
-                    if !activeSessions.isEmpty {
+                    // Active offices — tabs the user has already materialized
+                    if !activeTabs.isEmpty {
                         sectionHeader("Active Offices")
-                        ForEach(activeSessions) { session in
-                            activeOfficeCard(session: session)
+                        ForEach(activeTabs) { tab in
+                            activeOfficeCard(tab: tab)
                         }
                     }
 
-                    // Unlinked sessions
-                    if !unlinkedSessions.isEmpty {
-                        sectionHeader("Available Sessions")
-                        ForEach(unlinkedSessions) { session in
-                            unlinkedSessionCard(session: session)
+                    // Available tabs — have active claude sessions, not yet opened
+                    if !availableTabs.isEmpty {
+                        sectionHeader("Available Tabs")
+                        ForEach(availableTabs) { tab in
+                            availableTabCard(tab: tab)
                         }
                     }
                 }
@@ -109,18 +131,28 @@ struct OfficeManagerView: View {
         }
     }
 
+    /// Sort tabs newest-first by `lastSeenAt`, falling back to `createdAt`
+    /// when the relay hasn't populated timestamps yet.
+    private func sortedTabs(_ tabs: [String: TabMeta]) -> [TabMeta] {
+        tabs.values.sorted { lhs, rhs in
+            let lhsKey = lhs.lastSeenAt.isEmpty ? lhs.createdAt : lhs.lastSeenAt
+            let rhsKey = rhs.lastSeenAt.isEmpty ? rhs.createdAt : rhs.lastSeenAt
+            return lhsKey > rhsKey
+        }
+    }
+
     // MARK: - Empty State
 
     private var emptyState: some View {
         VStack(spacing: MajorTomTheme.Spacing.lg) {
             Spacer()
-            Image(systemName: "antenna.radiowaves.left.and.right.slash")
+            Image(systemName: "apple.terminal")
                 .font(.system(size: 48))
                 .foregroundStyle(MajorTomTheme.Colors.textTertiary)
-            Text("No Active Sessions")
+            Text("No Claude Tabs Yet")
                 .font(.system(.title3, design: .monospaced, weight: .semibold))
                 .foregroundStyle(MajorTomTheme.Colors.textSecondary)
-            Text("Connect to a relay and start a session to create an office.")
+            Text("Run `claude` in a terminal tab to spin up an office.")
                 .font(.system(.body, design: .monospaced))
                 .foregroundStyle(MajorTomTheme.Colors.textTertiary)
                 .multilineTextAlignment(.center)
@@ -141,12 +173,14 @@ struct OfficeManagerView: View {
 
     // MARK: - Active Office Card
 
-    private func activeOfficeCard(session: SessionMetaInfo) -> some View {
-        let agentCount = sceneManager.viewModel(for: session.id)?.agents.filter { $0.linkedSubagentId != nil }.count ?? 0
+    private func activeOfficeCard(tab: TabMeta) -> some View {
+        let vm = sceneManager.viewModel(for: tab.tabId)
+        let agentCount = vm?.agents.filter { $0.linkedSubagentId != nil }.count ?? 0
+        let displayName = tab.workingDirName.isEmpty ? "Terminal" : tab.workingDirName
 
         return Button {
             HapticService.selection()
-            navigationPath.append(session.id)
+            navigationPath.append(tab.tabId)
         } label: {
             HStack(spacing: MajorTomTheme.Spacing.md) {
                 // Icon
@@ -159,7 +193,7 @@ struct OfficeManagerView: View {
 
                 // Info
                 VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.xs) {
-                    Text(session.workingDirName)
+                    Text(displayName)
                         .font(.system(.body, design: .monospaced, weight: .semibold))
                         .foregroundStyle(MajorTomTheme.Colors.textPrimary)
                         .lineLimit(1)
@@ -169,7 +203,11 @@ struct OfficeManagerView: View {
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(MajorTomTheme.Colors.textSecondary)
 
-                        statusBadge(session.status)
+                        Label("\(tab.sessions.count)", systemImage: "bubble.left")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+
+                        statusBadge(effectiveStatus(for: tab))
                     }
                 }
 
@@ -190,13 +228,14 @@ struct OfficeManagerView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Unlinked Session Card
+    // MARK: - Available Tab Card
 
-    private func unlinkedSessionCard(session: SessionMetaInfo) -> some View {
-        Button {
+    private func availableTabCard(tab: TabMeta) -> some View {
+        let displayName = tab.workingDirName.isEmpty ? "Terminal" : tab.workingDirName
+        return Button {
             HapticService.selection()
-            sceneManager.createOffice(for: session.id)
-            navigationPath.append(session.id)
+            sceneManager.createOffice(for: tab.tabId)
+            navigationPath.append(tab.tabId)
         } label: {
             HStack(spacing: MajorTomTheme.Spacing.md) {
                 // Icon
@@ -209,14 +248,18 @@ struct OfficeManagerView: View {
 
                 // Info
                 VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.xs) {
-                    Text(session.workingDirName)
+                    Text(displayName)
                         .font(.system(.body, design: .monospaced, weight: .medium))
                         .foregroundStyle(MajorTomTheme.Colors.textSecondary)
                         .lineLimit(1)
 
-                    Text("Tap to create office")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+                    HStack(spacing: MajorTomTheme.Spacing.sm) {
+                        Text("Tap to create office")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+
+                        statusBadge(effectiveStatus(for: tab))
+                    }
                 }
 
                 Spacer()
@@ -237,6 +280,13 @@ struct OfficeManagerView: View {
     }
 
     // MARK: - Status Badge
+
+    /// Normalize the relay-supplied status to one of `active` / `idle` /
+    /// `closed` based on whether any sessions are still running in the tab.
+    private func effectiveStatus(for tab: TabMeta) -> String {
+        if tab.status == "closed" { return "closed" }
+        return tab.sessions.isEmpty ? "idle" : "active"
+    }
 
     private func statusBadge(_ status: String) -> some View {
         let color: Color = switch status {
