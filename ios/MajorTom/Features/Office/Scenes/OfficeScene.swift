@@ -37,7 +37,19 @@ final class OfficeScene: SKScene {
     private let maxCameraScale = StationLayout.maxCameraScale
 
     // Snap scrolling state
-    private var currentSnapPosition: SnapPosition = .col1Top
+    private var currentSnapPosition: SnapPosition = .col1Top {
+        didSet {
+            guard oldValue != currentSnapPosition else { return }
+            onSnapPositionChanged?(currentSnapPosition)
+        }
+    }
+
+    /// Fires whenever the camera settles on a new snap position. The
+    /// Office Manager's NavigationStack uses this to gate the interactive
+    /// pop gesture — edge-swipe back is allowed only when the camera is
+    /// on the leftmost column, otherwise a pan-left to reach column 1 is
+    /// eaten by the nav controller and accidentally pops the view.
+    var onSnapPositionChanged: ((SnapPosition) -> Void)?
     private var isSnapAnimating = false  // Prevent input during animation
 
     // Touch tracking for swipe/pinch/tap gestures
