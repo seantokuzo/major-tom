@@ -187,8 +187,10 @@ struct MajorTomApp: App {
 
         // Wave 5 — "Cool Beans" action on /btw response notifications clears
         // the unread state on the matching sprite (same as in-app Cool Beans).
-        notificationService.onBtwCoolBeansAction = { sessionId, subagentId in
-            let vm = officeSceneManager.ensureViewModel(for: sessionId)
+        // Wave 4 — the `tabId` parameter routes multi-session tabs to the
+        // correct Office; nil = legacy cli/vscode session.
+        notificationService.onBtwCoolBeansAction = { sessionId, subagentId, tabId in
+            let vm = officeSceneManager.ensureViewModel(for: sessionId, tabId: tabId)
             // The sprite id equals the subagentId for linked sprites.
             vm.dismissResponse(for: subagentId)
         }

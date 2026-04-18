@@ -52,8 +52,13 @@ final class OfficeSceneManager {
     // MARK: - Cross-session Banner (Wave 4 M2)
 
     /// Descriptor for a cross-session `/btw` response banner.
+    ///
+    /// Tab-Keyed Offices (Wave 4) — `tabId` is the primary routing key;
+    /// `sessionId` is kept for legacy cli/vscode sessions whose events
+    /// never carry a `tabId` on the wire.
     struct CrossSessionBanner: Identifiable, Equatable {
         let id: UUID
+        let tabId: String?
         let sessionId: String
         let sessionName: String
         let spriteId: String
@@ -62,6 +67,7 @@ final class OfficeSceneManager {
 
         init(
             id: UUID = UUID(),
+            tabId: String? = nil,
             sessionId: String,
             sessionName: String,
             spriteId: String,
@@ -69,12 +75,17 @@ final class OfficeSceneManager {
             preview: String
         ) {
             self.id = id
+            self.tabId = tabId
             self.sessionId = sessionId
             self.sessionName = sessionName
             self.spriteId = spriteId
             self.spriteName = spriteName
             self.preview = preview
         }
+
+        /// Primary route key for navigation — tabId if the event carried
+        /// one, else sessionId (legacy synthetic tabId).
+        var routeKey: String { tabId ?? sessionId }
     }
 
     /// The banner currently surfaced to the user (nil = hidden). Consumed by
@@ -83,6 +94,7 @@ final class OfficeSceneManager {
 
     /// Surface a banner for a response that arrived in a non-active session.
     func showCrossSessionBanner(
+        tabId: String? = nil,
         sessionId: String,
         sessionName: String,
         spriteId: String,
@@ -90,6 +102,7 @@ final class OfficeSceneManager {
         preview: String
     ) {
         pendingCrossSessionBanner = CrossSessionBanner(
+            tabId: tabId,
             sessionId: sessionId,
             sessionName: sessionName,
             spriteId: spriteId,

@@ -62,10 +62,9 @@ struct OfficeManagerView: View {
 
     private func navigateToBannerSession(_ banner: OfficeSceneManager.CrossSessionBanner) {
         cancelBannerAutoHide()
-        // Banner still carries sessionId today — routed through the smart
-        // lookup on OfficeSceneManager. Wave 4 commit #5 threads tabId
-        // onto the banner so cross-session taps navigate by tabId.
-        let target = banner.sessionId
+        // Prefer tabId from the event (Wave 4); fall back to sessionId for
+        // legacy cli/vscode sessions that never bind to a tab.
+        let target = banner.routeKey
         if sceneManager.viewModel(for: target) == nil
             || sceneManager.peekScene(for: target) == nil {
             sceneManager.createOffice(for: target)

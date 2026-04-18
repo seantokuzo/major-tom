@@ -1260,8 +1260,9 @@ final class RelayService {
                         // Cross-session (M2) — show banner unless the inspector
                         // for this sprite is open elsewhere (can't happen in
                         // our single-open-inspector model, so we just surface).
-                        let sessionName = sessionList
-                            .first(where: { $0.id == event.sessionId })?.workingDirName
+                        let tabMeta = event.tabId.flatMap { tabRegistryStore.tabs[$0] }
+                        let sessionName = tabMeta?.workingDirName
+                            ?? sessionList.first(where: { $0.id == event.sessionId })?.workingDirName
                             ?? "Terminal"
                         let spriteId = vm?.agents.first(where: {
                             $0.linkedSubagentId == event.subagentId
@@ -1276,6 +1277,7 @@ final class RelayService {
                                 ?? "(Agent completed before delivery)")
                             : event.text
                         officeSceneManager?.showCrossSessionBanner(
+                            tabId: event.tabId,
                             sessionId: event.sessionId,
                             sessionName: sessionName,
                             spriteId: spriteId,
@@ -1363,7 +1365,8 @@ final class RelayService {
             subagentId: event.subagentId,
             role: role,
             spriteName: spriteName,
-            response: event.text
+            response: event.text,
+            tabId: event.tabId
         )
     }
 
