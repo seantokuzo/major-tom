@@ -848,6 +848,8 @@ struct AgentDismissedEvent: Codable {
     let type: String
     let sessionId: String
     let agentId: String
+    /// Tab-Keyed Offices (Wave 3) — tab this session lives in, if any.
+    var tabId: String?
 }
 
 // MARK: - Sprite-Agent Wiring Events (Wave 2)
