@@ -802,6 +802,10 @@ struct AgentSpawnEvent: Codable, Identifiable {
     var parentId: String?
     let task: String
     let role: String
+    /// Tab-Keyed Offices (Wave 3) — tab this session lives in, if any.
+    /// Populated by the relay for `cli-external` sessions; omitted for
+    /// legacy `cli`/`vscode` sessions.
+    var tabId: String?
 
     var id: String { agentId }
 }
@@ -815,6 +819,8 @@ struct AgentWorkingEvent: Codable {
     var toolCount: Int?
     /// Token count consumed by the subagent so far (relay Wave 5 field).
     var tokenCount: Int?
+    /// Tab-Keyed Offices (Wave 3) — tab this session lives in, if any.
+    var tabId: String?
 }
 
 struct AgentIdleEvent: Codable {
@@ -825,6 +831,8 @@ struct AgentIdleEvent: Codable {
     var toolCount: Int?
     /// Final token count at this idle checkpoint (relay Wave 5 field).
     var tokenCount: Int?
+    /// Tab-Keyed Offices (Wave 3) — tab this session lives in, if any.
+    var tabId: String?
 }
 
 struct AgentCompleteEvent: Codable {
@@ -832,6 +840,8 @@ struct AgentCompleteEvent: Codable {
     let sessionId: String
     let agentId: String
     let result: String
+    /// Tab-Keyed Offices (Wave 3) — tab this session lives in, if any.
+    var tabId: String?
 }
 
 struct AgentDismissedEvent: Codable {
@@ -852,6 +862,10 @@ struct SpriteLinkEvent: Codable {
     let canonicalRole: String
     let task: String
     var parentId: String?
+    /// Tab-Keyed Offices (Wave 3) — tab this session lives in, if any.
+    /// Populated by the relay for `cli-external` sessions; omitted for
+    /// legacy `cli`/`vscode` sessions.
+    var tabId: String?
 }
 
 /// Relay → iOS: unlink a sprite from a subagent (agent completed/dismissed).
@@ -863,6 +877,8 @@ struct SpriteUnlinkEvent: Codable {
     let subagentId: String
     let reason: String  // "completed", "dismissed", "failed", "session_ended"
     var result: String?
+    /// Tab-Keyed Offices (Wave 3) — tab this session lives in, if any.
+    var tabId: String?
 }
 
 /// Relay → iOS: bulk restore all sprite mappings (reconnect / session attach).
@@ -871,6 +887,8 @@ struct SpriteStateEvent: Codable {
     let type: String
     let sessionId: String
     let mappings: [SpriteMapping]
+    /// Tab-Keyed Offices (Wave 3) — tab this session lives in, if any.
+    var tabId: String?
 
     struct SpriteMapping: Codable {
         let spriteHandle: String
@@ -914,6 +932,8 @@ struct SpriteResponseEvent: Codable {
     let text: String
     let status: String  // "delivered" | "queued" | "dropped"
     var dropReason: String?
+    /// Tab-Keyed Offices (Wave 3) — tab this session lives in, if any.
+    var tabId: String?
 }
 
 // MARK: - Tab-Keyed Offices Events (Wave 3)
@@ -1020,6 +1040,10 @@ struct SessionMetaInfo: Codable, Identifiable {
     let outputTokens: Int
     let turnCount: Int
     let totalDuration: Int
+    /// Tab-Keyed Offices (Wave 3) — tab this session lives in, if any.
+    /// Populated by the relay for `cli-external` sessions that bind a
+    /// terminal tab; omitted for legacy `cli`/`vscode` sessions.
+    var tabId: String?
 }
 
 struct SessionListResponseEvent: Codable {
