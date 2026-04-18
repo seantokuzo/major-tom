@@ -4,15 +4,15 @@
 
 ## Current Phase (in flight)
 
-**Tab-Keyed Offices** — Waves 2 + 3 SHIPPED (PRs #149, #150, #151). Rekeying Office identity from Claude sessionId → iOS terminal tabId. Auto-register `claude` via native `SessionStart`/`Stop` hooks. Spec: `docs/PHASE-TAB-KEYED-OFFICES.md`. Memory: `project_tab_keyed_offices_phase.md`. Sprite 4-6 QA paused; resumes after this phase.
+**Tab-Keyed Offices** — Waves 2-4 SHIPPED (PRs #149, #150, #151, #152). Rekeying Office identity from Claude sessionId → iOS terminal tabId. Auto-register `claude` via native `SessionStart`/`Stop` hooks. Spec: `docs/PHASE-TAB-KEYED-OFFICES.md`. Memory: `project_tab_keyed_offices_phase.md`. Sprite 4-6 QA paused; resumes after this phase.
 
 | Wave | Scope | Status |
 |------|-------|--------|
 | 1 — Research + Spec Freeze | All gates answered, spec at `docs/PHASE-TAB-KEYED-OFFICES.md` | DONE |
 | 2 — Relay Bridge | TabRegistry, SessionStart/Stop hooks, `tab.list` RPC, PTY-close teardown | SHIPPED (#149) |
 | 3 — Protocol + iOS wiring | `tabId` on sprite/agent messages, iOS decoders, `TabRegistryStore`, `RelayService.requestTabList()`, `tabKeyedOffices` feature flag (default off) | SHIPPED (#150, #151) |
-| 4 — iOS Office Rebind + Explicit Terminal Lifecycle | OfficeSceneManager keyed by tabId, Office Manager lists tabs, rip out auto-spawn (user explicitly creates every terminal) | NEXT |
-| 5 — Session Cycling + Edge Cases | Walk-off/walk-in animations, hard-kill PTY, multi-claude-in-one-tab | |
+| 4 — iOS Office Rebind + Explicit Terminal Lifecycle | OfficeSceneManager keyed by tabId with fallback cascade, OfficeViewModel roster + lifecycle handlers, OfficeManagerView reads TabRegistryStore, OfficeView(tabId:), banner + notification routing by tabId, feature flag removed, terminal auto-spawn ripped out with ContentUnavailableView empty state | SHIPPED (#152) |
+| 5 — Session Cycling + Edge Cases | Per-session walk-off refinement (AgentState needs sessionId binding), walk-in on SessionStart, L5–L12 scenario tests, hard-kill PTY, multi-claude-in-one-tab, persistence migration cleanup | NEXT |
 
 ### Sprite-Agent Wiring (shipped, QA paused)
 
