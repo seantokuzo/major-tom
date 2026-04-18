@@ -4,13 +4,25 @@ import SwiftUI
 struct MajorTomApp: App {
     @State private var relay = RelayService()
     @State private var officeSceneManager = OfficeSceneManager()
-    @State private var auth = AuthService()
+    @State private var auth: AuthService
     @State private var notificationService = NotificationService()
     @State private var liveActivityManager = LiveActivityManager()
     @State private var watchConnectivity = PhoneWatchConnectivityService()
-    @State private var titleStore = TabTitleStore()
+    @State private var titleStore: TabTitleStore
+    @State private var terminalViewModel: TerminalViewModel
     @State private var achievementsViewModel: AchievementsViewModel?
     @State private var selectedTab: AppTab = .terminal
+
+    init() {
+        // TerminalViewModel is lifted to the App so the Office Manager can
+        // see the authoritative list of terminal tabs. Office existence is
+        // a per-tab iOS decision — no auto-creation tied to claude.
+        let authService = AuthService()
+        let store = TabTitleStore()
+        _auth = State(initialValue: authService)
+        _titleStore = State(initialValue: store)
+        _terminalViewModel = State(initialValue: TerminalViewModel(auth: authService, titleStore: store))
+    }
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -133,13 +145,13 @@ struct MajorTomApp: App {
 
     private var mainTabView: some View {
         TabView(selection: $selectedTab) {
-            TerminalView(auth: auth, liveActivityManager: liveActivityManager, watchConnectivity: watchConnectivity, titleStore: titleStore)
+            TerminalView(viewModel: terminalViewModel, liveActivityManager: liveActivityManager, watchConnectivity: watchConnectivity)
                 .tabItem {
                     Label("Terminal", systemImage: "apple.terminal")
                 }
                 .tag(AppTab.terminal)
 
-            OfficeManagerView(sceneManager: officeSceneManager, relay: relay, titleStore: titleStore)
+            OfficeManagerView(sceneManager: officeSceneManager, relay: relay, titleStore: titleStore, terminalViewModel: terminalViewModel)
                 .tabItem {
                     Label("Office", systemImage: "building.2")
                 }

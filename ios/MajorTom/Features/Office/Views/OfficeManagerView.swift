@@ -15,19 +15,40 @@ struct OfficeManagerView: View {
     var sceneManager: OfficeSceneManager
     var relay: RelayService
     var titleStore: TabTitleStore
+    var terminalViewModel: TerminalViewModel
 
     @State private var navigationPath = NavigationPath()
     @State private var bannerTask: Task<Void, Never>?
-    @State private var renameTarget: TabMeta?
+    @State private var renameTarget: String?  // tabId being renamed
     @State private var renameDraft: String = ""
 
     /// Name shown on office cards — user-supplied title wins, otherwise
-    /// fall back to the shell-supplied working directory basename, and
-    /// then to a generic "Terminal" label.
-    private func displayName(for tab: TabMeta) -> String {
+    /// fall back to the terminal's shell-supplied title, then the relay's
+    /// working-directory basename when present, then a generic label.
+    private func displayName(for tab: TerminalTab) -> String {
         if let user = titleStore.title(for: tab.tabId) { return user }
-        if !tab.workingDirName.isEmpty { return tab.workingDirName }
+        if !tab.title.isEmpty, tab.title != "Terminal" { return tab.title }
+        if let meta = relay.tabRegistryStore.tabs[tab.tabId], !meta.workingDirName.isEmpty {
+            return meta.workingDirName
+        }
         return "Terminal"
+    }
+
+    /// Whether this terminal tab has an Office scene created for it.
+    private func hasOffice(for tab: TerminalTab) -> Bool {
+        sceneManager.viewModel(for: tab.tabId) != nil
+    }
+
+    /// Agent count for tabs that have an open Office (0 for tabs without).
+    private func agentCount(for tab: TerminalTab) -> Int {
+        guard let vm = sceneManager.viewModel(for: tab.tabId) else { return 0 }
+        return vm.agents.filter { $0.linkedSubagentId != nil }.count
+    }
+
+    /// TabMeta from the relay for this terminal tab, when available.
+    /// Present only if claude has run in the tab (SessionStart hook fired).
+    private func tabMeta(for tab: TerminalTab) -> TabMeta? {
+        relay.tabRegistryStore.tabs[tab.tabId]
     }
 
     var body: some View {
@@ -72,16 +93,16 @@ struct OfficeManagerView: View {
             "Rename Office",
             isPresented: renameAlertBinding,
             presenting: renameTarget
-        ) { tab in
+        ) { tabId in
             TextField("Office name", text: $renameDraft)
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled(true)
             Button("Save") {
-                titleStore.setTitle(renameDraft, for: tab.tabId)
+                titleStore.setTitle(renameDraft, for: tabId)
                 renameTarget = nil
             }
             Button("Reset", role: .destructive) {
-                titleStore.setTitle(nil, for: tab.tabId)
+                titleStore.setTitle(nil, for: tabId)
                 renameTarget = nil
             }
             Button("Cancel", role: .cancel) {
@@ -127,50 +148,21 @@ struct OfficeManagerView: View {
 
     @ViewBuilder
     private var scrollContent: some View {
-        let activeIds = sceneManager.linkedOfficeKeys
-        let allTabs = sortedTabs(relay.tabRegistryStore.tabs)
-        let activeTabs = allTabs.filter { activeIds.contains($0.tabId) }
-        let availableTabs = allTabs.filter {
-            !activeIds.contains($0.tabId)
-                && !$0.sessions.isEmpty
-                && $0.status != "closed"
-        }
+        let tabs = terminalViewModel.tabs
 
-        if allTabs.isEmpty {
+        if tabs.isEmpty {
             emptyState
         } else {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: MajorTomTheme.Spacing.lg) {
-                    // Active offices — tabs the user has already materialized
-                    if !activeTabs.isEmpty {
-                        sectionHeader("Active Offices")
-                        ForEach(activeTabs) { tab in
-                            activeOfficeCard(tab: tab)
-                        }
-                    }
-
-                    // Available tabs — have active claude sessions, not yet opened
-                    if !availableTabs.isEmpty {
-                        sectionHeader("Available Tabs")
-                        ForEach(availableTabs) { tab in
-                            availableTabCard(tab: tab)
-                        }
+                LazyVStack(alignment: .leading, spacing: MajorTomTheme.Spacing.md) {
+                    ForEach(tabs) { tab in
+                        terminalTabCard(tab: tab)
                     }
                 }
                 .padding(.horizontal, MajorTomTheme.Spacing.lg)
                 .padding(.top, MajorTomTheme.Spacing.sm)
                 .padding(.bottom, MajorTomTheme.Spacing.xxl)
             }
-        }
-    }
-
-    /// Sort tabs newest-first by `lastSeenAt`, falling back to `createdAt`
-    /// when the relay hasn't populated timestamps yet.
-    private func sortedTabs(_ tabs: [String: TabMeta]) -> [TabMeta] {
-        tabs.values.sorted { lhs, rhs in
-            let lhsKey = lhs.lastSeenAt.isEmpty ? lhs.createdAt : lhs.lastSeenAt
-            let rhsKey = rhs.lastSeenAt.isEmpty ? rhs.createdAt : rhs.lastSeenAt
-            return lhsKey > rhsKey
         }
     }
 
@@ -182,10 +174,10 @@ struct OfficeManagerView: View {
             Image(systemName: "apple.terminal")
                 .font(.system(size: 48))
                 .foregroundStyle(MajorTomTheme.Colors.textTertiary)
-            Text("No Claude Tabs Yet")
+            Text("No Terminal Tabs")
                 .font(.system(.title3, design: .monospaced, weight: .semibold))
                 .foregroundStyle(MajorTomTheme.Colors.textSecondary)
-            Text("Run `claude` in a terminal tab to spin up an office.")
+            Text("Open a terminal tab first — each one can have an Office.")
                 .font(.system(.body, design: .monospaced))
                 .foregroundStyle(MajorTomTheme.Colors.textTertiary)
                 .multilineTextAlignment(.center)
@@ -195,28 +187,31 @@ struct OfficeManagerView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Section Header
+    // MARK: - Terminal Tab Card
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(.system(.caption, design: .monospaced, weight: .bold))
-            .foregroundStyle(MajorTomTheme.Colors.textTertiary)
-            .padding(.top, MajorTomTheme.Spacing.sm)
+    @ViewBuilder
+    private func terminalTabCard(tab: TerminalTab) -> some View {
+        if hasOffice(for: tab) {
+            openOfficeCard(tab: tab)
+        } else {
+            createOfficeCard(tab: tab)
+        }
     }
 
-    // MARK: - Active Office Card
-
-    private func activeOfficeCard(tab: TabMeta) -> some View {
-        let vm = sceneManager.viewModel(for: tab.tabId)
-        let agentCount = vm?.agents.filter { $0.linkedSubagentId != nil }.count ?? 0
+    /// Card for a terminal tab that already has an Office scene — tapping
+    /// it navigates into the OfficeView.
+    private func openOfficeCard(tab: TerminalTab) -> some View {
+        let count = agentCount(for: tab)
+        let meta = tabMeta(for: tab)
+        let sessionCount = meta?.sessions.count ?? 0
         let name = displayName(for: tab)
+        let status = meta.map(effectiveStatus(for:)) ?? "idle"
 
         return Button {
             HapticService.selection()
             navigationPath.append(tab.tabId)
         } label: {
             HStack(spacing: MajorTomTheme.Spacing.md) {
-                // Icon
                 Image(systemName: "building.2.fill")
                     .font(.system(size: 24))
                     .foregroundStyle(MajorTomTheme.Colors.accent)
@@ -224,7 +219,6 @@ struct OfficeManagerView: View {
                     .background(MajorTomTheme.Colors.accentSubtle)
                     .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.small))
 
-                // Info
                 VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.xs) {
                     Text(name)
                         .font(.system(.body, design: .monospaced, weight: .semibold))
@@ -232,15 +226,15 @@ struct OfficeManagerView: View {
                         .lineLimit(1)
 
                     HStack(spacing: MajorTomTheme.Spacing.sm) {
-                        Label("\(agentCount)", systemImage: "person.fill")
+                        Label("\(count)", systemImage: "person.fill")
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(MajorTomTheme.Colors.textSecondary)
 
-                        Label("\(tab.sessions.count)", systemImage: "bubble.left")
+                        Label("\(sessionCount)", systemImage: "bubble.left")
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(MajorTomTheme.Colors.textSecondary)
 
-                        statusBadge(effectiveStatus(for: tab))
+                        statusBadge(status)
                     }
                 }
 
@@ -282,17 +276,24 @@ struct OfficeManagerView: View {
         }
     }
 
-    // MARK: - Available Tab Card
-
-    private func availableTabCard(tab: TabMeta) -> some View {
+    /// Card for a terminal tab with no Office yet — tapping explicitly
+    /// creates the Office scene and navigates into it. Office existence
+    /// is 100% user-controlled; we never auto-create based on claude.
+    private func createOfficeCard(tab: TerminalTab) -> some View {
         let name = displayName(for: tab)
+        let meta = tabMeta(for: tab)
+        let subtitle: String = {
+            guard let meta else { return "No Office — tap to create" }
+            if meta.sessions.isEmpty { return "No Office — tap to create" }
+            return "\(meta.sessions.count) claude session\(meta.sessions.count == 1 ? "" : "s") — tap to create Office"
+        }()
+
         return Button {
             HapticService.selection()
             sceneManager.createOffice(for: tab.tabId)
             navigationPath.append(tab.tabId)
         } label: {
             HStack(spacing: MajorTomTheme.Spacing.md) {
-                // Icon
                 Image(systemName: "plus.square.dashed")
                     .font(.system(size: 24))
                     .foregroundStyle(MajorTomTheme.Colors.textSecondary)
@@ -300,20 +301,15 @@ struct OfficeManagerView: View {
                     .background(MajorTomTheme.Colors.surfaceElevated)
                     .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.small))
 
-                // Info
                 VStack(alignment: .leading, spacing: MajorTomTheme.Spacing.xs) {
                     Text(name)
                         .font(.system(.body, design: .monospaced, weight: .medium))
                         .foregroundStyle(MajorTomTheme.Colors.textSecondary)
                         .lineLimit(1)
 
-                    HStack(spacing: MajorTomTheme.Spacing.sm) {
-                        Text("Tap to create office")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(MajorTomTheme.Colors.textTertiary)
-
-                        statusBadge(effectiveStatus(for: tab))
-                    }
+                    Text(subtitle)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(MajorTomTheme.Colors.textTertiary)
                 }
 
                 Spacer()
@@ -349,10 +345,10 @@ struct OfficeManagerView: View {
 
     // MARK: - Rename
 
-    private func beginRename(for tab: TabMeta) {
+    private func beginRename(for tab: TerminalTab) {
         HapticService.impact(.medium)
         renameDraft = titleStore.title(for: tab.tabId) ?? ""
-        renameTarget = tab
+        renameTarget = tab.tabId
     }
 
     private var renameAlertBinding: Binding<Bool> {
