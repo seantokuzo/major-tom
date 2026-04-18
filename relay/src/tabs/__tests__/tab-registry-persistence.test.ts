@@ -68,6 +68,14 @@ describe('TabRegistryPersistence', () => {
         }),
       ).rejects.toThrow(/Invalid tabId/);
     });
+
+    it('accepts dots in tabIds (matches shell.ts TAB_ID_RE)', async () => {
+      const registry = new TabRegistry(persistence);
+      registry.registerSessionStart('sess-1', 'home.project.main', '/p', 'user-1');
+      await new Promise((r) => setTimeout(r, 20));
+      const loaded = await persistence.load('home.project.main');
+      expect(loaded?.tabId).toBe('home.project.main');
+    });
   });
 
   describe('loadAll', () => {

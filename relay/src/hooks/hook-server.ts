@@ -440,28 +440,40 @@ export function createHookServer(
         }
 
         const userId = tabBridge.getUserIdForTab(tabId);
-        tabBridge.sessionManager.registerExternal(sessionId, cwd);
+        // Detect duplicate SessionStart hooks. Claude Code can fire the
+        // hook twice for the same session_id in edge cases; both
+        // SessionManager.registerExternal and TabRegistry.registerSession-
+        // Start are idempotent, but we still want to avoid emitting the
+        // broadcast pair a second time (Office Manager would double-light
+        // the arrival).
+        const wasAlreadyRegistered =
+          tabBridge.tabRegistry.getTabForSession(sessionId) !== undefined;
+        const session = tabBridge.sessionManager.registerExternal(sessionId, cwd);
         tabBridge.tabRegistry.registerSessionStart(sessionId, tabId, cwd, userId);
 
         logger.info(
-          { tabId, sessionId, cwd, userId },
+          { tabId, sessionId, cwd, userId, duplicate: wasAlreadyRegistered },
           'SessionStart hook registered tab↔session binding',
         );
 
-        const startedAt = new Date().toISOString();
-        tabBridge.broadcast({
-          type: 'tab.session.started',
-          tabId,
-          sessionId,
-          workingDirName: cwd ? basename(cwd) : '',
-          startedAt,
-        });
-        tabBridge.broadcast({
-          type: 'session.info',
-          sessionId,
-          adapter: 'cli-external',
-          startedAt,
-        });
+        if (!wasAlreadyRegistered) {
+          // Use the Session's authoritative startedAt — generating a fresh
+          // ISO string here would drift on duplicate hooks and diverge from
+          // SessionManager's record.
+          tabBridge.broadcast({
+            type: 'tab.session.started',
+            tabId,
+            sessionId,
+            workingDirName: cwd ? basename(cwd) : '',
+            startedAt: session.startedAt,
+          });
+          tabBridge.broadcast({
+            type: 'session.info',
+            sessionId,
+            adapter: session.adapter,
+            startedAt: session.startedAt,
+          });
+        }
 
         sendJson(res, 200, {});
         return;

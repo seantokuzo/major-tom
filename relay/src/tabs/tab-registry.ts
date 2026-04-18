@@ -115,6 +115,11 @@ export class TabRegistry {
    * Hard teardown: PTY grace expired. Removes the TabMeta and clears the reverse
    * index for any still-registered sessions in that tab.
    */
+  /**
+   * Hard teardown. Fired by the PTY adapter on any final-teardown path:
+   * grace-expire, natural PTY exit, or explicit kill. Removes the TabMeta
+   * and clears the reverse index for any still-registered sessions.
+   */
   tabClosed(tabId: string): TabMeta | undefined {
     const tab = this.tabs.get(tabId);
     if (!tab) return undefined;
@@ -123,9 +128,11 @@ export class TabRegistry {
     }
     this.tabs.delete(tabId);
     if (this.persistence) {
-      void this.persistence.delete(tabId);
+      this.persistence.delete(tabId).catch((err) => {
+        logger.warn({ err, tabId }, 'TabRegistry persistence delete rejected');
+      });
     }
-    logger.info({ tabId }, 'Tab closed (PTY grace expired)');
+    logger.info({ tabId }, 'Tab closed (PTY evicted)');
     return tab;
   }
 
@@ -161,6 +168,12 @@ export class TabRegistry {
 
   private schedulePersist(tab: TabMeta): void {
     if (!this.persistence) return;
-    void this.persistence.save(tab);
+    // `save()` swallows I/O errors internally, but it still rejects on
+    // invalid tabId (programmer error / attempted path traversal). Attach
+    // a `.catch` so a bad tabId can't surface as an unhandled promise
+    // rejection — log + move on; the in-memory state already advanced.
+    this.persistence.save(tab).catch((err) => {
+      logger.warn({ err, tabId: tab.tabId }, 'TabRegistry schedulePersist rejected');
+    });
   }
 }

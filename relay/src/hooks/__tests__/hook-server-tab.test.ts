@@ -148,6 +148,34 @@ describe('hook-server — Tab-Keyed Offices integration', () => {
       );
       expect(sessionManager.tryGet('claude-caller-abc')?.id).toBe('claude-caller-abc');
     });
+
+    it('broadcasts use Session.startedAt (stable across duplicate hooks)', async () => {
+      // First SessionStart — broadcast pair fires with Session.startedAt.
+      await post(
+        `http://127.0.0.1:${port}/hooks/session-start`,
+        { session_id: 'sess-dup', cwd: '/d' },
+        { 'X-MT-Tab': 'tab-A' },
+      );
+      const firstSnapshot = [...broadcasts];
+      const canonicalStartedAt = sessionManager.tryGet('sess-dup')!.startedAt;
+      const firstStarted = firstSnapshot.find((m) => m.type === 'tab.session.started');
+      expect(firstStarted).toMatchObject({ startedAt: canonicalStartedAt });
+
+      // Wait a tick so a second broadcast (if it happened) would observe a
+      // later wall-clock ISO string — proves we're not rebuilding the
+      // timestamp at emit time.
+      await new Promise((r) => setTimeout(r, 25));
+
+      // Duplicate SessionStart for the same session_id — broadcasts should
+      // NOT repeat (Office Manager already reflects the arrival).
+      await post(
+        `http://127.0.0.1:${port}/hooks/session-start`,
+        { session_id: 'sess-dup', cwd: '/d' },
+        { 'X-MT-Tab': 'tab-A' },
+      );
+      expect(broadcasts).toEqual(firstSnapshot);
+      expect(sessionManager.tryGet('sess-dup')!.startedAt).toBe(canonicalStartedAt);
+    });
   });
 
   describe('POST /hooks/stop', () => {

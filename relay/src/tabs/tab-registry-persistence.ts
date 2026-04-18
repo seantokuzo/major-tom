@@ -73,7 +73,11 @@ export class TabRegistryPersistence {
   }
 
   private filePath(tabId: string): string {
-    const safe = tabId.replace(/[^a-zA-Z0-9\-_]/g, '');
+    // Match shell.ts TAB_ID_RE = /^[a-zA-Z0-9._-]{1,64}$/. Dots are legal
+    // tabId chars (e.g. "home.project.main"); the sanitize-then-compare
+    // pattern still rejects traversal because "/" is stripped and the
+    // equality check flags any char loss.
+    const safe = tabId.replace(/[^a-zA-Z0-9._\-]/g, '');
     if (!safe || safe !== tabId) {
       throw new Error(`Invalid tabId for persistence: ${tabId}`);
     }
