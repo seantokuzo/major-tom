@@ -1,6 +1,6 @@
-# HANDOFF: Tab-Keyed Offices — Wave 2 Execution Brief
+# HANDOFF: Tab-Keyed Offices — Wave 3 Execution Brief
 
-> **You are a fresh Claude Code session.** Previous session did Wave 1 (research + spec freeze). Your job: execute Wave 2 (Relay Bridge). The spec is LOCKED at `docs/PHASE-TAB-KEYED-OFFICES.md`. Do not re-debate decisions.
+> **You are a fresh Claude Code session.** Previous sessions shipped Wave 1 (spec freeze) and Wave 2 (relay bridge, PR #149). Your job: execute Wave 3 — Protocol + iOS wiring. The spec is LOCKED at `docs/PHASE-TAB-KEYED-OFFICES.md`. Do not re-debate decisions.
 >
 > If the user's first message is just "next" — that's the trigger. Begin.
 
@@ -8,101 +8,111 @@
 
 ## Pre-flight (don't skip)
 
-1. `git status` — should be clean on `main` at or past commit `23e9278` (docs: sprite-agent wiring complete). The spec doc + memory updates from Wave 1 are already committed or uncommitted docs — check and land them as your first commit if needed.
+1. `git status` — should be clean on `main` at or past commit `e420962` (docs: Wave 4 scope expansion). Wave 2 is already merged as `d98905a`.
 2. `git pull origin main`
 3. **Read in full, in order:**
-   - `docs/PHASE-TAB-KEYED-OFFICES.md` — the spec, especially §4–§6 (data model, protocol, hooks) and §10 (wave breakdown)
-   - `docs/STATE.md` — current phase table
-4. **Read memory files** for project conventions (canonical PR review flow lives in `~/.claude/CLAUDE.md`):
-   - `project_tab_keyed_offices_phase.md` — the phase context
-   - `project_sprite_qa_in_flight.md` — what's paused (don't touch sprite code until Wave 5)
-   - `feedback_pr_comments.md`, `feedback_pr_workflow.md`, `feedback_auto_poll_reviews.md`, `feedback_reply_inline.md`, `feedback_no_auto_merge.md`, `feedback_copilot_auto_review.md`
-5. Confirm the relay dev server state. User's local relay background task `byp2ggbux` may have died. If you need it for manual testing: `cd relay && npm run dev` (run_in_background). For Wave 2 work, unit tests are the primary signal — relay runtime not strictly required.
-6. `npm view vitest version` before adding test deps. Never trust memorized package versions.
-7. Create branch: `git checkout -b tab-keyed-offices/wave2-relay`. Use a worktree if you prefer isolation (`feedback_parallel_agents.md`), but Wave 2 is a single contributor, single branch.
+   - `docs/PHASE-TAB-KEYED-OFFICES.md` — the spec. Focus on §5.2 (protocol extension), §7 (iOS changes), §10 (Wave 3 row).
+   - `docs/STATE.md` — current phase table.
+4. **Read memory files:**
+   - `project_tab_keyed_offices_phase.md` — phase context.
+   - `project_sprite_qa_in_flight.md` — paused; don't touch sprite code except the minimal plumbing §5.2 asks for.
+   - `feedback_pr_comments.md`, `feedback_pr_workflow.md`, `feedback_auto_poll_reviews.md`, `feedback_reply_inline.md`, `feedback_no_auto_merge.md`, `feedback_copilot_auto_review.md`.
+5. Confirm the relay still builds: `cd relay && npx tsc --noEmit`.
+6. Relay dev server may or may not be running — not required for Wave 3 (unit tests are the primary signal). If you need it: `cd relay && npm run dev` (run_in_background).
+7. Branch(es): Wave 3 is two parallel tracks. Use one PR each:
+   - Relay: `git checkout -b tab-keyed-offices/wave3-relay`
+   - iOS: `git checkout -b tab-keyed-offices/wave3-ios` (sequential or parallel — iOS only needs the wire format, not the relay emit logic, to compile).
+   - Ship both via separate PRs. Use worktree isolation if you run them in parallel (`feedback_parallel_agents.md`).
 
 ## Execution rules (non-negotiable)
 
-- **TDD discipline.** Test first, implementation second. One behavior per commit.
-- **Atomic commits.** Conventional Commits format. Scope is `relay`.
+- **TDD discipline.** Test first where it makes sense (new decoders, emit-time tabId population). One behavior per commit.
+- **Atomic commits.** Conventional Commits. Scope = `relay` or `ios`.
 - **Never `--no-verify`**, never amend a published commit.
-- **Use TaskCreate** to track the Wave 2 sub-tasks (listed below).
-- **Spawn subagents** only if needed — Wave 2 is mostly relay code. Don't parallelize for its own sake.
-- **Use Context7** for Fastify, `ws`, `node-pty` APIs you're not 100% sure of.
-- **Verify before reporting done.** Run `npm test` in `relay/`. All green before PR.
+- **Use TaskCreate** to track the sub-tasks below.
+- **Use Context7** for SwiftUI decoder / Codable edge cases you're not 100% sure of.
+- **Verify before reporting done.** Relay: `npm test` all green. iOS: `xcodebuild ... build` clean (see `reference_wireless_device_deploy.md`).
 
 ---
 
-## Wave 2 scope (relay only, zero iOS changes)
+## Wave 3 scope
 
-### Sub-tasks (target one commit each unless noted)
+### Non-goals (do NOT touch)
+- No UI rewire. Office Manager still lists SDK sessions. Wave 4 does the rebind.
+- No auto-spawn-on-empty fix. That's Wave 4 too (see §10).
+- No sprite mapping rekey. Still session-keyed. Wave 5 cleans up.
 
-1. **Scaffold `TabRegistry`** at `relay/src/tabs/tab-registry.ts` per spec §4.1. Just the class + types. No persistence yet.
-   - Commit: `feat(relay): add TabRegistry in-memory state`
+### Sub-tasks
 
-2. **Unit tests for TabRegistry** — lifecycle (registerSessionStart → registerSessionEnd → tabClosed), reverse-lookup by sessionId, `listTabs(userId)` filter.
-   - Commit: `test(relay): TabRegistry lifecycle`
+#### Track A: Relay (branch `tab-keyed-offices/wave3-relay`)
 
-3. **Persistence for TabRegistry** — write/read `$HOME/.major-tom/tabs/{tabId}.json` on every state change. Hydrate on construct. Delete file on `tabClosed`. Match the sprite-mapping-persistence pattern in `relay/src/sprites/sprite-mapping-persistence.ts`.
-   - Commit: `feat(relay): TabRegistry disk persistence`
-   - Commit: `test(relay): TabRegistry persistence roundtrip`
+1. **Extend protocol messages with optional `tabId?: string`** per spec §5.2:
+   - `SpriteLinkMessage`, `SpriteUnlinkMessage`, `SpriteStateMessage`, `SpriteResponseMessage`
+   - `AgentSpawnMessage`, `AgentWorkingMessage`, `AgentIdleMessage`, `AgentCompleteMessage`, `AgentDismissedMessage`
+   - `SessionMetaMessage` (so `session.list.response` carries tabId for legacy compat)
+   - Commit: `feat(relay): add optional tabId to sprite and agent protocol messages`
 
-4. **`SessionManager.registerExternal()`** — new method in `relay/src/sessions/session-manager.ts`. Creates a `Session` with caller-supplied id + adapter=`'cli-external'`. Add `'cli-external'` to the `AdapterType` union in `session.ts`.
-   - Commit: `feat(relay): sessionManager.registerExternal for hook-registered sessions`
-   - Commit: `test(relay): registerExternal uses caller-supplied id`
+2. **Populate `tabId` at emit time** in `relay/src/routes/ws.ts`. Every site that constructs one of the above messages should call `tabRegistry.getTabForSession(sessionId)` (nullable) and set `tabId` when present. Legacy SDK sessions yield undefined → field omitted, existing clients unaffected.
+   - Add a helper: `function tabIdFor(sessionId: string): string | undefined { return tabRegistry?.getTabForSession(sessionId)?.tabId; }`
+   - Thread through the broadcastToSession call sites that emit the affected types.
+   - Commit: `feat(relay): populate tabId on sprite and agent broadcasts`
 
-5. **Hook templates** — add `relay/scripts/hook-templates/session-start.sh` and `stop.sh`. Mirror the shape of `pretooluse.sh` (env read, curl POST with `X-MT-Tab` header). Payload: `{ session_id, cwd }` read from stdin.
-   - Commit: `feat(relay): SessionStart and Stop hook templates`
+3. **Same for `session.list.response`** — when building `SessionMetaMessage[]`, annotate each entry with tabId if the sessionId has a TabRegistry binding.
+   - Commit: `feat(relay): annotate session.list.response with tabId`
 
-6. **Installer update** — `relay/src/installer/install-hooks.ts`:
-   - Add both scripts to `HOOK_FILES[]`.
-   - Extend the bundled `SETTINGS_JSON` constant with `SessionStart` and `Stop` hook entries. Match the existing shape for PreToolUse / SubagentStart.
-   - Content-hash self-heal will pick them up on relay restart.
-   - Commit: `feat(relay): install SessionStart/Stop hooks in private config dir`
+4. **Unit tests** — spawn a fake TabRegistry + SessionManager, emit each of the new-shape messages, verify `tabId` is populated for cli-external sessions and omitted for legacy cli sessions.
+   - Commit: `test(relay): tabId annotation on sprite/agent messages`
 
-7. **Hook-server endpoints** — `relay/src/hooks/hook-server.ts`:
-   - `POST /hooks/session-start` → `sessionManager.registerExternal(session_id, cwd)` → `tabRegistry.registerSessionStart(session_id, tabId, cwd, userId)` → emit `tab.session.started` + `session.info`.
-   - `POST /hooks/stop` → `sessionManager.get(session_id)?.close()` → `tabRegistry.registerSessionEnd(session_id)` → emit `tab.session.ended` + `session.ended`.
-   - Thread a new dep: `tabRegistry` + a broadcast callback. Mirror how `reportAgentLifecycle` is injected today.
-   - Commit: `feat(relay): /hooks/session-start and /hooks/stop endpoints`
+#### Track B: iOS (branch `tab-keyed-offices/wave3-ios`)
 
-8. **UserId lookup by tabId** — in `relay/src/routes/shell.ts`, when a PTY attaches authenticated, stash `tabId → userId` in a `Map<string, string>` that hook-server can read. Export it via the same deps bundle. Keep it simple: module-scoped Map, cleared when the tab's PTY closes for good.
-   - Commit: `feat(relay): track tabId→userId at PTY attach for hook correlation`
+5. **Decoders for tab.* events.** Add Codable structs in `ios/MajorTom/Features/Office/Models/` (or wherever SpriteMessages live — follow the existing layout):
+   - `TabSessionStartedEvent { tabId, sessionId, workingDirName, startedAt }`
+   - `TabSessionEndedEvent { tabId, sessionId, endedAt }`
+   - `TabClosedEvent { tabId }`
+   - `TabMeta { tabId, workingDirName, status, createdAt, lastSeenAt, sessions: [TabSessionSummary] }`
+   - `TabListResponse { tabs: [TabMeta] }`
+   - Commit: `feat(ios): tab protocol message models`
 
-9. **PTY-close → tab teardown** — extend `relay/src/adapters/pty-adapter.ts` to fire a callback when the grace-expire path runs (line ~354 area where `sessions.set(tabId, session)` happens — find the teardown sibling). Wire to `tabRegistry.tabClosed(tabId)` in the app wiring. Broadcast `tab.closed`.
-   - Commit: `feat(relay): PTY grace-expire tears down TabRegistry entry`
+6. **Wire decoders into the WebSocket message router.** When a `tab.*` event arrives, decode it and push to a new `TabRegistryStore` `@Observable` on the relay service (mirror the sessionList cache pattern). No UI observer yet — just cache.
+   - Commit: `feat(ios): decode tab.* events into TabRegistryStore`
 
-10. **`tab.list` RPC** — in `relay/src/protocol/messages.ts` add request + response types. In `relay/src/routes/ws.ts` add the `case 'tab.list':` handler next to the existing `case 'session.list':` (around line 1228). Filter by `userId` via `presenceManager.getUserId(ws)` + sandboxGuard, matching the session.list pattern.
-    - Commit: `feat(relay): tab.list RPC`
-    - Commit: `test(relay): tab.list filters by user`
+7. **Optional `tabId` on sprite/agent event models.** Add `tabId: String?` to the Swift structs matching the protocol extensions. Don't change behavior yet — just preserve the field.
+   - Commit: `feat(ios): thread optional tabId through sprite and agent event models`
 
-11. **Wiring** — `relay/src/app.ts` (or wherever the app is composed) needs to construct `TabRegistry`, pass it to hook-server + ws.ts, and hook the PTY-close callback. One integration commit.
-    - Commit: `feat(relay): wire TabRegistry into app bootstrap`
+8. **`RelayService.requestTabList()` async method.** Fires `{ type: 'tab.list' }`, awaits the response (or emits into the store). Match the existing `requestSpriteState` / `requestSessionList` pattern in the relay service.
+   - Commit: `feat(ios): RelayService.requestTabList()`
 
-12. **End-to-end integration test** — spawn a fake PTY, fire a `SessionStart` hook POST, verify session appears in `tab.list` response with correct tabId + userId. Then `Stop` hook, verify session removed. Then close PTY, verify `tab.closed` broadcast.
-    - Commit: `test(relay): end-to-end tab lifecycle via hook server`
+9. **Feature flag.** Add a bool to wherever iOS feature flags live (UserDefaults or a dedicated flags service). Default `false`. When `true`, iOS uses `tabId` for sprite/agent event routing; when `false`, falls back to `sessionId`. No UI changes regardless — Wave 4 removes the flag.
+   - Commit: `feat(ios): tabKeyedOffices feature flag (default off)`
 
-### What Wave 2 does NOT do
+10. **iOS build verification** — `xcodebuild ... build` clean. No warnings added.
+    - Commit: `chore(ios): verify Wave 3 compiles clean on device target`
 
-- No iOS changes. The `tabId` field on existing sprite/agent messages comes in Wave 3.
-- No Office UI rebind — that's Wave 4.
-- No session cycling animations — Wave 5.
-- No migration of existing sprite-mapping files — do that in Wave 5 as part of the cleanup pass.
+### What Wave 3 does NOT do
+
+- No `OfficeSceneManager` rekey. Still sessionId-keyed.
+- No `OfficeManagerView` tab-list UI. Wave 4.
+- No auto-spawn-on-empty fix. Wave 4.
+- No session cycling animations. Wave 5.
 
 ---
 
 ## PR & review flow
 
-- Open PR against `main` titled `feat(relay): Wave 2 — Tab-Keyed Offices relay bridge`.
-- Body: reference `docs/PHASE-TAB-KEYED-OFFICES.md` §4.1, §6, §10 (Wave 2 row).
+Two PRs (one per track):
+
+1. **Relay PR** — title `feat(relay): Wave 3 — Tab-Keyed Offices protocol extension`. Body references spec §5.2 + §10 (Wave 3).
+2. **iOS PR** — title `feat(ios): Wave 3 — Tab-Keyed Offices protocol + feature flag`. Body references §7 + §10.
+
+For each:
 - Copilot auto-requests. Do NOT manually add it.
 - Run the canonical PR review workflow from `~/.claude/CLAUDE.md`:
   - First poll: 2 minutes minimum after PR open
   - Subsequent polls: 1 minute intervals
-  - Completion detection: count reviews with body containing "Pull request overview"
-  - <5 comments in round → merge. ≥5 → fix + push + re-poll.
-  - Reply inline to every comment in its thread, with commit SHA for fixes or reasoning for pushback.
-- Post-merge: `git checkout main && git pull`, update `docs/STATE.md` Wave 2 row to DONE, prep Wave 3 handoff if time permits.
+  - Completion detection: count reviews whose body contains "Pull request overview"
+  - `<5` comments in round → merge. `≥5` → fix + push + re-poll.
+  - Reply inline to every comment, commit SHA for fixes, reasoning for pushback.
+- Post-merge: `git checkout main && git pull`, update `docs/STATE.md` Wave 3 row to SHIPPED, prep Wave 4 handoff if time permits.
 
 ## If the user says "wait for me"
 
@@ -110,23 +120,23 @@ Stop after PR creation. Don't poll, fix, or merge. See `feedback_review_wait.md`
 
 ---
 
-## Gotchas internalized from Wave 1 research
+## Gotchas (from Wave 2)
 
-- **Hook-server is plain Node `http`**, not Fastify. When adding endpoints, follow the existing `if (method === 'POST' && url === '/hooks/X')` pattern in `hook-server.ts`. Don't import Fastify plumbing.
-- **`X-MT-Tab` header flows already.** Existing hook scripts read `MAJOR_TOM_TAB_ID` env and pass it as a header (`relay/scripts/hook-templates/pretooluse.sh:18,48` etc.). You don't need to invent new plumbing — your new scripts follow the same shape.
-- **`$CLAUDE_CONFIG_DIR` is expanded at invoke time, not install time.** So the settings.json template can reference `$CLAUDE_CONFIG_DIR/hooks/session-start.sh` literally.
-- **Claude Code Stop hook, not SessionEnd.** Stream-events doc (`docs/STREAM-EVENTS.md:253`) lists `SessionStart` but the session-end equivalent is `Stop` (line 252, `Stop | Main agent stopping | reason`). Use `Stop` in the settings.json. Our endpoint is still named `/hooks/stop` for clarity.
-- **SessionManager.create() currently generates a UUID.** Don't modify `create()`. Add `registerExternal()` as a separate method so the existing iOS-initiated `session.start` flow is untouched.
-- **sandboxGuard filters session.list by user path.** Do the same in `tab.list`. Copy the existing pattern (`relay/src/routes/ws.ts:1228–1253`) and substitute `tabRegistry.listTabs()` + filter by `workingDir`.
-- **Cold-boot cleanup exists** at `relay/src/routes/ws.ts:2182–2197` (sprite mapping orphans). Add a parallel cleanup for orphaned TabRegistry files in the same pass.
+- **Tab events are broadcast-to-all.** `serverMessageHandler` in `ws.ts` treats `message.type.startsWith('tab.')` as global (Office Manager cares regardless of attached session). Sprite/agent messages stay session-scoped; adding `tabId` to them does NOT change that routing.
+- **`tabRegistry` is optional in `WsDeps`.** App bootstrap passes it; tests may not. Guard helper calls: `tabRegistry?.getTabForSession(...)`.
+- **Idempotent SessionStart.** Hook-server already dedupes duplicate SessionStart broadcasts (see `relay/src/hooks/hook-server.ts` around line 450). Don't re-implement that guard elsewhere.
+- **Protocol field is always OPTIONAL.** Legacy clients must continue to decode payloads without tabId; iOS must not assume tabId is present on sprite/agent events from cli/vscode adapters.
+- **Sprite mapping is session-keyed on disk.** Don't rekey yet; Wave 5.
 
-## Success criteria for Wave 2
+## Success criteria for Wave 3
 
-- [ ] All new tests pass (`cd relay && npm test`).
-- [ ] Existing tests still pass (no regressions).
-- [ ] Manual smoke: start relay, spawn PTY, run `claude`, confirm a tab entry appears in-memory via a debug log or test probe.
-- [ ] PR merged with ≤2 review rounds.
-- [ ] `docs/STATE.md` updated with Wave 2 DONE and Wave 3 NEXT.
-- [ ] `project_tab_keyed_offices_phase.md` memory updated with Wave 2 status.
+- [ ] Relay emits tabId on sprite + agent messages when the session has a TabRegistry binding; absent otherwise.
+- [ ] `session.list.response` carries tabId per entry when bound.
+- [ ] iOS decodes all four `tab.*` server events and caches them in a TabRegistryStore.
+- [ ] `RelayService.requestTabList()` exists and is callable from VM / UI layer.
+- [ ] Feature flag exists; flipping it toggles tabId-vs-sessionId routing at the sprite/agent event layer. Default off.
+- [ ] Both relay + iOS PRs merged with ≤2 review rounds each.
+- [ ] `docs/STATE.md` updated with Wave 3 SHIPPED and Wave 4 NEXT.
+- [ ] `project_tab_keyed_offices_phase.md` memory updated.
 
 Good luck. Ship it clean.
