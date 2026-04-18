@@ -294,6 +294,19 @@ final class OfficeSceneManager {
     /// session in the owning Office's roster (if the Office already exists)
     /// and seeds the session→tab reverse cache so subsequent events for this
     /// session route correctly even if they arrive without a `tabId` hint.
+    ///
+    /// Wave 5 note — **no explicit walk-in animation is fired here.** The
+    /// user-visible "new crew joining" moment is already produced by the
+    /// existing `agent.spawn` path: when the first subagent of the new
+    /// session lands, `OfficeViewModel.handleAgentSpawn` appends an
+    /// AgentState with `.spawning` status, the view inserts the sprite at
+    /// `OfficeLayout.doorPosition` via `OfficeScene.addAgent`, then
+    /// `moveAgentToDesk` pathfinds from the airlock to the assigned desk —
+    /// that airlock-to-desk walk IS the walk-in. A session without any
+    /// subagents produces no visible humans at all (by design), so a
+    /// session-start level animation would be a decoration without a
+    /// subject. If we ever want a pre-spawn "session lit up" feel, the
+    /// right hook is here; today it is deliberately empty.
     func handleTabSessionStarted(tabId: String, sessionId: String) {
         sessionToOfficeKey[sessionId] = tabId
 
