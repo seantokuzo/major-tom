@@ -4,7 +4,7 @@
 
 ## Current Phase (in flight)
 
-**Tab-Keyed Offices** — Waves 2-4 SHIPPED (PRs #149, #150, #151, #152). Rekeying Office identity from Claude sessionId → iOS terminal tabId. Auto-register `claude` via native `SessionStart`/`Stop` hooks. Spec: `docs/PHASE-TAB-KEYED-OFFICES.md`. Memory: `project_tab_keyed_offices_phase.md`. Sprite 4-6 QA paused; resumes after this phase.
+**Tab-Keyed Offices** — ALL WAVES SHIPPED (PRs #149–#154). L1–L12 manual verification on device is the remaining gate before phase-complete. Spec: `docs/PHASE-TAB-KEYED-OFFICES.md`. Memory: `project_tab_keyed_offices_phase.md`. Sprite 4-6 QA resumes once L1–L12 check clears.
 
 | Wave | Scope | Status |
 |------|-------|--------|
@@ -12,7 +12,7 @@
 | 2 — Relay Bridge | TabRegistry, SessionStart/Stop hooks, `tab.list` RPC, PTY-close teardown | SHIPPED (#149) |
 | 3 — Protocol + iOS wiring | `tabId` on sprite/agent messages, iOS decoders, `TabRegistryStore`, `RelayService.requestTabList()`, `tabKeyedOffices` feature flag (default off) | SHIPPED (#150, #151) |
 | 4 — iOS Office Rebind + Explicit Terminal Lifecycle | OfficeSceneManager keyed by tabId with fallback cascade, OfficeViewModel roster + lifecycle handlers, OfficeManagerView reads TabRegistryStore, OfficeView(tabId:), banner + notification routing by tabId, feature flag removed, terminal auto-spawn ripped out with ContentUnavailableView empty state | SHIPPED (#152) |
-| 5 — Session Cycling + Edge Cases | Per-session walk-off refinement (AgentState needs sessionId binding), walk-in on SessionStart, L5–L12 scenario tests, hard-kill PTY, multi-claude-in-one-tab, persistence migration cleanup | NEXT |
+| 5 — Session Cycling + Edge Cases | `AgentState.sessionId` binding, scoped walk-off on `tab.session.ended`, walk-in on `.spawning` confirmed sufficient, walk-off-then-teardown on `tab.closed` with 1.5s grace, Gate A scoped role bindings + per-agent `/btw` routing, sprite-mapping migration with `.migrated-v4` sentinel (fresh-install seeded + fail-closed on non-ENOENT stat), hard-kill PTY test coverage | SHIPPED (#153, #154) |
 
 ### Sprite-Agent Wiring (shipped, QA paused)
 
