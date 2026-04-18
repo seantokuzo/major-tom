@@ -4,13 +4,13 @@
 
 ## Current Phase (in flight)
 
-**Tab-Keyed Offices** — Wave 1 (Research + Spec Freeze) COMPLETE (2026-04-17). Rekeying Office identity from Claude sessionId → iOS terminal tabId. Auto-register `claude` via native `SessionStart`/`Stop` hooks. Spec: `docs/PHASE-TAB-KEYED-OFFICES.md`. Memory: `project_tab_keyed_offices_phase.md`. Sprite 4-6 QA paused; resumes after this phase.
+**Tab-Keyed Offices** — Wave 2 (Relay Bridge) SHIPPED via PR #149 (2026-04-17). Rekeying Office identity from Claude sessionId → iOS terminal tabId. Auto-register `claude` via native `SessionStart`/`Stop` hooks. Spec: `docs/PHASE-TAB-KEYED-OFFICES.md`. Memory: `project_tab_keyed_offices_phase.md`. Sprite 4-6 QA paused; resumes after this phase.
 
 | Wave | Scope | Status |
 |------|-------|--------|
 | 1 — Research + Spec Freeze | All gates answered, spec at `docs/PHASE-TAB-KEYED-OFFICES.md` | DONE |
-| 2 — Relay Bridge | TabRegistry, SessionStart/Stop hooks, `tab.list` RPC, PTY-close teardown | NEXT |
-| 3 — Protocol + iOS wiring | `tabId` on sprite/agent messages, iOS decoders, behind flag | |
+| 2 — Relay Bridge | TabRegistry, SessionStart/Stop hooks, `tab.list` RPC, PTY-close teardown | SHIPPED (#149) |
+| 3 — Protocol + iOS wiring | `tabId` on sprite/agent messages, iOS decoders, behind flag | NEXT |
 | 4 — iOS Office Rebind | OfficeSceneManager keyed by tabId, Office Manager lists tabs | |
 | 5 — Session Cycling + Edge Cases | Walk-off/walk-in animations, hard-kill PTY, multi-claude-in-one-tab | |
 
