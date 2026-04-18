@@ -111,6 +111,12 @@ final class RelayService {
     /// Agent.* and sprite.* events are routed to the session-specific OfficeViewModel.
     var officeSceneManager: OfficeSceneManager?
 
+    /// Tab-Keyed Offices (Wave 3) — client-side cache of tabs registered with
+    /// the relay. Populated by `tab.*` events; consumed by the Office Manager
+    /// UI in a later wave. Present as a plain property mirror of the
+    /// `sessionList` pattern (no back-reference / forwarding callbacks yet).
+    let tabRegistryStore = TabRegistryStore()
+
     /// Auth service for token management
     var authService: AuthService?
 
@@ -1261,6 +1267,29 @@ final class RelayService {
                     // window (~10s); relay re-queues beyond that.
                     postBtwResponseNotificationIfBackgrounded(event: event, vm: vm)
                 }
+            }
+
+        // MARK: Tab-Keyed Offices (Wave 3)
+
+        case .tabSessionStarted:
+            if let event = try? MessageCodec.decode(TabSessionStartedEvent.self, from: data) {
+                tabRegistryStore.apply(started: event)
+            }
+
+        case .tabSessionEnded:
+            if let event = try? MessageCodec.decode(TabSessionEndedEvent.self, from: data) {
+                tabRegistryStore.apply(ended: event)
+            }
+
+        case .tabClosed:
+            if let event = try? MessageCodec.decode(TabClosedEvent.self, from: data) {
+                tabRegistryStore.remove(tabId: event.tabId)
+            }
+
+        case .tabListResponse:
+            if let event = try? MessageCodec.decode(TabListResponseEvent.self, from: data) {
+                tabRegistryStore.replaceAll(with: event)
+                responseCounter &+= 1
             }
 
         case .error:
