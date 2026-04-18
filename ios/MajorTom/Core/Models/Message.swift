@@ -53,6 +53,7 @@ enum MessageType: String, Codable {
     case ciRunDetail = "ci.run.detail"
     case spriteStateRequest = "sprite.state.request"
     case spriteMessage = "sprite.message"
+    case tabList = "tab.list"
 
     // Server → Client
     case output
@@ -123,6 +124,12 @@ enum MessageType: String, Codable {
     case spriteState = "sprite.state"
     case spriteResponse = "sprite.response"
 
+    // Tab-Keyed Offices (Wave 3)
+    case tabSessionStarted = "tab.session.started"
+    case tabSessionEnded = "tab.session.ended"
+    case tabClosed = "tab.closed"
+    case tabListResponse = "tab.list.response"
+
     case error
 }
 
@@ -177,6 +184,12 @@ struct SessionEndMessage: Codable {
 
 struct SessionListRequestMessage: Codable {
     let type: String = "session.list"
+}
+
+/// Tab-Keyed Offices (Wave 3) — request current list of registered tabs.
+/// Relay responds with a `tab.list.response` event containing all known tabs.
+struct TabListRequestMessage: Codable {
+    let type: String = "tab.list"
 }
 
 struct AgentMessageMessage: Codable {
@@ -901,6 +914,63 @@ struct SpriteResponseEvent: Codable {
     let text: String
     let status: String  // "delivered" | "queued" | "dropped"
     var dropReason: String?
+}
+
+// MARK: - Tab-Keyed Offices Events (Wave 3)
+
+/// Relay → iOS: a claude session inside a terminal tab started.
+/// Matches relay `TabSessionStartedMessage`.
+struct TabSessionStartedEvent: Codable {
+    let type: String
+    let tabId: String
+    let sessionId: String
+    let workingDirName: String
+    let startedAt: String
+}
+
+/// Relay → iOS: a claude session ended via the Stop hook.
+/// The tab itself survives until PTY grace expires.
+/// Matches relay `TabSessionEndedMessage`.
+struct TabSessionEndedEvent: Codable {
+    let type: String
+    let tabId: String
+    let sessionId: String
+    let endedAt: String
+}
+
+/// Relay → iOS: a tab's PTY grace expired (or the tab was killed).
+/// Office Manager removes the tab from the list on receipt.
+/// Matches relay `TabClosedMessage`.
+struct TabClosedEvent: Codable {
+    let type: String
+    let tabId: String
+}
+
+/// Per-session summary inside a `TabMeta`. Matches relay
+/// `TabSessionSummaryMessage`. Intentionally minimal in Wave 3.
+struct TabSessionSummary: Codable {
+    let sessionId: String
+    let startedAt: String
+}
+
+/// A tab known to the relay. Matches relay `TabMetaMessage`.
+struct TabMeta: Codable, Identifiable {
+    let tabId: String
+    /// Basename of the tab's working directory, or empty if not captured yet.
+    let workingDirName: String
+    let status: String  // "active" | "idle" | "closed"
+    let createdAt: String
+    let lastSeenAt: String
+    let sessions: [TabSessionSummary]
+
+    var id: String { tabId }
+}
+
+/// Relay → iOS: full list of known tabs (response to `tab.list` request).
+/// Matches relay `TabListResponseMessage`.
+struct TabListResponseEvent: Codable {
+    let type: String
+    let tabs: [TabMeta]
 }
 
 struct ConnectionStatusEvent: Codable {
