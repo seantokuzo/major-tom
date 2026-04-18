@@ -142,6 +142,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       ?.mappings.find((m) => m.subagentId === subagentId)?.spriteHandle;
   }
 
+  /** Look up the tabId bound to a session, if any. Returns undefined for
+   * legacy cli/vscode sessions (no TabRegistry binding) so the optional
+   * protocol field is simply omitted on the wire. */
+  function tabIdFor(sessionId: string): string | undefined {
+    return tabRegistry?.getTabForSession(sessionId)?.tabId;
+  }
+
   // ── Per-client metadata for admin status endpoint ──────────
   interface ClientMeta { ip: string; userAgent: string; connectedAt: string }
   const clientMetas = new Map<WebSocket, ClientMeta>();
@@ -678,6 +685,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
               spriteHandle: mapping.spriteHandle,
               subagentId: mapping.subagentId,
               reason: 'session_ended',
+              tabId: tabIdFor(message.sessionId),
             });
           }
         }
@@ -819,6 +827,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             sessionId: resumeSessionId,
             mappings: resumeSpriteState.mappings.map(toWireMapping),
             roleBindings: resumeSpriteState.roleBindings,
+            tabId: tabIdFor(resumeSessionId),
           });
         }
 
@@ -981,6 +990,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             text: '',
             status: 'dropped',
             dropReason: 'Agent not found or already completed',
+            tabId: tabIdFor(message.sessionId),
           });
           break;
         }
@@ -1011,6 +1021,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             text: '',
             status: 'dropped',
             dropReason: 'No active session — /btw cannot be delivered',
+            tabId: tabIdFor(message.sessionId),
           });
           break;
         }
@@ -1025,6 +1036,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           messageId: message.messageId,
           text: '',
           status: 'queued',
+          tabId: tabIdFor(message.sessionId),
         });
         logger.info(
           {
@@ -1070,6 +1082,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             ? state.mappings.map(toWireMapping)
             : [],
           roleBindings: state?.roleBindings ?? {},
+          tabId: tabIdFor(reqSessionId),
         });
         logger.debug(
           { sessionId: reqSessionId, mappingCount: state?.mappings.length ?? 0 },
@@ -2040,6 +2053,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         text: ev.text,
         status: ev.status,
         dropReason: ev.dropReason,
+        tabId: tabIdFor(ev.sessionId),
       });
       logger.info(
         {
@@ -2068,6 +2082,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             parentId: event.parentId,
             task: event.task ?? '',
             role: event.role ?? 'subagent',
+            tabId: tabIdFor(sid),
           });
 
           // ── Sprite wiring: create mapping + emit sprite.link ──
@@ -2097,6 +2112,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             task: event.task ?? '',
             parentId: event.parentId,
             deskIndex: mapping.deskIndex >= 0 ? mapping.deskIndex : undefined,
+            tabId: tabIdFor(sid),
           });
           break;
         }
@@ -2110,6 +2126,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             // Wave 5 — live per-subagent metrics piggyback on this event.
             toolCount: event.toolCount,
             tokenCount: event.tokenCount,
+            tabId: tabIdFor(sid),
           });
           break;
         case 'idle':
@@ -2120,11 +2137,18 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             agentId: event.agentId,
             toolCount: event.toolCount,
             tokenCount: event.tokenCount,
+            tabId: tabIdFor(sid),
           });
           break;
         case 'complete': {
           agentTracker.complete(event.agentId, event.result ?? '');
-          broadcastToAll({ type: 'agent.complete', sessionId: sid, agentId: event.agentId, result: event.result ?? '' });
+          broadcastToAll({
+            type: 'agent.complete',
+            sessionId: sid,
+            agentId: event.agentId,
+            result: event.result ?? '',
+            tabId: tabIdFor(sid),
+          });
 
           // ── Sprite wiring: remove mapping + emit sprite.unlink ──
           const completeState = spriteMappings.get(sid);
@@ -2141,6 +2165,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
                 spriteHandle: removed.spriteHandle,
                 subagentId: event.agentId,
                 reason: 'completed',
+                tabId: tabIdFor(sid),
               });
               // Wave 4 — tell worker to drop any queued /btw for this
               // subagent. Scenario #4. The SubagentStop hook inside the
@@ -2162,6 +2187,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             // that didn't wire metrics, or attribution failure).
             toolCount: event.toolCount,
             tokenCount: event.tokenCount,
+            tabId: tabIdFor(sid),
           });
 
           // ── Sprite wiring: remove mapping + emit sprite.unlink ──
@@ -2179,6 +2205,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
                 spriteHandle: removed.spriteHandle,
                 subagentId: event.agentId,
                 reason: 'dismissed',
+                tabId: tabIdFor(sid),
               });
               // Wave 4 — same as 'complete' above, drop any queued /btw.
               fleetManager.dropSpriteForSubagent(sid, event.agentId, 'Subagent dismissed');
