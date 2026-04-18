@@ -47,8 +47,7 @@ final class PairingViewModel {
         isFetchingMethods = true
         defer { isFetchingMethods = false }
 
-        let scheme = trimmed.contains("://") ? "" : "http://"
-        let baseURL = "\(scheme)\(trimmed)"
+        let baseURL = AuthService.normalizeBaseURL(trimmed)
         guard let url = URL(string: "\(baseURL)/auth/methods") else { return }
 
         do {
