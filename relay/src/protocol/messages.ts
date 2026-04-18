@@ -610,6 +610,12 @@ export interface AgentSpawnMessage {
   parentId?: string;
   task: string;
   role: string;
+  /**
+   * Tab-Keyed Offices (phase §5.2) — tab that owns this session, if bound.
+   * Populated by the relay at emit time via `tabRegistry.getTabForSession`.
+   * Omitted for legacy cli/vscode sessions with no tab binding.
+   */
+  tabId?: string;
 }
 
 export interface AgentWorkingMessage {
@@ -633,6 +639,11 @@ export interface AgentWorkingMessage {
    * here).
    */
   tokenCount?: number;
+  /**
+   * Tab-Keyed Offices (phase §5.2) — tab that owns this session, if bound.
+   * See `AgentSpawnMessage.tabId`.
+   */
+  tabId?: string;
 }
 
 export interface AgentIdleMessage {
@@ -643,6 +654,11 @@ export interface AgentIdleMessage {
   toolCount?: number;
   /** Wave 5 — cumulative tokens. See `AgentWorkingMessage.tokenCount`. */
   tokenCount?: number;
+  /**
+   * Tab-Keyed Offices (phase §5.2) — tab that owns this session, if bound.
+   * See `AgentSpawnMessage.tabId`.
+   */
+  tabId?: string;
 }
 
 export interface AgentCompleteMessage {
@@ -650,6 +666,11 @@ export interface AgentCompleteMessage {
   sessionId: string;
   agentId: string;
   result: string;
+  /**
+   * Tab-Keyed Offices (phase §5.2) — tab that owns this session, if bound.
+   * See `AgentSpawnMessage.tabId`.
+   */
+  tabId?: string;
 }
 
 export interface AgentDismissedMessage {
@@ -667,6 +688,11 @@ export interface AgentDismissedMessage {
    * `AgentWorkingMessage.tokenCount`.
    */
   tokenCount?: number;
+  /**
+   * Tab-Keyed Offices (phase §5.2) — tab that owns this session, if bound.
+   * See `AgentSpawnMessage.tabId`.
+   */
+  tabId?: string;
 }
 
 export interface ConnectionStatusMessage {
@@ -784,6 +810,12 @@ export interface SessionMetaMessage {
   outputTokens: number;
   turnCount: number;
   totalDuration: number;
+  /**
+   * Tab-Keyed Offices (phase §5.2) — tab that owns this session, if bound.
+   * Populated by the relay at emit time via `tabRegistry.getTabForSession`.
+   * Omitted for legacy cli/vscode sessions with no tab binding.
+   */
+  tabId?: string;
 }
 
 export interface SessionListResponseMessage {
@@ -1216,6 +1248,12 @@ export interface SpriteLinkMessage {
   task: string;
   parentId?: string;
   deskIndex?: number;
+  /**
+   * Tab-Keyed Offices (phase §5.2) — tab that owns this session, if bound.
+   * Populated by the relay at emit time via `tabRegistry.getTabForSession`.
+   * Omitted for legacy cli/vscode sessions with no tab binding.
+   */
+  tabId?: string;
 }
 
 export interface SpriteUnlinkMessage {
@@ -1224,6 +1262,11 @@ export interface SpriteUnlinkMessage {
   spriteHandle: string;
   subagentId: string;
   reason: 'completed' | 'dismissed' | 'failed' | 'session_ended';
+  /**
+   * Tab-Keyed Offices (phase §5.2) — tab that owns this session, if bound.
+   * See `SpriteLinkMessage.tabId`.
+   */
+  tabId?: string;
 }
 
 export interface SpriteResponseMessage {
@@ -1235,6 +1278,11 @@ export interface SpriteResponseMessage {
   text: string;
   status: 'delivered' | 'queued' | 'dropped';
   dropReason?: string;
+  /**
+   * Tab-Keyed Offices (phase §5.2) — tab that owns this session, if bound.
+   * See `SpriteLinkMessage.tabId`.
+   */
+  tabId?: string;
 }
 
 export interface SpriteStateMessage {
@@ -1242,6 +1290,11 @@ export interface SpriteStateMessage {
   sessionId: string;
   mappings: SpriteMappingEntry[];
   roleBindings: Record<string, string>;
+  /**
+   * Tab-Keyed Offices (phase §5.2) — tab that owns this session, if bound.
+   * See `SpriteLinkMessage.tabId`.
+   */
+  tabId?: string;
 }
 
 // ── Tab-Keyed Offices (phase §5.3) ───────────────────────────
