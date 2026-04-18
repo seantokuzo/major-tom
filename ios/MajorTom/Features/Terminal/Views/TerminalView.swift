@@ -362,44 +362,76 @@ struct TerminalView: View {
 
     @ViewBuilder
     private var terminalContent: some View {
-        switch viewModel.connectionState {
-        case .error(let message):
-            errorView(message: message)
-        default:
-            ZStack {
-                TerminalWebView(viewModel: viewModel)
-                    .onLongPressGesture(minimumDuration: 0.5) {
-                        toggleCopyMode()
-                    }
-
-                if viewModel.didTerminate {
-                    recoveryOverlay
-                }
-
-                if !viewModel.isReady {
-                    loadingOverlay
-                }
-
-                // Copy mode indicator overlay
-                if copyModeActive {
-                    VStack {
-                        HStack {
-                            Spacer()
-                            Text("COPY MODE")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundStyle(MajorTomTheme.Colors.background)
-                                .padding(.horizontal, MajorTomTheme.Spacing.sm)
-                                .padding(.vertical, 2)
-                                .background(MajorTomTheme.Colors.accent)
-                                .clipShape(Capsule())
-                                .padding(MajorTomTheme.Spacing.sm)
+        if viewModel.tabs.isEmpty {
+            emptyTabsView
+        } else {
+            switch viewModel.connectionState {
+            case .error(let message):
+                errorView(message: message)
+            default:
+                ZStack {
+                    TerminalWebView(viewModel: viewModel)
+                        .onLongPressGesture(minimumDuration: 0.5) {
+                            toggleCopyMode()
                         }
-                        Spacer()
+
+                    if viewModel.didTerminate {
+                        recoveryOverlay
                     }
-                    .allowsHitTesting(false)
+
+                    if !viewModel.isReady {
+                        loadingOverlay
+                    }
+
+                    // Copy mode indicator overlay
+                    if copyModeActive {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Text("COPY MODE")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(MajorTomTheme.Colors.background)
+                                    .padding(.horizontal, MajorTomTheme.Spacing.sm)
+                                    .padding(.vertical, 2)
+                                    .background(MajorTomTheme.Colors.accent)
+                                    .clipShape(Capsule())
+                                    .padding(MajorTomTheme.Spacing.sm)
+                            }
+                            Spacer()
+                        }
+                        .allowsHitTesting(false)
+                    }
                 }
             }
         }
+    }
+
+    // MARK: - Empty Tabs State (Wave 4)
+
+    /// Shown when there are no terminal tabs — cold launch, after closing
+    /// the last tab, or after `reconcileWithRelay` prunes every local tab.
+    /// The user explicitly creates every terminal from here; we never
+    /// auto-spawn a PTY the user didn't ask for.
+    private var emptyTabsView: some View {
+        ContentUnavailableView {
+            Label("No Terminal Tabs", systemImage: "apple.terminal")
+                .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+        } description: {
+            Text("Open a tab to start a shell session. Running `claude` inside it will surface an Office.")
+                .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+        } actions: {
+            Button {
+                HapticService.buttonTap()
+                viewModel.createTab()
+            } label: {
+                Label("New Terminal", systemImage: "plus")
+                    .font(MajorTomTheme.Typography.body)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(MajorTomTheme.Colors.accent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(red: 0.05, green: 0.05, blue: 0.07))
     }
 
     // MARK: - Loading State
