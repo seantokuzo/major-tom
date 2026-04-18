@@ -831,7 +831,7 @@ final class RelayService {
 
         case .agentSpawn:
             if let event = try? MessageCodec.decode(AgentSpawnEvent.self, from: data) {
-                officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId).handleAgentSpawn(id: event.agentId, role: event.role, task: event.task, parentId: event.parentId)
+                officeSceneManager?.ensureViewModel(for: event.sessionId, tabId: event.tabId).handleAgentSpawn(id: event.agentId, role: event.role, task: event.task, parentId: event.parentId, sessionId: event.sessionId)
                 notificationService?.postAgentSpawnNotification(
                     agentId: event.agentId,
                     role: event.role,
@@ -1316,7 +1316,11 @@ final class RelayService {
         case .tabClosed:
             if let event = try? MessageCodec.decode(TabClosedEvent.self, from: data) {
                 tabRegistryStore.remove(tabId: event.tabId)
-                officeSceneManager?.closeOffice(for: event.tabId)
+                // Wave 5: walk humans off before tearing the Office down.
+                // Covers the hard-kill PTY path where no graceful
+                // `tab.session.ended` precedes `tab.closed`. The scene
+                // manager handles the dismiss-then-close sequence.
+                officeSceneManager?.handleTabClosed(tabId: event.tabId)
             }
 
         case .tabListResponse:

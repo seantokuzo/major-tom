@@ -294,6 +294,19 @@ final class OfficeSceneManager {
     /// session in the owning Office's roster (if the Office already exists)
     /// and seeds the session→tab reverse cache so subsequent events for this
     /// session route correctly even if they arrive without a `tabId` hint.
+    ///
+    /// Wave 5 note — **no explicit walk-in animation is fired here.** The
+    /// user-visible "new crew joining" moment is already produced by the
+    /// existing `agent.spawn` path: when the first subagent of the new
+    /// session lands, `OfficeViewModel.handleAgentSpawn` appends an
+    /// AgentState with `.spawning` status, the view inserts the sprite at
+    /// `OfficeLayout.doorPosition` via `OfficeScene.addAgent`, then
+    /// `moveAgentToDesk` pathfinds from the airlock to the assigned desk —
+    /// that airlock-to-desk walk IS the walk-in. A session without any
+    /// subagents produces no visible humans at all (by design), so a
+    /// session-start level animation would be a decoration without a
+    /// subject. If we ever want a pre-spawn "session lit up" feel, the
+    /// right hook is here; today it is deliberately empty.
     func handleTabSessionStarted(tabId: String, sessionId: String) {
         sessionToOfficeKey[sessionId] = tabId
 
@@ -313,9 +326,11 @@ final class OfficeSceneManager {
     }
 
     /// Called when the relay broadcasts `tab.session.ended`. Drops the
-    /// session from the Office's roster and walks off any active humans.
-    /// Dogs (idle sprites) stay. The Office itself survives — tab teardown
-    /// happens on `tab.closed` after PTY grace expires.
+    /// session from the Office's roster and walks off any active humans
+    /// **scoped to the ending session**. Dogs (idle sprites) stay, and
+    /// humans belonging to any other session still alive in this tab stay
+    /// too (Gate A — multi-claude in one tab). The Office itself survives;
+    /// tab teardown happens on `tab.closed` after PTY grace expires.
     func handleTabSessionEnded(tabId: String, sessionId: String) {
         sessionToOfficeKey.removeValue(forKey: sessionId)
 
@@ -329,11 +344,16 @@ final class OfficeSceneManager {
             vm.sessionId = vm.activeSessionIds.first
         }
 
-        // Walk off every non-idle agent sprite. Wave 4 intentionally walks
-        // off *all* humans rather than filtering to the ending session —
-        // Wave 5 refines this once agents carry a session binding.
-        let humanIds = vm.agents.filter { !$0.id.hasPrefix("idle-") }.map(\.id)
-        for id in humanIds {
+        // Wave 5: walk off only the agents whose originating session is the
+        // one that just ended. Agents bound to sibling sessions in the same
+        // tab (Gate A) survive, as do dogs (sessionId == nil). Any agent that
+        // slipped in pre-Wave-3 without a sessionId would also survive here —
+        // acceptable since such legacy agents are rare and get cleaned up by
+        // the full-tab walk-off on `tab.closed` (Commit 4).
+        let endingIds = vm.agents
+            .filter { !$0.id.hasPrefix("idle-") && $0.sessionId == sessionId }
+            .map(\.id)
+        for id in endingIds {
             vm.handleAgentDismissed(id: id)
         }
     }
@@ -353,6 +373,54 @@ final class OfficeSceneManager {
         // events for those sessions don't leak into a stale key.
         sessionToOfficeKey = sessionToOfficeKey.filter { $0.value != officeKey }
     }
+
+    /// Wave 5: graceful teardown on `tab.closed`. Walks off every agent
+    /// scoped to any session in the tab, then tears down the Office after
+    /// `tabClosedTeardownGraceMilliseconds` so the dismiss animation has
+    /// time to finish (matches the ~1.5s walk-to-door + despawn timeline
+    /// inside `handleAgentDismissed`).
+    ///
+    /// Covers the hard-kill PTY path: when the relay broadcasts
+    /// `tab.closed` without a preceding `tab.session.ended` (e.g. PTY grace
+    /// expired mid-session), this is the only place humans get walked off
+    /// before the Office evaporates. If `tab.session.ended` already fired
+    /// for a session, its dismiss Tasks are still in flight — we don't
+    /// cancel those, and the idempotent `handleAgentDismissed` guard
+    /// (`guard agents.contains(where:)`) keeps re-firing harmless.
+    func handleTabClosed(tabId: String) {
+        let officeKey = resolvedOfficeKey(tabId)
+
+        guard let vm = offices[officeKey]?.viewModel else {
+            // No Office materialized — nothing to walk off. Clean up the
+            // reverse cache below for consistency.
+            sessionToOfficeKey = sessionToOfficeKey.filter { $0.value != officeKey }
+            return
+        }
+
+        // Walk off every non-idle sprite in the Office regardless of
+        // sessionId. Dogs (idle sprites) stay put for the grace window and
+        // get torn down with the scene.
+        let humanIds = vm.agents
+            .filter { !$0.id.hasPrefix("idle-") }
+            .map(\.id)
+        for id in humanIds {
+            vm.handleAgentDismissed(id: id)
+        }
+
+        // Delay the actual Office teardown so the dismiss animations have
+        // time to play out. If there are no humans to walk off we still
+        // apply the grace (cheap), which keeps the code path trivially
+        // predictable.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(Self.tabClosedTeardownGraceMilliseconds))
+            self?.closeOffice(for: officeKey)
+        }
+    }
+
+    /// Grace window between the `tab.closed` walk-off and the Office
+    /// teardown. Matches the sprite dismiss animation timeline in
+    /// `handleAgentDismissed` (warmup + 1.5s leaving pose).
+    private static let tabClosedTeardownGraceMilliseconds: Int = 1_500
 
     /// Keys (tabId or synthetic sessionId) of offices that have a full scene.
     /// Excludes lightweight entries created by `ensureViewModel` that were
