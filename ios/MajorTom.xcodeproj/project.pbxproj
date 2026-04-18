@@ -28,6 +28,7 @@
 		1FB9124E49F11A762382E6A9 /* SpecialtyKeyGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908E6CFCF4E1F5F05D0AE4C3 /* SpecialtyKeyGrid.swift */; };
 		2211645B8B3E1BF5093FE2CD /* MoodEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 579C4AF5EF7599467490F248 /* MoodEngine.swift */; };
 		3A1B2C4D5E6F78901234ABCD /* CrewRoster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B7C8D9E0F1A23456789BCDE /* CrewRoster.swift */; };
+		890C7E4C9845454480C8F9DB /* TabRegistryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2698B28DF9074DC5917B6F3D /* TabRegistryStore.swift */; };
 		87DD0EFFCB5F38F604D8E89D /* RoleMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35CE152195BD660297FCDF44 /* RoleMapper.swift */; };
 		F5A7B9C1D3E526A728193B5D /* SpriteAura.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A7B9C1D3E526A728193B4C /* SpriteAura.swift */; };
 		A2B3C4D5E6F70819304A5B6D /* ToolHumanizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F70819304A5B6C /* ToolHumanizer.swift */; };
@@ -96,6 +97,7 @@
 		818FA51F81C18CFE08B3C097 /* PairingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526DF9EAD13F47F747C7ACC3 /* PairingViewModel.swift */; };
 		8294293F9EF30CBEED38BFC6 /* HapticService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7794C5813F5964F288D432AD /* HapticService.swift */; };
 		39E76A83321DEBACFD4BB7DE /* PerfHUDPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1972DF8FED85D9290EA3F331 /* PerfHUDPreferences.swift */; };
+		59066C471C6849C68A1466DA /* FeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72E9104D85D94935AD94E196 /* FeatureFlags.swift */; };
 		83C02DEBD2B6488A47A08A65 /* ModePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66594811ED284A67510E10AE /* ModePickerView.swift */; };
 		85574E49192424FB81A91CA9 /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = D91A9F673395FFFDE1E3A220 /* MarkdownText.swift */; };
 		855E5820EB1F99D820AFF91A /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EE6178C1ADCC581A8CEDD6E /* SessionListView.swift */; };
@@ -284,6 +286,7 @@
 		5795954485F00C86256F6533 /* LiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
 		579C4AF5EF7599467490F248 /* MoodEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoodEngine.swift; sourceTree = "<group>"; };
 		6B7C8D9E0F1A23456789BCDE /* CrewRoster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrewRoster.swift; sourceTree = "<group>"; };
+		2698B28DF9074DC5917B6F3D /* TabRegistryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRegistryStore.swift; sourceTree = "<group>"; };
 		35CE152195BD660297FCDF44 /* RoleMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoleMapper.swift; sourceTree = "<group>"; };
 		F5A7B9C1D3E526A728193B4C /* SpriteAura.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteAura.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F70819304A5B6C /* ToolHumanizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolHumanizer.swift; sourceTree = "<group>"; };
@@ -325,6 +328,7 @@
 		765796A3C1DAD173DB56A1CC /* ThemeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeEngine.swift; sourceTree = "<group>"; };
 		7794C5813F5964F288D432AD /* HapticService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticService.swift; sourceTree = "<group>"; };
 		1972DF8FED85D9290EA3F331 /* PerfHUDPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfHUDPreferences.swift; sourceTree = "<group>"; };
+		72E9104D85D94935AD94E196 /* FeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlags.swift; sourceTree = "<group>"; };
 		794D98FF20DC91F49542FE7D /* OfficeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeViewModel.swift; sourceTree = "<group>"; };
 		794D99002EDC92F59643FF8E /* OfficeSceneManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficeSceneManager.swift; sourceTree = "<group>"; };
 		7A8199AB9D26A914D6633EF0 /* PermissionModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionModeView.swift; sourceTree = "<group>"; };
@@ -838,6 +842,7 @@
 				B2A5F6ECD6AEA9681C140DA3 /* OfficeLayout.swift */,
 				BB2C3D4E5F6A7B8C9D0E1F2A /* StationLayout.swift */,
 				433F8F4160504FECAA91BBC2 /* SpriteMessagingState.swift */,
+				2698B28DF9074DC5917B6F3D /* TabRegistryStore.swift */,
 				765796A3C1DAD173DB56A1CC /* ThemeEngine.swift */,
 				BB1C2D3E4F607182939D0E1A /* WaypointPathfinder.swift */,
 			);
@@ -849,6 +854,7 @@
 			children = (
 				A2873A7A68C25BFA4E7C9756 /* AuthService.swift */,
 				10F013B10B2AA2CD96B19588 /* DangerScoring.swift */,
+				72E9104D85D94935AD94E196 /* FeatureFlags.swift */,
 				7794C5813F5964F288D432AD /* HapticService.swift */,
 				A9BD8A95DFAD6160FF41E83F /* KeychainService.swift */,
 				1972DF8FED85D9290EA3F331 /* PerfHUDPreferences.swift */,
@@ -1698,6 +1704,7 @@
 				C73A60CB24EFABD14D9C2A2F /* GodModeConfirmation.swift in Sources */,
 				8294293F9EF30CBEED38BFC6 /* HapticService.swift in Sources */,
 				39E76A83321DEBACFD4BB7DE /* PerfHUDPreferences.swift in Sources */,
+				59066C471C6849C68A1466DA /* FeatureFlags.swift in Sources */,
 				8A47BE851B898A4D0899F183 /* KeySpec.swift in Sources */,
 				22A50E5C5D84EFE896C415FF /* KeybarCustomizer.swift in Sources */,
 				6894059C83BB1BFF450749C2 /* KeybarViewModel.swift in Sources */,
@@ -1732,6 +1739,7 @@
 				1ECF57AD1993033DCCF73DB5 /* OfficeViewModel.swift in Sources */,
 				6FAAD79E27E62840B5B1C665 /* DogCannedResponses.swift in Sources */,
 				E2515F6B841E4F68C14D0419 /* SpriteMessagingState.swift in Sources */,
+				890C7E4C9845454480C8F9DB /* TabRegistryStore.swift in Sources */,
 				C113A701F7910BAD57011D40 /* SpriteInspectorView.swift in Sources */,
 				78DC1DD071D269A3B9774687 /* SpriteResponseBanner.swift in Sources */,
 				3320719E65C7D12EC787C929 /* PairingView.swift in Sources */,
