@@ -11,7 +11,7 @@
 | 1 — Research + Spec Freeze | All gates answered, spec at `docs/PHASE-TAB-KEYED-OFFICES.md` | DONE |
 | 2 — Relay Bridge | TabRegistry, SessionStart/Stop hooks, `tab.list` RPC, PTY-close teardown | SHIPPED (#149) |
 | 3 — Protocol + iOS wiring | `tabId` on sprite/agent messages, iOS decoders, behind flag | NEXT |
-| 4 — iOS Office Rebind | OfficeSceneManager keyed by tabId, Office Manager lists tabs | |
+| 4 — iOS Office Rebind + Explicit Terminal Lifecycle | OfficeSceneManager keyed by tabId, Office Manager lists tabs, rip out auto-spawn (user explicitly creates every terminal) | |
 | 5 — Session Cycling + Edge Cases | Walk-off/walk-in animations, hard-kill PTY, multi-claude-in-one-tab | |
 
 ### Sprite-Agent Wiring (shipped, QA paused)

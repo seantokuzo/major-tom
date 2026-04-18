@@ -244,7 +244,7 @@ No iOS-level dog/human animation code changes — sprites already fade/walk in a
 | **1 — Research + Spec Freeze** | This doc. Audit complete, design gates closed. | — |
 | **2 — Relay Bridge** | `TabRegistry` + persistence. `sessionManager.registerExternal()`. Hook templates (`session-start.sh`, `stop.sh`). Hook-server endpoints (`/hooks/session-start`, `/hooks/stop`). Installer update. PTY-close → `tab.closed` emission. New `tab.list` RPC. Unit tests: registry lifecycle, persistence roundtrip, hook-server dispatch. | `tab-keyed-offices/wave2-relay` |
 | **3 — Protocol + iOS wiring** | Add `tabId` to protocol messages (see §5.2). iOS: `RelayService.requestTabList()`, decode `tab.*` events, plumb tabId through sprite/agent event handlers. **No UI rewire yet.** Feature-flag the Office Manager switch. | `tab-keyed-offices/wave3-protocol` |
-| **4 — iOS Office Rebind** | `OfficeSceneManager` keyed by tabId. `OfficeManagerView` lists tabs. `OfficeView(tabId:)` route. Banner + notification routing. Remove feature flag. | `tab-keyed-offices/wave4-ios` |
+| **4 — iOS Office Rebind + Explicit Terminal Lifecycle** | `OfficeSceneManager` keyed by tabId. `OfficeManagerView` lists tabs. `OfficeView(tabId:)` route. Banner + notification routing. Remove feature flag. **Also rip out auto-spawn-on-empty in the Terminal tab** — user explicitly creates every terminal (Termius-style). Closing the last tab leaves an empty state screen with a "New Terminal" action; never auto-respawns. Prevents the Office Manager from showing ghost/zombie tabs the user didn't ask for. | `tab-keyed-offices/wave4-ios` |
 | **5 — Session Cycling + Edge Cases** | Humans walk-off on `Stop`, walk-in on `SessionStart` within existing tab-Office. L5–L12 scenario tests. Hard-kill PTY path. Multi-claude-in-one-tab smoke test. Persistence migration cleanup. | `tab-keyed-offices/wave5-cycling` |
 
 Each wave ships as a relay PR + iOS PR pair where applicable (matches sprite-agent wiring pattern). Target one Copilot review round per PR; merge at <5 comments.
@@ -264,6 +264,8 @@ Each wave ships as a relay PR + iOS PR pair where applicable (matches sprite-age
 - [ ] Graceful claude exit → humans walk off, dogs stay, Office survives.
 - [ ] Restart claude in same tab → humans fade back in.
 - [ ] Close terminal tab → Office tears down after grace.
+- [ ] Closing the last terminal tab does NOT auto-spawn a new one — empty state with explicit "New Terminal" action.
+- [ ] Cold app launch does NOT auto-spawn — user taps "New Terminal" to start.
 - [ ] Relay restart → Office + roster rehydrate from persistence.
 - [ ] `tab.list.response` surfaces multiple concurrent tabs correctly.
 - [ ] No regressions on Sprite Wave 4-6 QA test matrix (resume that QA on top of this).
