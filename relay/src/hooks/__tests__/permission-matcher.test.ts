@@ -5,9 +5,12 @@ import { join } from 'node:path';
 
 import {
   evaluatePermission,
+  mergePermissionSettings,
   readPermissionSettings,
+  readPermissionSettingsForCwd,
   type PermissionSettings,
 } from '../permission-matcher.js';
+import { mkdir } from 'node:fs/promises';
 
 const empty: PermissionSettings = { allow: [], ask: [] };
 
@@ -136,5 +139,56 @@ describe('readPermissionSettings', () => {
     const path = join(baseDir, 'settings.json');
     await writeFile(path, '{ not valid');
     expect(readPermissionSettings(path)).toEqual({ allow: [], ask: [] });
+  });
+});
+
+describe('mergePermissionSettings', () => {
+  it('concatenates both lists', () => {
+    const a: PermissionSettings = { allow: ['Bash(*)'], ask: ['Bash(rm:*)'] };
+    const b: PermissionSettings = { allow: ['Read'], ask: [] };
+    expect(mergePermissionSettings(a, b)).toEqual({
+      allow: ['Bash(*)', 'Read'],
+      ask: ['Bash(rm:*)'],
+    });
+  });
+});
+
+describe('readPermissionSettingsForCwd', () => {
+  let baseDir: string;
+
+  beforeEach(async () => {
+    baseDir = await mkdtemp(join(tmpdir(), 'perm-cwd-'));
+    await mkdir(join(baseDir, '.claude'), { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(baseDir, { recursive: true, force: true });
+  });
+
+  it('merges shared settings.json and settings.local.json', async () => {
+    await writeFile(
+      join(baseDir, '.claude', 'settings.json'),
+      JSON.stringify({ permissions: { allow: ['Read'], ask: [] } }),
+    );
+    await writeFile(
+      join(baseDir, '.claude', 'settings.local.json'),
+      JSON.stringify({ permissions: { allow: ['Bash(*)'], ask: ['Bash(rm:*)'] } }),
+    );
+    expect(readPermissionSettingsForCwd(baseDir)).toEqual({
+      allow: ['Read', 'Bash(*)'],
+      ask: ['Bash(rm:*)'],
+    });
+  });
+
+  it('returns empty sets when neither file exists', () => {
+    expect(readPermissionSettingsForCwd(baseDir)).toEqual({ allow: [], ask: [] });
+  });
+
+  it('works when only settings.local.json exists', async () => {
+    await writeFile(
+      join(baseDir, '.claude', 'settings.local.json'),
+      JSON.stringify({ permissions: { allow: ['Glob'] } }),
+    );
+    expect(readPermissionSettingsForCwd(baseDir)).toEqual({ allow: ['Glob'], ask: [] });
   });
 });

@@ -29,7 +29,12 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { basename } from 'node:path';
 import { logger } from '../utils/logger.js';
 import { ApprovalQueue } from './approval-queue.js';
-import { evaluatePermission, readPermissionSettings } from './permission-matcher.js';
+import {
+  evaluatePermission,
+  mergePermissionSettings,
+  readPermissionSettings,
+  readPermissionSettingsForCwd,
+} from './permission-matcher.js';
 import type { NotificationBatcher } from '../push/notification-batcher.js';
 import type { AgentEvent } from '../adapters/adapter.interface.js';
 import type { ServerMessage } from '../protocol/messages.js';
@@ -220,7 +225,21 @@ export function createHookServer(
         // phone because hook permissionDecision:"ask" overrides the
         // allowlist. Ask rules take precedence so specific patterns (like
         // Bash(rm:*)) still prompt.
-        const permissionSettings = readPermissionSettings();
+        //
+        // Sources merged:
+        //   - ~/.major-tom/claude-config/settings.json (installer-imported
+        //     from the user's global ~/.claude/settings.json)
+        //   - <cwd>/.claude/settings.json            (project-shared rules)
+        //   - <cwd>/.claude/settings.local.json      (project-local, the
+        //     file where "allow always" clicks accumulate)
+        // `cwd` is present on every Claude Code hook payload.
+        const globalSettings = readPermissionSettings();
+        const cwdFromHook =
+          typeof hookData['cwd'] === 'string' ? (hookData['cwd'] as string) : undefined;
+        const projectSettings = cwdFromHook
+          ? readPermissionSettingsForCwd(cwdFromHook)
+          : { allow: [], ask: [] };
+        const permissionSettings = mergePermissionSettings(globalSettings, projectSettings);
         const evaluated = evaluatePermission(tool, toolInput, permissionSettings);
         if (evaluated === 'allow') {
           logger.debug(

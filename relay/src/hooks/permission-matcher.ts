@@ -150,3 +150,32 @@ export function readPermissionSettings(path = DEFAULT_SETTINGS_PATH): Permission
     return { allow: [], ask: [] };
   }
 }
+
+/**
+ * Merge two permission sets (allow + ask are concatenated). Order matters
+ * for nothing because the evaluator short-circuits on first match within
+ * each list and `ask` is always checked before `allow`.
+ */
+export function mergePermissionSettings(
+  a: PermissionSettings,
+  b: PermissionSettings,
+): PermissionSettings {
+  return {
+    allow: [...a.allow, ...b.allow],
+    ask: [...a.ask, ...b.ask],
+  };
+}
+
+/**
+ * Read the project-scoped allowlist + asklist for a given cwd. Claude Code
+ * stores two flavors in `<cwd>/.claude/`:
+ *   - `settings.json`        — checked-in shared rules
+ *   - `settings.local.json`  — user-local, gitignored rules (accumulated
+ *                              from "allow always" clicks)
+ * Both are merged. Missing files return empty sets.
+ */
+export function readPermissionSettingsForCwd(cwd: string): PermissionSettings {
+  const shared = readPermissionSettings(join(cwd, '.claude', 'settings.json'));
+  const local = readPermissionSettings(join(cwd, '.claude', 'settings.local.json'));
+  return mergePermissionSettings(shared, local);
+}
