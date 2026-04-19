@@ -31,9 +31,12 @@ Terminal tab  ─── 1 : N ─── Claude sessions (inside that tab's PTY o
                      └── Humans (bound to the currently-active claude session(s))
 ```
 
-**Office lifecycle = Tab lifecycle.**
-- Office created: first `SessionStart` hook for a tab the relay has never seen → unlinked card appears → user taps → Office materializes.
-- Office destroyed: tab closes (PTY disconnect grace expires) → Office + dogs + humans all torn down.
+**Office lifecycle = Tab lifecycle.** (Mental-model flip post-#155.)
+- Tab created: card appears in Office Manager immediately as "No Office — tap to create". Office scene is NOT auto-materialized.
+- `SessionStart` hook for that tab: card subtitle updates with the claude session count. Scene still not auto-created.
+- Office created: user taps the card → `createOffice(for: tabId)` → SKScene materializes → `populateIdleSprites()` seeds all dogs + active human crew scattered across random station modules. Life Engine drives idle activity.
+- Office destroyed (scene-only): context-menu "Close Office" → SKScene torn down, tab/PTY/registry all untouched → card flips back to "No Office — tap to create".
+- Tab destroyed: `exit`/Ctrl+D in shell OR user closes tab → iOS POSTs `/shell/:tabId/kill` → PTY killed immediately → `tab.closed` broadcasts → Office scene walks sprites off and tears down → card removed.
 
 **Session lifecycle = sprite roster churn inside an Office.**
 - `SessionStart` (inside a tab that already has an Office): new humans fade in as subagents spawn.
@@ -211,20 +214,26 @@ No iOS-level dog/human animation code changes — sprites already fade/walk in a
 
 ## 8. Lifecycle scenarios (reference)
 
+> **Post-PR #155 mental-model flip.** Office Manager lists every terminal tab — not just tabs with an active claude session. Each tab is one card: "No Office — tap to create" (dashed `+`) or an Open-Office card (building icon + agent/session counts). Office creation is 100% user-initiated via card tap. Closing a tab kills the PTY immediately via REST `/shell/:tabId/kill`; the 30-min PTY grace only applies to force-quit / WS-drop recovery. Rename is bidirectional via `TabTitleStore`. Gate D is superseded: iOS reads `TerminalViewModel.tabs` as source of truth, not `TabRegistry`.
+
 | # | Scenario | Expected behavior |
 |---|---|---|
-| L1 | User opens new terminal tab, types nothing | Nothing — no Office, not in Office Manager |
-| L2 | User types `claude` in that tab | `SessionStart` hook → tab auto-registers → "Available Tabs" card appears in Office Manager |
-| L3 | User taps card → creates Office | `createOffice(for: tabId)` → SKScene materializes → dogs walk in |
-| L4 | Subagents spawn | Humans fade in per existing agent-lifecycle wiring |
-| L5 | User types `exit` in claude (graceful) | `Stop` hook → humans walk off → dogs stay → Office idle |
-| L6 | User types `claude` again in same tab | New session → new humans fade in → same dogs, same Office |
-| L7 | User closes the terminal tab | PTY grace expires → `tab.closed` → Office tears down, dogs walk off |
-| L8 | User kills app / PTY drops | 30-min PTY grace: if user reattaches, Office + sprites resume from relay state. If grace expires, same as L7. |
-| L9 | User runs `claude` in two tabs simultaneously | Two Offices. Each has its own dogs + humans. /btw and sprite events route by tabId. |
-| L10 | User runs a second `claude &` in the *same* tab | Both sessions register under same tabId. Same Office shows humans from both rosters. (Gate A — supported but a rare case.) |
-| L11 | Relay restart mid-session | TabRegistry persistence rehydrates on boot; session persistence already handles the session half. Humans come back as agent events re-fire. |
-| L12 | User runs `claude` from Ground Control (no PTY) | No `MAJOR_TOM_TAB_ID` → no hook registration → falls through to legacy SDK-session path → does NOT appear in Office Manager. |
+| L1 | User opens a new terminal tab, types nothing | Tab card appears in Office Manager as "No Office — tap to create" (dashed `+` icon, no status badge). No Office scene, no TabRegistry entry yet. |
+| L2 | User types `claude` in that tab | `SessionStart` hook → TabRegistry records the session → card subtitle updates to "N claude session(s) — tap to create Office". Still no Office scene. |
+| L3 | User taps the card (either state) | `createOffice(for: tabId)` → SKScene materializes → `populateIdleSprites()` seeds **all dogs** + active human crew as idle sprites scattered across random `StationLayout` modules. Life Engine takes over (they drift to activity stations). Card flips to Open-Office style (building icon, agent/session counts `0/1`, status badge "idle"). |
+| L4 | Subagents spawn inside that tab's claude session | Real agent sprite appears at `OfficeLayout.doorPosition` (airlock), takes over a matching idle slot per role-mapping (clone-not-consume), walks to an assigned desk/station. Agent count on the card increments. |
+| L5 | User types `exit` in claude (graceful — claude only, not shell) | `Stop` hook → humans walk off. Dogs stay. Office scene idles. Tab + PTY stay alive. |
+| L6 | User re-runs `claude` in the same tab | New `SessionStart` → session registered under same `tabId` → humans fade back in to the same Office. Dogs unchanged. |
+| L7 | User types `exit` or Ctrl+D in the shell itself (PTY exits) | Relay closes shell WS with code 1000 + reason `pty-exited` → iOS auto-`closeTab(id:)` → tab disappears → Office scene walks sprites off and tears down → card removed. |
+| L8 | User taps close on the terminal tab bar | iOS POSTs `/shell/:tabId/kill` → PTY killed immediately (no 30-min grace) → `tab.closed` broadcasts → Office scene walks sprites off and tears down → card removed. |
+| L9 | User force-quits the app mid-session (WS drops) | 30-min PTY grace holds relay-side. On relaunch, cold-launch connects primary `/ws` (PR #155 fix) → `tab.list` rehydrates → cards repopulate. Previously-open Office scenes must be re-tapped (SKScene is per-session iOS state). |
+| L10 | User picks "Close Office" from the context menu on an Open-Office card | SKScene destroyed → card flips back to "No Office — tap to create". Tab, PTY, and TabRegistry entry all untouched. |
+| L11 | User runs `claude` in two separate tabs simultaneously | Two tab cards, two Offices (once each is tapped). `/btw` and sprite events route by `tabId`. No cross-talk. |
+| L12 | User runs a second `claude &` inside the *same* tab (Gate A) | Both sessions register under the same `tabId`. One Office shows humans from both rosters. |
+| L13 | Relay restart mid-session | TabRegistry persistence rehydrates on relay boot. iOS re-requests `tab.list` on Office-tab appear → cards come back. Session rehydration drives humans back in. |
+| L14 | User runs `claude` from Ground Control (no PTY) | No `MAJOR_TOM_TAB_ID` env → no `SessionStart` registration → falls through to the synthetic-tabId fallback inside `OfficeSceneManager`. Does NOT appear as a terminal-tab card. |
+| L15 | User renames tab from the terminal bar | `TabTitleStore` updates → Office Manager card name updates instantly. Single source of truth. |
+| L16 | User renames Office from the Office Manager context menu | Same `TabTitleStore` update → terminal tab name updates too. Alert warns "This renames the terminal tab too — they share a name." |
 
 ## 9. Gates — resolved
 
@@ -233,7 +242,7 @@ No iOS-level dog/human animation code changes — sprites already fade/walk in a
 | **A — Multi-claude in one tab** | **Supported (1:N tab:session).** Humans from all concurrent sessions share the tab's Office. | Nested or parallel `claude` is rare but real; rejecting it would require PTY-side enforcement we don't want. Sprites already dedup on `tool_use_id`. |
 | **B — Persistence migration** | **Scrap existing sprite-mapping files on upgrade.** One-time cleanup on relay boot. | Still in QA; no production data. Rekey cost is trivial. |
 | **C — Cross-device tabId collisions** | **No composite key needed.** Each hook call carries `session_id` (globally unique UUID from claude); TabRegistry indexes sessions → tabs via `sessionId`. Two devices generating the same tabId would register separately per-user because sandboxGuard filters by `userId` at list time. | Collision space on 8-char UUID prefix is 2^32 per user — astronomically unlikely within one user's session history. |
-| **D — Track tabs without claude?** | **No.** Tabs enter TabRegistry on first `SessionStart` hook. Pure shell tabs stay invisible to the relay. | Matches mental model: Office is a Claude construct. |
+| **D — Track tabs without claude?** | **Superseded by PR #155.** iOS `OfficeManagerView` reads `TerminalViewModel.tabs` as the source of truth, so every terminal tab (claude or not) surfaces as a card. Pure shell tabs still don't register in `TabRegistry` relay-side; the card subtitle simply reads "No Office — tap to create" until a `SessionStart` hook fires and adds a claude session count. | Office is a per-tab iOS decision, not derived from claude lifecycle. |
 | **E — Which hook registers the binding?** | **`SessionStart`.** Not PreToolUse (may never fire) or SubagentStart (may never spawn a subagent). | `SessionStart` is guaranteed on every claude boot per Claude Code hook schema (`docs/STREAM-EVENTS.md:253`). |
 | **F — New `tab.list` or extend `session.list`?** | **New `tab.list`.** `session.list` stays for legacy sessions. | Cleaner semantics. iOS Office Manager calls `tab.list`; iOS "old SDK sessions" (if any ever reappear) use `session.list`. No type-union gymnastics. |
 
@@ -253,19 +262,26 @@ Each wave ships as a relay PR + iOS PR pair where applicable (matches sprite-age
 
 - **Ground Control tab surfacing.** GC-spawned sessions don't have a tab. Could add a synthetic "Ground Control" office in a later phase.
 - **Cross-tab agent movement** (e.g. drag-to-transfer). Not planned.
-- **Tab renaming from the Office side.** iOS terminal tabs have user-editable titles — reuse them, don't duplicate.
 - **Multi-device attach to the same tab.** Orthogonal. `project_ssh_architecture.md` tracks.
+
+> **Formerly deferred, now shipped:** Bidirectional rename from either the terminal bar or the Office Manager via `TabTitleStore` (PR #155).
 
 ## 12. Success criteria
 
-- [ ] `claude` in a terminal tab → unlinked card in Office Manager within ~1 s.
+- [ ] Every terminal tab appears in Office Manager as a card — "No Office — tap to create" by default, flips to Open-Office on tap.
+- [ ] `claude` in a terminal tab → card subtitle updates to "N claude session(s) — tap to create Office" within ~1 s.
 - [ ] Tap the card → Office opens, dogs walk in.
 - [ ] Subagent spawn → human fades in at a desk.
-- [ ] Graceful claude exit → humans walk off, dogs stay, Office survives.
+- [ ] Graceful claude `exit` (claude only) → humans walk off, dogs stay, Office survives.
 - [ ] Restart claude in same tab → humans fade back in.
-- [ ] Close terminal tab → Office tears down after grace.
+- [ ] `exit` / Ctrl+D in shell → tab auto-closes → Office tears down with walk-off.
+- [ ] Tap close on the tab bar → PTY killed via REST `/shell/:tabId/kill` → Office tears down (no 30-min grace).
+- [ ] "Close Office" from Office Manager context menu → SKScene destroyed, tab + PTY + TabRegistry intact, card flips to "No Office".
+- [ ] Rename from terminal tab bar → Office Manager card updates. Rename from Office Manager → terminal tab title updates.
 - [ ] Closing the last terminal tab does NOT auto-spawn a new one — empty state with explicit "New Terminal" action.
 - [ ] Cold app launch does NOT auto-spawn — user taps "New Terminal" to start.
-- [ ] Relay restart → Office + roster rehydrate from persistence.
+- [ ] Cold launch on an already-paired device opens the primary `/ws` automatically (no empty "No Claude Tabs" hang).
+- [ ] Relay restart → tab cards rehydrate from persistence; roster re-fires as sessions reconnect.
 - [ ] `tab.list.response` surfaces multiple concurrent tabs correctly.
+- [ ] Edge-swipe-back only pops to Office Manager from col1; pan-left on col2+ scrolls the camera.
 - [ ] No regressions on Sprite Wave 4-6 QA test matrix (resume that QA on top of this).

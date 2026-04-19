@@ -62,15 +62,53 @@ function findTemplateDir(): string {
 }
 
 /**
- * settings.json the relay drops into the private config dir. Mirrors
- * Claude Code's hook config schema. The 600s timeout matches the
+ * Where the user's real Claude Code config lives. We READ from here to
+ * pull their permission allowlist into Major Tom's private dir; we never
+ * write to it.
+ */
+const USER_CLAUDE_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json');
+
+/**
+ * Read the user's `permissions` block from their real `~/.claude/settings.json`.
+ *
+ * Returns `null` when the file is missing or can't be parsed. The installer
+ * treats `null` as "no allowlist to merge" — equivalent to the pre-fix
+ * behavior where every tool call prompted.
+ *
+ * This is read-only: the "never touch `~/.claude/`" constraint is about
+ * writing, not reading. Pulling the allowlist in lets PTY-launched claude
+ * inherit the same pre-approved tools the user already configured for the
+ * SDK path.
+ */
+export function importUserPermissions(settingsPath = USER_CLAUDE_SETTINGS_PATH): unknown {
+  if (!existsSync(settingsPath)) return null;
+  try {
+    const raw = readFileSync(settingsPath, 'utf-8');
+    const parsed = JSON.parse(raw) as { permissions?: unknown };
+    return parsed.permissions ?? null;
+  } catch (err) {
+    logger.warn(
+      { path: settingsPath, err: err instanceof Error ? err.message : String(err) },
+      'Could not read user Claude settings — PTY claude will prompt on every tool call',
+    );
+    return null;
+  }
+}
+
+/**
+ * Build the settings.json Major Tom drops into its private config dir.
+ * Mirrors Claude Code's hook config schema. The 600s timeout matches the
  * `--max-time 600` in the remote-mode curl call inside pretooluse.sh.
  *
  * `$CLAUDE_CONFIG_DIR` is expanded by Claude Code at hook-invoke time,
  * NOT at install time, so we can leave the literal token in the file.
+ *
+ * `userPermissions`, when present, is merged as the top-level `permissions`
+ * field so PTY-launched claude inherits the user's pre-approved tool
+ * allowlist from `~/.claude/settings.json`.
  */
-const SETTINGS_JSON = JSON.stringify(
-  {
+export function buildSettingsJson(userPermissions: unknown): string {
+  const settings: Record<string, unknown> = {
     hooks: {
       PreToolUse: [
         {
@@ -131,10 +169,12 @@ const SETTINGS_JSON = JSON.stringify(
         },
       ],
     },
-  },
-  null,
-  2,
-) + '\n';
+  };
+  if (userPermissions !== null && userPermissions !== undefined) {
+    settings.permissions = userPermissions;
+  }
+  return JSON.stringify(settings, null, 2) + '\n';
+}
 
 /** Default approval-mode.json — only written if it doesn't already exist. */
 const DEFAULT_APPROVAL_MODE_JSON =
@@ -246,10 +286,23 @@ export function installHooks(): InstallReport {
   const installed: string[] = [];
   const skipped: string[] = [];
 
-  // 1. settings.json
+  // 1. settings.json — rebuilt on every install so the user's latest
+  // permission allowlist is picked up. writeIfChanged's content-hash
+  // guard keeps it a no-op when nothing changed.
   const settingsPath = join(MAJOR_TOM_CONFIG_DIR, 'settings.json');
-  if (writeIfChanged(settingsPath, SETTINGS_JSON, false)) {
+  const userPermissions = importUserPermissions();
+  const settingsJson = buildSettingsJson(userPermissions);
+  if (writeIfChanged(settingsPath, settingsJson, false)) {
     installed.push(settingsPath);
+    logger.info(
+      {
+        path: settingsPath,
+        importedPermissions: userPermissions !== null,
+      },
+      userPermissions !== null
+        ? 'settings.json updated — user permission allowlist imported'
+        : 'settings.json updated — no user allowlist found, PTY claude will prompt on every tool call',
+    );
   } else {
     skipped.push(settingsPath);
   }
