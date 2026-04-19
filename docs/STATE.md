@@ -4,7 +4,7 @@
 
 ## Current Phase (in flight)
 
-**Tab-Keyed Offices** — ALL WAVES SHIPPED (PRs #149–#154). L1–L12 manual verification on device is the remaining gate before phase-complete. Spec: `docs/PHASE-TAB-KEYED-OFFICES.md`. Memory: `project_tab_keyed_offices_phase.md`. Sprite 4-6 QA resumes once L1–L12 check clears.
+**Tab-Keyed Offices** — ALL WAVES + QA CLEANUP SHIPPED (PRs #149–#155). Mental-model flip landed: Office is now a per-tab iOS decision (explicit create), not auto-created from Claude sessions. Spec: `docs/PHASE-TAB-KEYED-OFFICES.md` (Gate D superseded by PR #155). Memory: `project_tab_keyed_offices_phase.md`. Sprite 4-6 QA unpaused.
 
 | Wave | Scope | Status |
 |------|-------|--------|
