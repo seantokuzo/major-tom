@@ -157,6 +157,12 @@ final class RelayService {
     // MARK: - Connection
 
     func connect(to urlString: String) async throws {
+        // Idempotent: already-connected / in-flight connects are no-ops.
+        // Callers (onAppear / onChange(isPaired, initial: true)) may fire
+        // multiple times during a single launch.
+        if connectionState == .connected || connectionState == .connecting {
+            return
+        }
         // Normalize the base (http:// vs https:// per LAN/public heuristic),
         // then rewrite the scheme to ws/wss for the WebSocket.
         // A bare hostname like "majortom.example.space" becomes

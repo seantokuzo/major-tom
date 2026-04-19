@@ -132,8 +132,8 @@ final class TerminalViewModel {
 
     /// Shared store of user-supplied tab titles. Bidirectional — the
     /// Office Manager writes here too and this VM sees the change via
-    /// SwiftUI observation, so tab.displayTitle reflects it at render
-    /// time.
+    /// SwiftUI observation, so `terminalTitle` resolves the latest
+    /// user-supplied title from this store at render time.
     let titleStore: TabTitleStore
 
     // MARK: - Tab Persistence

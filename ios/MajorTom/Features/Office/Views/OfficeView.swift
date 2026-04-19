@@ -152,6 +152,13 @@ struct OfficeView: View {
                         isAtFirstColumn = snapIsFirstColumn(position)
                     }
                 }
+                .onDisappear {
+                    // OfficeSceneManager retains scenes across navigations;
+                    // clear the callback so popped OfficeViews don't get
+                    // stale state updates and the view's @State bag isn't
+                    // kept alive past the SwiftUI teardown.
+                    scene.onSnapPositionChanged = nil
+                }
                 .onChange(of: viewModel.agents, initial: true) { _, newAgents in
                     syncScene(with: newAgents, viewModel: viewModel, scene: scene)
                 }

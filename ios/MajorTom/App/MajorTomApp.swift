@@ -58,20 +58,6 @@ struct MajorTomApp: App {
                 // Also set up the "user toggled off -> end all" observer.
                 liveActivityManager.observePreferenceChanges()
                 Task { await liveActivityManager.cleanupOrphanedActivities() }
-                // Fetch auth methods + connect primary WebSocket on launch for
-                // already-paired devices. AuthService loads credentials from the
-                // Keychain synchronously in init(), so `isPaired` is already
-                // `true` when the view first mounts on a cold launch — the
-                // `.onChange(of: auth.isPaired)` handler below only catches the
-                // false → true transition, so without this we'd never establish
-                // the primary `/ws` connection and sprite/tab events would
-                // never reach the client.
-                if auth.isPaired {
-                    Task {
-                        await relay.fetchAuthMethods(serverURL: auth.serverURL)
-                        try? await relay.connect(to: auth.serverURL)
-                    }
-                }
             }
             .onChange(of: auth.userId) { _, newId in
                 relay.currentUserId = newId
@@ -79,15 +65,18 @@ struct MajorTomApp: App {
             .onChange(of: auth.userRole) { _, newRole in
                 relay.currentUserRole = newRole ?? .viewer
             }
-            .onChange(of: auth.isPaired) { _, isPaired in
-                if isPaired {
-                    Task {
-                        // Request notification permission after pairing
-                        _ = await notificationService.requestPermission()
-                        // Fetch auth methods to adapt UI (team features, etc.)
-                        await relay.fetchAuthMethods(serverURL: auth.serverURL)
-                        try? await relay.connect(to: auth.serverURL)
-                    }
+            // Single auth-state connect path. `initial: true` fires on
+            // cold launch for already-paired devices (AuthService loads
+            // credentials from the Keychain synchronously in init()),
+            // and the same handler catches a later false→true pairing
+            // transition. RelayService.connect is a no-op if the socket
+            // is already open, so repeat firings are safe.
+            .onChange(of: auth.isPaired, initial: true) { _, isPaired in
+                guard isPaired else { return }
+                Task {
+                    _ = await notificationService.requestPermission()
+                    await relay.fetchAuthMethods(serverURL: auth.serverURL)
+                    try? await relay.connect(to: auth.serverURL)
                 }
             }
             // Wave 4: flush queued /btw messages when the relay reconnects so

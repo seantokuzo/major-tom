@@ -9,6 +9,7 @@ import Foundation
 /// Storage format: `[tabId: userTitle]` in UserDefaults under
 /// `mt-terminal-tab-user-titles` (same key the terminal used previously,
 /// so existing user renames survive the refactor).
+@MainActor
 @Observable
 final class TabTitleStore {
     private static let defaultsKey = "mt-terminal-tab-user-titles"
