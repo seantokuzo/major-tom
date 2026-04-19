@@ -9,6 +9,9 @@ struct TerminalTabBar: View {
     /// The list of open terminal tabs.
     let tabs: [TerminalTab]
 
+    /// Shared user-title store — bidirectional with Office Manager.
+    let titleStore: TabTitleStore
+
     /// Callback when a tab is tapped to switch to it.
     let onSelectTab: (UUID) -> Void
 
@@ -21,6 +24,12 @@ struct TerminalTabBar: View {
     /// Callback when the user renames a tab via long-press.
     /// Passing an empty string clears the override.
     let onRenameTab: (UUID, String) -> Void
+
+    /// Render title for a tab — user override wins, otherwise fall back
+    /// to the shell-supplied xterm title.
+    private func displayTitle(for tab: TerminalTab) -> String {
+        titleStore.title(for: tab.tabId) ?? tab.title
+    }
 
     /// The tab currently being renamed (drives the native rename alert).
     @State private var renameTarget: TerminalTab?
@@ -78,8 +87,9 @@ struct TerminalTabBar: View {
     // MARK: - Tab Button
 
     private func tabButton(for tab: TerminalTab) -> some View {
-        HStack(spacing: MajorTomTheme.Spacing.xs) {
-            Text(tab.displayTitle)
+        let title = displayTitle(for: tab)
+        return HStack(spacing: MajorTomTheme.Spacing.xs) {
+            Text(title)
                 .font(.system(size: 12, weight: tab.isActive ? .semibold : .regular, design: .monospaced))
                 .foregroundStyle(tab.isActive ? MajorTomTheme.Colors.accent : MajorTomTheme.Colors.textSecondary)
                 .lineLimit(1)
@@ -95,7 +105,7 @@ struct TerminalTabBar: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Close \(tab.displayTitle)")
+            .accessibilityLabel("Close \(title)")
         }
         .padding(.horizontal, MajorTomTheme.Spacing.sm)
         .padding(.vertical, MajorTomTheme.Spacing.xs)
@@ -118,7 +128,7 @@ struct TerminalTabBar: View {
             } label: {
                 Label("Rename", systemImage: "pencil")
             }
-            if tab.userTitle != nil {
+            if titleStore.title(for: tab.tabId) != nil {
                 Button(role: .destructive) {
                     onRenameTab(tab.id, "")
                 } label: {
@@ -127,7 +137,7 @@ struct TerminalTabBar: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(tab.displayTitle), tab\(tab.isActive ? ", active" : "")")
+        .accessibilityLabel("\(title), tab\(tab.isActive ? ", active" : "")")
         .accessibilityHint("Double tap to switch, or use the Rename action.")
         .accessibilityAction(named: Text("Rename")) {
             beginRename(for: tab)
@@ -139,7 +149,7 @@ struct TerminalTabBar: View {
     /// entry points route through the same state transition.
     private func beginRename(for tab: TerminalTab) {
         HapticService.impact(.medium)
-        renameDraft = tab.userTitle ?? ""
+        renameDraft = titleStore.title(for: tab.tabId) ?? ""
         renameTarget = tab
     }
 

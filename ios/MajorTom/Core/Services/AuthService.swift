@@ -63,13 +63,30 @@ final class AuthService {
         try? KeychainService.save(url, for: .serverURL)
     }
 
+    /// Prepend the right scheme when the user typed a bare hostname. iOS
+    /// App Transport Security blocks plain http:// to public domains, so
+    /// we default to https:// unless the address clearly points at LAN /
+    /// localhost / an IP (in which case http:// is correct for dev).
+    static func normalizeBaseURL(_ address: String) -> String {
+        if address.contains("://") { return address }
+        let lower = address.lowercased()
+        // Explicit loopback / localhost.
+        if lower == "localhost" || lower.hasPrefix("localhost:") { return "http://\(address)" }
+        // IPv4 pattern (optionally followed by `:port`) — LAN / dev target.
+        let ipv4 = #"^\d{1,3}(\.\d{1,3}){3}(:\d+)?$"#
+        if address.range(of: ipv4, options: .regularExpression) != nil {
+            return "http://\(address)"
+        }
+        // Anything else (public DNS name) — ATS requires https.
+        return "https://\(address)"
+    }
+
     // MARK: - PIN Pairing
 
     func pair(pin: String) async {
         authState = .pairing
 
-        let scheme = serverURL.contains("://") ? "" : "http://"
-        let baseURL = "\(scheme)\(serverURL)"
+        let baseURL = AuthService.normalizeBaseURL(serverURL)
         guard let url = URL(string: "\(baseURL)/auth/pin/login") else {
             authState = .error("Invalid server URL")
             return

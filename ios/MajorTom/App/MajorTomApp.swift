@@ -4,12 +4,25 @@ import SwiftUI
 struct MajorTomApp: App {
     @State private var relay = RelayService()
     @State private var officeSceneManager = OfficeSceneManager()
-    @State private var auth = AuthService()
+    @State private var auth: AuthService
     @State private var notificationService = NotificationService()
     @State private var liveActivityManager = LiveActivityManager()
     @State private var watchConnectivity = PhoneWatchConnectivityService()
+    @State private var titleStore: TabTitleStore
+    @State private var terminalViewModel: TerminalViewModel
     @State private var achievementsViewModel: AchievementsViewModel?
     @State private var selectedTab: AppTab = .terminal
+
+    init() {
+        // TerminalViewModel is lifted to the App so the Office Manager can
+        // see the authoritative list of terminal tabs. Office existence is
+        // a per-tab iOS decision — no auto-creation tied to claude.
+        let authService = AuthService()
+        let store = TabTitleStore()
+        _auth = State(initialValue: authService)
+        _titleStore = State(initialValue: store)
+        _terminalViewModel = State(initialValue: TerminalViewModel(auth: authService, titleStore: store))
+    }
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -45,12 +58,6 @@ struct MajorTomApp: App {
                 // Also set up the "user toggled off -> end all" observer.
                 liveActivityManager.observePreferenceChanges()
                 Task { await liveActivityManager.cleanupOrphanedActivities() }
-                // Fetch auth methods on launch for already-paired devices
-                if auth.isPaired {
-                    Task {
-                        await relay.fetchAuthMethods(serverURL: auth.serverURL)
-                    }
-                }
             }
             .onChange(of: auth.userId) { _, newId in
                 relay.currentUserId = newId
@@ -58,15 +65,18 @@ struct MajorTomApp: App {
             .onChange(of: auth.userRole) { _, newRole in
                 relay.currentUserRole = newRole ?? .viewer
             }
-            .onChange(of: auth.isPaired) { _, isPaired in
-                if isPaired {
-                    Task {
-                        // Request notification permission after pairing
-                        _ = await notificationService.requestPermission()
-                        // Fetch auth methods to adapt UI (team features, etc.)
-                        await relay.fetchAuthMethods(serverURL: auth.serverURL)
-                        try? await relay.connect(to: auth.serverURL)
-                    }
+            // Single auth-state connect path. `initial: true` fires on
+            // cold launch for already-paired devices (AuthService loads
+            // credentials from the Keychain synchronously in init()),
+            // and the same handler catches a later false→true pairing
+            // transition. RelayService.connect is a no-op if the socket
+            // is already open, so repeat firings are safe.
+            .onChange(of: auth.isPaired, initial: true) { _, isPaired in
+                guard isPaired else { return }
+                Task {
+                    _ = await notificationService.requestPermission()
+                    await relay.fetchAuthMethods(serverURL: auth.serverURL)
+                    try? await relay.connect(to: auth.serverURL)
                 }
             }
             // Wave 4: flush queued /btw messages when the relay reconnects so
@@ -124,13 +134,13 @@ struct MajorTomApp: App {
 
     private var mainTabView: some View {
         TabView(selection: $selectedTab) {
-            TerminalView(auth: auth, liveActivityManager: liveActivityManager, watchConnectivity: watchConnectivity)
+            TerminalView(viewModel: terminalViewModel, liveActivityManager: liveActivityManager, watchConnectivity: watchConnectivity)
                 .tabItem {
                     Label("Terminal", systemImage: "apple.terminal")
                 }
                 .tag(AppTab.terminal)
 
-            OfficeManagerView(sceneManager: officeSceneManager, relay: relay)
+            OfficeManagerView(sceneManager: officeSceneManager, relay: relay, titleStore: titleStore, terminalViewModel: terminalViewModel)
                 .tabItem {
                     Label("Office", systemImage: "building.2")
                 }

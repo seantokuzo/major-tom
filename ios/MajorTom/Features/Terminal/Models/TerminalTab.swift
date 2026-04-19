@@ -13,12 +13,11 @@ struct TerminalTab: Identifiable, Equatable {
     /// Matches the regex `[a-zA-Z0-9._-]{1,64}` enforced by the relay.
     let tabId: String
 
-    /// Shell-supplied title from xterm's title escape sequence.
+    /// Shell-supplied title from xterm's title escape sequence. The
+    /// user-supplied override (and its persistence) now lives on the
+    /// shared `TabTitleStore` so it can be edited from either the
+    /// terminal tab bar or the Office Manager.
     var title: String
-
-    /// User-supplied rename, takes precedence over `title` when set.
-    /// iOS-only UI metadata — never sent over the wire protocol.
-    var userTitle: String?
 
     /// Whether this tab is currently the active/visible one.
     var isActive: Bool
@@ -26,19 +25,10 @@ struct TerminalTab: Identifiable, Equatable {
     /// Timestamp when this tab was created (for ordering).
     let createdAt: Date
 
-    /// The title to render — user override when set, otherwise shell title.
-    var displayTitle: String {
-        if let userTitle, !userTitle.isEmpty {
-            return userTitle
-        }
-        return title
-    }
-
     init(
         id: UUID = UUID(),
         tabId: String? = nil,
         title: String = "Terminal",
-        userTitle: String? = nil,
         isActive: Bool = false,
         createdAt: Date = Date()
     ) {
@@ -47,7 +37,6 @@ struct TerminalTab: Identifiable, Equatable {
         // Uses the first 8 chars of the UUID for brevity + readability.
         self.tabId = tabId ?? "tab-\(id.uuidString.prefix(8).lowercased())"
         self.title = title
-        self.userTitle = userTitle
         self.isActive = isActive
         self.createdAt = createdAt
     }

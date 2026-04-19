@@ -17,7 +17,6 @@ import UIKit
 /// Wave 5: Copy/paste mode, orientation transitions, Live Activity and Watch
 /// integration. Terminal is now the default tab on launch.
 struct TerminalView: View {
-    let auth: AuthService
     let liveActivityManager: LiveActivityManager
     let watchConnectivity: PhoneWatchConnectivityService
 
@@ -51,11 +50,10 @@ struct TerminalView: View {
     /// Current device orientation — used to trigger resize on rotation.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    init(auth: AuthService, liveActivityManager: LiveActivityManager, watchConnectivity: PhoneWatchConnectivityService) {
-        self.auth = auth
+    init(viewModel: TerminalViewModel, liveActivityManager: LiveActivityManager, watchConnectivity: PhoneWatchConnectivityService) {
         self.liveActivityManager = liveActivityManager
         self.watchConnectivity = watchConnectivity
-        self._viewModel = State(initialValue: TerminalViewModel(auth: auth))
+        self._viewModel = State(initialValue: viewModel)
     }
 
     var body: some View {
@@ -71,6 +69,7 @@ struct TerminalView: View {
                 // Tab bar for multi-tab support
                 TerminalTabBar(
                     tabs: viewModel.tabs,
+                    titleStore: viewModel.titleStore,
                     onSelectTab: { id in
                         viewModel.switchTab(id: id)
                     },
@@ -133,7 +132,12 @@ struct TerminalView: View {
         }
         .closeTabConfirmation(
             isPresented: $viewModel.showCloseConfirmation,
-            tabTitle: viewModel.tabs.first(where: { $0.id == viewModel.pendingCloseTabId })?.displayTitle ?? "Terminal",
+            tabTitle: {
+                guard let tab = viewModel.tabs.first(where: { $0.id == viewModel.pendingCloseTabId }) else {
+                    return "Terminal"
+                }
+                return viewModel.titleStore.title(for: tab.tabId) ?? tab.title
+            }(),
             onConfirm: {
                 viewModel.confirmCloseTab()
             }

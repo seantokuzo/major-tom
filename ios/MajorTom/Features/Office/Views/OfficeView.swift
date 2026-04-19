@@ -72,6 +72,12 @@ struct OfficeView: View {
     /// Activated scene — populated in onAppear, avoids side effects in body.
     @State private var activatedScene: OfficeScene?
 
+    /// Tracks whether the camera is on the leftmost column. Drives the
+    /// NavigationStack interactive-pop gesture — edge-swipe back should
+    /// only fire when the user can't pan further left, otherwise a
+    /// normal pan-to-column-1 gesture accidentally pops the view.
+    @State private var isAtFirstColumn: Bool = true
+
     @Environment(\.dismiss) private var dismiss
 
     /// Resolved viewModel from the scene manager.
@@ -138,6 +144,21 @@ struct OfficeView: View {
             // SpriteKit scene
             SpriteView(scene: scene)
                 .ignoresSafeArea(.all, edges: .bottom)
+                .background(SwipeBackGestureToggle(isEnabled: isAtFirstColumn))
+                .onAppear {
+                    // Initial state: scene starts on col1Top (see OfficeScene init).
+                    isAtFirstColumn = snapIsFirstColumn(scene.activeSnapPosition)
+                    scene.onSnapPositionChanged = { position in
+                        isAtFirstColumn = snapIsFirstColumn(position)
+                    }
+                }
+                .onDisappear {
+                    // OfficeSceneManager retains scenes across navigations;
+                    // clear the callback so popped OfficeViews don't get
+                    // stale state updates and the view's @State bag isn't
+                    // kept alive past the SwiftUI teardown.
+                    scene.onSnapPositionChanged = nil
+                }
                 .onChange(of: viewModel.agents, initial: true) { _, newAgents in
                     syncScene(with: newAgents, viewModel: viewModel, scene: scene)
                 }
@@ -750,6 +771,58 @@ struct OfficeView: View {
         case .gym: return .gym
         case .rollercoaster: return .rollercoaster
         }
+    }
+
+    /// Whether a snap position represents the leftmost column of rooms.
+    /// Used to gate the NavigationStack interactive-pop gesture.
+    private func snapIsFirstColumn(_ position: SnapPosition) -> Bool {
+        switch position {
+        case .col1Top, .col1Bottom: return true
+        default: return false
+        }
+    }
+}
+
+// MARK: - Swipe-back gesture control
+
+/// Toggles the parent UINavigationController's `interactivePopGestureRecognizer`
+/// so edge-swipe back is disabled while the user is panning the Office scene
+/// and re-enabled only when the camera is parked on the leftmost column.
+private struct SwipeBackGestureToggle: UIViewRepresentable {
+    let isEnabled: Bool
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        DispatchQueue.main.async { apply(isEnabled, from: view) }
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        DispatchQueue.main.async { apply(isEnabled, from: view) }
+    }
+
+    static func dismantleUIView(_ view: UIView, coordinator: ()) {
+        // Re-enable on teardown so the rest of the app isn't left stuck
+        // with the pop gesture disabled.
+        apply(true, from: view)
+    }
+
+    @discardableResult
+    private static func apply(_ enabled: Bool, from view: UIView) -> Bool {
+        var responder: UIResponder? = view
+        while let r = responder {
+            if let nav = r as? UINavigationController {
+                nav.interactivePopGestureRecognizer?.isEnabled = enabled
+                return true
+            }
+            responder = r.next
+        }
+        return false
+    }
+
+    private func apply(_ enabled: Bool, from view: UIView) {
+        Self.apply(enabled, from: view)
     }
 }
 

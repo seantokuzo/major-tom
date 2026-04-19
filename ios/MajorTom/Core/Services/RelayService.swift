@@ -157,9 +157,22 @@ final class RelayService {
     // MARK: - Connection
 
     func connect(to urlString: String) async throws {
-        // Ensure /ws path is appended for the relay WebSocket route
-        let wsPath = urlString.hasSuffix("/ws") ? urlString : "\(urlString)/ws"
-        guard let url = URL(string: "ws://\(wsPath)") else {
+        // Idempotent: already-connected / in-flight connects are no-ops.
+        // Callers (onAppear / onChange(isPaired, initial: true)) may fire
+        // multiple times during a single launch.
+        if connectionState == .connected || connectionState == .connecting {
+            return
+        }
+        // Normalize the base (http:// vs https:// per LAN/public heuristic),
+        // then rewrite the scheme to ws/wss for the WebSocket.
+        // A bare hostname like "majortom.example.space" becomes
+        // "wss://majortom.example.space/ws".
+        let base = AuthService.normalizeBaseURL(urlString)
+        let wsBase = base
+            .replacingOccurrences(of: "https://", with: "wss://")
+            .replacingOccurrences(of: "http://", with: "ws://")
+        let wsURLString = wsBase.hasSuffix("/ws") ? wsBase : "\(wsBase)/ws"
+        guard let url = URL(string: wsURLString) else {
             throw WebSocketError.invalidURL
         }
 
@@ -192,8 +205,7 @@ final class RelayService {
     /// Fetch available authentication methods from the relay server.
     /// Call this early (when the relay URL is known) to adapt UI accordingly.
     func fetchAuthMethods(serverURL: String) async {
-        let scheme = serverURL.contains("://") ? "" : "http://"
-        let baseURL = "\(scheme)\(serverURL)"
+        let baseURL = AuthService.normalizeBaseURL(serverURL)
         guard let url = URL(string: "\(baseURL)/auth/methods") else { return }
 
         do {
