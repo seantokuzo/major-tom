@@ -10,19 +10,23 @@
 
 **Symptom:** every tool call in a relay-launched `claude` session (Read, Bash, Write, Grep, …) hits PreToolUse → routes to iOS → spawns an "Approval Required" notification. User reports "100 notifications just getting sprites to link."
 
-**Root cause:** `relay/src/installer/install-hooks.ts` writes `~/.major-tom/claude-config/settings.json` with only the `hooks` block. No `permissions` field. User's real allowlist lives in `~/.claude/settings.json` (`permissions.allow`, `permissions.ask`) and is never imported.
+**Root cause (two layers):**
+1. `install-hooks.ts` writes `~/.major-tom/claude-config/settings.json` with only the `hooks` block. User's allowlist in `~/.claude/settings.json` was never imported.
+2. Even with the allowlist imported, `pretooluse.sh` in `local` mode **always** returns `{"permissionDecision":"ask"}`. That overrides Claude Code's own allowlist check, so every tool call still enqueues an approval and fires a push.
 
-**Fix direction:**
-- Installer reads `~/.claude/settings.json` (read-only — honors the "never write to `~/.claude/`" constraint) at install time.
-- Merges `permissions.allow` + `permissions.ask` into the written `~/.major-tom/claude-config/settings.json`.
-- Decision: re-sync on every relay boot, or only on first install + manual refresh? Default: re-sync on boot so new allowlist entries propagate without a reinstall.
-- Edge case: user has no `~/.claude/settings.json` → write only hooks (today's behavior).
+**Fix:** two-part.
+- **Part A (`b63e367`, shipped).** Installer reads `~/.claude/settings.json` read-only and merges `permissions.allow` + `permissions.ask` into the private settings.json. Honors the "never write to ~/.claude/" constraint.
+- **Part B (follow-up commit).** New module `relay/src/hooks/permission-matcher.ts` implements Claude Code rule syntax (`ToolName`, `ToolName(*)`, `ToolName(prefix:*)`, `mcp__foo_*`). The `/hooks/pre-tool-use` handler evaluates allow + ask lists before enqueuing — matches on allow short-circuit to `"allow"` (no enqueue, no push). Ask rules still take precedence so `Bash(rm:*)` prompts even if `Bash(*)` is allowed.
 
 **Files involved:**
-- `relay/src/installer/install-hooks.ts` — add `importUserPermissions()`, merge into `SETTINGS_JSON` builder.
-- Tests: `relay/src/installer/__tests__/install-hooks.test.ts` — unit-test the merge + missing-user-settings fallback.
+- `relay/src/installer/install-hooks.ts` — `importUserPermissions()`, `buildSettingsJson()`.
+- `relay/src/hooks/permission-matcher.ts` — `evaluatePermission()`, `readPermissionSettings()`.
+- `relay/src/hooks/hook-server.ts` — short-circuit inside `/hooks/pre-tool-use`.
+- Tests: `relay/src/installer/__tests__/install-hooks.test.ts` (9), `relay/src/hooks/__tests__/permission-matcher.test.ts` (16).
 
-**Verification:** after fix, tool calls allowed by the user's base allowlist should pass through without an Approval notification. `Bash(rm:*)` should still prompt (ask-list carries over).
+**Verification:** after both parts land, Bash/mcp__* calls in the user's allowlist should pass silently (no notification). `Bash(rm:*)` still prompts. Non-allowlisted tools (Read, Grep, Glob, Agent) still prompt by default — covered separately by upcoming PTY-mode work (item #3).
+
+**Still on fire after Part B:** project-level `.claude/settings.local.json` (cwd-scoped) is not imported. That's where accumulated "allow always" choices live. Track as P1.
 
 ---
 

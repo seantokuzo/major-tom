@@ -29,6 +29,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { basename } from 'node:path';
 import { logger } from '../utils/logger.js';
 import { ApprovalQueue } from './approval-queue.js';
+import { evaluatePermission, readPermissionSettings } from './permission-matcher.js';
 import type { NotificationBatcher } from '../push/notification-batcher.js';
 import type { AgentEvent } from '../adapters/adapter.interface.js';
 import type { ServerMessage } from '../protocol/messages.js';
@@ -212,6 +213,28 @@ export function createHookServer(
             : Array.isArray(tabIdHeader)
               ? tabIdHeader[0]
               : undefined;
+
+        // Allowlist short-circuit. If the user has pre-approved this tool
+        // in their settings.json, return 'allow' directly — no enqueue, no
+        // push. Without this, every Bash(*)/mcp__* call still floods the
+        // phone because hook permissionDecision:"ask" overrides the
+        // allowlist. Ask rules take precedence so specific patterns (like
+        // Bash(rm:*)) still prompt.
+        const permissionSettings = readPermissionSettings();
+        const evaluated = evaluatePermission(tool, toolInput, permissionSettings);
+        if (evaluated === 'allow') {
+          logger.debug(
+            { tool, toolUseId, tabId },
+            'Tool pre-approved by user allowlist — skipping approval enqueue',
+          );
+          sendJson(res, 200, {
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'allow',
+            },
+          });
+          return;
+        }
 
         const description = toolInput ? JSON.stringify(toolInput) : '';
 
