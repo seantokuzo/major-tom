@@ -134,11 +134,36 @@ Collection of terminal-render issues surfaced during live iOS use. All `ios/Majo
 
 **Fix direction:** touch gesture on the terminal surface → send `\e[A` / `\e[B` per N pixels of travel. Needs a velocity threshold so fast flicks feel right. Gate by tmux-copy-mode state (already tracked per-tab from Phase 13 Wave 2.7).
 
+#### 4f. Terminal stale on foreground/reconnect until user taps
+
+**Symptom:** app backgrounded → foregrounded, terminal WS reconnects (per the 30-min grace), but the visible buffer stays frozen on the pre-background snapshot. Tapping into the terminal (which dismisses/re-opens the keyboard) triggers a redraw and content catches up.
+
+**Fix direction:** on the iOS side, emit a resize/refresh on every reconnect — either a no-op xterm `fit` addon call, or send the relay a `resize` control frame so tmux (and the PTY) repaint the viewport. Same hook that fires when the keyboard shows/hides should fire on WS reattach.
+
+**Files:** `ios/MajorTom/Features/Terminal/ViewModels/TerminalViewModel.swift` (reattach handler), `ios/MajorTom/Features/Terminal/Resources/terminal.html` (xterm fit / refresh entry point).
+
 #### 4e. Scrollbar shows inconsistently
 
 **Symptom:** a right-edge scrollbar sometimes appears that can be tap-hold-dragged — user can't figure out when. Nice to have, but reliability is the ask.
 
 **Fix direction:** define when the scrollbar shows — likely: "when buffer > viewport AND touch has been on the terminal surface for >200 ms without a gesture." Auto-hide after ~1s of no touch. Needs a spec decision before implementation — check with user once we get there.
+
+---
+
+### 7. Sprites detach from subagents on backgrounding / reconnect
+
+**Symptom:** user backgrounds the app while claude is running subagents. On foreground + reconnect, the relay-side subagents are still alive and producing events, but the iOS Office scene has lost its linked sprites for them. Agents keep working; UI doesn't know.
+
+**Expected (per Wave 6 spec §S4 / S8):** "Relay disconnects mid-subagent → sprite grays out / shows disconnected indicator. Reconnect → restore from relay state." The reconnect half isn't landing — sprites aren't being rehydrated from the relay's `sprite.state.request` response.
+
+**Fix direction:** on primary WS reattach after background, iOS needs to emit `sprite.state.request` for each tab whose Office is currently open (or queue it for the next time the Office is opened). When the relay responds, re-bind sprite slots to the reported subagent ids.
+
+**Files:**
+- `ios/MajorTom/Core/Services/RelayService.swift` — on reconnect, trigger a sprite-state refresh.
+- `ios/MajorTom/Features/Office/ViewModels/OfficeSceneManager.swift` — consume `sprite.state.response` and re-link.
+- `relay/src/sprites/sprite-mapper.ts` — already broadcasts on `sprite.state.request`, verify it includes all current bindings.
+
+**Priority:** P1 — this breaks a Wave 6 shipped behavior and the visible state diverges from reality for the user.
 
 ---
 
