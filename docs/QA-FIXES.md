@@ -150,22 +150,27 @@ Collection of terminal-render issues surfaced during live iOS use. All `ios/Majo
 
 ---
 
-### 7b. `/exit` with a subagent still running — unclear UX + orphan risk
+### 7b. `/exit` orphans subagents — `Stop` hook never fires (CONFIRMED — P0)
 
-**Symptom:** user typed `/exit` in claude during L5 with 5 subagents active. 4 Explore agents' `SubagentStop` hooks fired; the 5th (claude-code-guide) never did, and no session `Stop` hook fired either. Either:
+**Symptom:** user typed `/exit` in claude (L5). 4 Explore subagents' `SubagentStop` hooks fired cleanly; the 5th (`claude-code-guide`) never did; no session `Stop` hook fired either. 12+ minutes later the sprite is still `working` in the iOS Office and the relay has no record of session end.
 
-1. **Expected:** claude is holding exit until the last subagent finishes. The UI doesn't signal "waiting for subagent to finish before exit" — user thinks exit worked.
-2. **Bug:** claude actually exited but a PTY child orphan kept running. Parent Stop hook never fired → iOS sprite stuck in `working` forever.
+Reproducible: happens specifically when a custom subagent type (e.g. `claude-code-guide`) is active at exit time. Standard types (Explore) dismiss cleanly.
 
-**Fix direction:**
-- First: confirm which scenario this is. Test by letting the long-running subagent finish naturally with exit pending — if Stop hook fires then, scenario 1.
-- For scenario 1 UX: surface a "waiting on subagent" state in the terminal tab (banner, spinner) + an abort path (Ctrl+C twice?).
-- For scenario 2 (orphan): relay `Stop` hook handler must audit still-linked subagents for the closing session and emit synthetic `SubagentStop` events so the sprites despawn cleanly.
+**Impact:** sprite stuck visible-but-zombie forever. User loses trust in the Office state. Breaks the L5 lifecycle scenario + Office-survives-session-end semantics in `docs/PHASE-TAB-KEYED-OFFICES.md` §8.
+
+**Fix direction (safety nets — one or both):**
+
+1. **Relay-side Stop hook sweep.** When a session `Stop` hook fires, audit all still-linked subagents in `SpriteMapper` for that sessionId and emit synthetic `agent-lifecycle: dismissed` events. Already planned — bump to P0.
+2. **Relay-side PTY-exit detection.** If the PTY owning a session goes away (which we already track), also sweep orphaned subagents. Catches the scenario where claude exited without firing Stop (real scenario from this QA run).
+3. **iOS fallback stale-sweep.** Any linked sprite with no event in N minutes (e.g. 5) → gray out + expiry indicator + auto-dismiss after 10. Defense in depth against relay-side gaps.
+
+**Investigation step first:** confirm whether claude exited or is still alive. `ps aux | grep claude` after the orphan shows up. If no claude process, Stop hook was never fired by claude — the bug is that iOS/relay didn't notice claude's PTY had gone. If claude IS alive, it's waiting for `claude-code-guide` to finish but never will.
 
 **Files:**
-- `relay/src/hooks/hook-server.ts` — `/hooks/stop` handler, post-Stop cleanup sweep of linked subagents for the session.
-- `relay/src/fleet/fleet-manager.ts` — agent-lifecycle `dismissed` emit per orphaned subagent.
-- `ios/MajorTom/Features/Terminal/…` — "waiting on agent to finish" banner for scenario 1.
+- `relay/src/hooks/hook-server.ts` — `/hooks/stop` handler, post-Stop cleanup sweep.
+- `relay/src/routes/shell.ts` — PTY-exit handler, add subagent orphan sweep when session isn't cleanly Stopped.
+- `relay/src/fleet/fleet-manager.ts` — emit synthetic `dismissed` per orphan.
+- `ios/MajorTom/Features/Office/ViewModels/OfficeSceneManager.swift` — stale sprite timeout.
 
 ---
 
