@@ -150,6 +150,25 @@ Collection of terminal-render issues surfaced during live iOS use. All `ios/Majo
 
 ---
 
+### 7b. `/exit` with a subagent still running — unclear UX + orphan risk
+
+**Symptom:** user typed `/exit` in claude during L5 with 5 subagents active. 4 Explore agents' `SubagentStop` hooks fired; the 5th (claude-code-guide) never did, and no session `Stop` hook fired either. Either:
+
+1. **Expected:** claude is holding exit until the last subagent finishes. The UI doesn't signal "waiting for subagent to finish before exit" — user thinks exit worked.
+2. **Bug:** claude actually exited but a PTY child orphan kept running. Parent Stop hook never fired → iOS sprite stuck in `working` forever.
+
+**Fix direction:**
+- First: confirm which scenario this is. Test by letting the long-running subagent finish naturally with exit pending — if Stop hook fires then, scenario 1.
+- For scenario 1 UX: surface a "waiting on subagent" state in the terminal tab (banner, spinner) + an abort path (Ctrl+C twice?).
+- For scenario 2 (orphan): relay `Stop` hook handler must audit still-linked subagents for the closing session and emit synthetic `SubagentStop` events so the sprites despawn cleanly.
+
+**Files:**
+- `relay/src/hooks/hook-server.ts` — `/hooks/stop` handler, post-Stop cleanup sweep of linked subagents for the session.
+- `relay/src/fleet/fleet-manager.ts` — agent-lifecycle `dismissed` emit per orphaned subagent.
+- `ios/MajorTom/Features/Terminal/…` — "waiting on agent to finish" banner for scenario 1.
+
+---
+
 ### 7. Sprites detach from subagents on backgrounding / reconnect
 
 **Symptom:** user backgrounds the app while claude is running subagents. On foreground + reconnect, the relay-side subagents are still alive and producing events, but the iOS Office scene has lost its linked sprites for them. Agents keep working; UI doesn't know.
@@ -207,7 +226,16 @@ Collection of terminal-render issues surfaced during live iOS use. All `ios/Majo
 
 **Fix direction:** iOS label rendering prefers `canonicalRole` (humanize "researcher" → "Researcher") over `agentType`. Fall back to `agentType` only when `canonicalRole` is missing.
 
-**Secondary concern:** User observed "all Kendricks" for Explore subagents, but relay logs show `characterType: "botanist"`. Worth confirming — either relay's choice is being overridden client-side, or Kendrick and botanist look similar.
+**Secondary concern (confirmed, higher priority than "nice-to-have"):** iOS is not using the `characterType` the relay sends. Observed twice across L4 / L5 runs:
+
+| Run | Relay sent (Explore → researcher → botanist) | iOS rendered |
+|---|---|---|
+| L4 | botanist | Kendrick |
+| L5 | botanist | Bowen Yang |
+
+Both Kendrick and Bowen Yang are in `RoleMapper.overflowPool`, not the primary mapping. Sprite-agent Wiring Wave 3/4 (PR #139/#140) was supposed to "clone not consume" using relay's characterType, but iOS appears to be reassigning via its own role-stable binding that skips primary roles and goes straight to overflow. This regresses the Role → CharacterType mapping spec table in `docs/PHASE-SPRITE-AGENT-WIRING.md` §Q5.
+
+**Investigate:** `OfficeViewModel` / `OfficeSceneManager` agent-lifecycle handler — does it honor `sprite.mapping.created.characterType` from the relay event, or does it overwrite with a local RoleMapper lookup? Likely the latter.
 
 **Files:** `AgentSprite.swift` (role label), `RoleMapper.swift` (humanization), `CharacterConfig.swift` (confirm mapping).
 
