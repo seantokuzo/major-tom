@@ -142,6 +142,52 @@ Collection of terminal-render issues surfaced during live iOS use. All `ios/Majo
 
 ---
 
+## P2 — Polish / nice-to-have
+
+### 4b. Approval notification body is raw JSON
+
+**Symptom:** notification body for a pending approval shows the stringified `tool_input` object (e.g. `{"command":"ls -la","description":"..."}`) — works but ugly.
+
+**Fix direction:** humanize per tool in the push payload builder before batching:
+- `Bash` → show just the command
+- `Read/Edit/Write/MultiEdit` → show path + 1-line summary
+- `Agent` → show subagent type + task description
+- `WebFetch/WebSearch` → show URL / query
+- Fallback → today's behavior
+
+`ios/MajorTom/Features/Office/Models/ToolHumanizer.swift` already exists on the iOS side for sprite bubbles — likely reusable shape for relay-side notification copy too.
+
+**Files:** `relay/src/push/notification-batcher.ts` or wherever the push body is built.
+
+### 5. Wave 5 role aura not rendering
+
+**Symptom:** during L4 QA, subagent sprites spawned linked but user reports only a "green dot below them and their role above them" — no colored aura glow.
+
+**Expected (per `SpriteAura.swift`):** three concentric SKShapeNode circles, role-colored, fade-in on `.working` state. Hidden when a green unread-`/btw`-response glow overtakes it.
+
+**Likely causes:**
+- Sprites aren't transitioning to `.working` state after spawn — they go `linked` and stay there, so `showRoleAura()` never runs.
+- Aura zPosition is behind the map tiles / other layers.
+- Scene hierarchy adds the aura but never adds to parent at the right time.
+
+**Files:** `AgentSprite.swift` (showRoleAura, state setter), `SpriteAura.swift` (fadeIn/fadeOut), `OfficeSceneManager.swift` (agent-lifecycle → state dispatch).
+
+**Not blocking QA.** Follow-up: instrument state transitions server→client to confirm `.working` flips after spawn.
+
+### 6. Sprite role labels use agent-type names, not humanized roles
+
+**Symptom:** role tag above sprites shows raw subagent type (`Explore`, `claude-code-guide`) instead of a friendly role label.
+
+**Expected:** humanized role labels matching the canonical role (`researcher`, `engineer`). Relay already emits `canonicalRole` per sprite mapping event.
+
+**Fix direction:** iOS label rendering prefers `canonicalRole` (humanize "researcher" → "Researcher") over `agentType`. Fall back to `agentType` only when `canonicalRole` is missing.
+
+**Secondary concern:** User observed "all Kendricks" for Explore subagents, but relay logs show `characterType: "botanist"`. Worth confirming — either relay's choice is being overridden client-side, or Kendrick and botanist look similar.
+
+**Files:** `AgentSprite.swift` (role label), `RoleMapper.swift` (humanization), `CharacterConfig.swift` (confirm mapping).
+
+---
+
 ## Done
 
 _(items move here with PR link + merge date when closed)_
