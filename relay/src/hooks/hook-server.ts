@@ -522,12 +522,24 @@ export function createHookServer(
         return;
       }
 
-      // ── Stop (session-end) ───────────────────────────────
-      // Tab-Keyed Offices — Claude Code's session-end hook. Closes the
-      // Session and removes it from the TabRegistry but leaves the
-      // TabMeta alive so dogs stay in the Office; tab teardown happens
-      // only on PTY grace-expire (pty-adapter.ts → tabRegistry.tabClosed).
-      if (method === 'POST' && url === '/hooks/stop') {
+      // ── Stop / SessionEnd ────────────────────────────────
+      // Both Claude Code events signal "the agent/session is done" in our
+      // system. `Stop` fires when the main agent finishes a turn; older
+      // versions of Claude Code only emitted this. `SessionEnd` fires when
+      // the user ends the session themselves — `/exit`, `/clear`, `/logout`,
+      // closing the terminal. CRITICAL: `/exit` does NOT fire `Stop`, so
+      // without SessionEnd the session stays "active" forever and any
+      // still-linked subagents orphan in the iOS Office (QA-FIXES.md #7b).
+      //
+      // Both endpoints share the same cleanup: close the Session, mark the
+      // session ended in TabRegistry (leaves TabMeta alive so dogs stay in
+      // the Office; tab teardown happens only on PTY grace-expire), sweep
+      // orphaned subagents, then broadcast the ended events.
+      if (
+        method === 'POST' &&
+        (url === '/hooks/stop' || url === '/hooks/session-end')
+      ) {
+        const hookName = url === '/hooks/stop' ? 'Stop' : 'SessionEnd';
         const body = await readBody(req);
         let payload: Record<string, unknown>;
         try {
@@ -546,12 +558,21 @@ export function createHookServer(
 
         if (!tabBridge) {
           logger.warn(
-            { sessionId },
-            'Stop hook received but tabBridge not wired — dropping (check createHookServer deps)',
+            { sessionId, hook: hookName },
+            'Session-end hook received but tabBridge not wired — dropping (check createHookServer deps)',
           );
           sendJson(res, 200, {});
           return;
         }
+
+        // SessionEnd duplicates Stop in the common `/exit` path (Stop
+        // fires first on the final turn, SessionEnd fires on the exit
+        // itself). If the session is already closed + unregistered when
+        // the second hook lands, short-circuit: skip the re-broadcast so
+        // clients don't see duplicate session.ended events.
+        const alreadyClosed =
+          tabBridge.tabRegistry.getTabForSession(sessionId) === undefined &&
+          tabBridge.sessionManager.tryGet(sessionId)?.status !== 'active';
 
         const tab = tabBridge.tabRegistry.getTabForSession(sessionId);
         tabBridge.sessionManager.tryGet(sessionId)?.close();
@@ -565,23 +586,31 @@ export function createHookServer(
           sweepOrphanedSubagentsForSession(sessionId, reportAgentLifecycle, 'session-stop');
         }
 
-        const endedAt = new Date().toISOString();
-        if (tab) {
+        if (!alreadyClosed) {
+          const endedAt = new Date().toISOString();
+          if (tab) {
+            tabBridge.broadcast({
+              type: 'tab.session.ended',
+              tabId: tab.tabId,
+              sessionId,
+              endedAt,
+            });
+          }
           tabBridge.broadcast({
-            type: 'tab.session.ended',
-            tabId: tab.tabId,
+            type: 'session.ended',
             sessionId,
-            endedAt,
           });
         }
-        tabBridge.broadcast({
-          type: 'session.ended',
-          sessionId,
-        });
 
         logger.info(
-          { tabId: tab?.tabId, sessionId },
-          'Stop hook closed session and updated TabRegistry',
+          {
+            tabId: tab?.tabId,
+            sessionId,
+            hook: hookName,
+            reason: typeof payload['reason'] === 'string' ? payload['reason'] : undefined,
+            alreadyClosed,
+          },
+          'Session-end hook closed session and updated TabRegistry',
         );
 
         sendJson(res, 200, {});

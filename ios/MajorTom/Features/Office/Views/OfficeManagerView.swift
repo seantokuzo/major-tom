@@ -22,16 +22,14 @@ struct OfficeManagerView: View {
     @State private var renameTarget: String?  // tabId being renamed
     @State private var renameDraft: String = ""
 
-    /// Name shown on office cards — user-supplied title wins, otherwise
-    /// fall back to the terminal's shell-supplied title, then the relay's
-    /// working-directory basename when present, then a generic label.
+    /// Name shown on office cards. Must stay 1:1 with the terminal tab
+    /// bar's label (`TerminalTabBar.displayTitle`) so the user's mental
+    /// model of "Office for tab X" matches the tab strip. User-supplied
+    /// override wins, otherwise fall back to the shell-supplied tab
+    /// title. Do NOT fall back to the cwd basename — that diverged from
+    /// the tab bar and broke the 1:1 promise.
     private func displayName(for tab: TerminalTab) -> String {
-        if let user = titleStore.title(for: tab.tabId) { return user }
-        if !tab.title.isEmpty, tab.title != "Terminal" { return tab.title }
-        if let meta = relay.tabRegistryStore.tabs[tab.tabId], !meta.workingDirName.isEmpty {
-            return meta.workingDirName
-        }
-        return "Terminal"
+        titleStore.title(for: tab.tabId) ?? tab.title
     }
 
     /// Whether this terminal tab has an Office scene created for it.

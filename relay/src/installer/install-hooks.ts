@@ -145,9 +145,12 @@ export function buildSettingsJson(userPermissions: unknown): string {
         },
       ],
       // Tab-Keyed Offices — SessionStart registers the tab↔session
-      // binding with the relay. Stop is Claude Code's session-end
-      // hook (per docs/STREAM-EVENTS.md:252). Both are fire-and-forget,
-      // no timeout needed — they never block.
+      // binding with the relay. Stop fires when the main agent
+      // finishes responding (per turn). SessionEnd fires when the user
+      // ends the session themselves (`/exit`, `/clear`, `/logout`,
+      // closing the terminal) — `/exit` does NOT fire Stop, which is
+      // why QA-FIXES.md #7b required adding SessionEnd. All three are
+      // fire-and-forget with no timeout.
       SessionStart: [
         {
           hooks: [
@@ -164,6 +167,16 @@ export function buildSettingsJson(userPermissions: unknown): string {
             {
               type: 'command',
               command: '$CLAUDE_CONFIG_DIR/hooks/stop.sh',
+            },
+          ],
+        },
+      ],
+      SessionEnd: [
+        {
+          hooks: [
+            {
+              type: 'command',
+              command: '$CLAUDE_CONFIG_DIR/hooks/sessionend.sh',
             },
           ],
         },
@@ -220,6 +233,14 @@ const HOOK_FILES: HookFileSpec[] = [
   {
     relativePath: join('hooks', 'stop.sh'),
     templateFilename: 'stop.sh',
+    executable: true,
+  },
+  // QA-FIXES.md #7b — SessionEnd hook. `/exit` fires SessionEnd, NOT
+  // Stop, so without this the session stays "active" forever and
+  // orphan subagent sprites never dismiss.
+  {
+    relativePath: join('hooks', 'sessionend.sh'),
+    templateFilename: 'sessionend.sh',
     executable: true,
   },
 ];
