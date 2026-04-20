@@ -28,6 +28,7 @@ import { PtyAdapter } from './adapters/pty-adapter.js';
 // Phase 13 Wave 2 — shell-side approval routing
 import { ApprovalQueue } from './hooks/approval-queue.js';
 import { createHookServer } from './hooks/hook-server.js';
+import { sweepOrphanedSubagentsForSession } from './hooks/orphan-sweep.js';
 import { installHooks } from './installer/install-hooks.js';
 import { eventBus } from './events/event-bus.js';
 import { NotificationBatcher } from './push/notification-batcher.js';
@@ -357,9 +358,20 @@ export async function buildApp(config: AppConfig) {
     // tab is truly gone. Clear the shell.ts userId map, drop the
     // TabRegistry entry, and broadcast tab.closed so the iOS Office
     // tears down with the same lifecycle as if the user closed it.
+    //
+    // QA-FIXES.md #7b — before dropping the tab, capture its still-
+    // registered sessionIds and sweep any orphan subagents. Catches the
+    // scenario where claude was killed / `/exit`ed without firing Stop,
+    // which leaves sprites stuck `working` in the Office forever.
     onTabClosed: (tabId) => {
       clearUserIdForTab(tabId);
-      tabRegistry.tabClosed(tabId);
+      const closed = tabRegistry.tabClosed(tabId);
+      if (closed) {
+        const reportLifecycle = fleetManager.reportAgentLifecycle.bind(fleetManager);
+        for (const sid of closed.sessionIds) {
+          sweepOrphanedSubagentsForSession(sid, reportLifecycle, 'pty-exit');
+        }
+      }
       eventBus.emit('server.message', { type: 'tab.closed', tabId });
     },
   });

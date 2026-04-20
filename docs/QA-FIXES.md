@@ -150,7 +150,7 @@ Collection of terminal-render issues surfaced during live iOS use. All `ios/Majo
 
 ---
 
-### 7b. `/exit` orphans subagents — `Stop` hook never fires (CONFIRMED — P0)
+### 7b. `/exit` orphans subagents — `Stop` hook never fires (FIXED)
 
 **Symptom:** user typed `/exit` in claude (L5). 4 Explore subagents' `SubagentStop` hooks fired cleanly; the 5th (`claude-code-guide`) never did; no session `Stop` hook fired either. 12+ minutes later the sprite is still `working` in the iOS Office and the relay has no record of session end.
 
@@ -158,19 +158,20 @@ Reproducible: happens specifically when a custom subagent type (e.g. `claude-cod
 
 **Impact:** sprite stuck visible-but-zombie forever. User loses trust in the Office state. Breaks the L5 lifecycle scenario + Office-survives-session-end semantics in `docs/PHASE-TAB-KEYED-OFFICES.md` §8.
 
-**Fix direction (safety nets — one or both):**
+**Fix (shipped):** `relay/src/hooks/orphan-sweep.ts` is a pure helper that finds every subagent still linked to a session in the `agentTracker` singleton and emits synthetic `agent-lifecycle: dismissed` events through the same fanout SDK / worker paths use. Wired into two call sites:
 
-1. **Relay-side Stop hook sweep.** When a session `Stop` hook fires, audit all still-linked subagents in `SpriteMapper` for that sessionId and emit synthetic `agent-lifecycle: dismissed` events. Already planned — bump to P0.
-2. **Relay-side PTY-exit detection.** If the PTY owning a session goes away (which we already track), also sweep orphaned subagents. Catches the scenario where claude exited without firing Stop (real scenario from this QA run).
-3. **iOS fallback stale-sweep.** Any linked sprite with no event in N minutes (e.g. 5) → gray out + expiry indicator + auto-dismiss after 10. Defense in depth against relay-side gaps.
+1. **Stop-hook sweep** — `/hooks/stop` calls the sweep after `registerSessionEnd` and before the `session.ended` broadcast. Catches the case where the parent session's Stop fires but a custom subagent's SubagentStop didn't.
+2. **PTY-exit sweep** — `onTabClosed` (the PTY-adapter eviction callback in `app.ts`) captures the `tabRegistry.tabClosed(tabId)` return and sweeps every sessionId that was still registered on the tab. Catches the L5 scenario where claude `/exit`-ed without firing Stop at all; closing the tab (REST kill or grace expiry) dismisses the orphans.
 
-**Investigation step first:** confirm whether claude exited or is still alive. `ps aux | grep claude` after the orphan shows up. If no claude process, Stop hook was never fired by claude — the bug is that iOS/relay didn't notice claude's PTY had gone. If claude IS alive, it's waiting for `claude-code-guide` to finish but never will.
+**Verify after fix:** retry L5 matrix — spawn custom subagent, `/exit` claude, then close the tab in iOS. Sprites must dismiss with no stuck-`working` state.
+
+**iOS fallback stale-sweep (deferred, not shipped):** any linked sprite with no event in N minutes → gray out + auto-dismiss. Defense in depth if relay-side gaps reappear; track as P2 follow-up if needed.
 
 **Files:**
-- `relay/src/hooks/hook-server.ts` — `/hooks/stop` handler, post-Stop cleanup sweep.
-- `relay/src/routes/shell.ts` — PTY-exit handler, add subagent orphan sweep when session isn't cleanly Stopped.
-- `relay/src/fleet/fleet-manager.ts` — emit synthetic `dismissed` per orphan.
-- `ios/MajorTom/Features/Office/ViewModels/OfficeSceneManager.swift` — stale sprite timeout.
+- `relay/src/hooks/orphan-sweep.ts` — new helper.
+- `relay/src/hooks/hook-server.ts` — Stop-hook call site.
+- `relay/src/app.ts` — PTY-exit call site.
+- `relay/src/hooks/__tests__/orphan-sweep.test.ts` — 4 unit tests.
 
 ---
 

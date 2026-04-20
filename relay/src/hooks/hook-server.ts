@@ -35,6 +35,7 @@ import {
   readPermissionSettings,
   readPermissionSettingsForCwd,
 } from './permission-matcher.js';
+import { sweepOrphanedSubagentsForSession } from './orphan-sweep.js';
 import type { NotificationBatcher } from '../push/notification-batcher.js';
 import type { AgentEvent } from '../adapters/adapter.interface.js';
 import type { ServerMessage } from '../protocol/messages.js';
@@ -555,6 +556,14 @@ export function createHookServer(
         const tab = tabBridge.tabRegistry.getTabForSession(sessionId);
         tabBridge.sessionManager.tryGet(sessionId)?.close();
         tabBridge.tabRegistry.registerSessionEnd(sessionId);
+
+        // QA-FIXES.md #7b — sweep any subagents whose SubagentStop never
+        // fired. Must run BEFORE the session.ended broadcast so the
+        // agent.dismissed / sprite.unlink events arrive before the
+        // client's session-end teardown. Silent when nothing's linked.
+        if (reportAgentLifecycle) {
+          sweepOrphanedSubagentsForSession(sessionId, reportAgentLifecycle, 'session-stop');
+        }
 
         const endedAt = new Date().toISOString();
         if (tab) {
