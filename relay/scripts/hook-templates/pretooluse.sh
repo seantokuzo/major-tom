@@ -41,13 +41,21 @@ fi
 
 case "$MODE" in
   local)
-    # Fire and forget — never block the TUI
-    curl -fsS --max-time 1 -X POST "$RELAY_URL" \
+    # Block briefly so the relay's allowlist short-circuit gets a
+    # chance to say 'allow'. If the tool is pre-approved, the relay
+    # returns allow and the TUI stays silent. If the relay returns
+    # ask (or we time out), fall through to ask and let the TUI own
+    # the decision — the relay still enqueues for phone mirror.
+    DECISION_JSON=$(curl -fsS --max-time 3 -X POST "$RELAY_URL" \
       -H "Content-Type: application/json" \
       -H "X-MT-Mode: local" \
       -H "X-MT-Tab: $TAB_ID" \
-      -d "$PAYLOAD" >/dev/null 2>&1 &
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask"}}'
+      -d "$PAYLOAD" 2>/dev/null)
+    if [ -n "$DECISION_JSON" ]; then
+      echo "$DECISION_JSON"
+    else
+      echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask"}}'
+    fi
     ;;
   remote)
     # Block waiting for the phone. The relay returns the full envelope.
