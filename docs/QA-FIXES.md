@@ -82,6 +82,28 @@
 - `ios/MajorTom/Features/Terminal/…` — mode picker UI.
 - `ios/MajorTom/Core/Services/RelayService.swift` — `tab.setApprovalMode` RPC.
 
+**Shared safety invariant (yolo/god mode):** `trustedCwdPrefixes` — a
+config list (default `["/Users/seansimpson/Documents/code/dev"]`) that
+gates destructive Bash ops (rm, rm -rf, chmod, mv over existing, dd,
+truncate-style redirects, etc.) even when yolo/god is on:
+
+1. Tab's cwd must be under a trusted prefix.
+2. Parse Bash command arguments. Any **absolute** path (leading `/`)
+   must also be under a trusted prefix. `rm /etc/passwd` from inside a
+   repo still prompts.
+3. Relative paths — allowed (they resolve inside a trusted cwd, covered
+   by #1).
+4. Parent traversal (`..`) — conservative: ask. Too easy to escape.
+5. Compound commands with `cd`/`pushd`/`exec` that re-root cwd —
+   conservative: ask (cwd is no longer trivially knowable).
+
+This invariant belongs inside the permission-matcher, consulted by all
+modes. yolo = "wide-open except trusted-cwd guard"; god = "wide-open,
+no guard" (double-opt-in); smart/delay/strict = the current fine-grained
+rule matching. Requires a minimal Bash-arg parser (shlex equivalent
+using `argv-split` or a tiny hand-rolled tokenizer handling quotes,
+escapes, `;`/`&&`/`||` separators).
+
 ---
 
 ### 4. Terminal UI fixes (bundle)
