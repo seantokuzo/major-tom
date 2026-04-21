@@ -203,14 +203,35 @@ Reproducible: happens specifically when a custom subagent type (e.g. `claude-cod
 
 Shipped fix: three sites in `relay/src/routes/ws.ts` (sprite.link on spawn, sprite.unlink on complete, sprite.unlink on dismissed) switched from `broadcastToSession` to `broadcastToAll` to match the existing pattern.
 
-**Layer 2 remaining (still open):** even with sprite.link reaching iOS, the relay's `sprite.message` handler routes via `fleetManager.enqueueSpriteMessage`, which only works for SDK *worker* sessions. PTY sessions have no worker, so the enqueue returns `false` and the handler responds with `status: "dropped"` / `dropReason: "No active session — /btw cannot be delivered"`. Need a PTY-aware /btw delivery path: inject the `/btw <text>` string into the claude PTY at the next turn boundary, or extend the worker registry / `enqueueSpriteMessage` to handle externally-registered sessions.
+**Layer 2 remaining — `/btw` response is always "(Agent completed before delivery)" for PTY sprites (2026-04-20 QA):**
 
-**Priority:** Layer 1 P1 (shipped). Layer 2 P1 — /btw is the whole reason the sprite metaphor is interactive; PTY users can't use it until Layer 2 lands.
+After Layer 1, user confirmed the draft now clears on send and relay receives the message. BUT every response comes back with `status: "dropped"` / `dropReason: "Agent not found or already completed"` (ws.ts:991–992). Prelim analysis:
+
+The relay's `sprite.message` handler at `ws.ts:976-1010` does a synchronous lookup in `spriteMappings` for the `(subagentId, spriteHandle)` pair. For SDK/worker-backed sessions, when the lookup succeeds, the message routes into `fleetManager.enqueueSpriteMessage` which owns a `BtwQueue` per worker — it buffers the message until the next subagent turn boundary and delivers even if the subagent is mid-work.
+
+For PTY-launched sessions there is:
+- ✅ A `spriteMappings` entry (created on `SubagentStart`)
+- ❌ No worker (`fleetManager.getWorkerForSession()` returns undefined → enqueue returns `false`)
+- ❌ No BtwQueue equivalent
+
+What the user actually hits in the Explore-subagent test case is the FIRST dropped branch, not the second: `mapping` is `undefined` because by the time the user taps → types → hits send, the target Explore subagent has already fired `SubagentStop` → the dismissed-case handler at `ws.ts:2210+` has already removed the mapping from `spriteMappings`. Explore subagents live ~5–20 seconds; the UI round-trip can easily exceed that.
+
+**Why SDK didn't hit this:** the worker's BtwQueue accepted the message WHILE the subagent was alive and drained at turn boundary. Relay-side mapping removal happened AFTER delivery. The PTY path has no buffer → message must arrive before dismissal.
+
+**Fix direction (Layer 2 proper):**
+- Build a PTY-mode `BtwQueue` that accepts a `/btw` for any still-live *or recently-live* subagent and attempts injection into the owning PTY at the next turn boundary. Since PTY claude is interactive, injection means writing `"/btw <message>\n"` to the PTY input stream when the prompt is visible.
+- OR short-term: widen the grace window by keeping the sprite mapping in `spriteMappings` for N seconds AFTER SubagentStop before the dismissed-case splice. Buys user time to type. Still doesn't actually deliver; relay would respond "dropped (too late)" with a clearer message.
+- OR deliver via a different channel — write `/btw` as the next prompt into the parent claude session so it gets handled as context next turn. Loses the subagent-specific routing but at least the message arrives somewhere.
+
+**Instrumentation recommendation for next session:** add a `logger.info({ sessionId, subagentId, spriteHandle, mappingFound })` at the top of the `sprite.message` handler so we can confirm the "mapping missing because dismissed" hypothesis vs an alternative (subagentId/spriteHandle drift between iOS and relay).
+
+**Priority:** Layer 1 P1 (shipped). Layer 2 P1 — /btw is the whole reason the sprite metaphor is interactive; PTY users can't meaningfully use it until Layer 2 lands.
 
 **Files (Layer 2 next):**
-- `relay/src/routes/ws.ts:976` — `sprite.message` handler, branch on session kind (worker vs PTY).
-- `relay/src/adapters/pty-adapter.ts` — may need a `/btw` injection entry point.
-- Possibly a new `BtwQueue`-equivalent bound to PTY sessions.
+- `relay/src/routes/ws.ts:976` — `sprite.message` handler; add instrumentation, branch on session kind (worker vs PTY).
+- `relay/src/adapters/pty-adapter.ts` — add a `/btw` injection entry point for PTY sessions.
+- `relay/src/sprites/btw-queue.ts` (new?) — PTY-mode queue that survives a short post-SubagentStop grace window.
+- Possibly keep the spriteMappings splice on `dismissed` but mark the entry as `draining` for N seconds.
 
 ---
 
@@ -238,6 +259,42 @@ Shipped fix: three sites in `relay/src/routes/ws.ts` (sprite.link on spawn, spri
 ---
 
 ## P2 — Polish / nice-to-have
+
+### 12. PTY reconnect lands at default cwd instead of the tab's prior cwd
+
+**Symptom (L13 QA, 2026-04-20):** user had claude running in a tab with cwd `/Users/seansimpson/Documents/code/dev/major-tom`. Relay was restarted mid-session. On reconnect, terminal shows old buffer (nice!) but the fresh shell prompt lands at `$HOME` / default cwd, not the tab's previous cwd. User has to `cd` back every reconnect.
+
+**Fix direction:** persist cwd per-tab. TabRegistry already has `workingDir` field — on PTY re-spawn, pass the stored cwd as the shell's starting dir. Safest: capture cwd at hook-time (SessionStart payload already has `cwd`), persist into TabMeta, use it on respawn. Fallback to HOME only when the stored dir is missing / unreadable.
+
+**Files:**
+- `relay/src/adapters/pty-adapter.ts` — accept an optional cwd override on spawn.
+- `relay/src/tabs/tab-registry.ts` — already has `workingDir`; ensure persistence captures it.
+- `relay/src/routes/shell.ts` — pass TabRegistry cwd to `ptyAdapter.attach`.
+
+**Priority:** P2 polish — nice-to-have for workflow continuity, not blocking.
+
+### 13. Sprites hang on post-relay-restart orphan (no cleanup for dead sessions)
+
+**Symptom (L13 QA, 2026-04-20):** after relay restart, tab card reappears in Office Manager. Opening the Office shows the old subagent sprites still sitting on their last-seen `Reading X` / `Running Y` state. Their actual claude session is dead (PTY was a child of the old relay), so no more events will ever arrive. User has to manually close + recreate the Office to clear them.
+
+**Fix direction:** on cold relay boot, the tab's session hash-set is empty (sessions don't survive restart per `tab-registry.ts:47-56`). iOS should detect "tab has sprites but no live sessions" on reconnect and sweep orphans. Alternatively — and cleaner — the relay broadcasts a `sprite.state.response` with an empty mapping set when iOS requests sprite state for a tab whose sessions are all dead; iOS reconciles by dismissing locally-held sprites missing from the response.
+
+Related to QA-FIXES #7 (sprite rehydrate gap on reconnect / Office recreate). Fixing #7 properly should subsume this.
+
+**Priority:** P2 — workaround available, but the stale-sprite UX is confusing.
+
+### 11b. "Performance HUD" settings toggle didn't actually hide the Metal HUD
+
+**Symptom (L13 QA, 2026-04-20):** user had "Performance HUD" OFF in Settings → Developer but the translucent Metal GPU HUD overlay kept rendering on the Office scene.
+
+**Root cause (FIXED 2026-04-20):** `OfficeScene.applyPerfHUD` only flipped SKView's native text stats (`showsFPS`/`showsNodeCount`/…) — it never touched the Metal HUD, which is controlled by `CAMetalLayer.developerHUDProperties`. If the device had Settings → Developer → Metal Performance HUD ON, the system default rendered regardless of the app toggle. Fix: extend `applyPerfHUD` to set `metalLayer.developerHUDProperties = nil` on OFF and a populated dict on ON, overriding the device default per layer.
+
+**Files:** `ios/MajorTom/Features/Office/Scenes/OfficeScene.swift:applyPerfHUD`.
+
+**Priority:** P2 polish, shipped.
+
+---
+
 
 ### 9. Flip sprite character assignment from role-mapping to randomization
 
