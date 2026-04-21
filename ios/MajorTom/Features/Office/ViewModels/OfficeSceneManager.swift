@@ -505,6 +505,21 @@ final class OfficeSceneManager {
         }
     }
 
+    /// Ask the relay for fresh sprite state for every Office that currently
+    /// has a live scene. Called on WS reattach and after `tab.list.response`
+    /// lands — both are points where the relay's sprite mappings may have
+    /// drifted from what the client last rendered (QA-FIXES #7).
+    ///
+    /// Re-seeds the session roster from `TabRegistryStore` first to cover
+    /// the race where a user tapped an Office card before the post-
+    /// reconnect tab list arrived (kill-and-relaunch path).
+    func refreshAllOpenOffices() {
+        for (key, entry) in offices where entry.hasOffice {
+            seedRosterFromTabRegistry(vm: entry.viewModel, officeKey: key)
+            requestSpriteStateForAllSessions(in: entry.viewModel)
+        }
+    }
+
     /// Seed the VM's session roster from `TabRegistryStore` metadata so
     /// sprite state requests target real sessionIds immediately — avoiding
     /// the race where `createOffice(for: tabId)` fires before any

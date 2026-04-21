@@ -1055,15 +1055,37 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       case 'sprite.state.request': {
         const reqSessionId = message.sessionId;
 
-        // Verify the requesting client is attached to this session
-        const attachedSessionId = clientSessions.get(ws);
-        if (attachedSessionId !== reqSessionId) {
-          sendToClient(ws, {
-            type: 'error',
-            code: 'FORBIDDEN',
-            message: 'Cannot query sprite state for a session you are not attached to',
-          });
-          break;
+        // No per-session `session.attach` gate: iOS never calls it for
+        // PTY-launched claude sessions (same reason `sprite.link`/
+        // `sprite.unlink` switched to `broadcastToAll` in QA-FIXES #11
+        // Layer 1). SandboxGuard still enforces per-user workingDir
+        // access in multi-user mode — mirrors `session.attach` so a
+        // viewer can't query sessions whose cwd is outside their sandbox.
+        // Persisted-only sessions skip the check to match
+        // `session.attach`'s persisted-only path.
+        if (sandboxGuard) {
+          const spriteUserId = presenceManager.getUserId(ws);
+          const spriteUserRole = presenceManager.getUserRole(ws);
+          if (spriteUserId && spriteUserRole) {
+            const liveSession = sessionManager.tryGet(reqSessionId);
+            const spriteWorkDir = liveSession?.workingDir;
+            if (spriteWorkDir) {
+              const canAccess = await sandboxGuard.canAccess(
+                spriteUserId,
+                spriteUserRole,
+                spriteWorkDir,
+              );
+              if (!canAccess) {
+                sendToClient(ws, {
+                  type: 'error',
+                  code: 'SANDBOX_DENIED',
+                  message:
+                    'Access denied: you do not have permission to access this session',
+                });
+                break;
+              }
+            }
+          }
         }
 
         let state = spriteMappings.get(reqSessionId);

@@ -1339,6 +1339,11 @@ final class RelayService {
             if let event = try? MessageCodec.decode(TabListResponseEvent.self, from: data) {
                 tabRegistryStore.replaceAll(with: event)
                 responseCounter &+= 1
+                // QA-FIXES #7: kill-and-relaunch can land a tap on an Office
+                // card before the tab list arrives. Refresh all currently
+                // open Offices so any that were opened before the roster
+                // arrived can resolve their sprite state.
+                officeSceneManager?.refreshAllOpenOffices()
             }
 
         case .error:
