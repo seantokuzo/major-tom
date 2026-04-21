@@ -150,7 +150,7 @@ Collection of terminal-render issues surfaced during live iOS use. All `ios/Majo
 
 ---
 
-### 7b. `/exit` orphans subagents — `Stop` hook never fires (CONFIRMED — P0)
+### 7b. `/exit` orphans subagents — `Stop` hook never fires (FIXED)
 
 **Symptom:** user typed `/exit` in claude (L5). 4 Explore subagents' `SubagentStop` hooks fired cleanly; the 5th (`claude-code-guide`) never did; no session `Stop` hook fired either. 12+ minutes later the sprite is still `working` in the iOS Office and the relay has no record of session end.
 
@@ -158,40 +158,204 @@ Reproducible: happens specifically when a custom subagent type (e.g. `claude-cod
 
 **Impact:** sprite stuck visible-but-zombie forever. User loses trust in the Office state. Breaks the L5 lifecycle scenario + Office-survives-session-end semantics in `docs/PHASE-TAB-KEYED-OFFICES.md` §8.
 
-**Fix direction (safety nets — one or both):**
+**Fix (shipped):** `relay/src/hooks/orphan-sweep.ts` is a pure helper that finds every subagent still linked to a session in the `agentTracker` singleton and emits synthetic `agent-lifecycle: dismissed` events through the same fanout SDK / worker paths use. Wired into two call sites:
 
-1. **Relay-side Stop hook sweep.** When a session `Stop` hook fires, audit all still-linked subagents in `SpriteMapper` for that sessionId and emit synthetic `agent-lifecycle: dismissed` events. Already planned — bump to P0.
-2. **Relay-side PTY-exit detection.** If the PTY owning a session goes away (which we already track), also sweep orphaned subagents. Catches the scenario where claude exited without firing Stop (real scenario from this QA run).
-3. **iOS fallback stale-sweep.** Any linked sprite with no event in N minutes (e.g. 5) → gray out + expiry indicator + auto-dismiss after 10. Defense in depth against relay-side gaps.
+1. **Stop-hook sweep** — `/hooks/stop` calls the sweep after `registerSessionEnd` and before the `session.ended` broadcast. Catches the case where the parent session's Stop fires but a custom subagent's SubagentStop didn't.
+2. **PTY-exit sweep** — `onTabClosed` (the PTY-adapter eviction callback in `app.ts`) captures the `tabRegistry.tabClosed(tabId)` return and sweeps every sessionId that was still registered on the tab. Catches the L5 scenario where claude `/exit`-ed without firing Stop at all; closing the tab (REST kill or grace expiry) dismisses the orphans.
 
-**Investigation step first:** confirm whether claude exited or is still alive. `ps aux | grep claude` after the orphan shows up. If no claude process, Stop hook was never fired by claude — the bug is that iOS/relay didn't notice claude's PTY had gone. If claude IS alive, it's waiting for `claude-code-guide` to finish but never will.
+**Verify after fix:** retry L5 matrix — spawn custom subagent, `/exit` claude, then close the tab in iOS. Sprites must dismiss with no stuck-`working` state.
+
+**iOS fallback stale-sweep (deferred, not shipped):** any linked sprite with no event in N minutes → gray out + auto-dismiss. Defense in depth if relay-side gaps reappear; track as P2 follow-up if needed.
 
 **Files:**
-- `relay/src/hooks/hook-server.ts` — `/hooks/stop` handler, post-Stop cleanup sweep.
-- `relay/src/routes/shell.ts` — PTY-exit handler, add subagent orphan sweep when session isn't cleanly Stopped.
-- `relay/src/fleet/fleet-manager.ts` — emit synthetic `dismissed` per orphan.
-- `ios/MajorTom/Features/Office/ViewModels/OfficeSceneManager.swift` — stale sprite timeout.
+- `relay/src/hooks/orphan-sweep.ts` — new helper.
+- `relay/src/hooks/hook-server.ts` — Stop-hook call site.
+- `relay/src/app.ts` — PTY-exit call site.
+- `relay/src/hooks/__tests__/orphan-sweep.test.ts` — 4 unit tests.
 
 ---
 
-### 7. Sprites detach from subagents on backgrounding / reconnect
+### 10. PTY-launched subagent sprites stuck on "Spawning" status forever
 
-**Symptom:** user backgrounds the app while claude is running subagents. On foreground + reconnect, the relay-side subagents are still alive and producing events, but the iOS Office scene has lost its linked sprites for them. Agents keep working; UI doesn't know.
+**Symptom (L11 QA, 2026-04-20):** when claude runs inside a terminal tab (PTY path, not SDK/fleet), subagents spawn successfully, the sprite appears, but the status badge permanently shows "SPAWNING". The sprite never transitions to "WORKING" while actually running tools, never to "IDLE" when waiting, and jumps straight to dismissal when SubagentStop fires. The inspector can't show what tool the subagent is running ("Reading file X", "Running bash", etc.).
 
-**Expected (per Wave 6 spec §S4 / S8):** "Relay disconnects mid-subagent → sprite grays out / shows disconnected indicator. Reconnect → restore from relay state." The reconnect half isn't landing — sprites aren't being rehydrated from the relay's `sprite.state.request` response.
+**Root cause:** The relay's PTY hook path only wires `SubagentStart` → `agent.spawn` and `SubagentStop` → `agent.dismissed`. There is no Claude Code hook for "subagent is now running a tool". The SDK adapter path synthesizes `agent.working` / `agent.idle` from `tool-start` / `tool-complete` stream events; the PTY path has no equivalent producer.
 
-**Fix direction:** on primary WS reattach after background, iOS needs to emit `sprite.state.request` for each tab whose Office is currently open (or queue it for the next time the Office is opened). When the relay responds, re-bind sprite slots to the reported subagent ids.
+**Fix direction:**
+- Wire `PreToolUse` hook payloads (which already flow through `/hooks/pre-tool-use`) to also emit `agent.working` when the tool call is attributed to a subagent. The hook payload's `parent_tool_use_id` / `session_id` should let us identify which live subagent owns the call. The task description becomes the tool name (`Read`, `Bash`, `Grep`, etc.) with optional input summary.
+- Consider `PostToolUse` → `agent.idle` symmetric transition. Or at least flip back to `.working` with a blank task until the next tool starts. Short-lived "idle" flips during a multi-tool subagent would look jittery — maybe stay `.working` until SubagentStop.
+- Relay changes live in `relay/src/hooks/hook-server.ts` (pre-tool-use branch → also emit agent-lifecycle working) and the subagent attribution logic.
+
+**Priority:** P1 — core sprite storytelling broken for every PTY-launched claude session. Also likely the root cause of QA-FIXES #11 (/btw send).
+
+**Files:**
+- `relay/src/hooks/hook-server.ts` — emit agent.working alongside approval enqueue.
+- `relay/src/events/agent-tracker.ts` — possibly new `working(agentId, tool)` shape.
+- iOS `OfficeViewModel.handleAgentWorking` — already consumes correctly; no change expected.
+
+---
+
+### 11. `/btw` send broken for PTY sprites (layered root cause)
+
+**Symptom (L11 QA, 2026-04-20):** user taps a PTY-subagent sprite in the Office, types a `/btw` message, hits send. Text stays in the input. No relay receipt.
+
+**Layer 1 root cause (FIXED):** ws.ts was broadcasting `sprite.link` / `sprite.unlink` via `broadcastToSession(sessionId, ...)`, which only reaches clients who explicitly called `session.attach`. iOS only attaches SDK sessions it starts; PTY-launched claude sessions (registered via `SessionStart` hook) are never attached. Result: iOS received `agent.spawn` (via `broadcastToAll`) but never the paired `sprite.link`, so `AgentState.spriteHandle` stayed nil and `SpriteInspectorView.sendLinkedDraft()` guard failed silently. Every other `agent.*` event in the same switch already used `broadcastToAll` — sprite.link/unlink were the outliers.
+
+Shipped fix: three sites in `relay/src/routes/ws.ts` (sprite.link on spawn, sprite.unlink on complete, sprite.unlink on dismissed) switched from `broadcastToSession` to `broadcastToAll` to match the existing pattern.
+
+**Layer 2 remaining — `/btw` response is always "(Agent completed before delivery)" for PTY sprites (2026-04-20 QA):**
+
+After Layer 1, user confirmed the draft now clears on send and relay receives the message. BUT every response comes back with `status: "dropped"` / `dropReason: "Agent not found or already completed"` (ws.ts:991–992). Prelim analysis:
+
+The relay's `sprite.message` handler at `ws.ts:976-1010` does a synchronous lookup in `spriteMappings` for the `(subagentId, spriteHandle)` pair. For SDK/worker-backed sessions, when the lookup succeeds, the message routes into `fleetManager.enqueueSpriteMessage` which owns a `BtwQueue` per worker — it buffers the message until the next subagent turn boundary and delivers even if the subagent is mid-work.
+
+For PTY-launched sessions there is:
+- ✅ A `spriteMappings` entry (created on `SubagentStart`)
+- ❌ No worker (`fleetManager.getWorkerForSession()` returns undefined → enqueue returns `false`)
+- ❌ No BtwQueue equivalent
+
+What the user actually hits in the Explore-subagent test case is the FIRST dropped branch, not the second: `mapping` is `undefined` because by the time the user taps → types → hits send, the target Explore subagent has already fired `SubagentStop` → the dismissed-case handler at `ws.ts:2210+` has already removed the mapping from `spriteMappings`. Explore subagents live ~5–20 seconds; the UI round-trip can easily exceed that.
+
+**Why SDK didn't hit this:** the worker's BtwQueue accepted the message WHILE the subagent was alive and drained at turn boundary. Relay-side mapping removal happened AFTER delivery. The PTY path has no buffer → message must arrive before dismissal.
+
+**Fix direction (Layer 2 proper):**
+- Build a PTY-mode `BtwQueue` that accepts a `/btw` for any still-live *or recently-live* subagent and attempts injection into the owning PTY at the next turn boundary. Since PTY claude is interactive, injection means writing `"/btw <message>\n"` to the PTY input stream when the prompt is visible.
+- OR short-term: widen the grace window by keeping the sprite mapping in `spriteMappings` for N seconds AFTER SubagentStop before the dismissed-case splice. Buys user time to type. Still doesn't actually deliver; relay would respond "dropped (too late)" with a clearer message.
+- OR deliver via a different channel — write `/btw` as the next prompt into the parent claude session so it gets handled as context next turn. Loses the subagent-specific routing but at least the message arrives somewhere.
+
+**Instrumentation recommendation for next session:** add a `logger.info({ sessionId, subagentId, spriteHandle, mappingFound })` at the top of the `sprite.message` handler so we can confirm the "mapping missing because dismissed" hypothesis vs an alternative (subagentId/spriteHandle drift between iOS and relay).
+
+**Priority:** Layer 1 P1 (shipped). Layer 2 P1 — /btw is the whole reason the sprite metaphor is interactive; PTY users can't meaningfully use it until Layer 2 lands.
+
+**Files (Layer 2 next):**
+- `relay/src/routes/ws.ts:976` — `sprite.message` handler; add instrumentation, branch on session kind (worker vs PTY).
+- `relay/src/adapters/pty-adapter.ts` — add a `/btw` injection entry point for PTY sessions.
+- `relay/src/sprites/btw-queue.ts` (new?) — PTY-mode queue that survives a short post-SubagentStop grace window.
+- Possibly keep the spriteMappings splice on `dismissed` but mark the entry as `draining` for N seconds.
+
+---
+
+### 7. Sprites detach from subagents on backgrounding / reconnect / Office recreate
+
+**Symptoms — two trigger paths for the same root cause:**
+
+1. **WS reconnect (original symptom):** user backgrounds the app while claude is running subagents. On foreground + reconnect, relay-side subagents still produce events but iOS Office has lost its linked sprites for them. Agents keep working; UI doesn't know.
+2. **Office close + recreate (L10 QA, 2026-04-19):** user picks "Close Office" from the context menu → SKScene destroyed. Re-tapping the card creates a fresh SKScene, but the already-spawned subagent sprites do NOT reappear — the scene only renders new spawn/working events going forward, so live subagents that spawned before the recreate become invisible.
+
+**Expected (per Wave 6 spec §S4 / S8):** "Relay disconnects mid-subagent → sprite grays out / shows disconnected indicator. Reconnect → restore from relay state." Extends naturally: any fresh SKScene for a tab with live subagents should hydrate from the relay's current mapping state, not just replay future events.
+
+**Fix direction (covers both triggers):**
+- iOS emits `sprite.state.request` whenever an Office's SKScene is newly minted — either fresh creation OR recreation after a Close-Office / reconnect. The existing relay-side broadcast already includes all current bindings.
+- `OfficeSceneManager` consumes `sprite.state.response` and re-links sprite slots to reported subagent ids before any walk-on animation.
+- On primary WS reattach after background, also trigger the refresh for every tab whose Office is currently open.
 
 **Files:**
 - `ios/MajorTom/Core/Services/RelayService.swift` — on reconnect, trigger a sprite-state refresh.
-- `ios/MajorTom/Features/Office/ViewModels/OfficeSceneManager.swift` — consume `sprite.state.response` and re-link.
-- `relay/src/sprites/sprite-mapper.ts` — already broadcasts on `sprite.state.request`, verify it includes all current bindings.
+- `ios/MajorTom/Features/Office/ViewModels/OfficeSceneManager.swift` — request + consume `sprite.state.response` on scene-create; re-link.
+- `relay/src/sprites/sprite-mapper.ts` — already broadcasts on `sprite.state.request`, verify response includes all current bindings with correct character types.
 
 **Priority:** P1 — this breaks a Wave 6 shipped behavior and the visible state diverges from reality for the user.
 
 ---
 
 ## P2 — Polish / nice-to-have
+
+### 14. Claude's xterm title escape sequences auto-rename the tab (skip this behavior)
+
+**Symptom (L15 QA, 2026-04-21):** when a tab has no user-supplied name, starting a claude session and giving it a task ends up renaming the tab to a long human-readable summary of what claude is doing (e.g., "claude — audit the relay for stale permission handlers"). This overrides the default "Terminal N" label. Once the user manually renames the tab, their name sticks and the auto-rename stops.
+
+**Root cause:** claude (and many TUI tools) emit OSC 0/2 escape sequences (`\x1b]0;TITLE\x07`) to update the terminal title. xterm.js captures these and exposes them as the tab's `title` property, which iOS reads as `tab.title`. Our `displayTitle` chain is `titleStore.title(for: tab.tabId) ?? tab.title`, so whenever no user-set title exists, claude's title wins.
+
+**Fix direction:** suppress or ignore OSC 0/2 title updates from our PTY stream — either filter them in the iOS xterm.html glue before they update `tab.title`, or keep consuming them for display purposes but stop surfacing them to the Office Manager (use tabId or a generic "Terminal N" label instead when `titleStore.title` is nil).
+
+**Files:**
+- `ios/MajorTom/Features/Terminal/Resources/terminal.html` — filter title OSC.
+- OR `ios/MajorTom/Features/Terminal/ViewModels/TerminalViewModel.swift` — accept xterm title events but don't propagate to `TerminalTab.title`.
+
+**Priority:** P2 polish — harmless but noisy; manual rename is the escape hatch.
+
+---
+
+### 12. PTY reconnect lands at default cwd instead of the tab's prior cwd
+
+**Symptom (L13 QA, 2026-04-20):** user had claude running in a tab with cwd `/Users/seansimpson/Documents/code/dev/major-tom`. Relay was restarted mid-session. On reconnect, terminal shows old buffer (nice!) but the fresh shell prompt lands at `$HOME` / default cwd, not the tab's previous cwd. User has to `cd` back every reconnect.
+
+**Fix direction:** persist cwd per-tab. TabRegistry already has `workingDir` field — on PTY re-spawn, pass the stored cwd as the shell's starting dir. Safest: capture cwd at hook-time (SessionStart payload already has `cwd`), persist into TabMeta, use it on respawn. Fallback to HOME only when the stored dir is missing / unreadable.
+
+**Files:**
+- `relay/src/adapters/pty-adapter.ts` — accept an optional cwd override on spawn.
+- `relay/src/tabs/tab-registry.ts` — already has `workingDir`; ensure persistence captures it.
+- `relay/src/routes/shell.ts` — pass TabRegistry cwd to `ptyAdapter.attach`.
+
+**Priority:** P2 polish — nice-to-have for workflow continuity, not blocking.
+
+### 13. Sprites hang on post-relay-restart orphan (no cleanup for dead sessions)
+
+**Symptom (L13 QA, 2026-04-20):** after relay restart, tab card reappears in Office Manager. Opening the Office shows the old subagent sprites still sitting on their last-seen `Reading X` / `Running Y` state. Their actual claude session is dead (PTY was a child of the old relay), so no more events will ever arrive. User has to manually close + recreate the Office to clear them.
+
+**Fix direction:** on cold relay boot, the tab's session hash-set is empty (sessions don't survive restart per `tab-registry.ts:47-56`). iOS should detect "tab has sprites but no live sessions" on reconnect and sweep orphans. Alternatively — and cleaner — the relay broadcasts a `sprite.state.response` with an empty mapping set when iOS requests sprite state for a tab whose sessions are all dead; iOS reconciles by dismissing locally-held sprites missing from the response.
+
+Related to QA-FIXES #7 (sprite rehydrate gap on reconnect / Office recreate). Fixing #7 properly should subsume this.
+
+**Priority:** P2 — workaround available, but the stale-sprite UX is confusing.
+
+### 11b. "Performance HUD" settings toggle is mostly decorative
+
+**Resolution (2026-04-20):** the translucent HUD the user was seeing turned out to be the iOS device-level Metal Performance HUD (Settings → Developer → Metal Performance HUD on the phone itself) — which is an OS overlay that no app-level code can suppress. Turning that OFF killed the HUD.
+
+Our in-app "Performance HUD" toggle in Settings → Developer only flips `SKView.showsFPS` / `showsNodeCount` / `showsDrawCount` / `showsQuadCount`, which render as simple text numbers in the bottom-right of the Office scene. Commit `734c22f` added `CAMetalLayer.developerHUDProperties = nil/dict` alongside — no functional effect on the device-level HUD, but harmless and at least toggles cleanly on/off if anyone does enable the app-level Metal HUD.
+
+**Follow-up decision needed:**
+- **Option A — remove the toggle.** Nobody really needs SKView text stats outside dev profiling. One less knob in Settings.
+- **Option B — rename + repurpose.** Rename to "SpriteKit Stats" and make the footer describe what it actually shows (FPS/nodes/draws/quads text), not Metal HUD.
+- **Option C — add a deeplink.** Alongside the in-app toggle, add a "Metal HUD (iOS setting)" row with `UIApplication.openURL` to `Settings → Developer`. Would at least let the user jump straight there.
+
+Priority P2 — not functional breakage, just messy UX / misleading label.
+
+---
+
+
+### 9. Flip sprite character assignment from role-mapping to randomization
+
+**User request (L9 QA, 2026-04-19):** current logic maps agent role → fixed character type (researcher→botanist, engineer→claudimusPrime, etc.). User wants to abandon the role-matching entirely and randomize the character per spawn. Rationale: "it's a feature not a bug that the frontend dev is doing database work" — plus the excitement of "who am I gonna get?!" each spawn. Also easier to implement.
+
+**Fix direction:**
+- Delete `ROLE_CHARACTER_MAP` in `relay/src/sprites/sprite-mapper.ts`. Replace with a `CHARACTER_POOL` (flat list of all CharacterTypes).
+- `resolveCharacterType`: instead of role→type, pick a random CharacterType from the pool, optionally avoiding duplicates in the same session's active roster until the pool is exhausted.
+- Remove the role-stable binding concept — every spawn is a fresh roll.
+- iOS: strip the role-aware override tracked in QA-FIXES #6 (kept surfacing Kendrick / Bowen Yang instead of the locked role character) — with randomization, THAT becomes the feature. Item #6 can be closed as superseded.
+- Sprite labels (QA-FIXES #6) still humanize to canonical role (`researcher`, `engineer`), just decoupled from character choice.
+
+**Files:**
+- `relay/src/sprites/sprite-mapper.ts` — pool-based picker.
+- `relay/src/sprites/__tests__/*.test.ts` — update mapping tests.
+- `docs/PHASE-SPRITE-AGENT-WIRING.md` — strike the locked role→CharacterType table, replace with randomization spec.
+- iOS `RoleMapper.swift` — remove any client-side role→character lookup; trust `sprite.mapping.created.characterType` from relay.
+
+**Priority:** P2 — not blocking QA. Picks up after the L-matrix. Closing QA-FIXES #6 folds into this change.
+
+---
+
+### 8. Office teardown UX — don't strand users on "Office not available"
+
+**Symptom (L7 QA, 2026-04-19):** user exits the shell, tab + Office tear down correctly in the background. User then taps the Office bottom-tab → lands on an "Office not available" empty page (because the last-selected tabId is gone) and has to tap Back to reach the Office Manager.
+
+**User expectation:** either the Office teardown animation plays long enough to see the sprites walk off (~5 s), and when it finishes the view auto-pops to the Office Manager — OR if the animation is running offscreen too quickly to notice, skip the "unavailable" intermediate entirely and land directly on the Office Manager.
+
+**Fix direction:**
+- Extend the walk-off animation duration for user-visible teardown (kept short when the Office view is NOT currently foregrounded, to avoid wasted work).
+- On detecting a tabId-gone transition while the Office view is foregrounded, NavigationStack pop to the Office Manager root once the animation ends.
+- On cold-tap of the Office bottom-tab when the last-viewed tabId no longer exists, navigate directly to Office Manager instead of the empty "Office not available" view.
+
+**Files likely involved:**
+- `ios/MajorTom/Features/Office/Views/OfficeManagerView.swift` — NavigationStack path management on tab close.
+- `ios/MajorTom/Features/Office/Views/OfficeView.swift` — teardown animation timing + completion callback.
+- `ios/MajorTom/Features/Office/ViewModels/OfficeSceneManager.swift` — `tab.closed` handler.
+
+**Priority:** P2 — polish, not blocking. Matches L8 (tap close on tab bar) which triggers the same teardown path.
+
+---
+
 
 ### 4b. Approval notification body is raw JSON
 

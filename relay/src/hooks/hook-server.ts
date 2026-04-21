@@ -35,6 +35,7 @@ import {
   readPermissionSettings,
   readPermissionSettingsForCwd,
 } from './permission-matcher.js';
+import { sweepOrphanedSubagentsForSession } from './orphan-sweep.js';
 import type { NotificationBatcher } from '../push/notification-batcher.js';
 import type { AgentEvent } from '../adapters/adapter.interface.js';
 import type { ServerMessage } from '../protocol/messages.js';
@@ -95,6 +96,79 @@ function decisionToPermissionDecision(decision: string): 'allow' | 'deny' | 'ask
   if (decision === 'allow' || decision === 'allow_always') return 'allow';
   if (decision === 'deny') return 'deny';
   return 'ask';
+}
+
+/**
+ * QA-FIXES.md #10 — Short, human-readable task line for a tool call,
+ * surfaced on the sprite inspector when a subagent transitions to
+ * `.working`. Keep it under ~60 chars so it fits the inspector row.
+ *
+ * Basename paths (leave URLs + queries alone) and truncate anything else.
+ */
+export function humanizeToolTask(
+  tool: string,
+  input: Record<string, unknown> | undefined,
+): string {
+  const truncate = (s: string, max = 50): string =>
+    s.length > max ? s.slice(0, max - 1) + '…' : s;
+  const basenameOf = (p: string): string => {
+    const idx = p.lastIndexOf('/');
+    return idx >= 0 ? p.slice(idx + 1) : p;
+  };
+  const str = (key: string): string | undefined => {
+    const v = input?.[key];
+    return typeof v === 'string' ? v : undefined;
+  };
+
+  switch (tool) {
+    case 'Read': {
+      const p = str('file_path');
+      return p ? `Reading ${basenameOf(p)}` : 'Reading a file';
+    }
+    case 'Edit':
+    case 'MultiEdit': {
+      const p = str('file_path');
+      return p ? `Editing ${basenameOf(p)}` : 'Editing a file';
+    }
+    case 'Write': {
+      const p = str('file_path');
+      return p ? `Writing ${basenameOf(p)}` : 'Writing a file';
+    }
+    case 'Bash': {
+      const cmd = str('command');
+      if (!cmd) return 'Running a shell command';
+      // First word or first pipe-segment for a tighter summary.
+      const head = cmd.split(/\s+/, 1)[0] ?? cmd;
+      return truncate(`Running ${head}`);
+    }
+    case 'Grep': {
+      const pattern = str('pattern');
+      return pattern ? truncate(`Searching: ${pattern}`) : 'Searching code';
+    }
+    case 'Glob': {
+      const pattern = str('pattern');
+      return pattern ? truncate(`Globbing ${pattern}`) : 'Listing files';
+    }
+    case 'WebFetch': {
+      const url = str('url');
+      return url ? truncate(`Fetching ${url}`) : 'Fetching a page';
+    }
+    case 'WebSearch': {
+      const query = str('query');
+      return query ? truncate(`Searching web: ${query}`) : 'Searching the web';
+    }
+    case 'Agent':
+    case 'Task': {
+      const sub = str('subagent_type') ?? str('description');
+      return sub ? truncate(`Spawning ${sub}`) : 'Spawning a subagent';
+    }
+    case 'TodoWrite':
+      return 'Updating todo list';
+    case 'NotebookEdit':
+      return 'Editing notebook';
+    default:
+      return truncate(tool);
+  }
 }
 
 /**
@@ -203,6 +277,27 @@ export function createHookServer(
           // surfaces a useful error.
           sendJson(res, 400, { error: 'Missing tool_use_id in hook payload' });
           return;
+        }
+
+        // QA-FIXES.md #10 — PTY-launched subagents have no other signal that
+        // transitions the sprite from .spawned to .working. Claude Code's
+        // PreToolUse payload includes `agent_id` for subagent tool calls
+        // (absent for main-orchestrator calls). Emit a synthetic `working`
+        // lifecycle event so the sprite's status and task text update to
+        // show what the subagent is actually doing. Fires early, before
+        // any approval gating, so the UI updates even on auto-allowed
+        // calls where we never enqueue an approval.
+        const agentIdForTool =
+          typeof hookData['agent_id'] === 'string' ? (hookData['agent_id'] as string) : undefined;
+        const sessionIdForTool =
+          typeof hookData['session_id'] === 'string' ? (hookData['session_id'] as string) : undefined;
+        if (reportAgentLifecycle && agentIdForTool && sessionIdForTool) {
+          reportAgentLifecycle({
+            sessionId: sessionIdForTool,
+            agentId: agentIdForTool,
+            event: 'working',
+            task: humanizeToolTask(tool, toolInput),
+          });
         }
 
         const routingMode = readHeader<RoutingMode>(
@@ -521,12 +616,24 @@ export function createHookServer(
         return;
       }
 
-      // ── Stop (session-end) ───────────────────────────────
-      // Tab-Keyed Offices — Claude Code's session-end hook. Closes the
-      // Session and removes it from the TabRegistry but leaves the
-      // TabMeta alive so dogs stay in the Office; tab teardown happens
-      // only on PTY grace-expire (pty-adapter.ts → tabRegistry.tabClosed).
-      if (method === 'POST' && url === '/hooks/stop') {
+      // ── Stop / SessionEnd ────────────────────────────────
+      // Both Claude Code events signal "the agent/session is done" in our
+      // system. `Stop` fires when the main agent finishes a turn; older
+      // versions of Claude Code only emitted this. `SessionEnd` fires when
+      // the user ends the session themselves — `/exit`, `/clear`, `/logout`,
+      // closing the terminal. CRITICAL: `/exit` does NOT fire `Stop`, so
+      // without SessionEnd the session stays "active" forever and any
+      // still-linked subagents orphan in the iOS Office (QA-FIXES.md #7b).
+      //
+      // Both endpoints share the same cleanup: close the Session, mark the
+      // session ended in TabRegistry (leaves TabMeta alive so dogs stay in
+      // the Office; tab teardown happens only on PTY grace-expire), sweep
+      // orphaned subagents, then broadcast the ended events.
+      if (
+        method === 'POST' &&
+        (url === '/hooks/stop' || url === '/hooks/session-end')
+      ) {
+        const hookName = url === '/hooks/stop' ? 'Stop' : 'SessionEnd';
         const body = await readBody(req);
         let payload: Record<string, unknown>;
         try {
@@ -545,34 +652,59 @@ export function createHookServer(
 
         if (!tabBridge) {
           logger.warn(
-            { sessionId },
-            'Stop hook received but tabBridge not wired — dropping (check createHookServer deps)',
+            { sessionId, hook: hookName },
+            'Session-end hook received but tabBridge not wired — dropping (check createHookServer deps)',
           );
           sendJson(res, 200, {});
           return;
         }
 
+        // SessionEnd duplicates Stop in the common `/exit` path (Stop
+        // fires first on the final turn, SessionEnd fires on the exit
+        // itself). If the session is already closed + unregistered when
+        // the second hook lands, short-circuit: skip the re-broadcast so
+        // clients don't see duplicate session.ended events.
+        const alreadyClosed =
+          tabBridge.tabRegistry.getTabForSession(sessionId) === undefined &&
+          tabBridge.sessionManager.tryGet(sessionId)?.status !== 'active';
+
         const tab = tabBridge.tabRegistry.getTabForSession(sessionId);
         tabBridge.sessionManager.tryGet(sessionId)?.close();
         tabBridge.tabRegistry.registerSessionEnd(sessionId);
 
-        const endedAt = new Date().toISOString();
-        if (tab) {
+        // QA-FIXES.md #7b — sweep any subagents whose SubagentStop never
+        // fired. Must run BEFORE the session.ended broadcast so the
+        // agent.dismissed / sprite.unlink events arrive before the
+        // client's session-end teardown. Silent when nothing's linked.
+        if (reportAgentLifecycle) {
+          sweepOrphanedSubagentsForSession(sessionId, reportAgentLifecycle, 'session-stop');
+        }
+
+        if (!alreadyClosed) {
+          const endedAt = new Date().toISOString();
+          if (tab) {
+            tabBridge.broadcast({
+              type: 'tab.session.ended',
+              tabId: tab.tabId,
+              sessionId,
+              endedAt,
+            });
+          }
           tabBridge.broadcast({
-            type: 'tab.session.ended',
-            tabId: tab.tabId,
+            type: 'session.ended',
             sessionId,
-            endedAt,
           });
         }
-        tabBridge.broadcast({
-          type: 'session.ended',
-          sessionId,
-        });
 
         logger.info(
-          { tabId: tab?.tabId, sessionId },
-          'Stop hook closed session and updated TabRegistry',
+          {
+            tabId: tab?.tabId,
+            sessionId,
+            hook: hookName,
+            reason: typeof payload['reason'] === 'string' ? payload['reason'] : undefined,
+            alreadyClosed,
+          },
+          'Session-end hook closed session and updated TabRegistry',
         );
 
         sendJson(res, 200, {});

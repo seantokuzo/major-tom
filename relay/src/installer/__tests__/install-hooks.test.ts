@@ -65,13 +65,15 @@ describe('installer: buildSettingsJson', () => {
     expect(parsed.hooks).toBeDefined();
   });
 
-  it('preserves all hook entries (PreToolUse, SubagentStart/Stop, SessionStart, Stop)', () => {
+  it('preserves all hook entries (PreToolUse, SubagentStart/Stop, SessionStart, Stop, SessionEnd)', () => {
     const parsed = JSON.parse(buildSettingsJson(null));
     expect(parsed.hooks.PreToolUse).toHaveLength(1);
     expect(parsed.hooks.SubagentStart).toHaveLength(1);
     expect(parsed.hooks.SubagentStop).toHaveLength(1);
     expect(parsed.hooks.SessionStart).toHaveLength(1);
     expect(parsed.hooks.Stop).toHaveLength(1);
+    expect(parsed.hooks.SessionEnd).toHaveLength(1);
+    expect(parsed.hooks.SessionEnd[0].hooks[0].command).toContain('sessionend.sh');
   });
 
   it('keeps PreToolUse timeout at 600s', () => {

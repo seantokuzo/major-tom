@@ -2110,7 +2110,14 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           spriteState.updatedAt = new Date().toISOString();
           spriteMappingPersistence.save(spriteState);
 
-          broadcastToSession(sid, {
+          // QA-FIXES.md #11 — must broadcast to ALL clients, not just
+          // the ones attached to this sessionId. PTY-launched sessions
+          // are never attached by iOS (iOS only calls session.attach
+          // for SDK sessions it explicitly starts), so broadcastToSession
+          // drops the event on the floor and the sprite's spriteHandle
+          // stays nil, silently breaking /btw send. Match the pattern
+          // every other agent.* case in this switch already uses.
+          broadcastToAll({
             type: 'sprite.link',
             sessionId: sid,
             spriteHandle: mapping.spriteHandle,
@@ -2167,7 +2174,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
               completeState.mappings.splice(idx, 1);
               completeState.updatedAt = new Date().toISOString();
               spriteMappingPersistence.save(completeState);
-              broadcastToSession(sid, {
+              // QA-FIXES.md #11 — broadcastToAll, not broadcastToSession.
+              // Same rationale as the spawn/sprite.link fix above: PTY
+              // sessions are never session.attach-ed on the iOS side.
+              broadcastToAll({
                 type: 'sprite.unlink',
                 sessionId: sid,
                 spriteHandle: removed.spriteHandle,
@@ -2207,7 +2217,10 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
               dismissState.mappings.splice(idx, 1);
               dismissState.updatedAt = new Date().toISOString();
               spriteMappingPersistence.save(dismissState);
-              broadcastToSession(sid, {
+              // QA-FIXES.md #11 — broadcastToAll, not broadcastToSession.
+              // Same rationale as the spawn/sprite.link fix above: PTY
+              // sessions are never session.attach-ed on the iOS side.
+              broadcastToAll({
                 type: 'sprite.unlink',
                 sessionId: sid,
                 spriteHandle: removed.spriteHandle,

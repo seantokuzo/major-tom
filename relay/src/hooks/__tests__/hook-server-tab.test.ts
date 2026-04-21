@@ -218,6 +218,54 @@ describe('hook-server — Tab-Keyed Offices integration', () => {
     });
   });
 
+  describe('POST /hooks/session-end (QA-FIXES.md #7b)', () => {
+    it('400s when session_id is missing', async () => {
+      const res = await post(`http://127.0.0.1:${port}/hooks/session-end`, {});
+      expect(res.status).toBe(400);
+    });
+
+    it('closes the session and broadcasts ended when Stop never fired (/exit path)', async () => {
+      await post(
+        `http://127.0.0.1:${port}/hooks/session-start`,
+        { session_id: 'sess-exit', cwd: '/home/u/proj' },
+        { 'X-MT-Tab': 'tab-A' },
+      );
+      broadcasts.length = 0;
+
+      const res = await post(
+        `http://127.0.0.1:${port}/hooks/session-end`,
+        { session_id: 'sess-exit', reason: 'prompt_input_exit' },
+      );
+      expect(res.status).toBe(200);
+
+      expect(sessionManager.tryGet('sess-exit')?.status).toBe('closed');
+      expect(tabRegistry.getTab('tab-A')?.status).toBe('idle');
+
+      const types = broadcasts.map((m) => m.type);
+      expect(types).toContain('tab.session.ended');
+      expect(types).toContain('session.ended');
+    });
+
+    it('does not re-broadcast when Stop already closed the session', async () => {
+      await post(
+        `http://127.0.0.1:${port}/hooks/session-start`,
+        { session_id: 'sess-both', cwd: '/home/u/proj' },
+        { 'X-MT-Tab': 'tab-A' },
+      );
+      await post(`http://127.0.0.1:${port}/hooks/stop`, { session_id: 'sess-both' });
+      broadcasts.length = 0; // clear Stop's broadcasts
+
+      const res = await post(
+        `http://127.0.0.1:${port}/hooks/session-end`,
+        { session_id: 'sess-both', reason: 'other' },
+      );
+      expect(res.status).toBe(200);
+      // SessionEnd should acknowledge cleanly but not duplicate the ended events.
+      expect(broadcasts.map((m) => m.type)).not.toContain('tab.session.ended');
+      expect(broadcasts.map((m) => m.type)).not.toContain('session.ended');
+    });
+  });
+
   describe('filters tab.list by userId (ws.ts responsibility; direct registry check)', () => {
     it('listTabs(userId) excludes tabs owned by a different user', async () => {
       userIdByTab.set('tab-A', 'user-alice');
