@@ -4,7 +4,7 @@
 
 ## Current Phase (in flight)
 
-**Tab-Keyed Offices** — ALL WAVES + QA CLEANUP SHIPPED (PRs #149–#155). Mental-model flip landed: Office is now a per-tab iOS decision (explicit create), not auto-created from Claude sessions. Spec: `docs/PHASE-TAB-KEYED-OFFICES.md` (Gate D superseded by PR #155). Memory: `project_tab_keyed_offices_phase.md`. Sprite 4-6 QA unpaused.
+**Tab-Keyed Offices** — ALL WAVES + L-MATRIX QA SHIPPED (PRs #149–#156). Mental-model flip landed: Office is now a per-tab iOS decision (explicit create), not auto-created from Claude sessions. L-matrix L1-L16 closed — L12/L14 intentionally skipped, L10/L11/L13 logged as PARTIAL with P1/P2 follow-ups in `docs/QA-FIXES.md` (sprite rehydrate #7, PTY `/btw` delivery Layer 2 #11, six P2 polish items). Spec: `docs/PHASE-TAB-KEYED-OFFICES.md` (Gate D superseded by PR #155). Memory: `project_tab_keyed_offices_phase.md`. Sprite 4-6 QA unpaused.
 
 | Wave | Scope | Status |
 |------|-------|--------|
