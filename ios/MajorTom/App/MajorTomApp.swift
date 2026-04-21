@@ -81,9 +81,13 @@ struct MajorTomApp: App {
             }
             // Wave 4: flush queued /btw messages when the relay reconnects so
             // any messages sent offline are delivered without user action.
+            // QA-FIXES #7: also re-hydrate sprite state for every open Office
+            // so subagents that spawned/died while the WS was down still
+            // render correctly after reconnect.
             .onChange(of: relay.connectionState) { _, newState in
                 if newState == .connected {
                     relay.flushAllQueuedSpriteMessages()
+                    officeSceneManager.refreshAllOpenOffices()
                 }
             }
             // Handle deep links from notifications

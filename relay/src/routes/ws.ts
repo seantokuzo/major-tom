@@ -1055,17 +1055,11 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       case 'sprite.state.request': {
         const reqSessionId = message.sessionId;
 
-        // Verify the requesting client is attached to this session
-        const attachedSessionId = clientSessions.get(ws);
-        if (attachedSessionId !== reqSessionId) {
-          sendToClient(ws, {
-            type: 'error',
-            code: 'FORBIDDEN',
-            message: 'Cannot query sprite state for a session you are not attached to',
-          });
-          break;
-        }
-
+        // No per-session attach gate: iOS never calls `session.attach` for
+        // PTY-launched claude sessions (same reason `sprite.link`/
+        // `sprite.unlink` switched to `broadcastToAll` in QA-FIXES #11 Layer
+        // 1). Authentication at the WebSocket layer already gates access;
+        // sprite state fans out to every attached client anyway.
         let state = spriteMappings.get(reqSessionId);
         if (!state) {
           // Try loading from disk (relay may have restarted since last seen)
