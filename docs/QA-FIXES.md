@@ -235,7 +235,11 @@ What the user actually hits in the Explore-subagent test case is the FIRST dropp
 
 ---
 
-### 7. Sprites detach from subagents on backgrounding / reconnect / Office recreate
+### 7. Sprites detach from subagents on backgrounding / reconnect / Office recreate (SHIPPED, PR #157)
+
+**Shipped 2026-04-21 (`main` at `37b82bd`).** iOS added `OfficeSceneManager.refreshAllOpenOffices()` wired into two triggers: WS reattach (`MajorTomApp.onChange(relay.connectionState)`) and `tab.list.response` arrival (`RelayService.handleMessage` → `.tabListResponse`). Relay `sprite.state.request` dropped the per-session `session.attach` gate (it had been rejecting every PTY-session query since iOS never attaches PTY sessions) and gained a `sandboxGuard.canAccess` check that mirrors `session.attach`. Persisted-only sessions skip the sandbox check to match `session.attach` semantics.
+
+Device QA still pending — (a) background + return, (b) close Office + reopen, (c) kill-and-relaunch — retain open until confirmed on device.
 
 **Symptoms — two trigger paths for the same root cause:**
 

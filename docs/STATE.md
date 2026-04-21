@@ -4,7 +4,7 @@
 
 ## Current Phase (in flight)
 
-**Tab-Keyed Offices** — ALL WAVES + L-MATRIX QA SHIPPED (PRs #149–#156). Mental-model flip landed: Office is now a per-tab iOS decision (explicit create), not auto-created from Claude sessions. L-matrix L1-L16 closed — L12/L14 intentionally skipped, L10/L11/L13 logged as PARTIAL with P1/P2 follow-ups in `docs/QA-FIXES.md` (sprite rehydrate #7, PTY `/btw` delivery Layer 2 #11, six P2 polish items). Spec: `docs/PHASE-TAB-KEYED-OFFICES.md` (Gate D superseded by PR #155). Memory: `project_tab_keyed_offices_phase.md`. Sprite 4-6 QA unpaused.
+**Tab-Keyed Offices** — ALL WAVES + L-MATRIX QA SHIPPED (PRs #149–#156). **Wave B of post-L-matrix follow-ups shipped (PR #157, 2026-04-21)**: iOS now refreshes sprite state on WS reattach + tab.list.response arrival; relay `sprite.state.request` gained sandboxGuard and dropped the per-session attach gate that was blocking PTY sessions. QA-FIXES #7 closed. Remaining follow-ups: Wave A (PTY `/btw` delivery Layer 2 #11 — needs design call), Wave D (six P2 polish items). Spec: `docs/PHASE-TAB-KEYED-OFFICES.md` (Gate D superseded by PR #155). Memory: `project_qa_followups_phase.md`. Sprite 4-6 QA unpaused.
 
 | Wave | Scope | Status |
 |------|-------|--------|
