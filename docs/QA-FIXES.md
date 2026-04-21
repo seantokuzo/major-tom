@@ -260,6 +260,22 @@ What the user actually hits in the Explore-subagent test case is the FIRST dropp
 
 ## P2 — Polish / nice-to-have
 
+### 14. Claude's xterm title escape sequences auto-rename the tab (skip this behavior)
+
+**Symptom (L15 QA, 2026-04-21):** when a tab has no user-supplied name, starting a claude session and giving it a task ends up renaming the tab to a long human-readable summary of what claude is doing (e.g., "claude — audit the relay for stale permission handlers"). This overrides the default "Terminal N" label. Once the user manually renames the tab, their name sticks and the auto-rename stops.
+
+**Root cause:** claude (and many TUI tools) emit OSC 0/2 escape sequences (`\x1b]0;TITLE\x07`) to update the terminal title. xterm.js captures these and exposes them as the tab's `title` property, which iOS reads as `tab.title`. Our `displayTitle` chain is `titleStore.title(for: tab.tabId) ?? tab.title`, so whenever no user-set title exists, claude's title wins.
+
+**Fix direction:** suppress or ignore OSC 0/2 title updates from our PTY stream — either filter them in the iOS xterm.html glue before they update `tab.title`, or keep consuming them for display purposes but stop surfacing them to the Office Manager (use tabId or a generic "Terminal N" label instead when `titleStore.title` is nil).
+
+**Files:**
+- `ios/MajorTom/Features/Terminal/Resources/terminal.html` — filter title OSC.
+- OR `ios/MajorTom/Features/Terminal/ViewModels/TerminalViewModel.swift` — accept xterm title events but don't propagate to `TerminalTab.title`.
+
+**Priority:** P2 polish — harmless but noisy; manual rename is the escape hatch.
+
+---
+
 ### 12. PTY reconnect lands at default cwd instead of the tab's prior cwd
 
 **Symptom (L13 QA, 2026-04-20):** user had claude running in a tab with cwd `/Users/seansimpson/Documents/code/dev/major-tom`. Relay was restarted mid-session. On reconnect, terminal shows old buffer (nice!) but the fresh shell prompt lands at `$HOME` / default cwd, not the tab's previous cwd. User has to `cd` back every reconnect.
@@ -283,15 +299,18 @@ Related to QA-FIXES #7 (sprite rehydrate gap on reconnect / Office recreate). Fi
 
 **Priority:** P2 — workaround available, but the stale-sprite UX is confusing.
 
-### 11b. "Performance HUD" settings toggle didn't actually hide the Metal HUD
+### 11b. "Performance HUD" settings toggle is mostly decorative
 
-**Symptom (L13 QA, 2026-04-20):** user had "Performance HUD" OFF in Settings → Developer but the translucent Metal GPU HUD overlay kept rendering on the Office scene.
+**Resolution (2026-04-20):** the translucent HUD the user was seeing turned out to be the iOS device-level Metal Performance HUD (Settings → Developer → Metal Performance HUD on the phone itself) — which is an OS overlay that no app-level code can suppress. Turning that OFF killed the HUD.
 
-**Root cause (FIXED 2026-04-20):** `OfficeScene.applyPerfHUD` only flipped SKView's native text stats (`showsFPS`/`showsNodeCount`/…) — it never touched the Metal HUD, which is controlled by `CAMetalLayer.developerHUDProperties`. If the device had Settings → Developer → Metal Performance HUD ON, the system default rendered regardless of the app toggle. Fix: extend `applyPerfHUD` to set `metalLayer.developerHUDProperties = nil` on OFF and a populated dict on ON, overriding the device default per layer.
+Our in-app "Performance HUD" toggle in Settings → Developer only flips `SKView.showsFPS` / `showsNodeCount` / `showsDrawCount` / `showsQuadCount`, which render as simple text numbers in the bottom-right of the Office scene. Commit `734c22f` added `CAMetalLayer.developerHUDProperties = nil/dict` alongside — no functional effect on the device-level HUD, but harmless and at least toggles cleanly on/off if anyone does enable the app-level Metal HUD.
 
-**Files:** `ios/MajorTom/Features/Office/Scenes/OfficeScene.swift:applyPerfHUD`.
+**Follow-up decision needed:**
+- **Option A — remove the toggle.** Nobody really needs SKView text stats outside dev profiling. One less knob in Settings.
+- **Option B — rename + repurpose.** Rename to "SpriteKit Stats" and make the footer describe what it actually shows (FPS/nodes/draws/quads text), not Metal HUD.
+- **Option C — add a deeplink.** Alongside the in-app toggle, add a "Metal HUD (iOS setting)" row with `UIApplication.openURL` to `Settings → Developer`. Would at least let the user jump straight there.
 
-**Priority:** P2 polish, shipped.
+Priority P2 — not functional breakage, just messy UX / misleading label.
 
 ---
 
