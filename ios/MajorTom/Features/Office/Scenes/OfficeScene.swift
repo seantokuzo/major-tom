@@ -156,11 +156,12 @@ final class OfficeScene: SKScene {
         view.showsDrawCount = enabled
         view.showsQuadCount = enabled
 
-        // Also toggle the Metal HUD (GPU timing overlay) so OFF actually
-        // hides the translucent perf HUD even when Settings →
-        // Developer → Metal Performance HUD is on at device level.
-        // Setting developerHUDProperties = nil on our layer overrides
-        // the system default for this view.
+        // Also toggle this SKView's per-layer Metal developer HUD
+        // alongside the SKView counters. This only affects our own
+        // CAMetalLayer — it does NOT suppress the iOS device-level
+        // Metal Performance HUD (Settings → Developer → Metal
+        // Performance HUD), which is an OS overlay that no app-level
+        // code can hide. See docs/QA-FIXES.md #11b.
         if let metalLayer = view.layer as? CAMetalLayer {
             metalLayer.developerHUDProperties = enabled
                 ? ["mode": "default", "logging": "default"]
