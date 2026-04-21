@@ -1340,9 +1340,9 @@ final class RelayService {
                 tabRegistryStore.replaceAll(with: event)
                 responseCounter &+= 1
                 // QA-FIXES #7: kill-and-relaunch can land a tap on an Office
-                // card before the tab list arrives. Once the roster is known,
-                // re-request sprite state for any Office whose seeding was
-                // empty at creation time.
+                // card before the tab list arrives. Refresh all currently
+                // open Offices so any that were opened before the roster
+                // arrived can resolve their sprite state.
                 officeSceneManager?.refreshAllOpenOffices()
             }
 
