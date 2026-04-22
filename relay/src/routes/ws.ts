@@ -979,6 +979,36 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
         const mapping = spriteState?.mappings.find(m =>
           m.subagentId === message.subagentId && m.spriteHandle === message.spriteHandle
         );
+
+        // QA-FIXES #11 — Layer 2 instrumentation. Confirms or rules out
+        // the "mapping missing because subagent was already dismissed"
+        // hypothesis before committing to a PtyBtwQueue vs delivery-via-
+        // parent-prompt direction. Fields let us separately distinguish:
+        //   - subagentId/spriteHandle drift between iOS and relay
+        //     (`subagentIdKnown` true but `mappingFound` false)
+        //   - PTY vs SDK session kind (no worker → PTY path)
+        //   - agent lifecycle state at tap time
+        const subagentIdKnown = spriteState?.mappings.some(
+          m => m.subagentId === message.subagentId,
+        ) ?? false;
+        const liveAgent = agentTracker.get(message.subagentId);
+        const hasWorker =
+          fleetManager.getWorkerForSessionId(message.sessionId) !== undefined;
+        logger.info(
+          {
+            sessionId: message.sessionId,
+            subagentId: message.subagentId,
+            spriteHandle: message.spriteHandle,
+            messageId: message.messageId,
+            mappingFound: !!mapping,
+            subagentIdKnown,
+            mappingCount: spriteState?.mappings.length ?? 0,
+            sessionKind: hasWorker ? 'sdk-worker' : 'pty-or-dead',
+            agentStatus: liveAgent?.status ?? 'not_in_tracker',
+          },
+          'sprite.message — handler entry',
+        );
+
         if (!mapping) {
           // Agent may have completed before message arrived (scenario #4 from spec)
           sendToClient(ws, {
