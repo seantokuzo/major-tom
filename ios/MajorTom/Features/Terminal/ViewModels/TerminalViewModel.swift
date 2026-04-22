@@ -481,12 +481,15 @@ final class TerminalViewModel {
         case .bell:
             HapticService.impact(.light)
 
-        case .title(let title):
-            // Update the active tab's title from xterm title escape sequence.
-            let newTitle = title.isEmpty ? "Terminal" : title
-            if let index = tabs.firstIndex(where: { $0.isActive }) {
-                tabs[index].title = newTitle
-            }
+        case .title:
+            // Intentional no-op. claude and other TUIs emit OSC 0/2 title
+            // escape sequences on every turn, which used to clobber the
+            // user-visible tab label with a running commentary on claude's
+            // current task. The tab's default label + the explicit
+            // TabTitleStore rename flow are the source of truth now; the
+            // xterm-supplied title is consumed internally by xterm for its
+            // own bookkeeping but is not propagated to TerminalTab.title.
+            break
 
         case .selection(let text):
             UIPasteboard.general.string = text
