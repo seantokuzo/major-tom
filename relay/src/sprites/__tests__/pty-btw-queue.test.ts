@@ -219,21 +219,104 @@ describe('PtyBtwQueue — enqueue & drain', () => {
     expect(adapter.writes[1]!.data).toContain('second');
   });
 
-  it('drains a different subagent in parallel even if another is in flight', async () => {
+  it('serializes two /btws for different subagents on the same PTY tab', async () => {
+    // A PTY has one stdin/stdout, so injecting two /btws in parallel on
+    // the same tab would interleave output and poison response
+    // correlation. The queue holds the second until the first finalizes.
     const adapter = makeStubAdapter();
     adapter.tabs.add('tab-1');
     const registry = makeStubRegistry({ 'sess-1': 'tab-1' });
     const q = new PtyBtwQueue(
       { adapter, tabRegistry: registry },
-      { settleMs: 1_000, maxWaitMs: 10_000, minWaitMs: 1 },
+      { settleMs: 30, maxWaitMs: 1_000, minWaitMs: 1 },
     );
 
     q.enqueue({ ...SAMPLE_INPUT, subagentId: 'agent-A', messageId: 'mA' });
     q.enqueue({ ...SAMPLE_INPUT, subagentId: 'agent-B', messageId: 'mB' });
     await Promise.resolve();
 
-    // Both subagents' head /btw should have been written
+    // Only one subagent's /btw should have been written so far
+    expect(adapter.writes).toHaveLength(1);
+
+    // Settle the first, then the second should drain
+    adapter.chunks('tab-1', 'reply to A\n');
+    await vi.advanceTimersByTimeAsync(40);
+    await Promise.resolve();
     expect(adapter.writes).toHaveLength(2);
+  });
+
+  it('drains in parallel across different tabs', async () => {
+    // Different tabs = different PTY streams = safe to inject concurrently.
+    const adapter = makeStubAdapter();
+    adapter.tabs.add('tab-1');
+    adapter.tabs.add('tab-2');
+    const registry = makeStubRegistry({ 'sess-1': 'tab-1', 'sess-2': 'tab-2' });
+    const q = new PtyBtwQueue(
+      { adapter, tabRegistry: registry },
+      { settleMs: 1_000, maxWaitMs: 10_000, minWaitMs: 1 },
+    );
+
+    q.enqueue({ ...SAMPLE_INPUT, sessionId: 'sess-1', subagentId: 'agent-A', messageId: 'mA' });
+    q.enqueue({ ...SAMPLE_INPUT, sessionId: 'sess-2', subagentId: 'agent-B', messageId: 'mB' });
+    await Promise.resolve();
+
+    expect(adapter.writes).toHaveLength(2);
+    expect(new Set(adapter.writes.map(w => w.tabId))).toEqual(new Set(['tab-1', 'tab-2']));
+  });
+
+  it('routes each chunk to exactly one awaiting entry per tab', async () => {
+    // Proves onChunk uses the tab-scoped inFlight index rather than
+    // fanning to every awaiting entry in the queue.
+    const adapter = makeStubAdapter();
+    adapter.tabs.add('tab-1');
+    adapter.tabs.add('tab-2');
+    const registry = makeStubRegistry({ 'sess-1': 'tab-1', 'sess-2': 'tab-2' });
+    const q = new PtyBtwQueue(
+      { adapter, tabRegistry: registry },
+      { settleMs: 30, maxWaitMs: 10_000, minWaitMs: 1 },
+    );
+
+    const responses: { messageId: string; text: string }[] = [];
+    q.on('responded', (ev) => responses.push({ messageId: ev.messageId, text: ev.text }));
+
+    q.enqueue({ ...SAMPLE_INPUT, sessionId: 'sess-1', subagentId: 'agent-A', messageId: 'mA' });
+    q.enqueue({ ...SAMPLE_INPUT, sessionId: 'sess-2', subagentId: 'agent-B', messageId: 'mB' });
+    await Promise.resolve();
+
+    adapter.chunks('tab-1', 'reply for A only\n');
+    adapter.chunks('tab-2', 'reply for B only\n');
+    await vi.advanceTimersByTimeAsync(40);
+
+    const byId = new Map(responses.map(r => [r.messageId, r.text]));
+    expect(byId.get('mA')).toBe('reply for A only');
+    expect(byId.get('mB')).toBe('reply for B only');
+  });
+
+  it('does not finalize before minWaitMs even if settleMs is smaller', async () => {
+    const adapter = makeStubAdapter();
+    adapter.tabs.add('tab-1');
+    const registry = makeStubRegistry({ 'sess-1': 'tab-1' });
+    const q = new PtyBtwQueue(
+      { adapter, tabRegistry: registry },
+      // settle is tiny but minWait demands 200ms floor
+      { settleMs: 5, maxWaitMs: 5_000, minWaitMs: 200 },
+    );
+
+    const respondedAt: number[] = [];
+    q.on('responded', () => respondedAt.push(Date.now()));
+
+    const startedAt = Date.now();
+    q.enqueue(SAMPLE_INPUT);
+    await Promise.resolve();
+
+    // Fast first chunk — should NOT finalize before minWait
+    adapter.chunks('tab-1', 'very fast reply');
+    await vi.advanceTimersByTimeAsync(50);
+    expect(respondedAt).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(200);
+    expect(respondedAt).toHaveLength(1);
+    expect(respondedAt[0]! - startedAt).toBeGreaterThanOrEqual(200);
   });
 });
 

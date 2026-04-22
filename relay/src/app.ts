@@ -457,6 +457,12 @@ export async function buildApp(config: AppConfig) {
 
   app.addHook('onClose', async () => {
     logger.info('Shutting down services...');
+    // Dispose the /btw queue before the adapter so its in-flight timers
+    // and output listeners are cleared while the adapter's sessions map
+    // is still intact. Order matters: `ptyAdapter.dispose()` kills the
+    // PTYs, which would drop our output taps anyway — disposing the
+    // queue first keeps shutdown lint-clean and deterministic.
+    ptyBtwQueue.dispose();
     ptyAdapter.dispose();
     healthMonitor.dispose();
     await achievementService.flush();

@@ -132,6 +132,13 @@ export class PtyBtwQueue extends EventEmitter {
   private readonly privateState = new WeakMap<PtyBtwQueueEntry, EntryPrivate>();
   /** tabId → { unsub, refCount } — multiplex a single listener per tab. */
   private readonly tapsByTab = new Map<string, { unsub: () => void; refCount: number }>();
+  /**
+   * tabId → messageId of the single entry currently in-flight on that PTY.
+   * A PTY has one stdin/stdout; multiple concurrent injections on the same
+   * tab would interleave output and poison response correlation. Serialize
+   * per tab (across subagents) so only one entry is awaiting at a time.
+   */
+  private readonly inFlightByTab = new Map<string, string>();
   private readonly settleMs: number;
   private readonly maxWaitMs: number;
   private readonly maxResponseChars: number;
@@ -202,10 +209,30 @@ export class PtyBtwQueue extends EventEmitter {
   private drainFor(subagentId: string): void {
     const list = this.bySubagent.get(subagentId);
     if (!list || list.length === 0) return;
-    if (list.some(e => e.status === 'awaiting_response')) return;
     const head = list.find(e => e.status === 'queued');
     if (!head) return;
+    // Tab-wide serialization: if any entry is already awaiting on this
+    // tab (possibly for a different subagent), wait. A PTY has a single
+    // stdin/stdout — injecting two /btws in parallel would interleave
+    // output and make response correlation ambiguous.
+    if (this.inFlightByTab.has(head.tabId)) return;
     this.inject(head);
+  }
+
+  /**
+   * Drain the oldest queued entry on `tabId` across all subagents, if
+   * nothing is currently in-flight. Called after a finalize/drop so the
+   * next waiting entry on the tab can proceed.
+   */
+  private drainForTab(tabId: string): void {
+    if (this.inFlightByTab.has(tabId)) return;
+    let oldest: PtyBtwQueueEntry | undefined;
+    for (const entry of this.byMessageId.values()) {
+      if (entry.tabId !== tabId) continue;
+      if (entry.status !== 'queued') continue;
+      if (!oldest || entry.queuedAt < oldest.queuedAt) oldest = entry;
+    }
+    if (oldest) this.inject(oldest);
   }
 
   private inject(entry: PtyBtwQueueEntry): void {
@@ -218,6 +245,7 @@ export class PtyBtwQueue extends EventEmitter {
     }
     entry.status = 'awaiting_response';
     entry.injectedAt = Date.now();
+    this.inFlightByTab.set(entry.tabId, entry.messageId);
     const priv = this.privateState.get(entry)!;
     priv.maxWaitTimer = setTimeout(() => {
       logger.warn(
@@ -231,11 +259,11 @@ export class PtyBtwQueue extends EventEmitter {
       );
       this.finalize(entry, 'max-wait');
     }, this.maxWaitMs);
-    // Seed a minWait settle so instant replies still get at least a beat
-    // of capture time before we declare the turn done.
-    priv.settleTimer = setTimeout(() => {
-      this.finalize(entry, 'settled');
-    }, Math.max(this.minWaitMs, this.settleMs));
+    // Seed settle so instant replies still get at least a beat of capture
+    // time. `scheduleSettle` enforces the `injectedAt + minWaitMs` floor on
+    // both the initial seed and every reset from onChunk, so a fast first
+    // chunk cannot finalize before minWait has elapsed.
+    this.scheduleSettle(entry);
     this.emit('injected', {
       sessionId: entry.sessionId,
       tabId: entry.tabId,
@@ -253,6 +281,23 @@ export class PtyBtwQueue extends EventEmitter {
       },
       'PtyBtwQueue: injected',
     );
+  }
+
+  /**
+   * (Re)arm the settle timer for an awaiting entry. The delay is
+   * `max(settleMs, injectedAt + minWaitMs - now)` so a fast first chunk
+   * never finalizes earlier than `minWaitMs` after injection — keeping
+   * the contract even when `settleMs < minWaitMs`.
+   */
+  private scheduleSettle(entry: PtyBtwQueueEntry): void {
+    const priv = this.privateState.get(entry);
+    if (!priv) return;
+    if (priv.settleTimer) clearTimeout(priv.settleTimer);
+    const now = Date.now();
+    const injectedAt = entry.injectedAt ?? now;
+    const minFloor = injectedAt + this.minWaitMs - now;
+    const delay = Math.max(this.settleMs, minFloor);
+    priv.settleTimer = setTimeout(() => this.finalize(entry, 'settled'), delay);
   }
 
   private attachTap(tabId: string): void {
@@ -279,16 +324,17 @@ export class PtyBtwQueue extends EventEmitter {
   }
 
   private onChunk(tabId: string, chunk: Buffer): void {
-    const text = chunk.toString('utf8');
-    for (const entry of this.byMessageId.values()) {
-      if (entry.tabId !== tabId) continue;
-      if (entry.status !== 'awaiting_response') continue;
-      const priv = this.privateState.get(entry);
-      if (!priv) continue;
-      priv.output.push(text);
-      if (priv.settleTimer) clearTimeout(priv.settleTimer);
-      priv.settleTimer = setTimeout(() => this.finalize(entry, 'settled'), this.settleMs);
-    }
+    // Tab-wide serialization guarantees at most one awaiting entry per tab,
+    // so we route the chunk to that entry via `inFlightByTab` instead of
+    // scanning all entries (O(1) vs. O(n)).
+    const messageId = this.inFlightByTab.get(tabId);
+    if (!messageId) return;
+    const entry = this.byMessageId.get(messageId);
+    if (!entry || entry.status !== 'awaiting_response') return;
+    const priv = this.privateState.get(entry);
+    if (!priv) return;
+    priv.output.push(chunk.toString('utf8'));
+    this.scheduleSettle(entry);
   }
 
   private finalize(entry: PtyBtwQueueEntry, why: 'settled' | 'max-wait'): void {
@@ -300,9 +346,10 @@ export class PtyBtwQueue extends EventEmitter {
     }
     const raw = priv ? priv.output.join('') : '';
     const text = cleanPtyResponse(raw, entry.constrainedText, this.maxResponseChars);
-    const subagentId = entry.subagentId;
+    const tabId = entry.tabId;
+    this.releaseInFlight(entry);
     this.remove(entry);
-    this.detachTap(entry.tabId);
+    this.detachTap(tabId);
     this.emit('responded', {
       sessionId: entry.sessionId,
       tabId: entry.tabId,
@@ -327,7 +374,16 @@ export class PtyBtwQueue extends EventEmitter {
       },
       'PtyBtwQueue: finalized response',
     );
-    queueMicrotask(() => this.drainFor(subagentId));
+    // The tab is now free — drain the oldest queued entry on this tab
+    // regardless of subagent.
+    queueMicrotask(() => this.drainForTab(tabId));
+  }
+
+  /** Release this entry's claim on its tab's in-flight slot, if held. */
+  private releaseInFlight(entry: PtyBtwQueueEntry): void {
+    if (this.inFlightByTab.get(entry.tabId) === entry.messageId) {
+      this.inFlightByTab.delete(entry.tabId);
+    }
   }
 
   private dropInternal(entry: PtyBtwQueueEntry, reason: string): void {
@@ -337,8 +393,10 @@ export class PtyBtwQueue extends EventEmitter {
       if (priv.maxWaitTimer) clearTimeout(priv.maxWaitTimer);
     }
     const wasAwaiting = entry.status === 'awaiting_response';
+    const tabId = entry.tabId;
+    this.releaseInFlight(entry);
     this.remove(entry);
-    if (wasAwaiting) this.detachTap(entry.tabId);
+    if (wasAwaiting) this.detachTap(tabId);
     this.emit('dropped', {
       sessionId: entry.sessionId,
       tabId: entry.tabId,
@@ -358,6 +416,9 @@ export class PtyBtwQueue extends EventEmitter {
       },
       'PtyBtwQueue: dropped',
     );
+    // If we just freed an in-flight slot, let another queued entry drain
+    // onto this tab.
+    if (wasAwaiting) queueMicrotask(() => this.drainForTab(tabId));
   }
 
   private remove(entry: PtyBtwQueueEntry): void {
@@ -407,11 +468,11 @@ export class PtyBtwQueue extends EventEmitter {
       this.dropInternal(entry, reason);
       count += 1;
     }
+    // The tab is gone — nothing left can drain onto it, so force-clear
+    // the in-flight slot and the output tap regardless of refCount state.
+    this.inFlightByTab.delete(tabId);
     const existing = this.tapsByTab.get(tabId);
     if (existing) {
-      // The PTY is gone — unsubscribing via the adapter would no-op, but
-      // clear our bookkeeping so a future enqueue with a new tabId of the
-      // same id (unlikely but possible) starts clean.
       try {
         existing.unsub();
       } catch {
@@ -448,6 +509,7 @@ export class PtyBtwQueue extends EventEmitter {
     this.bySubagent.clear();
     this.byMessageId.clear();
     this.tapsByTab.clear();
+    this.inFlightByTab.clear();
     this.removeAllListeners();
   }
 

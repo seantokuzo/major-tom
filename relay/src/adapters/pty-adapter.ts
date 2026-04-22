@@ -308,19 +308,22 @@ export class PtyAdapter {
   /**
    * Subscribe to raw PTY output chunks for `tabId`. Listener fires on every
    * chunk the PTY emits for that session, regardless of viewer attach state.
-   * Returns an unsubscribe function. Safe to call before the tab exists —
-   * the subscription is still registered if/when a future `attach` spawns it,
-   * but since sessions are keyed by tabId and adjusted via `spawnSession`,
-   * callers normally only tap after attach.
+   * Returns an unsubscribe function.
    *
-   * Designed to be additive: throws from listeners are caught + logged so a
-   * bad listener can't break the primary viewer/ring path.
+   * Must be called AFTER `attach` has spawned the PTY — if the tab has no
+   * live session, the listener is NOT persisted and the returned unsub is
+   * a no-op. Deferred registration isn't supported; if you need it, queue
+   * the subscribe after `attached` is acknowledged.
+   *
+   * Designed to be additive: throws from listeners are caught + logged so
+   * a bad subscriber can't break the primary viewer/ring path.
    */
   onOutput(tabId: string, listener: (chunk: Buffer) => void): () => void {
     const session = this.sessions.get(tabId);
     if (!session) {
-      // No session yet — return a no-op unsubscribe. Callers shouldn't rely
-      // on this branch in production; tests may exercise it.
+      // No session yet — silently no-op. Callers are expected to subscribe
+      // after attach has spawned the PTY; this path exists only so tests
+      // and mistimed subscribes don't throw.
       return () => {};
     }
     session.outputListeners.add(listener);
