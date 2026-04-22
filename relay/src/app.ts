@@ -55,6 +55,7 @@ import { AuditLog } from './security/audit-log.js';
 import { RateLimiter } from './security/rate-limiter.js';
 import { SpriteMappingPersistence } from './sprites/sprite-mapping-persistence.js';
 import { SpriteMapper } from './sprites/sprite-mapper.js';
+import { PtyBtwQueue } from './sprites/pty-btw-queue.js';
 import { runSpriteMappingMigration } from './sprites/migrations.js';
 import { TabRegistry } from './tabs/tab-registry.js';
 import { TabRegistryPersistence } from './tabs/tab-registry-persistence.js';
@@ -372,10 +373,22 @@ export async function buildApp(config: AppConfig) {
           sweepOrphanedSubagentsForSession(sid, reportLifecycle, 'pty-exit');
         }
       }
+      // Wave A — drop any in-flight /btw entries pinned to this tab so
+      // sprite bubbles don't hang waiting for a response that can't land.
+      ptyBtwQueue.dropForTab(tabId, 'PTY tab closed');
       eventBus.emit('server.message', { type: 'tab.closed', tabId });
     },
   });
   shellApprovalQueue.setHybridWriter((tabId, data) => ptyAdapter.write(tabId, data));
+
+  // Wave A — PTY-native /btw queue. Parallel to fleetManager's SDK
+  // `BtwQueue` (which lives per-worker). iOS's primary flow is PTY
+  // sessions with no SDK worker, so `sprite.message` for those sessions
+  // routes here instead of into `fleetManager.enqueueSpriteMessage`.
+  const ptyBtwQueue = new PtyBtwQueue({
+    adapter: ptyAdapter,
+    tabRegistry,
+  });
 
   // Health check (public)
   await app.register(createHealthRoutes({ sessionManager, fleetManager, healthMonitor, ptyAdapter }));
@@ -424,6 +437,7 @@ export async function buildApp(config: AppConfig) {
     spriteMappingPersistence,
     spriteMapper,
     tabRegistry,
+    ptyBtwQueue,
   }));
 
   // Phase 13 Wave 2 — REST endpoints for approvals (cold-start fetch
