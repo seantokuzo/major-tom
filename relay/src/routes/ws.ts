@@ -992,8 +992,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           m => m.subagentId === message.subagentId,
         ) ?? false;
         const liveAgent = agentTracker.get(message.subagentId);
-        const hasWorker =
-          fleetManager.getWorkerForSessionId(message.sessionId) !== undefined;
+        const hasWorker = fleetManager.hasSession(message.sessionId);
         logger.info(
           {
             sessionId: message.sessionId,
