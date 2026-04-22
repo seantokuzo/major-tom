@@ -244,7 +244,7 @@ struct SettingsView: View {
     private var developerSection: some View {
         Section {
             Toggle(isOn: $showsPerfHUD) {
-                Label("Performance HUD", systemImage: "speedometer")
+                Label("SpriteKit Stats", systemImage: "speedometer")
             }
             .onChange(of: showsPerfHUD) { _, newValue in
                 PerfHUDPreferences.isEnabled = newValue
@@ -253,7 +253,7 @@ struct SettingsView: View {
         } header: {
             Text("Developer")
         } footer: {
-            Text("Overlays SpriteKit FPS + node/draw/quad counts on the Office scene. Use during Instruments profiling — see docs/PERF-BASELINE.md.")
+            Text("Overlays SpriteKit FPS + node/draw/quad counts on the Office scene. Use during Instruments profiling — see docs/PERF-BASELINE.md. (Not the iOS Metal Performance HUD — that lives in iOS Settings → Developer and can't be toggled from an app.)")
         }
     }
 

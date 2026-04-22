@@ -89,7 +89,7 @@ final class OfficeScene: SKScene {
     /// Guard against `didMove(to:)` being invoked more than once (e.g. SpriteView re-hosting).
     private var hasSetup = false
 
-    /// NotificationCenter token for live Performance HUD toggle updates.
+    /// NotificationCenter token for live SpriteKit Stats toggle updates.
     private var perfHUDObserver: NSObjectProtocol?
 
     // MARK: - Scene Lifecycle
@@ -106,7 +106,7 @@ final class OfficeScene: SKScene {
         // Enable multi-touch for pinch zoom
         view.isMultipleTouchEnabled = true
 
-        // Performance HUD — flipped via Settings → Developer → Performance HUD.
+        // SpriteKit Stats — flipped via Settings → Developer → SpriteKit Stats.
         // Re-applied live when the preference changes so we don't need to
         // leave/return to the Office tab while measuring.
         applyPerfHUD(to: view)
@@ -147,7 +147,7 @@ final class OfficeScene: SKScene {
         }
     }
 
-    // MARK: - Performance HUD
+    // MARK: - SpriteKit Stats
 
     private func applyPerfHUD(to view: SKView) {
         let enabled = PerfHUDPreferences.isEnabled
