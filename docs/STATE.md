@@ -4,7 +4,7 @@
 
 ## Current Phase (in flight)
 
-**Tab-Keyed Offices** — ALL WAVES + L-MATRIX QA SHIPPED (PRs #149–#156). **Wave B of post-L-matrix follow-ups shipped (PR #157, 2026-04-21)**: iOS now refreshes sprite state on WS reattach + tab.list.response arrival; relay `sprite.state.request` gained sandboxGuard and dropped the per-session attach gate that was blocking PTY sessions. QA-FIXES #7 closed. Remaining follow-ups: Wave A (PTY `/btw` delivery Layer 2 #11 — needs design call), Wave D (six P2 polish items). Spec: `docs/PHASE-TAB-KEYED-OFFICES.md` (Gate D superseded by PR #155). Memory: `project_qa_followups_phase.md`. Sprite 4-6 QA unpaused.
+**Tab-Keyed Offices** — ALL WAVES + L-MATRIX QA SHIPPED (PRs #149–#156). **Wave A shipped (PR #159, 2026-04-22)**: PtyBtwQueue routes `sprite.message` for PTY sessions via a per-subagent FIFO that writes framed text into the PTY and taps `PtyAdapter.onOutput` for reply correlation (2s settle, 30s max-wait, tab-wide serialization, ANSI-stripped tail). Closes QA-FIXES #11 Layer 2 — no more "Agent completed before delivery" drops for PTY /btws. **Wave B shipped (PR #157, 2026-04-21)**: iOS refreshes sprite state on WS reattach + tab.list.response arrival; relay `sprite.state.request` gained sandboxGuard and dropped the per-session attach gate. QA-FIXES #7 closed. Remaining follow-ups: Wave D (six P2 polish items). Spec: `docs/PHASE-TAB-KEYED-OFFICES.md` (Gate D superseded by PR #155). Memory: `project_qa_followups_phase.md`. Sprite 4-6 QA unpaused.
 
 | Wave | Scope | Status |
 |------|-------|--------|
