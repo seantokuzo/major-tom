@@ -190,6 +190,34 @@ describe('PtyAdapter.sendInput / write', () => {
   });
 });
 
+describe('PtyAdapter.onOutput', () => {
+  it('fires registered listeners on every chunk the PTY emits', async () => {
+    const client = makeClient();
+    adapter.attach('tab-1', client, ATTACH_DEFAULTS);
+
+    const chunks: Buffer[] = [];
+    const unsub = adapter.onOutput('tab-1', (c) => chunks.push(c));
+
+    adapter.write('tab-1', 'hello-output\n');
+    await waitFor(() => {
+      const text = Buffer.concat(chunks).toString('utf-8');
+      expect(text).toContain('hello-output');
+    });
+
+    unsub();
+    const before = chunks.length;
+    adapter.write('tab-1', 'after-unsub\n');
+    // Give the PTY a beat to flush and confirm no new chunks after unsubscribe
+    await new Promise((r) => setTimeout(r, 60));
+    expect(chunks.length).toBe(before);
+  });
+
+  it('onOutput on unknown tabId returns a no-op unsubscribe', () => {
+    const unsub = adapter.onOutput('nope', () => {});
+    expect(() => unsub()).not.toThrow();
+  });
+});
+
 describe('PtyAdapter.resize', () => {
   it('resizes the PTY without throwing', () => {
     const client = makeClient();

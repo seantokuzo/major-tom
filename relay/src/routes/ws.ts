@@ -43,6 +43,7 @@ import {
   type PersistedSpriteMappingFile,
 } from '../sprites/sprite-mapping-persistence.js';
 import type { TabRegistry } from '../tabs/tab-registry.js';
+import type { PtyBtwQueue } from '../sprites/pty-btw-queue.js';
 
 interface WsDeps {
   sessionManager: SessionManager;
@@ -73,6 +74,14 @@ interface WsDeps {
   spriteMapper: SpriteMapper;
   /** Tab-Keyed Offices — optional for back-compat during wiring. */
   tabRegistry?: TabRegistry;
+  /**
+   * Wave A — PTY-native /btw queue. PTY sessions have no SDK worker, so
+   * `fleetManager.enqueueSpriteMessage` always returns false for them and
+   * the /btw drops with "No active session." Routing through this queue
+   * writes the framed text directly into the PTY and taps output for the
+   * reply. Optional for back-compat during wiring / unit tests.
+   */
+  ptyBtwQueue?: PtyBtwQueue;
 }
 
 /**
@@ -101,6 +110,7 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
     spriteMappingPersistence,
     spriteMapper,
     tabRegistry,
+    ptyBtwQueue,
   } = deps;
 
   const notificationDigest = new NotificationDigest(pushManager, notificationConfigManager);
@@ -1024,39 +1034,68 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           break;
         }
 
-        // Route the /btw to the worker owning this session. Worker's
-        // BtwQueue injects at the next turn boundary and emits a
-        // terminal `ipc:sprite.response` back to the parent → re-fanned
-        // out via the `sprite-response` listener below.
-        const routed = fleetManager.enqueueSpriteMessage({
-          sessionId: message.sessionId,
-          subagentId: message.subagentId,
-          spriteHandle: message.spriteHandle,
-          messageId: message.messageId,
-          userText: message.text,
-          role: mapping.canonicalRole,
-          task: mapping.task,
-        });
-        if (!routed) {
-          // No worker for the session — treat as dropped. This is the
-          // session-ended race: mapping existed in memory but the SDK
-          // session went away between mapping-check and enqueue.
-          sendToClient(ws, {
-            type: 'sprite.response',
+        // Wave A — branch on session kind. PTY-backed sessions (iOS's
+        // primary flow) have no SDK worker; route those through the
+        // PTY-native queue which writes the framed text directly into
+        // the PTY and taps the output stream for the reply. SDK-worker
+        // sessions keep using the existing fleet path.
+        if (hasWorker) {
+          const routed = fleetManager.enqueueSpriteMessage({
             sessionId: message.sessionId,
-            spriteHandle: message.spriteHandle,
             subagentId: message.subagentId,
+            spriteHandle: message.spriteHandle,
             messageId: message.messageId,
-            text: '',
-            status: 'dropped',
-            dropReason: 'No active session — /btw cannot be delivered',
-            tabId: tabIdFor(message.sessionId),
+            userText: message.text,
+            role: mapping.canonicalRole,
+            task: mapping.task,
           });
-          break;
+          if (!routed) {
+            // SDK session disappeared between mapping check and enqueue.
+            sendToClient(ws, {
+              type: 'sprite.response',
+              sessionId: message.sessionId,
+              spriteHandle: message.spriteHandle,
+              subagentId: message.subagentId,
+              messageId: message.messageId,
+              text: '',
+              status: 'dropped',
+              dropReason: 'No active session — /btw cannot be delivered',
+              tabId: tabIdFor(message.sessionId),
+            });
+            break;
+          }
+        } else {
+          // PTY or dead session. If PtyBtwQueue isn't wired (unit tests
+          // building a minimal route), fall through to the legacy drop
+          // with the clarified reason — this is the same clarity win as
+          // Option 2 in the Wave A plan.
+          const result = ptyBtwQueue?.enqueue({
+            sessionId: message.sessionId,
+            subagentId: message.subagentId,
+            spriteHandle: message.spriteHandle,
+            messageId: message.messageId,
+            userText: message.text,
+            role: mapping.canonicalRole,
+            task: mapping.task,
+          });
+          if (!result || result.kind === 'no-tab') {
+            sendToClient(ws, {
+              type: 'sprite.response',
+              sessionId: message.sessionId,
+              spriteHandle: message.spriteHandle,
+              subagentId: message.subagentId,
+              messageId: message.messageId,
+              text: '',
+              status: 'dropped',
+              dropReason: result?.reason ?? 'Agent dismissed — response unavailable',
+              tabId: tabIdFor(message.sessionId),
+            });
+            break;
+          }
         }
         // Immediate `queued` ack so clients know the relay accepted the
         // message. The terminal `delivered` / `dropped` response follows
-        // when the turn boundary drains the queue.
+        // when the SDK turn boundary or PTY settle-timer drains the queue.
         sendToClient(ws, {
           type: 'sprite.response',
           sessionId: message.sessionId,
@@ -2127,6 +2166,56 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
       );
     });
 
+    // Wave A — PtyBtwQueue terminal states ride the same `sprite.response`
+    // wire shape as the SDK path. `responded` becomes `status: 'delivered'`;
+    // `dropped` carries the reason through. We broadcast to ALL clients
+    // (not just session-scoped) because PTY sessions are never
+    // `session.attach`-ed on the iOS side — same rationale as the
+    // sprite.link/unlink fix in QA-FIXES.md #11.
+    ptyBtwQueue?.on('responded', (ev) => {
+      broadcastToAll({
+        type: 'sprite.response',
+        sessionId: ev.sessionId,
+        spriteHandle: ev.spriteHandle,
+        subagentId: ev.subagentId,
+        messageId: ev.messageId,
+        text: ev.text,
+        status: 'delivered',
+        tabId: ev.tabId,
+      });
+      logger.info(
+        {
+          sessionId: ev.sessionId,
+          subagentId: ev.subagentId,
+          messageId: ev.messageId,
+          textLength: ev.text.length,
+        },
+        'PtyBtwQueue: response forwarded to clients',
+      );
+    });
+    ptyBtwQueue?.on('dropped', (ev) => {
+      broadcastToAll({
+        type: 'sprite.response',
+        sessionId: ev.sessionId,
+        spriteHandle: ev.spriteHandle,
+        subagentId: ev.subagentId,
+        messageId: ev.messageId,
+        text: '',
+        status: 'dropped',
+        dropReason: ev.reason,
+        tabId: ev.tabId,
+      });
+      logger.info(
+        {
+          sessionId: ev.sessionId,
+          subagentId: ev.subagentId,
+          messageId: ev.messageId,
+          reason: ev.reason,
+        },
+        'PtyBtwQueue: drop forwarded to clients',
+      );
+    });
+
     fleetManager.on('agent-lifecycle', (event) => {
       const sid = event.sessionId;
       switch (event.event) {
@@ -2241,6 +2330,9 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
               // worker usually fires first and handles this locally, but
               // some lifecycle paths skip SubagentStop — be idempotent.
               fleetManager.dropSpriteForSubagent(sid, event.agentId, 'Subagent completed');
+              // Wave A — PTY-side symmetric drop so bubbles waiting on a
+              // response whose subagent just completed clear immediately.
+              ptyBtwQueue?.dropForSubagent(event.agentId, 'Subagent completed');
             }
           }
           break;
@@ -2281,6 +2373,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
               });
               // Wave 4 — same as 'complete' above, drop any queued /btw.
               fleetManager.dropSpriteForSubagent(sid, event.agentId, 'Subagent dismissed');
+              // Wave A — PTY-side symmetric drop.
+              ptyBtwQueue?.dropForSubagent(event.agentId, 'Subagent dismissed');
             }
           }
           break;

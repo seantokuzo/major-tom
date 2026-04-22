@@ -131,6 +131,12 @@ interface PtySession {
   graceTimer?: ReturnType<typeof setTimeout>;
   lastActivityAt: number;
   exited: boolean;
+  /**
+   * Additive byte-stream subscribers. Fired on every PTY chunk regardless
+   * of viewer state — used by PtyBtwQueue to correlate /btw responses
+   * without interfering with the primary viewer/ring path.
+   */
+  outputListeners: Set<(chunk: Buffer) => void>;
 }
 
 export class PtyAdapter {
@@ -300,6 +306,34 @@ export class PtyAdapter {
   }
 
   /**
+   * Subscribe to raw PTY output chunks for `tabId`. Listener fires on every
+   * chunk the PTY emits for that session, regardless of viewer attach state.
+   * Returns an unsubscribe function.
+   *
+   * Must be called AFTER `attach` has spawned the PTY — if the tab has no
+   * live session, the listener is NOT persisted and the returned unsub is
+   * a no-op. Deferred registration isn't supported; if you need it, queue
+   * the subscribe after `attached` is acknowledged.
+   *
+   * Designed to be additive: throws from listeners are caught + logged so
+   * a bad subscriber can't break the primary viewer/ring path.
+   */
+  onOutput(tabId: string, listener: (chunk: Buffer) => void): () => void {
+    const session = this.sessions.get(tabId);
+    if (!session) {
+      // No session yet — silently no-op. Callers are expected to subscribe
+      // after attach has spawned the PTY; this path exists only so tests
+      // and mistimed subscribes don't throw.
+      return () => {};
+    }
+    session.outputListeners.add(listener);
+    return () => {
+      const s = this.sessions.get(tabId);
+      if (s) s.outputListeners.delete(listener);
+    };
+  }
+
+  /**
    * Snapshot of all live tabs. Backs `GET /shell/tabs`.
    * Sorted by `lastActivityAt` descending so most recent appears first.
    */
@@ -360,6 +394,7 @@ export class PtyAdapter {
       ring: new RingBuffer(this.bufferBytes),
       lastActivityAt: Date.now(),
       exited: false,
+      outputListeners: new Set(),
     };
     this.sessions.set(tabId, session);
 
@@ -379,6 +414,22 @@ export class PtyAdapter {
       } else {
         // No live viewer — buffer for replay on reattach.
         session.ring.push(buf);
+      }
+      // Fan out to any additive output listeners (e.g. PtyBtwQueue). This
+      // runs regardless of viewer state so /btw response correlation works
+      // even when the user is detached. Errors are isolated per listener
+      // so one bad subscriber can't break others or the viewer path.
+      if (session.outputListeners.size > 0) {
+        for (const listener of session.outputListeners) {
+          try {
+            listener(buf);
+          } catch (err) {
+            logger.warn(
+              { err, tabId: session.tabId },
+              'PTY output listener threw — continuing',
+            );
+          }
+        }
       }
     });
 
@@ -408,6 +459,7 @@ export class PtyAdapter {
       clearTimeout(session.graceTimer);
       session.graceTimer = undefined;
     }
+    session.outputListeners.clear();
     this.sessions.delete(tabId);
     if (this.onTabClosed) {
       try {
