@@ -104,12 +104,15 @@ struct OfficeView: View {
                     Image(systemName: "building.2.slash")
                         .font(.system(size: 48))
                         .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+                        .accessibilityHidden(true)
                     Text("Office closed")
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(MajorTomTheme.Colors.textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MajorTomTheme.Colors.background)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Office closed")
             }
         }
         .task {
