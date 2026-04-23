@@ -19,6 +19,7 @@
  */
 import * as pty from 'node-pty';
 import type { IPty } from 'node-pty';
+import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { logger } from '../utils/logger.js';
 
@@ -52,6 +53,12 @@ export interface AttachOptions {
    * this (the PTY's env is fixed at spawn time).
    */
   envExtras?: Record<string, string>;
+  /**
+   * Per-spawn cwd override. Consulted on first spawn only; reattach keeps
+   * whatever cwd the PTY already has. When the path is missing or not a
+   * directory, the adapter falls back to its default cwd and logs a WARN.
+   */
+  cwd?: string;
 }
 
 export type AttachOutcome =
@@ -369,18 +376,22 @@ export class PtyAdapter {
     env['TERM'] = env['TERM'] ?? 'xterm-256color';
     env['COLORTERM'] = env['COLORTERM'] ?? 'truecolor';
     env['LANG'] = env['LANG'] ?? 'en_US.UTF-8';
+    // If the caller supplied a cwd override (tab's prior workingDir), verify
+    // the directory still exists before using it — deleted/moved directories
+    // would cause node-pty to fail the spawn. Fall back to adapter default.
+    const spawnCwd = this.resolveSpawnCwd(tabId, opts.cwd);
     // Align PWD with the spawn cwd so shell prompts expanding `\W` (bash)
     // or equivalents render the correct basename on the very first prompt.
     // Without this, bash inherits whatever PWD the relay process has, and
     // the initial PS1 expansion can fall out of sync with the child's
     // actual working directory until the user runs `cd` or equivalent.
-    env['PWD'] = this.cwd;
+    env['PWD'] = spawnCwd;
 
     const ptyProcess = this.spawnFn(this.shell, this.shellArgs, {
       name: 'xterm-256color',
       cols: opts.cols,
       rows: opts.rows,
-      cwd: this.cwd,
+      cwd: spawnCwd,
       env,
       // Binary mode: node-pty's types claim `string` but with `encoding: null`
       // it emits Buffers. See microsoft/node-pty#489.
@@ -450,6 +461,23 @@ export class PtyAdapter {
     });
 
     return session;
+  }
+
+  private resolveSpawnCwd(tabId: string, override: string | undefined): string {
+    if (!override) return this.cwd;
+    try {
+      if (statSync(override).isDirectory()) return override;
+      logger.warn(
+        { tabId, override, fallback: this.cwd },
+        'Tab cwd override exists but is not a directory — falling back',
+      );
+    } catch (err) {
+      logger.warn(
+        { err, tabId, override, fallback: this.cwd },
+        'Tab cwd override unreadable — falling back to default',
+      );
+    }
+    return this.cwd;
   }
 
   private evict(tabId: string): void {

@@ -526,6 +526,126 @@ describe('PtyAdapter spawn env prep', () => {
   });
 });
 
+describe('PtyAdapter cwd override (QA-FIXES #12)', () => {
+  // These tests pin the behavior that respawns after relay restart land in
+  // the tab's prior workingDir (persisted via TabRegistry from SessionStart
+  // hook), falling back to the adapter default when the dir is gone. Without
+  // coverage, a refactor could silently revert to always-HOME.
+
+  it('honors a cwd override when the directory exists', async () => {
+    const { mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = await mkdtemp(join(tmpdir(), 'mt-pty-cwd-'));
+    try {
+      let capturedCwd: string | undefined;
+      let capturedEnv: Record<string, string> | undefined;
+      const fakePty = {
+        pid: 1, cols: 80, rows: 24,
+        onData() {}, onExit() {}, kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+      };
+      const a = new PtyAdapter({
+        cwd: '/fallback-never-used',
+        env: { SHELL: '/bin/bash' },
+        spawn: ((_file: string, _args: string[], opts: { cwd: string; env: Record<string, string> }) => {
+          capturedCwd = opts.cwd;
+          capturedEnv = opts.env;
+          return fakePty;
+        }) as never,
+      });
+      try {
+        a.attach('tab-1', makeClient(), { ...ATTACH_DEFAULTS, cwd: dir });
+        expect(capturedCwd).toBe(dir);
+        // PWD must mirror spawn cwd so the first prompt expands correctly.
+        expect(capturedEnv?.PWD).toBe(dir);
+      } finally {
+        a.dispose();
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to the adapter default when the override directory is missing', () => {
+    let capturedCwd: string | undefined;
+    const fakePty = {
+      pid: 1, cols: 80, rows: 24,
+      onData() {}, onExit() {}, kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+    };
+    const a = new PtyAdapter({
+      cwd: '/tmp',
+      env: { SHELL: '/bin/bash' },
+      spawn: ((_file: string, _args: string[], opts: { cwd: string }) => {
+        capturedCwd = opts.cwd;
+        return fakePty;
+      }) as never,
+    });
+    try {
+      a.attach('tab-1', makeClient(), {
+        ...ATTACH_DEFAULTS,
+        cwd: '/this/path/does/not/exist/anywhere',
+      });
+      expect(capturedCwd).toBe('/tmp');
+    } finally {
+      a.dispose();
+    }
+  });
+
+  it('falls back when the override path exists but is not a directory', async () => {
+    const { mkdtemp, rm, writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = await mkdtemp(join(tmpdir(), 'mt-pty-cwd-file-'));
+    const filePath = join(dir, 'not-a-dir.txt');
+    await writeFile(filePath, 'hello');
+    try {
+      let capturedCwd: string | undefined;
+      const fakePty = {
+        pid: 1, cols: 80, rows: 24,
+        onData() {}, onExit() {}, kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+      };
+      const a = new PtyAdapter({
+        cwd: '/tmp',
+        env: { SHELL: '/bin/bash' },
+        spawn: ((_file: string, _args: string[], opts: { cwd: string }) => {
+          capturedCwd = opts.cwd;
+          return fakePty;
+        }) as never,
+      });
+      try {
+        a.attach('tab-1', makeClient(), { ...ATTACH_DEFAULTS, cwd: filePath });
+        expect(capturedCwd).toBe('/tmp');
+      } finally {
+        a.dispose();
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('uses the adapter default when no cwd override is supplied', () => {
+    let capturedCwd: string | undefined;
+    const fakePty = {
+      pid: 1, cols: 80, rows: 24,
+      onData() {}, onExit() {}, kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+    };
+    const a = new PtyAdapter({
+      cwd: '/adapter/default',
+      env: { SHELL: '/bin/bash' },
+      spawn: ((_file: string, _args: string[], opts: { cwd: string }) => {
+        capturedCwd = opts.cwd;
+        return fakePty;
+      }) as never,
+    });
+    try {
+      a.attach('tab-1', makeClient(), ATTACH_DEFAULTS);
+      expect(capturedCwd).toBe('/adapter/default');
+    } finally {
+      a.dispose();
+    }
+  });
+});
+
 describe('PtyAdapter constants', () => {
   it('default input max matches the spec', () => {
     expect(DEFAULT_INPUT_MAX_BYTES).toBe(64 * 1024);

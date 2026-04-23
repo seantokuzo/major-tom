@@ -13,11 +13,18 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { WebSocket } from 'ws';
 import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
 import type { PtyAdapter, PtyClient } from '../adapters/pty-adapter.js';
+import type { TabRegistry } from '../tabs/tab-registry.js';
 import { MAJOR_TOM_CONFIG_DIR } from '../installer/install-hooks.js';
 import { logger } from '../utils/logger.js';
 
 interface ShellRouteDeps {
   ptyAdapter: PtyAdapter;
+  /**
+   * Used to look up a tab's persisted workingDir (from the last SessionStart
+   * hook) so reconnects after relay restart respawn in the tab's prior cwd
+   * instead of HOME. Optional — when undefined, the adapter uses its default.
+   */
+  tabRegistry?: TabRegistry;
 }
 
 interface ShellAuthResult {
@@ -128,7 +135,7 @@ function buildEnvExtras(tabId: string): Record<string, string> {
 }
 
 export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
-  const { ptyAdapter } = deps;
+  const { ptyAdapter, tabRegistry } = deps;
 
   return async (fastify) => {
     fastify.get<{
@@ -169,10 +176,16 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
         const rows = parsedRows.value ?? 24;
 
         const client = toPtyClient(socket);
+        // Restore the tab's prior workingDir across relay restart / fresh
+        // spawn. TabRegistry captures cwd at SessionStart hook-time and
+        // persists it; the adapter validates the path before use and falls
+        // back to its default if the directory is gone.
+        const persistedCwd = tabRegistry?.getTab(tabId)?.workingDir;
         const outcome = ptyAdapter.attach(tabId, client, {
           cols,
           rows,
           envExtras: buildEnvExtras(tabId),
+          ...(persistedCwd ? { cwd: persistedCwd } : {}),
         });
         if (outcome.kind === 'rejected') {
           try {

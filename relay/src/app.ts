@@ -413,7 +413,7 @@ export async function buildApp(config: AppConfig) {
   // Shell WebSocket — registered after `createPreferencesRoutes` so its
   // path doesn't collide with any earlier catch-all. PtyAdapter was
   // constructed earlier so the health route could report tab counts.
-  await app.register(createShellRoute({ ptyAdapter }));
+  await app.register(createShellRoute({ ptyAdapter, tabRegistry }));
 
   // WebSocket (auth via session cookie on upgrade)
   await app.register(createWsRoute({
