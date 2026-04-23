@@ -95,12 +95,16 @@ struct OfficeView: View {
             if let viewModel, let scene = currentScene {
                 officeContent(viewModel: viewModel, scene: scene)
             } else {
-                // Office was closed or not yet created — show placeholder
+                // Office was closed or not yet created — brief placeholder while
+                // we dismiss back to the Office Manager (QA-FIXES #8). The
+                // onChange handler below fires the pop once viewModel flips to
+                // nil (tab torn down while we were foregrounded) or the initial
+                // .task resolves with no Office (cold-tap of a dead tabId).
                 VStack(spacing: MajorTomTheme.Spacing.lg) {
                     Image(systemName: "building.2.slash")
                         .font(.system(size: 48))
                         .foregroundStyle(MajorTomTheme.Colors.textTertiary)
-                    Text("Office not available")
+                    Text("Office closed")
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(MajorTomTheme.Colors.textSecondary)
                 }
@@ -113,6 +117,21 @@ struct OfficeView: View {
             // branch rendered (content vs placeholder). If the scene was LRU-evicted,
             // this triggers a cold rebuild and populates @State so the view re-renders.
             activatedScene = sceneManager.activateOffice(for: tabId)
+            // QA-FIXES #8 — cold-tap of a tabId whose Office is already gone
+            // (shell exited, tab closed in the background) should route
+            // straight back to the Office Manager instead of stranding the
+            // user on a dead placeholder. The dismiss here pops from the
+            // NavigationStack back to the Manager root.
+            if sceneManager.viewModel(for: tabId) == nil {
+                dismiss()
+            }
+        }
+        .onChange(of: sceneManager.viewModel(for: tabId) == nil) { _, isGone in
+            // Tab torn down while the Office view is foregrounded (user is
+            // watching the walk-off when the shell exits). Auto-pop after the
+            // viewModel vanishes so the user lands on the Manager instead of
+            // the "Office closed" placeholder.
+            if isGone { dismiss() }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
