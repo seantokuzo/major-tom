@@ -64,28 +64,53 @@ final class OfficeViewModel {
     /// `tab.session.ended` handling in Wave 4 wiring.
     var activeSessionIds: Set<String> = []
 
-    /// Per-session role→CharacterType bindings (role-stable binding).
-    /// First spawn for a canonical role locks the CharacterType for the session.
-    ///
-    /// Wave 5 (Gate A — multi-claude-in-one-tab): keyed by `sessionId` so
-    /// sibling sessions living in the same Office don't stomp each other's
-    /// role→character maps. The empty-string key holds bindings for events
-    /// that arrive without a `sessionId` (pre-Wave-3 legacy paths) so the
-    /// role-stable guarantee still applies to them in isolation.
-    var sessionRoleBindingsByKey: [String: RoleMapper.SessionBindings] = [:]
+    // Post-QA-FIXES #9: relay picks the CharacterType randomly per spawn
+    // and ships it in `sprite.link` / `sprite.state`. iOS trusts that value
+    // verbatim; there is no client-side role→character override, so the
+    // per-session role-binding map that Wave 5 Gate A introduced is gone.
 
-    /// Accessor — returns (and lazily creates) the role bindings for a
-    /// specific `sessionId`. `nil` routes to the empty-string bucket so
-    /// legacy events that never carried a sessionId still get a stable
-    /// binding set without contaminating real sessions' maps.
-    private func roleBindings(for sessionId: String?) -> RoleMapper.SessionBindings {
-        sessionRoleBindingsByKey[sessionId ?? ""] ?? [:]
+    /// Resolve a relay-supplied characterType string to the local enum,
+    /// tolerating unknown values (newer relay shipping a new character
+    /// before iOS catches up) with a DETERMINISTIC non-dog fallback
+    /// keyed on the relay string. Stable-by-string is required because
+    /// the same sprite can reach this helper twice — once via
+    /// `sprite.link` and again via `sprite.state` rehydrate on reconnect
+    /// — and a random pick would flicker the sprite's character
+    /// between events.
+    private func characterType(from relayString: String?) -> CharacterType {
+        if let raw = relayString, let type = CharacterType(rawValue: raw), !type.isDog {
+            return type
+        }
+        return Self.deterministicFallbackCharacter(for: relayString ?? "")
     }
 
-    /// Write an updated binding set for a specific `sessionId` — symmetric
-    /// with `roleBindings(for:)`.
-    private func setRoleBindings(_ bindings: RoleMapper.SessionBindings, for sessionId: String?) {
-        sessionRoleBindingsByKey[sessionId ?? ""] = bindings
+    /// Random crew CharacterType (non-dog) used as a brief placeholder for
+    /// the window between `agent.spawn` and `sprite.link`. The sprite.link
+    /// handler overwrites this with whatever the relay actually rolled, so
+    /// a mild visual flash is the worst-case and only happens under out-of-
+    /// order delivery (both events broadcast from the same relay handler).
+    static func randomNonDogCharacter(excluding used: Set<CharacterType>) -> CharacterType {
+        let pool = CharacterType.allCases.filter { !$0.isDog }
+        let available = pool.filter { !used.contains($0) }
+        let source = available.isEmpty ? pool : available
+        return source.randomElement() ?? .claudimusPrime
+    }
+
+    /// Deterministic non-dog fallback keyed on the relay string — used when
+    /// the relay ships a CharacterType iOS doesn't recognize yet. Same
+    /// input always produces the same output, so reconnect / sprite.state
+    /// replays render the sprite consistently. Uses a simple byte-sum hash
+    /// because Swift's `String.hashValue` is seeded per-launch and would
+    /// defeat the stability guarantee. An empty seed falls through to
+    /// `claudimusPrime` as the ship's-AI default.
+    static func deterministicFallbackCharacter(for seed: String) -> CharacterType {
+        let pool = CharacterType.allCases.filter { !$0.isDog }
+        guard !pool.isEmpty, !seed.isEmpty else { return .claudimusPrime }
+        var sum: UInt32 = 0
+        for scalar in seed.unicodeScalars {
+            sum = sum &+ scalar.value
+        }
+        return pool[Int(sum) % pool.count]
     }
 
     // MARK: - Sprite Messaging (Wave 4)
@@ -232,8 +257,12 @@ final class OfficeViewModel {
 
     /// Called when the relay broadcasts `agent.spawn`.
     /// Clone-not-consume: creates a NEW agent sprite instance without consuming idle sprites.
-    /// Uses RoleMapper for deterministic role→CharacterType assignment with session-stable binding.
-    /// Dogs are NEVER assigned as agent sprites.
+    ///
+    /// Post-QA-FIXES #9: `agent.spawn` does not carry a characterType (that
+    /// lives on the paired `sprite.link` event). This handler picks a local
+    /// random non-dog placeholder so the spawn animation can start without
+    /// waiting, and `handleSpriteLink` overwrites it with the relay's
+    /// authoritative pick when the paired event arrives.
     ///
     /// Wave 5: `sessionId` binds the agent to its originating Claude session so
     /// `tab.session.ended` can walk off only that session's humans. Preserved
@@ -241,14 +270,11 @@ final class OfficeViewModel {
     func handleAgentSpawn(id: String, role: String, task: String, parentId: String? = nil, sessionId: String? = nil) {
         guard !agents.contains(where: { $0.id == id }) else { return }
 
-        // Resolve CharacterType via role-stable binding (clone-not-consume).
-        // Wave 5 Gate A: bindings are per-session so sibling sessions in the
-        // same tab don't collide on role→character locks.
-        let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
-            role: role,
-            sessionBindings: roleBindings(for: sessionId)
-        )
-        setRoleBindings(updatedBindings, for: sessionId)
+        // Placeholder — sprite.link will overwrite with the relay's pick.
+        // Using the session roster as the exclusion set keeps the
+        // placeholder visually distinct from other agents already present.
+        let inUse = Set(agents.map { $0.characterType })
+        let placeholderCharacter = Self.randomNonDogCharacter(excluding: inUse)
 
         // S5 — placement cascade: desk first, then overflow.
         let placement = assignPlacement(to: id)
@@ -257,7 +283,7 @@ final class OfficeViewModel {
             id: id,
             name: role.capitalized,
             role: role,
-            characterType: characterType,
+            characterType: placeholderCharacter,
             status: .spawning,
             currentTask: task,
             deskIndex: placement.deskIndex,
@@ -574,11 +600,17 @@ final class OfficeViewModel {
             sessionId = event.sessionId
         }
 
-        // De-dupe: if agent.spawn already created this agent, upgrade it with sprite link info
+        // De-dupe: if agent.spawn already created this agent, upgrade it with sprite link info.
+        // Post-QA-FIXES #9: this is where the relay's authoritative
+        // characterType overwrites the placeholder the spawn handler
+        // rolled locally. Without this overwrite the client would stay
+        // on the wrong character for the sprite's lifetime (old QA-FIXES
+        // #6 bug — relay said botanist, iOS rendered kendrick).
         if let existingIndex = agents.firstIndex(where: { $0.id == event.subagentId }) {
             agents[existingIndex].spriteHandle = event.spriteHandle
             agents[existingIndex].linkedSubagentId = event.subagentId
             agents[existingIndex].canonicalRole = event.canonicalRole
+            agents[existingIndex].characterType = characterType(from: event.characterType)
             agents[existingIndex].parentId = event.parentId
             // Wave 5: latch sessionId if the prior spawn event didn't carry one.
             if agents[existingIndex].sessionId == nil {
@@ -595,14 +627,6 @@ final class OfficeViewModel {
             return
         }
 
-        // Resolve CharacterType via role-stable binding (Wave 5 Gate A:
-        // scoped to the event's sessionId so sibling sessions don't collide).
-        let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
-            role: event.canonicalRole,
-            sessionBindings: roleBindings(for: event.sessionId)
-        )
-        setRoleBindings(updatedBindings, for: event.sessionId)
-
         // Use subagentId as primary ID so agent.* lifecycle handlers find this agent
         // S5 — placement cascade: desk first, then overflow.
         let placement = assignPlacement(to: event.subagentId)
@@ -611,7 +635,7 @@ final class OfficeViewModel {
             id: event.subagentId,
             name: event.canonicalRole.capitalized,
             role: event.canonicalRole,
-            characterType: characterType,
+            characterType: characterType(from: event.characterType),
             status: .spawning,
             currentTask: event.task,
             deskIndex: placement.deskIndex,
@@ -952,19 +976,12 @@ final class OfficeViewModel {
             removeAgent(id: id)
         }
 
-        // Wave 5 Gate A: only reset bindings for the session being
-        // rehydrated. Sibling sessions living in the same Office keep their
-        // role→character locks so their subsequent spawn/link events stay
-        // stable.
-        setRoleBindings([:], for: event.sessionId)
+        // Post-QA-FIXES #9: no per-session role bindings to reset — the
+        // relay is the source of truth for characterType.
 
         // Rebuild from relay mappings — primary key is subagentId
         for mapping in event.mappings {
-            let (characterType, updatedBindings) = RoleMapper.resolveCharacterType(
-                role: mapping.canonicalRole,
-                sessionBindings: roleBindings(for: event.sessionId)
-            )
-            setRoleBindings(updatedBindings, for: event.sessionId)
+            let resolvedCharacter = characterType(from: mapping.characterType)
 
             let status: AgentStatus
             switch mapping.status {
@@ -985,7 +1002,7 @@ final class OfficeViewModel {
                 id: mapping.subagentId,
                 name: mapping.canonicalRole.capitalized,
                 role: mapping.canonicalRole,
-                characterType: characterType,
+                characterType: resolvedCharacter,
                 status: status,
                 currentTask: mapping.task,
                 deskIndex: placement.deskIndex,

@@ -28,21 +28,37 @@ export const CANONICAL_ROLES = [
 
 export type CanonicalRole = typeof CANONICAL_ROLES[number];
 
-// ── Role → CharacterType mapping (locked in spec) ──────────
-// From the spec: "locked role→CharacterType table"
-// Each role maps to a specific human CharacterType sprite.
-// Dogs are NEVER used as agent sprites.
+// ── Character pool (randomized assignment) ─────────────────
+// Post-QA-FIXES #9: character assignment is randomized per spawn,
+// decoupled from canonical role. The previous role→CharacterType lock
+// ("researcher is always the botanist") was scrapped in favor of a
+// "who am I gonna get?!" roll each spawn. Canonical roles still drive
+// labels, aura colors, and classification — just not character choice.
+//
+// Source of truth for the pool: iOS `CharacterCatalog` crew entries
+// (ios/MajorTom/Features/Office/Models/CharacterConfig.swift). Dogs
+// are NEVER used as agent sprites (they live at tab scope as pets).
+//
+// Keep this list in lockstep with the iOS CharacterType enum's non-dog
+// cases. If iOS ships a new crew character, add it here in the same
+// PR so the relay can assign it.
 
-const ROLE_CHARACTER_MAP: Record<CanonicalRole, string> = {
-  researcher: 'botanist',
-  architect: 'captain',
-  qa: 'doctor',
-  devops: 'mechanic',
-  frontend: 'frontendDev',
-  backend: 'backendEngineer',
-  lead: 'pm',
-  engineer: 'claudimusPrime',
-};
+export const CHARACTER_POOL: readonly string[] = [
+  'alienDiplomat',
+  'backendEngineer',
+  'botanist',
+  'bowenYang',
+  'captain',
+  'chef',
+  'claudimusPrime',
+  'doctor',
+  'dwight',
+  'frontendDev',
+  'kendrick',
+  'mechanic',
+  'pm',
+  'prince',
+] as const;
 
 // ── Role classification regex patterns ─────────────────────
 // Priority order: first match wins. More specific roles before generic.
@@ -78,32 +94,31 @@ export class SpriteMapper {
   }
 
   /**
-   * Resolve a canonical role to a CharacterType string.
-   * Implements role-stable binding: the first spawn for a role in a session
-   * locks the CharacterType for that role for the session's lifetime.
+   * Pick a CharacterType for a new sprite via randomization — post-QA-FIXES
+   * #9 semantics. Avoids characters already in use by active mappings until
+   * the pool is exhausted, then falls back to a random pick with duplicates
+   * allowed (>14 concurrent sprites is deep in overflow territory anyway).
    *
-   * @param role - Canonical role (e.g. 'frontend')
-   * @param sessionBindings - Current role→CharacterType bindings for the session
-   * @returns The CharacterType to use and whether this is a new binding
+   * Role is intentionally NOT consulted — every spawn is a fresh roll. Label,
+   * aura, and other role-derived UX still flow from canonicalRole; character
+   * choice is decoupled.
+   *
+   * @param currentMappings - Active mappings in the session (dup-avoidance).
+   * @returns The chosen CharacterType string.
    */
   resolveCharacterType(
-    role: string,
-    sessionBindings: Record<string, string>,
-  ): { characterType: string; isNew: boolean } {
-    // If we already have a binding for this role in this session, reuse it
-    const existing = sessionBindings[role];
-    if (existing) {
-      return { characterType: existing, isNew: false };
-    }
+    currentMappings: PersistedSpriteMapping[],
+  ): { characterType: string } {
+    const inUse = new Set(currentMappings.map((m) => m.characterType));
+    const available = CHARACTER_POOL.filter((c) => !inUse.has(c));
 
-    // Look up the canonical mapping. If the role isn't recognized (shouldn't happen
-    // if classifyRole was used, but defensive), fall back to 'engineer' CharacterType.
-    const canonicalRole = CANONICAL_ROLES.includes(role as CanonicalRole)
-      ? (role as CanonicalRole)
-      : 'engineer';
-    const characterType = ROLE_CHARACTER_MAP[canonicalRole];
-
-    return { characterType, isNew: true };
+    // Non-null assertion inside both branches: CHARACTER_POOL is a non-empty
+    // readonly array (14 entries), so randomElement is safe. `available`
+    // might be empty when every pool member is already claimed — in that
+    // case we roll from the full pool and accept a duplicate.
+    const source = available.length > 0 ? available : CHARACTER_POOL;
+    const characterType = source[Math.floor(Math.random() * source.length)]!;
+    return { characterType };
   }
 
   /**
@@ -121,23 +136,24 @@ export class SpriteMapper {
 
   /**
    * Create a full sprite mapping for a newly spawned agent.
-   * Orchestrates role classification, character resolution, and desk allocation.
+   * Orchestrates role classification, character resolution (random pick
+   * avoiding active-roster dupes), and desk allocation.
    *
-   * @param agentId - The agent's unique ID
-   * @param task - The agent's task description
-   * @param sessionBindings - Current role→CharacterType bindings for the session
-   * @param currentMappings - Current active mappings for desk allocation
-   * @returns The new mapping and whether the role binding is new
+   * @param agentId - The agent's unique ID.
+   * @param task - The agent's task description (used for role classification).
+   * @param currentMappings - Current active mappings for desk + character dup
+   *   avoidance. Pass the full session roster so the dup-avoid window is
+   *   per-session (prevents the same character appearing twice at once).
+   * @param parentId - Optional parent subagent id for nested spawns.
    */
   createMapping(
     agentId: string,
     task: string,
-    sessionBindings: Record<string, string>,
     currentMappings: PersistedSpriteMapping[],
     parentId?: string,
-  ): { mapping: PersistedSpriteMapping; role: CanonicalRole; isNewBinding: boolean } {
+  ): { mapping: PersistedSpriteMapping; role: CanonicalRole } {
     const role = this.classifyRole(task);
-    const { characterType, isNew } = this.resolveCharacterType(role, sessionBindings);
+    const { characterType } = this.resolveCharacterType(currentMappings);
     const deskIndex = this.allocateDesk(currentMappings);
     const spriteHandle = `sprite-${randomUUID().slice(0, 8)}`;
 
@@ -153,11 +169,11 @@ export class SpriteMapper {
     };
 
     logger.info(
-      { subagentId: agentId, canonicalRole: role, characterType, deskIndex, spriteHandle, isNewBinding: isNew },
+      { subagentId: agentId, canonicalRole: role, characterType, deskIndex, spriteHandle },
       'Sprite mapping created',
     );
 
-    return { mapping, role, isNewBinding: isNew };
+    return { mapping, role };
   }
 
   /**

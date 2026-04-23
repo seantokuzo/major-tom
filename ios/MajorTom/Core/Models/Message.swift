@@ -862,6 +862,12 @@ struct SpriteLinkEvent: Codable {
     let spriteHandle: String
     let subagentId: String
     let canonicalRole: String
+    /// Post-QA-FIXES #9 — relay picks a random CharacterType per spawn (no
+    /// more locked role→character table). iOS trusts this value directly;
+    /// there is no client-side override. Optional for back-compat with
+    /// older relay builds still on the network, but effectively always
+    /// present on post-#9 relays.
+    var characterType: String?
     let task: String
     var parentId: String?
     /// Tab-Keyed Offices (Wave 3) — tab this session lives in, if any.
@@ -896,6 +902,10 @@ struct SpriteStateEvent: Codable {
         let spriteHandle: String
         let subagentId: String
         let canonicalRole: String
+        /// Post-QA-FIXES #9 — carried through so reconnect rehydration
+        /// keeps whatever random CharacterType the relay originally
+        /// assigned. Optional for back-compat with older relays.
+        var characterType: String?
         let task: String
         var parentId: String?
         let status: String  // "working", "idle", "spawning"
