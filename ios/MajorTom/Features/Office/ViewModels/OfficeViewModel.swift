@@ -71,12 +71,17 @@ final class OfficeViewModel {
 
     /// Resolve a relay-supplied characterType string to the local enum,
     /// tolerating unknown values (newer relay shipping a new character
-    /// before iOS catches up) by picking a random non-dog fallback.
+    /// before iOS catches up) with a DETERMINISTIC non-dog fallback
+    /// keyed on the relay string. Stable-by-string is required because
+    /// the same sprite can reach this helper twice — once via
+    /// `sprite.link` and again via `sprite.state` rehydrate on reconnect
+    /// — and a random pick would flicker the sprite's character
+    /// between events.
     private func characterType(from relayString: String?) -> CharacterType {
         if let raw = relayString, let type = CharacterType(rawValue: raw), !type.isDog {
             return type
         }
-        return Self.randomNonDogCharacter(excluding: [])
+        return Self.deterministicFallbackCharacter(for: relayString ?? "")
     }
 
     /// Random crew CharacterType (non-dog) used as a brief placeholder for
@@ -89,6 +94,23 @@ final class OfficeViewModel {
         let available = pool.filter { !used.contains($0) }
         let source = available.isEmpty ? pool : available
         return source.randomElement() ?? .claudimusPrime
+    }
+
+    /// Deterministic non-dog fallback keyed on the relay string — used when
+    /// the relay ships a CharacterType iOS doesn't recognize yet. Same
+    /// input always produces the same output, so reconnect / sprite.state
+    /// replays render the sprite consistently. Uses a simple byte-sum hash
+    /// because Swift's `String.hashValue` is seeded per-launch and would
+    /// defeat the stability guarantee. An empty seed falls through to
+    /// `claudimusPrime` as the ship's-AI default.
+    static func deterministicFallbackCharacter(for seed: String) -> CharacterType {
+        let pool = CharacterType.allCases.filter { !$0.isDog }
+        guard !pool.isEmpty, !seed.isEmpty else { return .claudimusPrime }
+        var sum: UInt32 = 0
+        for scalar in seed.unicodeScalars {
+            sum = sum &+ scalar.value
+        }
+        return pool[Int(sum) % pool.count]
     }
 
     // MARK: - Sprite Messaging (Wave 4)

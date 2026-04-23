@@ -63,8 +63,9 @@ Canonical role drives: sprite label, role aura color, and analytics tagging. It 
 - Rationale: the "who am I gonna get?!" roll is a feature. It also kills off a class of client/relay desync bugs (QA-FIXES #6) where iOS's local role→character map disagreed with the relay's.
 
 **Dog fallback REMOVED:**
-- Current code at `OfficeViewModel.swift:138` falls back to dogs when all humans are exhausted. This is incorrect.
-- Dogs are NEVER claimed as agent sprites. If humans are exhausted, duplicate human sprites are used instead.
+- Dogs are NEVER claimed as agent sprites. They live at tab scope as pets (elvis, steve, kai, hoku, senor, esteban, zuckerbot) and can appear as idle sprites wandering the Office, but are unreachable as randomization picks.
+- Both sides enforce this: the relay's `CHARACTER_POOL` omits dog CharacterTypes, and iOS's `characterType(from:)` / `randomNonDogCharacter(excluding:)` helpers reject any dog value the relay might accidentally send.
+- When the randomization pool is exhausted (15+ concurrent agents in one session), the 15th+ spawn duplicates an in-use human character; it never falls through to a dog.
 
 ### Q3 — Messaging: `/btw` observe-only, queue at turn boundary
 
