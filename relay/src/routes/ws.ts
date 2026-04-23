@@ -2234,18 +2234,19 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           });
 
           // ── Sprite wiring: create mapping + emit sprite.link ──
+          //
+          // Post-QA-FIXES #9: character choice is randomized per spawn, so
+          // there is no stable role→character binding to persist. The
+          // `roleBindings` field on the persisted file stays in the schema
+          // for back-compat with older files on disk but is no longer
+          // consulted or written by this path.
           const spriteState = getOrCreateSpriteState(sid);
-          const { mapping, role: classifiedRole, isNewBinding } = spriteMapper.createMapping(
+          const { mapping } = spriteMapper.createMapping(
             event.agentId,
             event.task ?? '',
-            spriteState.roleBindings,
             spriteState.mappings,
             event.parentId,
           );
-          // Lock role binding if this is a new one
-          if (isNewBinding) {
-            spriteState.roleBindings[classifiedRole] = mapping.characterType;
-          }
           spriteState.mappings.push(mapping);
           spriteState.updatedAt = new Date().toISOString();
           spriteMappingPersistence.save(spriteState);

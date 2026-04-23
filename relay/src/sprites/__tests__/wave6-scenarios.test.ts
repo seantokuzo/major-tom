@@ -74,14 +74,12 @@ function newHarness(persistence: SpriteMappingPersistence) {
   /** Simulates ws.ts agent.spawn handler — creates mapping + emits sprite.link. */
   function spawnAgent(sessionId: string, agentId: string, task: string, parentId?: string) {
     const state = getOrCreateSpriteState(sessionId);
-    const { mapping, isNewBinding } = spriteMapper.createMapping(
+    const { mapping } = spriteMapper.createMapping(
       agentId,
       task,
-      state.roleBindings,
       state.mappings,
       parentId,
     );
-    if (isNewBinding) state.roleBindings[mapping.canonicalRole] = mapping.characterType;
     state.mappings.push(mapping);
     state.updatedAt = new Date().toISOString();
     persistence.save(state);
@@ -403,34 +401,53 @@ describe('Wave 6 scenario — S6 subagent spawns + completes in <1s (no lost eve
 });
 
 describe('Wave 6 scenario — S7 all human sprites exhausted (duplication, no dog fallback)', () => {
-  it('SpriteMapper never returns a dog CharacterType as an agent sprite', () => {
+  // Post-QA-FIXES #9: character assignment is randomized per spawn. The
+  // spec now guarantees (a) dogs are never chosen as agent sprites, and
+  // (b) the first 14 spawns in a session each get a distinct character
+  // (CHARACTER_POOL is size 14 with dup-avoidance). The 15th spawn is
+  // forced to duplicate since the pool is exhausted.
+
+  it('never returns a dog CharacterType as an agent sprite, even when the pool is exhausted', () => {
     const mapper = new SpriteMapper();
-    const sessionBindings: Record<string, string> = {};
     const mappings: PersistedSpriteMapping[] = [];
-    // Spawn 14 backend agents — more than MAX_DESKS (6) but fewer than the
-    // full human pool. The spec requires each to receive `backendEngineer`
-    // (role-stable binding), never a dog.
-    for (let i = 0; i < 14; i++) {
+    // Spawn 20 agents — well past both MAX_DESKS (6) and the pool cap (14).
+    for (let i = 0; i < 20; i++) {
       const result = mapper.createMapping(
         `agent-${i}`,
         'wire the relay endpoint',
-        sessionBindings,
         mappings,
       );
-      expect(result.mapping.characterType).toBe('backendEngineer');
-      expect(result.mapping.characterType).not.toMatch(/dog|steve|elvis|kai|hoku|senor|esteban|zuckerbot/i);
-      if (result.isNewBinding) sessionBindings[result.role] = result.mapping.characterType;
+      expect(result.mapping.characterType).not.toMatch(
+        /elvis|steve|kai|hoku|senor|esteban|zuckerbot/,
+      );
       mappings.push(result.mapping);
     }
     // Overflow: first 6 get desks, 7+ get deskIndex === -1.
     expect(mappings.filter((m) => m.deskIndex >= 0)).toHaveLength(6);
-    expect(mappings.filter((m) => m.deskIndex === -1)).toHaveLength(8);
+    expect(mappings.filter((m) => m.deskIndex === -1)).toHaveLength(14);
   });
 
-  it('unknown role falls back to the engineer CharacterType, never a dog', () => {
+  it('first 14 spawns produce distinct characters (dup-avoidance until pool exhausts)', () => {
     const mapper = new SpriteMapper();
-    const out = mapper.resolveCharacterType('unknown_role_xyz', {});
-    expect(out.characterType).toBe('claudimusPrime');
+    const mappings: PersistedSpriteMapping[] = [];
+    for (let i = 0; i < 14; i++) {
+      const result = mapper.createMapping(`agent-${i}`, 'task', mappings);
+      mappings.push(result.mapping);
+    }
+    const uniqueCharacters = new Set(mappings.map((m) => m.characterType));
+    expect(uniqueCharacters.size).toBe(14);
+  });
+
+  it('the 15th spawn duplicates an in-use character (pool fully claimed)', () => {
+    const mapper = new SpriteMapper();
+    const mappings: PersistedSpriteMapping[] = [];
+    for (let i = 0; i < 14; i++) {
+      const result = mapper.createMapping(`agent-${i}`, 'task', mappings);
+      mappings.push(result.mapping);
+    }
+    const inUseBeforeOverflow = new Set(mappings.map((m) => m.characterType));
+    const overflow = mapper.createMapping('agent-overflow', 'task', mappings);
+    expect(inUseBeforeOverflow.has(overflow.mapping.characterType)).toBe(true);
   });
 });
 
