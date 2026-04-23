@@ -41,22 +41,26 @@ Each terminal/session gets its own isolated Office (SKScene). Only one scene ren
 - `AgentSpawnEvent` includes `parentId` (no longer discarded)
 - Reconnects restore the mapping from the relay
 
-**Role → sprite mapping (hybrid, 3-tier):**
+**Role classification (still hybrid, 3-tier):**
 1. **Agent `.md` frontmatter** — if the agent file declares `spriteCategory: frontend`, use it directly
 2. **Relay classifier** — regex pattern matching task description against 8 canonical roles: `researcher, architect, qa, devops, frontend, backend, lead, engineer`
-3. **Random from idle pool** — fallback for unrecognized roles
+3. **Fallback** — unrecognized task descriptions default to `engineer`
+
+Canonical role drives: sprite label, role aura color, and analytics tagging. It does **not** drive character choice — see below.
 
 **Clone-not-consume model:**
 - Idle sprites (cosmetic crew wandering around) and agent sprites (active subagent representations at desks) are separate concepts
-- When role=`frontend` spawns, an agent sprite instance is **cloned into existence** with the `frontendDev` CharacterType. It does NOT consume the idle frontendDev sprite.
-- Idle frontendDev can still wander the break room while two agent frontendDev sprites work at two desks.
-- Multiple agents with the same role in one session = multiple identical sprites at different desks. Differentiation via tap-to-inspect (desk position provides spatial identity).
+- When a subagent spawns, an agent sprite instance is **cloned into existence** with whatever CharacterType the relay rolls for it (see randomization below). It does NOT consume any idle sprite of the same CharacterType.
+- Idle crew can still wander the break room while agent sprites of the same CharacterType work at desks.
+- Multiple agents in one session = multiple sprites at different desks. Differentiation via tap-to-inspect (desk position + randomized character both provide spatial/visual identity).
 - Subagent completes → agent sprite despawns (celebration animation → poof).
 
-**Role-stable binding:**
-- First `frontend` spawn in a session reserves the `frontendDev` CharacterType for that role
-- All subsequent `frontend` spawns reuse the same CharacterType
-- Different sessions can independently map `frontend` → different sprites
+**Character randomization (replaces role-stable binding — QA-FIXES #9, 2026-04-22):**
+- The relay picks a random non-dog CharacterType per spawn from a flat pool of 14 crew characters.
+- Within a session, the relay avoids duplicates until the pool is exhausted; the 15th+ concurrent spawn duplicates an in-use character.
+- Role → character is NOT stable across spawns. Two `frontend` subagents in the same session will usually be different characters; two different roles can land on the same character just as easily.
+- iOS receives the CharacterType verbatim via `sprite.link.characterType` and `sprite.state.mappings[].characterType`. There is no client-side role → character lookup.
+- Rationale: the "who am I gonna get?!" roll is a feature. It also kills off a class of client/relay desync bugs (QA-FIXES #6) where iOS's local role→character map disagreed with the relay's.
 
 **Dog fallback REMOVED:**
 - Current code at `OfficeViewModel.swift:138` falls back to dogs when all humans are exhausted. This is incorrect.
@@ -230,7 +234,7 @@ The Office tab no longer opens directly into an SKScene. It opens a **manager sc
 |---|---|---|
 | A | Terminal 1 spawns agents, user on Terminal 2's Office | Terminal 1's Office updates in background (state tracked by relay). Notifications still fire per M2. |
 | B | Switch from Office 1 to Office 2 | Return to Office Manager, tap Office 2 card. Office 1's scene suspends or cold-destroys per lifecycle. |
-| C | Same role spawns in both sessions | Same CharacterType in both Offices (independent pools). No collision. |
+| C | Same role spawns in both sessions | Each Office rolls independently from its own CHARACTER_POOL — post-QA-FIXES #9 there is no role→character lock, so even within one session two same-role spawns usually land on different characters. Cross-session collision is possible and fine. |
 | D | Session ends on Terminal 1 | Office Manager removes that Office's card. If user is viewing it, return to Manager with brief transition. |
 
 ### Sprite allocation scenarios
@@ -298,7 +302,7 @@ Sprite ↔ subagent mappings are persisted to disk (JSON file per session).
 | Mapping persistence format | GREEN | Mirrors `SessionPersistence` pattern. `~/.major-tom/sprite-mappings/{sessionId}.json` |
 | Office Manager SwiftUI | GREEN | NavigationStack, per-session OfficeViewModel, LRU scene cache (2-3 warm, ~50MB each) |
 | Local notification setup | YELLOW | Infra exists, "Cool Beans" action trivial. WebSocket dies ~10s after iOS background. **Compromise: relay queues responses, delivers on reconnect. Local push only during grace period.** |
-| Role → sprite mapping table | GREEN | 14 humans, 8 roles, clean 1:1 mapping with 6 extras for overflow |
+| Role → sprite mapping table | ~~GREEN~~ STRUCK (QA-FIXES #9, 2026-04-22) | Replaced with per-spawn randomization — see "Character randomization" in Q2 above. |
 
 ### Spec adjustments from research
 
@@ -306,20 +310,21 @@ Sprite ↔ subagent mappings are persisted to disk (JSON file per session).
 2. **`/btw` injection** goes through orchestrator session (SDK exposes no subagent handle). Constraint framing tells Claude to relay to specific subagent.
 3. **Cross-cutting blockers** identified for Wave 2: agent events need `sessionId`, relay needs "get agents for session X" query, relay must queue `/btw` responses for disconnected clients.
 
-### Role → CharacterType mapping (LOCKED)
+### Character assignment — randomized (post-QA-FIXES #9, 2026-04-22)
 
-| Canonical Role | CharacterType | Rationale |
-|---|---|---|
-| `researcher` | `.botanist` | Science/discovery vibe |
-| `architect` | `.captain` | Authority, big-picture |
-| `qa` | `.doctor` | Diagnostic precision |
-| `devops` | `.mechanic` | Infrastructure ops |
-| `frontend` | `.frontendDev` | Direct match |
-| `backend` | `.backendEngineer` | Direct match |
-| `lead` | `.pm` | Project leadership |
-| `engineer` | `.claudimusPrime` | Generic = ship's AI |
+The prior locked role→CharacterType table has been struck. Every sprite spawn rolls a random CharacterType from a flat pool of 14 non-dog crew characters; the session-active roster is used as an exclusion set until the pool is exhausted.
 
-Overflow pool (random fallback): `alienDiplomat`, `bowenYang`, `chef`, `dwight`, `kendrick`, `prince`
+**CHARACTER_POOL** (relay source of truth — `relay/src/sprites/sprite-mapper.ts`, keep in lockstep with `ios/.../CharacterType`):
+
+```
+alienDiplomat, backendEngineer, botanist, bowenYang, captain, chef,
+claudimusPrime, doctor, dwight, frontendDev, kendrick, mechanic,
+pm, prince
+```
+
+Dogs (`elvis`, `esteban`, `hoku`, `kai`, `senor`, `steve`, `zuckerbot`) are NEVER assigned as agent sprites — they live at tab scope as pets.
+
+Why randomized: the "who am I gonna get?!" roll each spawn is a feature (L9 QA user call). It also closes out the client/relay role→character desync class of bugs (QA-FIXES #6) by removing the client-side mapping entirely — iOS now trusts the relay's `characterType` field verbatim.
 
 ---
 
@@ -344,7 +349,7 @@ Overflow pool (random fallback): `alienDiplomat`, `bowenYang`, `chef`, `dwight`,
 
 **iOS track** (`sprite-wiring/wave2-ios`):
 - Add `linkedSubagentId` to `AgentState`
-- Role → CharacterType mapper (locked table above)
+- Role → CharacterType mapping (~~locked table~~ STRUCK — randomized per spawn post-QA-FIXES #9)
 - Clone-not-consume sprite allocation model
 - Remove dog fallback in `OfficeViewModel` (duplicate humans instead)
 - Per-session OfficeViewModel routing (prep for Wave 3)

@@ -319,24 +319,13 @@ Priority P2 — not functional breakage, just messy UX / misleading label.
 ---
 
 
-### 9. Flip sprite character assignment from role-mapping to randomization
+### 9. Flip sprite character assignment from role-mapping to randomization (FIXED — 2026-04-22)
 
-**User request (L9 QA, 2026-04-19):** current logic maps agent role → fixed character type (researcher→botanist, engineer→claudimusPrime, etc.). User wants to abandon the role-matching entirely and randomize the character per spawn. Rationale: "it's a feature not a bug that the frontend dev is doing database work" — plus the excitement of "who am I gonna get?!" each spawn. Also easier to implement.
+**Shipped in PR 2 of Wave D (2026-04-22).** Relay `sprite-mapper.ts` now picks from a flat `CHARACTER_POOL` (14 non-dog crew characters) with dup-avoidance against the session's active roster — the 15th+ concurrent spawn duplicates. iOS `SpriteLinkEvent` + `SpriteStateEvent.SpriteMapping` added `characterType: String?`, and the three OfficeViewModel call sites that used to call `RoleMapper.resolveCharacterType` now consume the relay's value directly. `RoleMapper` kept `color(forCanonicalRole:)` (Wave 5 aura palette still keyed on role) but the role→character map, overflow pool, and session-stable bindings are gone.
 
-**Fix direction:**
-- Delete `ROLE_CHARACTER_MAP` in `relay/src/sprites/sprite-mapper.ts`. Replace with a `CHARACTER_POOL` (flat list of all CharacterTypes).
-- `resolveCharacterType`: instead of role→type, pick a random CharacterType from the pool, optionally avoiding duplicates in the same session's active roster until the pool is exhausted.
-- Remove the role-stable binding concept — every spawn is a fresh roll.
-- iOS: strip the role-aware override tracked in QA-FIXES #6 (kept surfacing Kendrick / Bowen Yang instead of the locked role character) — with randomization, THAT becomes the feature. Item #6 can be closed as superseded.
-- Sprite labels (QA-FIXES #6) still humanize to canonical role (`researcher`, `engineer`), just decoupled from character choice.
+Closes QA-FIXES **#6** as superseded — the Kendrick/BowenYang-instead-of-botanist divergence was a consequence of iOS's now-dead local role→character lookup.
 
-**Files:**
-- `relay/src/sprites/sprite-mapper.ts` — pool-based picker.
-- `relay/src/sprites/__tests__/*.test.ts` — update mapping tests.
-- `docs/PHASE-SPRITE-AGENT-WIRING.md` — strike the locked role→CharacterType table, replace with randomization spec.
-- iOS `RoleMapper.swift` — remove any client-side role→character lookup; trust `sprite.mapping.created.characterType` from relay.
-
-**Priority:** P2 — not blocking QA. Picks up after the L-matrix. Closing QA-FIXES #6 folds into this change.
+Spec update: `docs/PHASE-SPRITE-AGENT-WIRING.md` — §Q2 "Character randomization" replaced the locked role-stable paragraph; the "Role → CharacterType mapping (LOCKED)" table was struck in-line and replaced with the `CHARACTER_POOL` spec.
 
 ---
 
@@ -391,26 +380,11 @@ Priority P2 — not functional breakage, just messy UX / misleading label.
 
 **Not blocking QA.** Follow-up: instrument state transitions server→client to confirm `.working` flips after spawn.
 
-### 6. Sprite role labels use agent-type names, not humanized roles
+### 6. Sprite role labels / iOS not honoring relay's characterType (SUPERSEDED BY #9 — 2026-04-22)
 
-**Symptom:** role tag above sprites shows raw subagent type (`Explore`, `claude-code-guide`) instead of a friendly role label.
+The secondary concern (iOS ignoring relay's characterType and picking Kendrick / Bowen Yang instead of the role-locked character) is closed as part of QA-FIXES #9: the relay now randomizes per spawn and iOS trusts `sprite.link.characterType` / `sprite.state.mappings[].characterType` verbatim. The client-side `RoleMapper.resolveCharacterType` and its `overflowPool` that were reassigning characters have been deleted.
 
-**Expected:** humanized role labels matching the canonical role (`researcher`, `engineer`). Relay already emits `canonicalRole` per sprite mapping event.
-
-**Fix direction:** iOS label rendering prefers `canonicalRole` (humanize "researcher" → "Researcher") over `agentType`. Fall back to `agentType` only when `canonicalRole` is missing.
-
-**Secondary concern (confirmed, higher priority than "nice-to-have"):** iOS is not using the `characterType` the relay sends. Observed twice across L4 / L5 runs:
-
-| Run | Relay sent (Explore → researcher → botanist) | iOS rendered |
-|---|---|---|
-| L4 | botanist | Kendrick |
-| L5 | botanist | Bowen Yang |
-
-Both Kendrick and Bowen Yang are in `RoleMapper.overflowPool`, not the primary mapping. Sprite-agent Wiring Wave 3/4 (PR #139/#140) was supposed to "clone not consume" using relay's characterType, but iOS appears to be reassigning via its own role-stable binding that skips primary roles and goes straight to overflow. This regresses the Role → CharacterType mapping spec table in `docs/PHASE-SPRITE-AGENT-WIRING.md` §Q5.
-
-**Investigate:** `OfficeViewModel` / `OfficeSceneManager` agent-lifecycle handler — does it honor `sprite.mapping.created.characterType` from the relay event, or does it overwrite with a local RoleMapper lookup? Likely the latter.
-
-**Files:** `AgentSprite.swift` (role label), `RoleMapper.swift` (humanization), `CharacterConfig.swift` (confirm mapping).
+The original "role labels use agent-type instead of humanized role" issue — relay already emits `canonicalRole` and iOS already surfaces it through `AgentState.role.capitalized`; no separate fix was needed.
 
 ---
 
