@@ -30,7 +30,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { BtwQueue } from '../btw-queue.js';
-import { SpriteMapper } from '../sprite-mapper.js';
+import { SpriteMapper, CHARACTER_POOL } from '../sprite-mapper.js';
 import {
   SpriteMappingPersistence,
   type PersistedSpriteMapping,
@@ -448,6 +448,40 @@ describe('Wave 6 scenario — S7 all human sprites exhausted (duplication, no do
     const inUseBeforeOverflow = new Set(mappings.map((m) => m.characterType));
     const overflow = mapper.createMapping('agent-overflow', 'task', mappings);
     expect(inUseBeforeOverflow.has(overflow.mapping.characterType)).toBe(true);
+  });
+});
+
+describe('CHARACTER_POOL / iOS CharacterType lockstep invariant', () => {
+  // Drift guard: CHARACTER_POOL must exactly match the non-dog cases of
+  // the iOS `CharacterType` enum at
+  // ios/MajorTom/Features/Office/Models/AgentState.swift. iOS's
+  // `deterministicFallbackCharacter(for:)` does `pool.count`-modulo on
+  // `CharacterType.allCases.filter { !$0.isDog }` — if iOS adds a crew
+  // member without extending CHARACTER_POOL (or vice versa), the fallback
+  // pool sizes diverge and reconnect-time sprite rolls stop agreeing with
+  // relay-time rolls. Updating one side REQUIRES updating the other plus
+  // this snapshot.
+  const IOS_NON_DOG_CHARACTERS_SNAPSHOT = [
+    'alienDiplomat',
+    'backendEngineer',
+    'botanist',
+    'bowenYang',
+    'captain',
+    'chef',
+    'claudimusPrime',
+    'doctor',
+    'dwight',
+    'frontendDev',
+    'kendrick',
+    'mechanic',
+    'pm',
+    'prince',
+  ] as const;
+
+  it('CHARACTER_POOL matches the iOS non-dog CharacterType snapshot', () => {
+    expect([...CHARACTER_POOL].sort()).toEqual(
+      [...IOS_NON_DOG_CHARACTERS_SNAPSHOT].sort(),
+    );
   });
 });
 

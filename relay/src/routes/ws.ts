@@ -836,6 +836,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
             type: 'sprite.state',
             sessionId: resumeSessionId,
             mappings: resumeSpriteState.mappings.map(toWireMapping),
+            // Always-empty post-QA-FIXES #9 — schema-retained for old client
+            // compat; see the agent.spawn handler below for the full note.
             roleBindings: resumeSpriteState.roleBindings,
             tabId: tabIdFor(resumeSessionId),
           });
@@ -1171,6 +1173,8 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           mappings: state?.mappings.length
             ? state.mappings.map(toWireMapping)
             : [],
+          // Always-empty post-QA-FIXES #9 — schema-retained for old client
+          // compat; see the agent.spawn handler below for the full note.
           roleBindings: state?.roleBindings ?? {},
           tabId: tabIdFor(reqSessionId),
         });
