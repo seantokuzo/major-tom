@@ -835,9 +835,13 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           sendToClient(ws, {
             type: 'sprite.state',
             sessionId: resumeSessionId,
+            // `roleBindings` is legacy post-QA-FIXES #9: the agent.spawn
+            // handler no longer writes to it, but pre-#9 persisted files
+            // can still carry populated entries and nothing on this path
+            // rewrites them. Modern clients ignore the field; forwarded
+            // as-is for old-client compat. See the agent.spawn handler
+            // below for the full note.
             mappings: resumeSpriteState.mappings.map(toWireMapping),
-            // Always-empty post-QA-FIXES #9 — schema-retained for old client
-            // compat; see the agent.spawn handler below for the full note.
             roleBindings: resumeSpriteState.roleBindings,
             tabId: tabIdFor(resumeSessionId),
           });
@@ -1173,8 +1177,12 @@ export function createWsRoute(deps: WsDeps): FastifyPluginAsync {
           mappings: state?.mappings.length
             ? state.mappings.map(toWireMapping)
             : [],
-          // Always-empty post-QA-FIXES #9 — schema-retained for old client
-          // compat; see the agent.spawn handler below for the full note.
+          // `roleBindings` is legacy post-QA-FIXES #9: the agent.spawn
+          // handler no longer writes to it, but pre-#9 persisted files
+          // can still carry populated entries and nothing on this path
+          // rewrites them. Modern clients ignore the field; forwarded
+          // as-is for old-client compat. See the agent.spawn handler
+          // below for the full note.
           roleBindings: state?.roleBindings ?? {},
           tabId: tabIdFor(reqSessionId),
         });
