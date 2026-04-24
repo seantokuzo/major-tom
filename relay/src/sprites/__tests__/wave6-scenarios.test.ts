@@ -26,11 +26,13 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, writeFile, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 import { BtwQueue } from '../btw-queue.js';
-import { SpriteMapper } from '../sprite-mapper.js';
+import { SpriteMapper, CHARACTER_POOL } from '../sprite-mapper.js';
 import {
   SpriteMappingPersistence,
   type PersistedSpriteMapping,
@@ -448,6 +450,65 @@ describe('Wave 6 scenario — S7 all human sprites exhausted (duplication, no do
     const inUseBeforeOverflow = new Set(mappings.map((m) => m.characterType));
     const overflow = mapper.createMapping('agent-overflow', 'task', mappings);
     expect(inUseBeforeOverflow.has(overflow.mapping.characterType)).toBe(true);
+  });
+});
+
+describe('CHARACTER_POOL / iOS CharacterType lockstep invariant', () => {
+  // Drift guard: CHARACTER_POOL must exactly match the non-dog cases of
+  // the iOS `CharacterType` enum at
+  // ios/MajorTom/Features/Office/Models/AgentState.swift. iOS's
+  // `deterministicFallbackCharacter(for:)` does `pool.count`-modulo on
+  // `CharacterType.allCases.filter { !$0.isDog }` — if iOS adds a crew
+  // member without extending CHARACTER_POOL (or vice versa), the fallback
+  // pool sizes diverge and reconnect-time sprite rolls stop agreeing with
+  // relay-time rolls.
+  //
+  // The parser below reads the Swift enum at test time and splits on the
+  // `// MARK: Dogs` section marker, so iOS-only edits (either side of the
+  // marker) fail this test. Keep the MARK comment stable.
+
+  function parseIosNonDogCharacters(): string[] {
+    const here = dirname(fileURLToPath(import.meta.url));
+    // relay/src/sprites/__tests__ → repo root is 4 levels up.
+    const swiftPath = resolve(
+      here,
+      '../../../..',
+      'ios/MajorTom/Features/Office/Models/AgentState.swift',
+    );
+    const source = readFileSync(swiftPath, 'utf8');
+
+    const enumMatch = source.match(
+      /enum\s+CharacterType\s*:\s*String\s*,\s*CaseIterable\s*\{([\s\S]*?)\n\}/,
+    );
+    if (!enumMatch) {
+      throw new Error(
+        `Could not locate CharacterType enum in ${swiftPath}. ` +
+          'If the enum declaration was refactored, update this parser.',
+      );
+    }
+
+    // Crew section = everything before the `// MARK: Dogs` marker.
+    const crewSection = enumMatch[1]!.split(/\/\/\s*MARK:\s*Dogs\b/i)[0];
+    if (!crewSection || crewSection === enumMatch[1]) {
+      throw new Error(
+        `Could not find "// MARK: Dogs" separator in ${swiftPath}. ` +
+          'The parser relies on that MARK comment to split crew from dogs.',
+      );
+    }
+
+    const caseRegex = /^\s*case\s+([A-Za-z_][A-Za-z0-9_]*)/gm;
+    const cases: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = caseRegex.exec(crewSection)) !== null) {
+      cases.push(m[1]!);
+    }
+    return cases;
+  }
+
+  it('CHARACTER_POOL matches the iOS non-dog CharacterType cases (parsed from AgentState.swift)', () => {
+    const iosCrew = parseIosNonDogCharacters();
+    expect(iosCrew.length).toBeGreaterThan(0);
+    expect([...CHARACTER_POOL].sort()).toEqual([...iosCrew].sort());
   });
 });
 
