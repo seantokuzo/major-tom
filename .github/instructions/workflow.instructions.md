@@ -64,17 +64,17 @@ Before ANY push:
 4. Fix issues, commit fixes
 5. Run CI locally
 
-### 5. PR + Copilot Review
+### 5. PR + Claude Auto-Review
 
 1. Push branch
 2. Create PR (not draft) with template
 3. Apply labels, assign @seantokuzo
-4. Request Copilot review
-5. **STOP — wait for user**
+4. **Claude auto-reviews** via `.github/workflows/claude-code-review.yml` — Tier 2 (3 specialists + verdict synthesizer) fires on PR open/sync. The verdict sticky (`<!-- MT-VERDICT-STICKY -->`) is the round-completion signal.
+5. Follow the autonomous loop in `~/.claude/CLAUDE.md` "PR Review Workflow (canonical)" — poll, address, judge, merge.
 
 ### 6. Address Comments
 
-See `.github/instructions/pr-review.instructions.md` for the full comment-handling workflow.
+See `.github/instructions/pr-review.instructions.md` for project-specific extensions and `~/.claude/CLAUDE.md` "PR Review Workflow (canonical)" for the canonical autonomous loop + judge sub-agent step.
 
 ---
 
