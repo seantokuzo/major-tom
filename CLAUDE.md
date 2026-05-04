@@ -101,14 +101,30 @@ This project uses a **thin orchestrator, fat workers** pattern:
 
 Canonical autonomous loop lives in `~/.claude/CLAUDE.md` under **"PR Review Workflow"**. Reviews are powered by the Claude GitHub App via three workflows in `.github/workflows/` — see "Reviewing with @claude" below for the tier table. Summary:
 
-1. **Round completion = sticky updated for head SHA.** Each auto-review round posts/updates the verdict sticky `<!-- MT-VERDICT-STICKY -->` (Tier 2) or `<!-- MT-DEEP-VERDICT-STICKY -->` (Tier 3). The sticky is the round-completion signal — NOT inline comment counts.
-2. **Polling:** first poll 5m after PR creation/push (specialists run in parallel, ~3-5 min each + synth). Subsequent polls every 2m until the sticky lands or updates for the new head SHA.
-3. **Triage:** every comment is `fix-now` / `respond` / `defer`. Push back inline when the comment recommends defensive code for impossible cases, scope creep, or anything that conflicts with `CLAUDE.md` / `docs/PLANNING.md`.
-4. **Replies:** inline to each comment thread (never batched), with commit SHA for fixes or cited reasoning for pushback.
-5. **Round-N decision:** spawn an impartial judge sub-agent per the global protocol — fresh general-purpose agent, no review history. Decision is `merge | re-review | human-decides`. Hard cap at 4 rounds.
-6. **CI gate:** must be green before merge unless the PR is labeled `expected-ci-fail`.
-7. **Post-merge:** `git checkout main && git pull`, update `docs/STATE.md`, prep next phase prompt.
-8. **Override:** if the user says "wait for me", stop after PR creation — don't poll/merge.
+1. **Trigger model.** Tier 2 (`claude-code-review.yml`) auto-fires ONLY on `pull_request: opened` and `ready_for_review` (draft → ready also counts as round 1). It does NOT auto-rerun on `synchronize` — pushing fix commits is silent. **Subsequent rounds are agent-dispatched** via `workflow_dispatch`, so we only re-run lanes that had blocking findings instead of the whole panel every push.
+2. **Round completion = sticky updated for head SHA.** Each auto-review round posts/updates the verdict sticky `<!-- MT-VERDICT-STICKY -->` (Tier 2) or `<!-- MT-DEEP-VERDICT-STICKY -->` (Tier 3). The sticky is the round-completion signal — NOT inline comment counts.
+3. **Polling:** first poll 5m after round dispatch (specialists run in parallel, ~3-5 min each + synth). Subsequent polls every 2m until the sticky lands or updates.
+4. **Triage:** every comment is `fix-now` / `respond` / `defer`. Push back inline when the comment recommends defensive code for impossible cases, scope creep, or anything that conflicts with `CLAUDE.md` / `docs/PLANNING.md`.
+5. **Replies:** inline to each comment thread (never batched), with commit SHA for fixes or cited reasoning for pushback.
+6. **Decide what's next** based on the synth sticky:
+   - `verdict: ship` + CI green → **merge** (`gh pr merge --merge --delete-branch`)
+   - `verdict: fix-then-ship` + addressable blocking → fix, push, dispatch a TARGETED follow-up round (see below)
+   - `verdict: rethink` OR ambiguous trade-offs → **stop, surface to user** (don't auto-merge)
+   - 4 rounds reached → **stop, surface to user** (hard cap)
+7. **Targeted re-review dispatch.** After pushing fixes, identify which specialist(s) had blocking findings from the sticky and re-fire only those:
+   ```bash
+   gh workflow run claude-code-review.yml \
+     --ref <branch> \
+     --field pr_number=<N> \
+     --field specialists=correctness \
+     --field focus="Re-check the X fix in <sha> — Security and Architecture passed cleanly in round 1"
+   ```
+   `specialists` accepts any comma-separated subset of `security,architecture,correctness`. The synth always runs and uses the prior round's sentinels for skipped lanes (still authoritative until you say otherwise).
+8. **Quick inline Q&A vs full re-review.** For one-off questions on a specific finding ("does this still apply after my fix?"), prefer Tier 1 — drop `@claude addressed in <sha> — confirm fix in security finding line 42` as an inline reply, no full round needed. Use targeted Tier 2 dispatch only when you want fresh sentinels and a sticky update.
+9. **Round-N judge.** When the round-N sticky lands, spawn an impartial judge sub-agent per the global protocol — fresh general-purpose agent, no review history. Decision is `merge | re-review | human-decides`. Hard cap at 4 rounds.
+10. **CI gate:** must be green before merge unless the PR is labeled `expected-ci-fail`.
+11. **Post-merge:** `git checkout main && git pull`, update `docs/STATE.md`, prep next phase prompt.
+12. **Override:** if the user says "wait for me", stop after PR creation — don't poll/merge.
 
 Execution details (bash commands, reply templates) are in `.agents/skills/pr-review-pipeline/SKILL.md`. That skill MUST align with the canonical rules + this section — if it drifts, fix the skill.
 
@@ -226,7 +242,18 @@ All tiers are **READ-ONLY** — `Edit`, `Write`, and `NotebookEdit` are explicit
 
 ### Round protocol
 
-Round 1 = the auto-review on PR open / push. Subsequent rounds fire on each new commit (the `synchronize` event re-runs Tier 2). The verdict synthesizer posts a sticky comment (`<!-- MT-VERDICT-STICKY -->`) that is updated in place each round.
+**Round 1** fires automatically on `pull_request: opened` and `ready_for_review` (draft → ready). **Round 2+ are agent-dispatched** via `workflow_dispatch` — `synchronize` is intentionally NOT a trigger, so a `git push` does not re-fire the panel. The orchestrating CLI agent reads the round-1 sticky, decides what to fix, pushes commits, and dispatches a TARGETED follow-up round on only the specialists that flagged issues. The verdict synthesizer posts a sticky (`<!-- MT-VERDICT-STICKY -->`) that's updated in place each round; skipped specialists keep their prior round's sentinel.
+
+Targeted dispatch:
+
+```bash
+gh workflow run claude-code-review.yml --ref <branch> \
+  --field pr_number=<N> \
+  --field specialists=correctness \
+  --field focus="Re-check the X fix in <sha> — Security/Architecture passed in round 1"
+```
+
+`specialists` accepts any comma-separated subset of `security,architecture,correctness`. Default is `all` (used implicitly on auto-fire).
 
 - **Hard cap: 4 rounds.** After round 4 the synthesizer escalates to a human decision regardless of remaining issues.
 - **Auto-escalation to Tier 3** when the synthesizer detects: any specialist verdict = `rethink`, OR `sensitive_paths_touched: true` AND blocking>0, OR total blocking > 5, OR PR diff > 500 lines.

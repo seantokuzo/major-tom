@@ -1,6 +1,15 @@
 name: Claude Auto Review
 
-# Tier 2: multi-specialist auto-review on every PR.
+# Tier 2: multi-specialist review.
+#
+# Round 1 fires automatically on PR open (non-draft) and on draft→ready
+# transitions. Subsequent rounds are agent-dispatched via workflow_dispatch
+# with a `specialists` subset and an optional `focus` string, so we only
+# re-run the lanes that had blocking findings instead of the whole panel.
+# (No `synchronize` trigger — pushing fixes does NOT auto-rerun the whole
+# panel; the orchestrating CLI agent decides the follow-up scope from the
+# previous round's verdict sticky.)
+#
 # Three concurrent specialists (Security / Architecture / Correctness) each
 # Opus 4.7 + --effort xhigh, then a synthesizer job (also Opus 4.7) reads
 # their JSON sentinels, posts a verdict sticky, and auto-applies the
@@ -11,13 +20,23 @@ name: Claude Auto Review
 
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review]
+    types: [opened, ready_for_review]
   workflow_dispatch:
     inputs:
       pr_number:
         description: PR number to review
         required: true
         type: number
+      specialists:
+        description: Subset to run for targeted re-review (default `all`). Comma-separated from `security,architecture,correctness`.
+        required: false
+        type: string
+        default: all
+      focus:
+        description: Optional focus string for a targeted round (e.g. "Re-check the sprite race fix in <sha> — Security and Architecture passed in round 1").
+        required: false
+        type: string
+        default: ''
 
 permissions: {}
 
@@ -36,20 +55,33 @@ jobs:
     outputs:
       pr_number: ${{ steps.set.outputs.pr_number }}
       head_sha: ${{ steps.set.outputs.head_sha }}
+      specialists: ${{ steps.set.outputs.specialists }}
+      focus: ${{ steps.set.outputs.focus }}
     steps:
       - id: set
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "pr_number=${{ inputs.pr_number }}" >> "$GITHUB_OUTPUT"
             echo "head_sha=" >> "$GITHUB_OUTPUT"
+            echo "specialists=${{ inputs.specialists }}" >> "$GITHUB_OUTPUT"
+            {
+              echo "focus<<EOF_FOCUS"
+              echo "${{ inputs.focus }}"
+              echo "EOF_FOCUS"
+            } >> "$GITHUB_OUTPUT"
           else
             echo "pr_number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
             echo "head_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+            echo "specialists=all" >> "$GITHUB_OUTPUT"
+            echo "focus=" >> "$GITHUB_OUTPUT"
           fi
 
   security-review:
     needs: preflight
     name: 🔒 Security specialist
+    if: |
+      needs.preflight.outputs.specialists == 'all' ||
+      contains(needs.preflight.outputs.specialists, 'security')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -71,6 +103,13 @@ jobs:
             You are the SECURITY SPECIALIST for the Major Tom auto-review pipeline.
 
             PR: #${{ needs.preflight.outputs.pr_number }} in ${{ github.repository }}
+
+            ROUND CONTEXT:
+            - specialists subset for this round: ${{ needs.preflight.outputs.specialists }}
+            - focus from orchestrator (empty = full review): ${{ needs.preflight.outputs.focus }}
+            If focus is non-empty, treat it as the PRIMARY lens — concentrate your
+            attention there but still apply your standard rubric. If focus is empty,
+            run a full review per the rubric below.
 
             FIRST: read CLAUDE.md (especially "Reviewing with @claude"), docs/STATE.md, and
             docs/PLANNING.md. If the diff touches relay auth/oauth/sessions/adapters or
@@ -137,13 +176,17 @@ jobs:
           claude_args: |
             --model claude-opus-4-7
             --effort xhigh
-            --max-turns 12
+            --max-turns 75
+            --max-budget-usd 5
             --disallowedTools "Edit,Write,NotebookEdit"
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr checks:*),Bash(gh api repos/seantokuzo/major-tom/pulls/*),Bash(gh api repos/seantokuzo/major-tom/contents/*),Bash(gh api repos/seantokuzo/major-tom/commits/*),Bash(gh run list:*),Bash(gh run view:*),Bash(cd relay && npm run typecheck),Bash(cd relay && npm run lint),Bash(cd relay && npm run build),Bash(cd relay && npm test),Bash(cd web && npm run build),Bash(cd web && npm run check),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*)"
+            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr checks:*),Bash(gh api repos/seantokuzo/major-tom/*),Bash(gh run list:*),Bash(gh run view:*),Bash(cd relay && npm run typecheck),Bash(cd relay && npm run lint),Bash(cd relay && npm run build),Bash(cd relay && npm test),Bash(cd web && npm run build),Bash(cd web && npm run check),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*)"
 
   architecture-review:
     needs: preflight
     name: 🏗️ Architecture specialist
+    if: |
+      needs.preflight.outputs.specialists == 'all' ||
+      contains(needs.preflight.outputs.specialists, 'architecture')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -165,6 +208,13 @@ jobs:
             You are the ARCHITECTURE SPECIALIST for the Major Tom auto-review pipeline.
 
             PR: #${{ needs.preflight.outputs.pr_number }} in ${{ github.repository }}
+
+            ROUND CONTEXT:
+            - specialists subset for this round: ${{ needs.preflight.outputs.specialists }}
+            - focus from orchestrator (empty = full review): ${{ needs.preflight.outputs.focus }}
+            If focus is non-empty, treat it as the PRIMARY lens — concentrate your
+            attention there but still apply your standard rubric. If focus is empty,
+            run a full review per the rubric below.
 
             FIRST: read CLAUDE.md (Tech Stack & Conventions + What NOT To Do + the
             "Reviewing with @claude" section) and docs/PLANNING.md for the architecture
@@ -236,13 +286,17 @@ jobs:
           claude_args: |
             --model claude-opus-4-7
             --effort xhigh
-            --max-turns 12
+            --max-turns 75
+            --max-budget-usd 5
             --disallowedTools "Edit,Write,NotebookEdit"
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr checks:*),Bash(gh api repos/seantokuzo/major-tom/pulls/*),Bash(gh api repos/seantokuzo/major-tom/contents/*),Bash(gh api repos/seantokuzo/major-tom/commits/*),Bash(gh run list:*),Bash(gh run view:*),Bash(cd relay && npm run typecheck),Bash(cd relay && npm run lint),Bash(cd relay && npm run build),Bash(cd relay && npm test),Bash(cd web && npm run build),Bash(cd web && npm run check),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*)"
+            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr checks:*),Bash(gh api repos/seantokuzo/major-tom/*),Bash(gh run list:*),Bash(gh run view:*),Bash(cd relay && npm run typecheck),Bash(cd relay && npm run lint),Bash(cd relay && npm run build),Bash(cd relay && npm test),Bash(cd web && npm run build),Bash(cd web && npm run check),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*)"
 
   correctness-review:
     needs: preflight
     name: ✅ Correctness specialist
+    if: |
+      needs.preflight.outputs.specialists == 'all' ||
+      contains(needs.preflight.outputs.specialists, 'correctness')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -264,6 +318,13 @@ jobs:
             You are the CORRECTNESS SPECIALIST for the Major Tom auto-review pipeline.
 
             PR: #${{ needs.preflight.outputs.pr_number }} in ${{ github.repository }}
+
+            ROUND CONTEXT:
+            - specialists subset for this round: ${{ needs.preflight.outputs.specialists }}
+            - focus from orchestrator (empty = full review): ${{ needs.preflight.outputs.focus }}
+            If focus is non-empty, treat it as the PRIMARY lens — concentrate your
+            attention there but still apply your standard rubric. If focus is empty,
+            run a full review per the rubric below.
 
             FIRST: read CLAUDE.md (Code Conventions + What NOT To Do + the "Reviewing
             with @claude" section) and the existing patterns in any file you find
@@ -333,9 +394,10 @@ jobs:
           claude_args: |
             --model claude-opus-4-7
             --effort xhigh
-            --max-turns 12
+            --max-turns 75
+            --max-budget-usd 5
             --disallowedTools "Edit,Write,NotebookEdit"
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr checks:*),Bash(gh api repos/seantokuzo/major-tom/pulls/*),Bash(gh api repos/seantokuzo/major-tom/contents/*),Bash(gh api repos/seantokuzo/major-tom/commits/*),Bash(gh run list:*),Bash(gh run view:*),Bash(gh run view --log:*),Bash(cd relay && npm ci),Bash(cd relay && npm run typecheck),Bash(cd relay && npm run lint),Bash(cd relay && npm run build),Bash(cd relay && npm test),Bash(cd web && npm ci),Bash(cd web && npm run build),Bash(cd web && npm run check),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*)"
+            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr checks:*),Bash(gh api repos/seantokuzo/major-tom/*),Bash(gh run list:*),Bash(gh run view:*),Bash(gh run view --log:*),Bash(cd relay && npm ci),Bash(cd relay && npm run typecheck),Bash(cd relay && npm run lint),Bash(cd relay && npm run build),Bash(cd relay && npm test),Bash(cd web && npm ci),Bash(cd web && npm run build),Bash(cd web && npm run check),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*)"
 
   verdict:
     needs: [preflight, security-review, architecture-review, correctness-review]
@@ -361,57 +423,71 @@ jobs:
 
             PR: #${{ needs.preflight.outputs.pr_number }} in ${{ github.repository }}
 
-            Specialist job results (some may have failed — handle gracefully):
+            ROUND CONTEXT:
+            - specialists subset for this round: ${{ needs.preflight.outputs.specialists }}
+            - focus from orchestrator (empty = full round): ${{ needs.preflight.outputs.focus }}
+
+            Specialist job results (handle each gracefully):
             - Security: ${{ needs.security-review.result }}
             - Architecture: ${{ needs.architecture-review.result }}
             - Correctness: ${{ needs.correctness-review.result }}
 
+            A `skipped` result means the agent dispatched a TARGETED round and that
+            lane wasn't re-run. Use the MOST RECENT prior sentinel for that specialist
+            from the comment thread — it's still authoritative until the agent says
+            otherwise. A `failure` result means the action errored (max-turns,
+            budget, etc.) — also fall back to the prior sentinel if one exists.
+
+            EFFICIENCY: prefer parallel tool calls in a single assistant turn (one
+            assistant message can hold multiple Bash invocations and they cost ONE
+            turn total, not N). The fetch + label-list + pr-view can all fire in
+            parallel up front.
+
             STEPS:
 
-            1. Fetch PR comments:
-               gh api "repos/${{ github.repository }}/issues/${{ needs.preflight.outputs.pr_number }}/comments?per_page=100"
+            1. PARALLEL FETCH (one turn) — kick off all three at once:
+               a. gh api "repos/${{ github.repository }}/issues/${{ needs.preflight.outputs.pr_number }}/comments?per_page=100"
+                  (this single response gives you BOTH the specialist sentinels AND
+                  the existing <!-- MT-VERDICT-STICKY --> if any — don't re-fetch)
+               b. gh pr view ${{ needs.preflight.outputs.pr_number }} --json additions,deletions,labels
+               c. gh label list --json name (only if you might need to create the label)
 
-            2. Extract every JSON sentinel:
+            2. From step 1a, extract MOST RECENT instance of each (earlier rounds are
+               stale):
                - <!-- MT-REVIEW-JSON-SECURITY ... -->
                - <!-- MT-REVIEW-JSON-ARCHITECTURE ... -->
                - <!-- MT-REVIEW-JSON-CORRECTNESS ... -->
-               (Take the MOST RECENT instance of each — earlier rounds are stale.)
+               And find the existing <!-- MT-VERDICT-STICKY --> comment id (if any).
 
             3. Compute aggregate verdict:
                - "rethink" if any specialist verdict is "rethink"
                - "fix-then-ship" if any blocking_count > 0
                - "ship" otherwise
-               - total_blocking = sum of blocking_count across specialists
-               - total_advisory = sum of advisory_count across specialists
+               - total_blocking, total_advisory = sums across specialists
                - sensitive_paths_touched = OR of all specialists' flags
                - ci_failing = correctness specialist's ci_failing (or unknown)
 
-            4. Compute round number:
-               - Find existing <!-- MT-VERDICT-STICKY --> comment via gh api
-               - If exists, parse `VERDICT_ROUND: N` from its body and increment to N+1
-               - If not, round = 1
-               - HARD CAP: if round would exceed 4, set verdict to "rethink" and add a
-                 "🚨 4-round cap reached — escalating to human" line in the action plan.
+            4. Compute round number from existing sticky's `VERDICT_ROUND: N` line
+               (increment to N+1; default 1 if no sticky). HARD CAP: if round would
+               exceed 4, set verdict to "rethink" and add "🚨 4-round cap reached —
+               escalating to human" in the action plan.
 
-            5. Compute escalation (auto-apply `claude-deep-review` label if true):
+            5. Compute escalation (auto-apply `claude-deep-review` label if true,
+               and the label is not already present per step 1b):
                escalate = (verdict == "rethink") OR
                           (sensitive_paths_touched AND total_blocking > 0) OR
                           (total_blocking > 5) OR
-                          (PR additions+deletions > 500 — get via gh pr view --json additions,deletions)
-               If `claude-deep-review` label already present, do not re-apply.
+                          (additions+deletions > 500)
 
-            6. Find existing verdict sticky:
-               gh api "repos/${{ github.repository }}/issues/${{ needs.preflight.outputs.pr_number }}/comments?per_page=100" | jq '.[] | select(.body | contains("<!-- MT-VERDICT-STICKY -->"))'
-
-            7. Post or update sticky body. If existing, PATCH:
-               gh api -X PATCH "repos/${{ github.repository }}/issues/comments/<comment_id>" -f body='<NEW_BODY>'
-               If new, post:
-               gh pr comment ${{ needs.preflight.outputs.pr_number }} --body '<BODY>'
-
-            8. If escalating and label not present:
-               gh pr edit ${{ needs.preflight.outputs.pr_number }} --add-label claude-deep-review
-               (Create the label first if it doesn't exist:
-                gh label create claude-deep-review --color B60205 --description "Trigger deep multi-specialist review" || true)
+            6. PARALLEL APPLY (one turn) — post sticky and apply label together:
+               a. Sticky: if step-2 found an existing comment_id, PATCH it:
+                    gh api -X PATCH "repos/${{ github.repository }}/issues/comments/<comment_id>" -f body='<NEW_BODY>'
+                  Otherwise post fresh:
+                    gh pr comment ${{ needs.preflight.outputs.pr_number }} --body '<BODY>'
+               b. If escalating and label not present:
+                    gh pr edit ${{ needs.preflight.outputs.pr_number }} --add-label claude-deep-review
+                  (Create label first if missing:
+                    gh label create claude-deep-review --color B60205 --description "Trigger deep multi-specialist review" || true)
 
             STICKY BODY FORMAT (use this exactly — round number, verdict, counts substituted):
 
@@ -449,6 +525,7 @@ jobs:
           claude_args: |
             --model claude-opus-4-7
             --effort high
-            --max-turns 8
+            --max-turns 30
+            --max-budget-usd 3
             --disallowedTools "Edit,Write,NotebookEdit"
-            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*),Bash(gh api repos/seantokuzo/major-tom/issues/*),Bash(gh api repos/seantokuzo/major-tom/pulls/*),Bash(gh api -X PATCH repos/seantokuzo/major-tom/issues/comments/*),Bash(gh label create:*),Bash(gh label list:*),Bash(jq:*)"
+            --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*),Bash(gh api:*),Bash(gh label create:*),Bash(gh label list:*),Bash(jq:*)"
