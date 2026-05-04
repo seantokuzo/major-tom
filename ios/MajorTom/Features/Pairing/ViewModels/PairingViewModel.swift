@@ -7,11 +7,13 @@ final class PairingViewModel {
     var serverAddress: String = ""
     var authMethods: AuthMethods?
     var isFetchingMethods = false
+    let network: NetworkPathMonitor
 
     private let auth: AuthService
 
-    init(auth: AuthService) {
+    init(auth: AuthService, network: NetworkPathMonitor? = nil) {
         self.auth = auth
+        self.network = network ?? NetworkPathMonitor()
         self.serverAddress = auth.serverURL
     }
 
@@ -37,6 +39,29 @@ final class PairingViewModel {
     var hasAnyAuthMethod: Bool {
         guard let methods = authMethods else { return true }
         return methods.pin || methods.google
+    }
+
+    /// Single preset matched to the phone's current reachability — `nil`
+    /// when offline or before the path monitor has fired its first update.
+    var recommendedPreset: ServerPreset? {
+        ServerPreset(reachability: network.reachability)
+    }
+
+    /// Apply the auto-picked URL and refetch auth methods.
+    func useRecommended() async {
+        guard let preset = recommendedPreset else { return }
+        serverAddress = preset.address
+        await fetchAuthMethods()
+    }
+
+    /// On first appear, if the user has no saved server URL, seed the field
+    /// with whatever the path monitor is currently recommending. Subsequent
+    /// reachability changes do NOT auto-overwrite — the user can tap the
+    /// recommendation chip to refresh on demand.
+    func applyInitialRecommendationIfNeeded() {
+        guard serverAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard let preset = recommendedPreset else { return }
+        serverAddress = preset.address
     }
 
     /// Fetch auth methods from the relay to adapt the login UI.

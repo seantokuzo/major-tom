@@ -19,6 +19,18 @@ enum ServerPreset: String, CaseIterable, Identifiable {
         case .localhost:   return "💻 Local"
         }
     }
+
+    /// Single preset for the device's current reachability. Tailscale
+    /// (or any VPN presenting as `.other`) wins over LAN; cellular-only
+    /// falls back to the public Cloudflare tunnel; offline returns nil.
+    init?(reachability: NetworkPathMonitor.Reachability) {
+        switch reachability {
+        case .tailscale: self = .tailscale
+        case .lan:       self = .lan
+        case .cellular:  self = .cloudflare
+        case .offline:   return nil
+        }
+    }
 }
 
 struct PairingView: View {
@@ -74,34 +86,12 @@ struct PairingView: View {
                         Task { await viewModel.fetchAuthMethods() }
                     }
 
-                // Preset server picker
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: MajorTomTheme.Spacing.sm) {
-                        ForEach(ServerPreset.allCases) { preset in
-                            Button {
-                                HapticService.impact(.light)
-                                viewModel.serverAddress = preset.address
-                                Task { await viewModel.fetchAuthMethods() }
-                            } label: {
-                                Text(preset.label)
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(
-                                        viewModel.serverAddress == preset.address
-                                            ? MajorTomTheme.Colors.background
-                                            : MajorTomTheme.Colors.textSecondary
-                                    )
-                                    .padding(.horizontal, MajorTomTheme.Spacing.sm)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        viewModel.serverAddress == preset.address
-                                            ? MajorTomTheme.Colors.accent
-                                            : MajorTomTheme.Colors.surfaceElevated
-                                    )
-                                    .clipShape(Capsule())
-                            }
-                        }
-                    }
-                }
+                // QA-FIXES #21: auto-pick a single relay URL based on
+                // the phone's network state. Tailscale wins over LAN
+                // (stable hostname, immune to LAN-IP drift); cellular-
+                // only falls back to the public Cloudflare tunnel.
+                recommendationChip
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
             .padding(.horizontal, MajorTomTheme.Spacing.xxl)
 
@@ -160,7 +150,46 @@ struct PairingView: View {
         .background(MajorTomTheme.Colors.background)
         .animation(.easeInOut(duration: 0.2), value: viewModel.authState)
         .task {
+            // Seed an empty server field with whatever the path monitor
+            // recommends, then fetch auth methods. The seeding is one-shot
+            // so reachability flips don't fight a user-typed override.
+            viewModel.applyInitialRecommendationIfNeeded()
             await viewModel.fetchAuthMethods()
+        }
+    }
+
+    @ViewBuilder
+    private var recommendationChip: some View {
+        if let preset = viewModel.recommendedPreset {
+            Button {
+                HapticService.impact(.light)
+                Task { await viewModel.useRecommended() }
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Auto:")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+                    Text(preset.label)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(
+                            viewModel.serverAddress == preset.address
+                                ? MajorTomTheme.Colors.background
+                                : MajorTomTheme.Colors.textSecondary
+                        )
+                }
+                .padding(.horizontal, MajorTomTheme.Spacing.sm)
+                .padding(.vertical, 4)
+                .background(
+                    viewModel.serverAddress == preset.address
+                        ? MajorTomTheme.Colors.accent
+                        : MajorTomTheme.Colors.surfaceElevated
+                )
+                .clipShape(Capsule())
+            }
+        } else {
+            Text("Offline — enter a relay URL above")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(MajorTomTheme.Colors.textTertiary)
         }
     }
 
