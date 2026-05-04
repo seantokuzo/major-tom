@@ -2,13 +2,12 @@ import SwiftUI
 
 // MARK: - Server Presets
 
-enum ServerPreset: String, CaseIterable, Identifiable {
+enum ServerPreset: String {
     case cloudflare = "majortom.seantokuzodevtunnel.space"
     case tailscale  = "100.69.151.117:9090"
     case lan        = "192.168.1.210:9090"
     case localhost   = "localhost:9090"
 
-    var id: String { rawValue }
     var address: String { rawValue }
 
     var label: String {
