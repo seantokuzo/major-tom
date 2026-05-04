@@ -404,25 +404,25 @@ The original "role labels use agent-type instead of humanized role" issue — re
 
 ---
 
-### 22. Sprite identity diverges between Office scene and Inspector panel (device QA 2026-05-03)
+### 22. Sprite identity diverges between Office scene and Inspector panel (FIXED — PR #165, 2026-05-04)
 
 **Symptom (mid-D8 device QA, 2026-05-03):** Sean tapped a working sprite that the Office scene was rendering as "Frontend dev". The inspector panel that opened on tap showed a DIFFERENT identity — label "Captain" + Captain's sprite image. Two surfaces, same agent, two different characters.
 
-**Why this matters:** PR #161 (D9) was specifically about making the relay the source of truth for `characterType` and having iOS trust it verbatim. This divergence means one of the surfaces is still computing character locally instead of consuming `AgentState.spriteHandle.characterType` (or the freshly-stored relay value).
+**Actual root cause (NOT the RoleMapper hypothesis):** spawn/link race in `OfficeView.syncScene`. Relay sends `agent.spawn` followed by `sprite.link` for each subagent. Old flow:
+1. `handleAgentSpawn` appended `AgentState` with a local placeholder `characterType`.
+2. SwiftUI re-rendered → `syncScene` called `scene.addAgent(...)` with the placeholder. `AgentSprite.characterType` is `let` — body texture locked.
+3. `handleSpriteLink` arrived → overwrote `agents[i].characterType` with the relay's authoritative pick.
+4. `syncScene` ran again, but agent.id was already in `previousAgentIds` so `addAgent` didn't re-fire. Scene stayed on the placeholder.
+5. Inspector read `viewModel.selectedAgent.characterType` = post-link value → showed the relay's character. Scene + inspector diverged.
 
-**Hypothesis:** the inspector view is still resolving sprite from `canonicalRole` via a leftover code path (RoleMapper had `color(forCanonicalRole:)` kept after #161 — maybe character resolution wasn't fully purged from the inspector). "Captain" being the inspector's pick is a tell — that's a default canonical role, suggesting a fallback chain is running.
+The user's RoleMapper hypothesis was wrong — `RoleMapper.color(forCanonicalRole:)` is the only thing left after PR #161 and never resolves a character. Pure scene-render race.
 
-**Investigation steps when picked up:**
-- `ios/MajorTom/Features/Office/Views/SpriteInspectorView.swift` (or similar) — search for `RoleMapper`, `canonicalRole`, anywhere it derives a sprite/character. Compare with how `OfficeSceneManager` resolves the same agent's character.
-- Add a log on tap: print `agent.spriteHandle?.characterType`, `agent.role`, `agent.canonicalRole` — confirm what's reaching the inspector vs the scene.
-- Likely fix: route inspector through the SAME `characterType(from:)` resolver the scene uses, NOT through role-derivation.
+**Fix shipped (PR #165, `81d08ee`):** `syncScene` now defers `scene.addAgent` for non-idle agents until `spriteHandle` is populated (i.e. `sprite.link` has landed with the relay's authoritative `characterType`). Idle pool sprites still render immediately. `previousAgentIds` tracks only rendered IDs so deferred agents become visible the moment their link arrives. Trade-off: visible sprite appears milliseconds later than before; sub-perceptible since both events come from the same relay handler.
 
-**Priority:** P1 — visibly contradicts the sprite metaphor, exactly the kind of thing D9 was supposed to fix. Should NOT carry into a follow-up wave; pick up next session.
+Review: 3/3 specialists `ship`, 0 blocking, 0 advisory. CI green. Single-file change, 13 LoC.
 
-**Files (suspected):**
-- `ios/MajorTom/Features/Office/Views/SpriteInspectorView.swift`
-- `ios/MajorTom/Features/Office/ViewModels/OfficeViewModel.swift` (`characterType(from:)`)
-- `ios/MajorTom/Features/Office/Models/RoleMapper.swift` (suspect leftover usage)
+**Files:**
+- `ios/MajorTom/Features/Office/Views/OfficeView.swift` — `syncScene` renderable filter, `previousAgentIds` semantics.
 
 ---
 
