@@ -37,7 +37,10 @@ struct OfficeView: View {
     /// Space weather engine for cosmetic atmospheric events.
     @State private var spaceWeather = SpaceWeatherEngine()
 
-    /// Previous agent states for diffing.
+    /// IDs of agents currently rendered in the SKScene, used to diff adds/
+    /// removes on each `agents` change. Subagents whose `sprite.link` hasn't
+    /// arrived yet (no `spriteHandle`) are intentionally absent — see
+    /// `syncScene` and QA-FIXES #22.
     @State private var previousAgentIds: Set<String> = []
     @State private var previousStatuses: [String: AgentStatus] = [:]
 
@@ -668,9 +671,19 @@ struct OfficeView: View {
     // MARK: - Scene Sync
 
     private func syncScene(with agents: [AgentState], viewModel: OfficeViewModel, scene: OfficeScene) {
-        let currentIds = Set(agents.map(\.id))
+        // QA-FIXES #22: defer rendering subagent sprites until `sprite.link`
+        // populates `spriteHandle` (and the relay's authoritative
+        // `characterType`). Otherwise the scene locks the sprite to the
+        // local placeholder picked in `handleAgentSpawn`, while the inspector
+        // reads the post-link AgentState — divergent visuals on the same
+        // agent. Idle pool sprites have no link by design and render
+        // immediately.
+        let renderable = agents.filter { agent in
+            agent.id.hasPrefix("idle-") || agent.spriteHandle != nil
+        }
+        let renderableIds = Set(renderable.map(\.id))
 
-        for agent in agents where !previousAgentIds.contains(agent.id) {
+        for agent in renderable where !previousAgentIds.contains(agent.id) {
             scene.addAgent(id: agent.id, name: agent.name, characterType: agent.characterType)
             if let deskIndex = agent.deskIndex {
                 scene.highlightDesk(deskIndex, occupied: true)
@@ -681,7 +694,7 @@ struct OfficeView: View {
             }
         }
 
-        for id in previousAgentIds where !currentIds.contains(id) {
+        for id in previousAgentIds where !renderableIds.contains(id) {
             viewModel.activityAnimator.stopPhase(for: id, furnitureNodes: scene.furnitureNodes)
             scene.removeAgent(id: id)
         }
@@ -693,7 +706,7 @@ struct OfficeView: View {
             }
         }
 
-        previousAgentIds = currentIds
+        previousAgentIds = renderableIds
         previousStatuses = Dictionary(uniqueKeysWithValues: agents.map { ($0.id, $0.status) })
     }
 
