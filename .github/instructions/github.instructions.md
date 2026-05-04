@@ -69,8 +69,8 @@ When creating a PR:
 1. **Create PR** (not draft)
 2. **Assign `@seantokuzo`**
 3. **Apply labels**: component + type + `Needs Review`
-4. **Request Copilot review**
-5. **STOP** — wait for user response
+4. **Claude auto-reviews** via `.github/workflows/claude-code-review.yml` (Tier 2: 3 specialists + verdict synthesizer)
+5. **Follow autonomous loop** in `~/.claude/CLAUDE.md` "PR Review Workflow (canonical)" + project extensions in `.github/instructions/pr-review.instructions.md`
 
 ## PR Labels
 
@@ -96,6 +96,8 @@ When creating a PR:
 | ----- | ------------- |
 | **Needs Review** | PR ready for review (agent applies) |
 | **Accepted** | Human approved, ready to merge |
+| **claude-deep-review** | Trigger Tier 3 deep review (manual or auto-applied by Tier 2 verdict synthesizer on escalation criteria) |
+| **expected-ci-fail** | CI failure is anticipated and tracked — bypasses the green-CI merge gate (early-phase work only) |
 
 ### CI Labels (auto-applied by GitHub Actions)
 

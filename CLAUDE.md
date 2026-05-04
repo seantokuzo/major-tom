@@ -99,16 +99,18 @@ This project uses a **thin orchestrator, fat workers** pattern:
 
 ### PR Review Pipeline
 
-Canonical rules live in `~/.claude/CLAUDE.md` under **"PR Review Workflow"**. Summary:
+Canonical autonomous loop lives in `~/.claude/CLAUDE.md` under **"PR Review Workflow"**. Reviews are powered by the Claude GitHub App via three workflows in `.github/workflows/` — see "Reviewing with @claude" below for the tier table. Summary:
 
-1. **Polling:** 2m first poll, 1m subsequent. Never poll sooner.
-2. **Completion detection:** count reviews with body containing `"Pull request overview"`. Round N is complete when N such reviews exist.
-3. **5-comment threshold:** `<5` comments in the round → merge. `≥5` → request another round.
+1. **Round completion = sticky updated for head SHA.** Each auto-review round posts/updates the verdict sticky `<!-- MT-VERDICT-STICKY -->` (Tier 2) or `<!-- MT-DEEP-VERDICT-STICKY -->` (Tier 3). The sticky is the round-completion signal — NOT inline comment counts.
+2. **Polling:** first poll 5m after PR creation/push (specialists run in parallel, ~3-5 min each + synth). Subsequent polls every 2m until the sticky lands or updates for the new head SHA.
+3. **Triage:** every comment is `fix-now` / `respond` / `defer`. Push back inline when the comment recommends defensive code for impossible cases, scope creep, or anything that conflicts with `CLAUDE.md` / `docs/PLANNING.md`.
 4. **Replies:** inline to each comment thread (never batched), with commit SHA for fixes or cited reasoning for pushback.
-5. **Post-merge:** `git checkout main && git pull`, update `docs/STATE.md`, prep next phase prompt.
-6. **Override:** if the user says "wait for me", stop after PR creation — don't poll/merge.
+5. **Round-N decision:** spawn an impartial judge sub-agent per the global protocol — fresh general-purpose agent, no review history. Decision is `merge | re-review | human-decides`. Hard cap at 4 rounds.
+6. **CI gate:** must be green before merge unless the PR is labeled `expected-ci-fail`.
+7. **Post-merge:** `git checkout main && git pull`, update `docs/STATE.md`, prep next phase prompt.
+8. **Override:** if the user says "wait for me", stop after PR creation — don't poll/merge.
 
-Execution details (bash commands, triage table, reply formats) are in `.agents/skills/pr-review-pipeline/SKILL.md`. That skill MUST align with the canonical rules — if it drifts, fix the skill.
+Execution details (bash commands, reply templates) are in `.agents/skills/pr-review-pipeline/SKILL.md`. That skill MUST align with the canonical rules + this section — if it drifts, fix the skill.
 
 ### Context Management
 
@@ -153,3 +155,91 @@ Before marking any task complete:
 - Don't guess package versions — always check with `npm view`
 - Don't nest subagents (orchestrator → workers, never workers → sub-workers)
 - Don't paste file contents into agent prompts (pass paths instead)
+
+---
+
+## Reviewing with @claude
+
+Three review tiers powered by the Claude GitHub App. **The action loads THIS file at runtime** — everything below is standing instructions for both the human and the reviewer.
+
+### Review tiers
+
+| Tier | Trigger | Model | Effort | Use for |
+|------|---------|-------|--------|---------|
+| **1: `@claude` Q&A** | mention in issue / PR / review comment | Opus 4.6 | `max` | targeted questions, one-off code reads, CI-failure inspection |
+| **2: Auto-review** | every non-draft PR (open / sync / ready) | Opus 4.7 | `xhigh` | canonical multi-specialist review |
+| **3: Deep review** | label `claude-deep-review` (manual or auto-escalated) | Opus 4.7 | `max`, 30 turns | security-sensitive, large, or escalated changes |
+
+Workflows: `.github/workflows/claude.yml` (Tier 1), `claude-code-review.yml` (Tier 2), `claude-deep-review.yml` (Tier 3). Tier 2 runs three specialists in parallel (🔒 Security / 🏗️ Architecture / ✅ Correctness) plus a verdict synthesizer. Tier 3 adds a 🎯 Threat Model specialist.
+
+All tiers are **READ-ONLY** — `Edit`, `Write`, and `NotebookEdit` are explicitly disallowed. No tier can modify code, push commits, or merge.
+
+### Standing review priorities (in order)
+
+1. **SECURITY** — auth / token handling (Google OAuth, Keychain, session tokens), WebSocket boundary input validation, PTY / Claude Code spawn safety (command injection / env injection / cwd escape), path traversal in fs ops driven by network input, PWA XSS (markdown / xterm rendering), Cloudflare Tunnel exposure, prompt-injection paths, GitHub Actions safety
+2. **ARCHITECTURE** — component boundaries (relay / iOS / web / vscode-extension are independent), adapter pattern in relay (`IAdapter`), protocol compliance (`type` field on every WebSocket message, mirrored types across clients), iOS conventions (SwiftUI only, `@Observable` only, Swift Concurrency only, MVVM, feature folder layout, Keychain + SwiftData), file organization (per-feature types, no god files)
+3. **CORRECTNESS** — strict TS (no `any`, use `unknown`+narrow), ESM `.js` import suffixes, async/await hygiene, `??` not `||`, typed errors with no silent catches; Swift no-force-unwraps + actor isolation correctness
+4. **CONVENTIONS** — see "What NOT To Do" above
+
+### Path-aware focus
+
+| Path | Primary specialist focus |
+|------|--------------------------|
+| `relay/src/server.ts`, `relay/src/sessions/` | Security (WS boundary) + Architecture (no god files) |
+| `relay/src/auth/`, `relay/src/oauth/` | Security (token storage / refresh / leakage) |
+| `relay/src/adapters/` | Architecture (`IAdapter` contract) + Security (PTY spawn safety) |
+| `relay/src/tunnel/`, `tunnel/` | Security (public exposure surface) |
+| `relay/src/protocol*`, `web/src/lib/protocol*` | Architecture (protocol mirroring across clients) |
+| `web/src/lib/ws/`, `web/src/lib/auth/` | Security + protocol mirroring |
+| `ios/MajorTom/Services/Keychain*`, `ios/MajorTom/Features/Auth/` | Security (Keychain access policies) |
+| `ios/MajorTom/Features/*/Views/`, `ViewModels/` | Architecture (MVVM, `@Observable`, Concurrency) |
+| `.github/workflows/` | Security (Actions safety, fork guards, action SHA pinning) |
+
+### What NOT to flag
+
+- **Defensive code for impossible cases** — trust framework / type-system guarantees. Validate only at system boundaries (user input, external APIs, WebSocket inbound).
+- **Test coverage gaps** — vitest is wired only for relay; iOS / PWA test harnesses aren't in CI yet. Don't ask for tests outside relay until they land.
+- **Architecture re-litigation** — locked decisions live in `docs/PLANNING.md` and the shipped `docs/PHASE-*.md` docs. Don't propose alternatives.
+- **Premature abstraction** — three similar lines is BETTER than a bad abstraction. Don't suggest DRY without strong evidence.
+- **Scope creep** — review the PR's stated scope, not adjacent work or future features.
+- **Style nits** — Prettier / SwiftFormat handle formatting; ignore.
+- **Comment density** — code without comments is fine if names are clear; only flag missing comments when WHY is non-obvious.
+
+### Mention syntax cheatsheet
+
+```text
+# Targeted question
+@claude does this introduce any prompt-injection vectors via the terminal output path?
+
+# Re-review after fixes
+@claude addressed in <sha> — re-review the security findings only
+
+# Inspect CI
+@claude check why CI is failing on this PR and surface the root cause
+
+# Explain
+@claude walk me through how the relay's session manager handles WebSocket reconnect
+
+# Trigger deep review
+# Add the `claude-deep-review` label, or run claude-deep-review.yml via workflow_dispatch
+```
+
+### Round protocol
+
+Round 1 = the auto-review on PR open / push. Subsequent rounds fire on each new commit (the `synchronize` event re-runs Tier 2). The verdict synthesizer posts a sticky comment (`<!-- MT-VERDICT-STICKY -->`) that is updated in place each round.
+
+- **Hard cap: 4 rounds.** After round 4 the synthesizer escalates to a human decision regardless of remaining issues.
+- **Auto-escalation to Tier 3** when the synthesizer detects: any specialist verdict = `rethink`, OR `sensitive_paths_touched: true` AND blocking>0, OR total blocking > 5, OR PR diff > 500 lines.
+- **CI must be green** before merge unless the PR is explicitly labeled `expected-ci-fail` (early-phase work).
+
+### Reviewer JSON sentinel format
+
+Each specialist embeds a sentinel in its summary comment for the synthesizer to parse:
+
+```html
+<!-- MT-REVIEW-JSON-{SECURITY|ARCHITECTURE|CORRECTNESS|THREATMODEL}
+{"verdict":"ship|fix-then-ship|rethink","blocking_count":N,"advisory_count":N,"sensitive_paths_touched":bool,"top_issues":[...],"rationale":"..."}
+-->
+```
+
+Don't edit these by hand — they're regenerated each round.
