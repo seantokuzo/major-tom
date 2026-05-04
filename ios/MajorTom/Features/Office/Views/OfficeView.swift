@@ -40,7 +40,7 @@ struct OfficeView: View {
     /// IDs of agents currently rendered in the SKScene, used to diff adds/
     /// removes on each `agents` change. Subagents whose `sprite.link` hasn't
     /// arrived yet (no `spriteHandle`) are intentionally absent — see
-    /// `syncScene` and QA-FIXES #22
+    /// `syncScene` and QA-FIXES #22.
     @State private var previousAgentIds: Set<String> = []
     @State private var previousStatuses: [String: AgentStatus] = [:]
 
