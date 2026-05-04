@@ -426,23 +426,25 @@ Review: 3/3 specialists `ship`, 0 blocking, 0 advisory. CI green. Single-file ch
 
 ---
 
-### 21. Connect screen shows too many URLs — auto-pick one based on phone network state (device QA 2026-05-03)
+### 21. Connect screen shows too many URLs — auto-pick one based on phone network state (FIXED — PR pending, 2026-05-04)
 
-**Symptom (device QA, 2026-05-03):** Sean's iPhone Connect screen displays Tailscale URL + LAN URL + PIN + maybe more, plus the Mac's LAN IP drifts (`192.168.1.210` → `192.168.1.254` between sessions), so the cached LAN URL goes stale and reconnect fails silently. User just wants "local OR tunnel" — one path at a time.
+**Symptom (device QA, 2026-05-03):** Sean's iPhone pairing screen displays Tailscale URL + LAN URL + Cloudflare tunnel + localhost as four selectable chips, plus the Mac's LAN IP drifts (`192.168.1.210` → `192.168.1.254` between sessions), so the cached LAN URL goes stale and reconnect fails silently. User just wants "local OR tunnel" — one path at a time.
 
-**Quick fix (RECOMMENDED, ~2-4 hr work):** detect phone's network state with `NWPathMonitor`, show **only one URL**:
-- Tailscale interface up → Tailscale URL
-- Otherwise → LAN URL (numeric, will drift if Mac's DHCP lease changes)
-- Both up → prefer Tailscale (stable across networks, immune to LAN IP drift)
+**Quick fix shipped (2026-05-04):** new `NetworkPathMonitor` (`ios/MajorTom/Core/Services/NetworkPathMonitor.swift`) wraps `NWPathMonitor` and exposes a `Reachability` enum (`tailscale | lan | cellular | offline`) inferred from interface types — Tailscale on iOS presents as a `NetworkExtension` (`.other` interface). `PairingView`'s 4-chip horizontal scroll is replaced by a single auto-recommended chip; `PairingViewModel.recommendedPreset` maps reachability → `ServerPreset` (Tailscale > LAN > Cloudflare tunnel; nil when offline). On view appear, an empty `serverAddress` is seeded with the recommendation; user-typed values are never overwritten by reachability flips. Tapping the chip applies the recommendation on demand and refetches `/auth/methods`.
 
-**Long-term winner:** mDNS/Bonjour discovery. Relay advertises `major-tom._http._tcp.local`, iOS uses `NWBrowser` to discover it on LAN; Tailscale fallback uses MagicDNS hostname (`seans-macbook-pro.tail-scale.ts.net`) so the URL is never a numeric IP. Set-and-forget — but bigger lift (relay-side advertise + iOS discovery flow + naming).
+**Note on the file path in the original spec:** the "ConnectionView.swift" reference was wrong — the actual multi-URL display lived in `Features/Pairing/Views/PairingView.swift` (the chip alongside the PIN keypad Sean called out). `ConnectionView.swift` is the post-pair Connect tab and only has a single text field; left untouched.
 
-**Files:**
-- `ios/MajorTom/Features/Connection/Views/ConnectionView.swift` — drop the multi-URL display, gate on NWPathMonitor
-- `ios/MajorTom/Core/Services/NetworkPathMonitor.swift` (likely new)
-- For mDNS path (if pursued): `relay/src/server.ts` (advertise via `dns-sd` or `bonjour-service` npm pkg) + `ios/MajorTom/Core/Services/RelayDiscovery.swift` (NWBrowser)
+**Long-term winner (still on the table):** mDNS/Bonjour discovery. Relay advertises `major-tom._http._tcp.local`, iOS uses `NWBrowser` to discover it on LAN; Tailscale fallback uses MagicDNS hostname (`seans-macbook-pro.tail-scale.ts.net`) so the URL is never a numeric IP. Set-and-forget — bigger lift, only worth it if/when we distribute.
 
-**Priority:** P2 — daily friction. Quick fix is the right move; mDNS only if we end up distributing.
+**Files (shipped):**
+- `ios/MajorTom/Core/Services/NetworkPathMonitor.swift` — new, wraps `NWPathMonitor`.
+- `ios/MajorTom/Features/Pairing/ViewModels/PairingViewModel.swift` — owns the monitor, exposes `recommendedPreset` + `useRecommended()` + `applyInitialRecommendationIfNeeded()`.
+- `ios/MajorTom/Features/Pairing/Views/PairingView.swift` — `ServerPreset.init?(reachability:)`, single `recommendationChip` replaces the 4-chip scroll.
+- `ios/MajorTom.xcodeproj/project.pbxproj` — file refs.
+
+**Future files (mDNS, if pursued):** `relay/src/server.ts` (advertise via `dns-sd` or `bonjour-service` npm pkg) + `ios/MajorTom/Core/Services/RelayDiscovery.swift` (NWBrowser).
+
+**Priority:** was P2. Quick fix done; mDNS deferred until distribution-time.
 
 ---
 
