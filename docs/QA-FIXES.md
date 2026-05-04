@@ -388,6 +388,163 @@ The original "role labels use agent-type instead of humanized role" issue — re
 
 ---
 
+### 15. /btw response inspector bubble "more/less" expand is a no-op (device QA 2026-04-29)
+
+**Symptom (Wave A device QA, 2026-04-29):** Sean ran A1 — tapped a PTY subagent sprite mid-tool, sent a /btw, response delivered. The inspector pane truncates the response with a `more` (and after toggle attempt, `less`) toggle. Tapping the toggle does nothing — text stays truncated.
+
+**Important:** the in-scene **speech bubble above the sprite** correctly shows the FULL response on one line — so the response payload IS arriving in full client-side. Only the inspector's collapse/expand affordance is dead.
+
+**Expected:** tapping `more` should expand the inspector text to the full payload; `less` should collapse back.
+
+**Files likely involved:**
+- `ios/MajorTom/Features/Office/` inspector view (`SpriteInspectorView.swift` or sibling) — the truncation toggle handler
+- Whatever `@State` flag drives the truncated-vs-expanded render
+
+**Priority:** P2 polish — full text is reachable via the in-scene speech bubble; this is the inspector-side affordance being broken.
+
+---
+
+### 22. Sprite identity diverges between Office scene and Inspector panel (device QA 2026-05-03)
+
+**Symptom (mid-D8 device QA, 2026-05-03):** Sean tapped a working sprite that the Office scene was rendering as "Frontend dev". The inspector panel that opened on tap showed a DIFFERENT identity — label "Captain" + Captain's sprite image. Two surfaces, same agent, two different characters.
+
+**Why this matters:** PR #161 (D9) was specifically about making the relay the source of truth for `characterType` and having iOS trust it verbatim. This divergence means one of the surfaces is still computing character locally instead of consuming `AgentState.spriteHandle.characterType` (or the freshly-stored relay value).
+
+**Hypothesis:** the inspector view is still resolving sprite from `canonicalRole` via a leftover code path (RoleMapper had `color(forCanonicalRole:)` kept after #161 — maybe character resolution wasn't fully purged from the inspector). "Captain" being the inspector's pick is a tell — that's a default canonical role, suggesting a fallback chain is running.
+
+**Investigation steps when picked up:**
+- `ios/MajorTom/Features/Office/Views/SpriteInspectorView.swift` (or similar) — search for `RoleMapper`, `canonicalRole`, anywhere it derives a sprite/character. Compare with how `OfficeSceneManager` resolves the same agent's character.
+- Add a log on tap: print `agent.spriteHandle?.characterType`, `agent.role`, `agent.canonicalRole` — confirm what's reaching the inspector vs the scene.
+- Likely fix: route inspector through the SAME `characterType(from:)` resolver the scene uses, NOT through role-derivation.
+
+**Priority:** P1 — visibly contradicts the sprite metaphor, exactly the kind of thing D9 was supposed to fix. Should NOT carry into a follow-up wave; pick up next session.
+
+**Files (suspected):**
+- `ios/MajorTom/Features/Office/Views/SpriteInspectorView.swift`
+- `ios/MajorTom/Features/Office/ViewModels/OfficeViewModel.swift` (`characterType(from:)`)
+- `ios/MajorTom/Features/Office/Models/RoleMapper.swift` (suspect leftover usage)
+
+---
+
+### 21. Connect screen shows too many URLs — auto-pick one based on phone network state (device QA 2026-05-03)
+
+**Symptom (device QA, 2026-05-03):** Sean's iPhone Connect screen displays Tailscale URL + LAN URL + PIN + maybe more, plus the Mac's LAN IP drifts (`192.168.1.210` → `192.168.1.254` between sessions), so the cached LAN URL goes stale and reconnect fails silently. User just wants "local OR tunnel" — one path at a time.
+
+**Quick fix (RECOMMENDED, ~2-4 hr work):** detect phone's network state with `NWPathMonitor`, show **only one URL**:
+- Tailscale interface up → Tailscale URL
+- Otherwise → LAN URL (numeric, will drift if Mac's DHCP lease changes)
+- Both up → prefer Tailscale (stable across networks, immune to LAN IP drift)
+
+**Long-term winner:** mDNS/Bonjour discovery. Relay advertises `major-tom._http._tcp.local`, iOS uses `NWBrowser` to discover it on LAN; Tailscale fallback uses MagicDNS hostname (`seans-macbook-pro.tail-scale.ts.net`) so the URL is never a numeric IP. Set-and-forget — but bigger lift (relay-side advertise + iOS discovery flow + naming).
+
+**Files:**
+- `ios/MajorTom/Features/Connection/Views/ConnectionView.swift` — drop the multi-URL display, gate on NWPathMonitor
+- `ios/MajorTom/Core/Services/NetworkPathMonitor.swift` (likely new)
+- For mDNS path (if pursued): `relay/src/server.ts` (advertise via `dns-sd` or `bonjour-service` npm pkg) + `ios/MajorTom/Core/Services/RelayDiscovery.swift` (NWBrowser)
+
+**Priority:** P2 — daily friction. Quick fix is the right move; mDNS only if we end up distributing.
+
+---
+
+### 20. SpriteKit Stats overlay text is tiny / hidden behind bottom tab bar (device QA 2026-05-02)
+
+**Symptom (Wave D #11b device QA, 2026-05-02):** Sean toggled Settings → Developer → "SpriteKit Stats" ON, opened an Office. The expected SKView built-in text overlay (FPS / nodes / draws / quads in bottom-right corner) is either tiny or rendered BEHIND the bottom tab bar (Terminal / Office / Connect / Analytics / … More). Effectively unusable for spot-checking perf.
+
+**Root cause:** SKView's `showsFPS` / `showsNodeCount` / `showsDrawCount` / `showsQuadCount` render their text in the bottom-right corner of the SKView's bounds. The Office's SKView extends behind the bottom safe area / tab bar, so the auto-positioned text gets occluded.
+
+**Fix directions:**
+- **A.** Inset the SKView's bottom edge by tab bar height + safe-area-bottom — sacrifices ~80px of Office viewport but shows stats cleanly.
+- **B.** Replace SKView's built-in stats with a SwiftUI overlay (manual `Text` views reading `scene.lastUpdateTime` / `nodes.count` etc. via `OfficeSceneManager` exposing them as `@Observable`). Positioned via `.safeAreaInset(edge: .bottom)`. Cleaner, gives us control over font size + color.
+- **C.** Move the SKView's stats to top-right via subclassing — SKView's text positioning isn't directly settable but iOS-level workarounds exist.
+
+**B is recommended** — built-in SKView stats are notoriously unreadable on phone screens (white text on whatever the scene background is, no shadow, fixed font size). Going custom future-proofs us.
+
+**Priority:** P3 — dev tooling not user-facing. Only matters when we want to spot-check perf on device.
+
+**Files:**
+- `ios/MajorTom/Features/Office/Views/OfficeView.swift` — SKView container, `.safeAreaInset` wiring
+- `ios/MajorTom/Features/Office/ViewModels/OfficeSceneManager.swift` — expose stats counters
+- `ios/MajorTom/Features/Office/Views/OfficeScene.swift` — likely where the toggle flips `showsFPS` etc.
+
+---
+
+### 18. Bash PS1 missing `\W`/`\w` expansion on first prompt of fresh tab (device QA 2026-05-01)
+
+**Symptom (mid-Wave-D14 device QA, 2026-05-01):** Sean opens a fresh Terminal tab → bash spawns → first prompt renders WITHOUT the cwd basename (the `\W` part of his PS1). `ls` confirms the shell IS in the right cwd (`~/Documents/code/dev`). Once he `cd`'s to ANY directory (even the same one), the prompt renders correctly with the basename. Bug is purely first-prompt only.
+
+**Why this is surprising:** `relay/src/adapters/pty-adapter.ts:386-388` already explicitly sets `env['PWD'] = spawnCwd` before spawn with a comment saying "Without this, bash inherits whatever PWD the relay process has, and the initial PS1 expansion can fall out of sync with the child's actual working directory until the user runs `cd` or equivalent." So someone already tried to fix this. Either (a) the fix doesn't cover this code path, (b) bash startup files are clobbering PWD before PS1 expands, or (c) the spawn cwd doesn't match what bash reports.
+
+**Fix directions:**
+- Verify: does `~/.bash_profile` / `~/.bashrc` reset `PWD` somewhere early? Check by running `bash --noprofile --norc -i -c 'echo PS1: $PS1; pwd; echo PWD: $PWD'` in a fresh tab.
+- Bash's PS1 expansion uses the kernel cwd (via `getcwd()`) for `\W`/`\w`, NOT the `$PWD` env var. So setting `env['PWD']` in pty-adapter is a no-op for `\W`. The actual fix: ensure `cwd: spawnCwd` is honored by node-pty (look correct in code: line 394). Maybe the issue is shell-init-time race where bash hasn't fully populated its internal cwd yet on the very first prompt.
+- Workaround: emit a no-op `cd .` into the PTY immediately after spawn — would force a prompt re-render with the correct basename.
+- Or: revisit how `$PROMPT_COMMAND` interacts with the first prompt.
+
+**Priority:** P3 — purely cosmetic, transient, single-prompt. Annoying but not blocking. Roll into terminal polish if we get back to it.
+
+**Files:** `relay/src/adapters/pty-adapter.ts:382-400` (spawn), maybe needs an emitFirstCd flag or a more aggressive PROMPT_COMMAND nudge.
+
+---
+
+### 19. Feature request — Ground Control: user-settable default cwd for fresh shells (device QA 2026-05-01)
+
+**Ask (Sean, 2026-05-01):** "we need to add a user-set default cwd option in Ground Control so if we distribute, users can set their favorite pwd to start in"
+
+**Context:** today, the cwd a fresh terminal tab spawns into is determined by `pty-adapter.ts` `resolveSpawnCwd` → falls back to `this.cwd` (relay process cwd) when no per-tab override exists. For Sean today that's `~/Documents/code/dev` (apparently — needs verification). For a user who installs Major Tom + Ground Control on a fresh machine, the relay cwd would be wherever Ground Control launched it from — probably random.
+
+**Fix direction:**
+- Add a "Default working directory" field to Ground Control's relay config UI.
+- Persist into the relay's startup config (env var or config.json).
+- `pty-adapter.ts` reads this as the bottom-of-the-cascade fallback in `resolveSpawnCwd`.
+
+**Priority:** P3 — relevant for distribution, not for current dev usage. Track in Ground Control roadmap.
+
+**Files (estimated):**
+- `ground-control/` — config UI surface
+- `relay/src/server.ts` — accept new env / config var
+- `relay/src/adapters/pty-adapter.ts` — `this.cwd` honors the configured default
+
+---
+
+### 17. PTY cwd persistence misses plain-shell `cd` updates (device QA 2026-05-01)
+
+**Symptom (Wave D #12 device QA, 2026-05-01):** Sean had a tab with cwd=`/Users/seansimpson/Documents/code/dev/FAKE_DIR/FAKE_SUB_DIR` (cd'd to in a plain shell, never ran claude there). Relay restarted. On reconnect/respawn, iOS landed on a DIFFERENT tab (`tab-272fa801`, auto-named "H4LA") whose persisted `workingDir` was an old `_old_projects/H4LA` path captured weeks ago. New PTY correctly spawned at the persisted dir — but from the user's POV, they were "kicked out" to a stale, unrelated directory.
+
+**Root cause:** `relay/src/tabs/tab-registry.ts` `registerSessionStart` is the ONLY producer of `workingDir`. Plain-shell `cd` events never update the persisted record. Combined with persisted tabs surviving across many sessions, this means the cwd a user sees on reconnect is the cwd at the time of the LAST `claude` SessionStart in that tab — possibly weeks ago, possibly in an unrelated dir.
+
+**Spec:** the original QA-FIXES #12 fix correctly preserves cwd across relay restart for tabs with claude sessions. This is a separate gap — cwd should track the live shell, not just SessionStart payloads.
+
+**Fix directions (pick one):**
+- **A.** Add a heartbeat from PTY → registry that calls `registerCwdUpdate(tabId, cwd)`. Could read from `/proc/PID/cwd` (not available on macOS) OR run a background `pwd` periodically (intrusive). OR have iOS observe shell prompts and POST cwd updates (invasive client coupling).
+- **B.** Use OSC 7 (`\x1b]7;file://host/path\x07`) — many shells emit this on `cd` and PROMPT_COMMAND can be configured to. Relay's PTY adapter could parse OSC 7 from the output stream and update registry without touching shell config. iTerm2 / VSCode terminal use this. Cleanest.
+- **C.** Skip the fix and add a UI affordance: inspector showing "this tab's cwd is X (last set at TIME)" so the user can sanity-check before reconnecting.
+
+**Priority:** P2 — preserves the canonical fix; surfaces a UX foot-gun. Fix only if it bites someone again.
+
+**Related:** also a candidate for cleanup — old persisted tab files (`tab-443f5546.json`, `tab-cc323c29.json`) accumulate forever. Worth a TTL or "remove if not seen in 30d" sweep.
+
+**Files:**
+- `relay/src/adapters/pty-adapter.ts` — OSC 7 parse hook in `onData` if going with B
+- `relay/src/tabs/tab-registry.ts` — `registerCwdUpdate` method + persistence
+- `relay/src/tabs/tab-persistence.ts` — TTL cleanup for stale tabs (separate fix)
+
+---
+
+### 16. /btw subagent responses are nonsensical / unhelpful (device QA 2026-04-29)
+
+**Symptom (Wave A device QA, 2026-04-29):** Sean's /btw messages to mid-tool PTY subagents (`"hey what are you up to?"` etc.) come back with terse / nonsensical / "jibberish" replies from the subagent itself. The /btw IS reaching the subagent and a reply IS being generated and delivered — the user just isn't getting useful information out of it.
+
+**Hypothesis (Sean's, 2026-04-29):** subagent reply behavior may be context-starved or differs from what we'd get if we routed /btw to the **parent** claude session instead of the active subagent. Parent has full context of "what claude is doing right now" and could answer "what are you up to?" meaningfully; subagent only knows its narrow task.
+
+**Possible directions (not yet investigated):**
+- A) Investigate prompt framing inside `pty-btw-queue.ts` — what literal text gets injected into the PTY? If we wrap with extra context, does the reply quality improve?
+- B) Add a "send to parent claude" toggle in the /btw input UI — let user pick subagent-scope vs session-scope routing.
+- C) Document this as expected and adjust user expectations: /btw at subagent level is a "ping" not a "status request".
+
+**Priority:** P3 — not a delivery bug, response-quality concern. Open an investigation when we get back to /btw polish.
+
+---
+
 ## Done
 
 _(items move here with PR link + merge date when closed)_
