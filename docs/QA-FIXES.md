@@ -488,47 +488,56 @@ Review: 3/3 specialists `ship`, 0 blocking, 0 advisory. CI green. Single-file ch
 
 ---
 
-### 19. Feature request — Ground Control: user-settable default cwd for fresh shells (device QA 2026-05-01)
+### 19. Feature request — Ground Control: user-settable default cwd for fresh shells (FIXED — PR pending, 2026-05-07)
 
 **Ask (Sean, 2026-05-01):** "we need to add a user-set default cwd option in Ground Control so if we distribute, users can set their favorite pwd to start in"
 
 **Context:** today, the cwd a fresh terminal tab spawns into is determined by `pty-adapter.ts` `resolveSpawnCwd` → falls back to `this.cwd` (relay process cwd) when no per-tab override exists. For Sean today that's `~/Documents/code/dev` (apparently — needs verification). For a user who installs Major Tom + Ground Control on a fresh machine, the relay cwd would be wherever Ground Control launched it from — probably random.
 
-**Fix direction:**
-- Add a "Default working directory" field to Ground Control's relay config UI.
-- Persist into the relay's startup config (env var or config.json).
-- `pty-adapter.ts` reads this as the bottom-of-the-cascade fallback in `resolveSpawnCwd`.
+**Fix shipped (B′ approach — folded with #17):**
+- New `relay/src/config/relay-config.ts` — `RelayConfigStore` over `~/.major-tom/relay-config.json`, `defaultSpawnCwd?: string`.
+- New REST endpoint `GET/PATCH /api/relay-config` (auth required) for read/write.
+- `resolveDefaultSpawnCwd` cascade: `MAJORTOM_DEFAULT_CWD` env → persisted file → `$HOME/Documents/code/dev` if it exists → `$HOME`. Drops the prior incidental `process.cwd()` fallback.
+- `PtyAdapter.cwd` accepts a getter so PATCH writes flow into the very next spawn (no relay restart).
+- iOS Settings → Developer → "Default Working Directory" surfaces the value; Ground Control will surface the same field later.
 
-**Priority:** P3 — relevant for distribution, not for current dev usage. Track in Ground Control roadmap.
+**Files (shipped):**
+- `relay/src/config/relay-config.ts` — store + resolver.
+- `relay/src/routes/relay-config.ts` — REST.
+- `relay/src/adapters/pty-adapter.ts` — `cwd` getter form.
+- `relay/src/app.ts` — wires store + getter.
+- `ios/MajorTom/Core/Services/RelayService.swift` — `fetchRelayConfig` / `updateRelayConfig`.
+- `ios/MajorTom/Features/Settings/Views/DefaultWorkingDirView.swift` — editor.
+- `ios/MajorTom/Features/Settings/Views/SettingsView.swift` — Developer row.
+- `ios/MajorTom.xcodeproj/project.pbxproj` — file refs.
 
-**Files (estimated):**
-- `ground-control/` — config UI surface
-- `relay/src/server.ts` — accept new env / config var
-- `relay/src/adapters/pty-adapter.ts` — `this.cwd` honors the configured default
+**Priority:** was P3. Closed alongside #17 since the same plumbing serves both.
 
 ---
 
-### 17. PTY cwd persistence misses plain-shell `cd` updates (device QA 2026-05-01)
+### 17. PTY cwd persistence misses plain-shell `cd` updates (FIXED — PR pending, 2026-05-07)
 
 **Symptom (Wave D #12 device QA, 2026-05-01):** Sean had a tab with cwd=`/Users/seansimpson/Documents/code/dev/FAKE_DIR/FAKE_SUB_DIR` (cd'd to in a plain shell, never ran claude there). Relay restarted. On reconnect/respawn, iOS landed on a DIFFERENT tab (`tab-272fa801`, auto-named "H4LA") whose persisted `workingDir` was an old `_old_projects/H4LA` path captured weeks ago. New PTY correctly spawned at the persisted dir — but from the user's POV, they were "kicked out" to a stale, unrelated directory.
 
 **Root cause:** `relay/src/tabs/tab-registry.ts` `registerSessionStart` is the ONLY producer of `workingDir`. Plain-shell `cd` events never update the persisted record. Combined with persisted tabs surviving across many sessions, this means the cwd a user sees on reconnect is the cwd at the time of the LAST `claude` SessionStart in that tab — possibly weeks ago, possibly in an unrelated dir.
 
-**Spec:** the original QA-FIXES #12 fix correctly preserves cwd across relay restart for tabs with claude sessions. This is a separate gap — cwd should track the live shell, not just SessionStart payloads.
+**Fix shipped (approach B′ — TTL gate + configurable default, both sides of the cascade in one PR):**
+1. `TabRegistry` now stamps `workingDirUpdatedAt` (ISO timestamp) on every SessionStart that carries a cwd. New `getFreshWorkingDir(tabId, ttlMs)` helper returns the path only when its stamp is within the window. Persisted file format gains an optional `workingDirUpdatedAt`; legacy records load with it `undefined` and are treated as stale (no migration needed).
+2. `shell.ts` calls `tabRegistry.getFreshWorkingDir(tabId, 12h)` instead of reading `workingDir` directly. Stale / never-stamped values fall through.
+3. `PtyAdapter.resolveSpawnCwd` falls back to `defaultSpawnCwd` (resolved through the new config cascade in #19). The prior incidental `process.cwd()` fallback is gone.
 
-**Fix directions (pick one):**
-- **A.** Add a heartbeat from PTY → registry that calls `registerCwdUpdate(tabId, cwd)`. Could read from `/proc/PID/cwd` (not available on macOS) OR run a background `pwd` periodically (intrusive). OR have iOS observe shell prompts and POST cwd updates (invasive client coupling).
-- **B.** Use OSC 7 (`\x1b]7;file://host/path\x07`) — many shells emit this on `cd` and PROMPT_COMMAND can be configured to. Relay's PTY adapter could parse OSC 7 from the output stream and update registry without touching shell config. iTerm2 / VSCode terminal use this. Cleanest.
-- **C.** Skip the fix and add a UI affordance: inspector showing "this tab's cwd is X (last set at TIME)" so the user can sanity-check before reconnecting.
+**TTL = 12h.** Long enough to cover a workday's worth of activity in a tab; short enough that a weeks-old SessionStart cannot resurface and pin the spawn to a stale dir. Easy to tune later if reality says otherwise.
 
-**Priority:** P2 — preserves the canonical fix; surfaces a UX foot-gun. Fix only if it bites someone again.
+**Why not pure OSC 7:** OSC 7 was the original cleanest-fix recommendation but it does NOT close #19 (distribution users still need a configurable default), and the H4LA reproducer is solved by either approach. The combined B′ approach is one PR for two issues with no shell-config glue.
 
-**Related:** also a candidate for cleanup — old persisted tab files (`tab-443f5546.json`, `tab-cc323c29.json`) accumulate forever. Worth a TTL or "remove if not seen in 30d" sweep.
+**Files (shipped):**
+- `relay/src/tabs/tab-registry.ts` — `workingDirUpdatedAt`, `DEFAULT_WORKING_DIR_TTL_MS`, `getFreshWorkingDir`.
+- `relay/src/tabs/tab-registry-persistence.ts` — schema field + back-compat.
+- `relay/src/adapters/pty-adapter.ts` — `cwd` accepts a getter; cascade rewrite.
+- `relay/src/routes/shell.ts` — wires the freshness helper.
+- See #19 for the config-side files.
 
-**Files:**
-- `relay/src/adapters/pty-adapter.ts` — OSC 7 parse hook in `onData` if going with B
-- `relay/src/tabs/tab-registry.ts` — `registerCwdUpdate` method + persistence
-- `relay/src/tabs/tab-persistence.ts` — TTL cleanup for stale tabs (separate fix)
+**Open follow-up (worth its own ticket):** `tab-*.json` files accumulate forever in `~/.major-tom/tabs/`. A boot-time sweep (drop entries not seen in 30 days) is independent of this fix and can be filed once the broader QA queue clears.
 
 ---
 
