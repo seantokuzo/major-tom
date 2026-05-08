@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TabRegistry } from '../tab-registry.js';
+import { TabRegistry, DEFAULT_WORKING_DIR_TTL_MS } from '../tab-registry.js';
 
 describe('TabRegistry', () => {
   let registry: TabRegistry;
@@ -201,6 +201,94 @@ describe('TabRegistry', () => {
 
     it('is a no-op for an unknown tabId', () => {
       expect(() => registry.touch('ghost')).not.toThrow();
+    });
+  });
+
+  describe('workingDir freshness (QA-FIXES #17)', () => {
+    it('stamps workingDirUpdatedAt on first SessionStart', () => {
+      const before = Date.now();
+      registry.registerSessionStart('sess-1', 'tab-A', '/proj', 'user-1');
+      const after = Date.now();
+      const stamp = registry.getTab('tab-A')!.workingDirUpdatedAt;
+      expect(stamp).toBeDefined();
+      const ms = Date.parse(stamp!);
+      expect(ms).toBeGreaterThanOrEqual(before);
+      expect(ms).toBeLessThanOrEqual(after);
+    });
+
+    it('leaves updatedAt undefined when first SessionStart has empty cwd', () => {
+      registry.registerSessionStart('sess-1', 'tab-A', '', undefined);
+      expect(registry.getTab('tab-A')!.workingDirUpdatedAt).toBeUndefined();
+    });
+
+    it('re-stamps updatedAt on every later SessionStart that carries a cwd', async () => {
+      registry.registerSessionStart('sess-1', 'tab-A', '/proj', 'user-1');
+      const first = registry.getTab('tab-A')!.workingDirUpdatedAt!;
+      await new Promise((r) => setTimeout(r, 5));
+      registry.registerSessionStart('sess-2', 'tab-A', '/proj', 'user-1');
+      const second = registry.getTab('tab-A')!.workingDirUpdatedAt!;
+      expect(second > first).toBe(true);
+    });
+
+    it('upgrades workingDir + updatedAt when a later SessionStart supplies a non-empty cwd', () => {
+      registry.registerSessionStart('sess-1', 'tab-A', '', undefined);
+      expect(registry.getTab('tab-A')!.workingDir).toBe('');
+      expect(registry.getTab('tab-A')!.workingDirUpdatedAt).toBeUndefined();
+
+      registry.registerSessionStart('sess-2', 'tab-A', '/proj', 'user-1');
+      expect(registry.getTab('tab-A')!.workingDir).toBe('/proj');
+      expect(registry.getTab('tab-A')!.workingDirUpdatedAt).toBeDefined();
+    });
+
+    it('getFreshWorkingDir returns the path inside the TTL window', () => {
+      registry.registerSessionStart('sess-1', 'tab-A', '/proj', 'user-1');
+      const stamped = Date.parse(registry.getTab('tab-A')!.workingDirUpdatedAt!);
+      // 6 hours after stamp — well inside the 12h default window.
+      const fresh = registry.getFreshWorkingDir(
+        'tab-A',
+        DEFAULT_WORKING_DIR_TTL_MS,
+        stamped + 6 * 60 * 60 * 1000,
+      );
+      expect(fresh).toBe('/proj');
+    });
+
+    it('getFreshWorkingDir returns undefined once stale', () => {
+      registry.registerSessionStart('sess-1', 'tab-A', '/proj', 'user-1');
+      const stamped = Date.parse(registry.getTab('tab-A')!.workingDirUpdatedAt!);
+      // 13 hours after stamp — past the 12h default window.
+      const stale = registry.getFreshWorkingDir(
+        'tab-A',
+        DEFAULT_WORKING_DIR_TTL_MS,
+        stamped + 13 * 60 * 60 * 1000,
+      );
+      expect(stale).toBeUndefined();
+    });
+
+    it('getFreshWorkingDir returns undefined when updatedAt is missing (rehydrated legacy record)', async () => {
+      // Simulate a tab restored from disk without the new field.
+      registry.registerSessionStart('sess-1', 'tab-A', '/proj', 'user-1');
+      const tab = registry.getTab('tab-A')!;
+      tab.workingDirUpdatedAt = undefined;
+      expect(
+        registry.getFreshWorkingDir('tab-A', DEFAULT_WORKING_DIR_TTL_MS),
+      ).toBeUndefined();
+    });
+
+    it('getFreshWorkingDir returns undefined for unknown tabs', () => {
+      expect(
+        registry.getFreshWorkingDir('ghost', DEFAULT_WORKING_DIR_TTL_MS),
+      ).toBeUndefined();
+    });
+
+    it('getFreshWorkingDir returns undefined when workingDir is empty', () => {
+      registry.registerSessionStart('sess-1', 'tab-A', '', undefined);
+      expect(
+        registry.getFreshWorkingDir('tab-A', DEFAULT_WORKING_DIR_TTL_MS),
+      ).toBeUndefined();
+    });
+
+    it('default TTL is 12 hours', () => {
+      expect(DEFAULT_WORKING_DIR_TTL_MS).toBe(12 * 60 * 60 * 1000);
     });
   });
 

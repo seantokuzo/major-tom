@@ -16,10 +16,29 @@ import type { TabRegistryPersistence } from './tab-registry-persistence.js';
 
 export type TabStatus = 'active' | 'idle' | 'closed';
 
+/**
+ * Default freshness TTL for `workingDir`. The persisted value is consulted
+ * on PTY respawn (e.g. relay restart, fresh attach after grace) only if it
+ * was set within this window. Older values are treated as stale and the
+ * cascade falls through to the configured default — see QA-FIXES #17.
+ *
+ * 12 hours covers a workday; a weeks-old SessionStart capture won't kick a
+ * reconnecting user into an unrelated dir. Easy to tune later if needed.
+ */
+export const DEFAULT_WORKING_DIR_TTL_MS = 12 * 60 * 60 * 1000;
+
 export interface TabMeta {
   tabId: string;
   userId: string | undefined;
   workingDir: string | undefined;
+  /**
+   * ISO timestamp of the last `workingDir` write. Stamped on first
+   * SessionStart and on every later upgrade. Used by `getFreshWorkingDir`
+   * to gate stale values out of the spawn cwd cascade.
+   * Optional for backwards-compat with persisted records that pre-date
+   * this field — those are treated as stale.
+   */
+  workingDirUpdatedAt: string | undefined;
   createdAt: string;
   lastSeenAt: string;
   sessionIds: Set<string>;
@@ -46,6 +65,11 @@ export class TabRegistry {
         tabId: f.tabId,
         userId: f.userId,
         workingDir: f.workingDir,
+        // Pre-existing persisted records may not have updatedAt — leave
+        // undefined so `getFreshWorkingDir` treats them as stale and the
+        // cascade falls through to the configured default. Once the user
+        // reconnects and a fresh SessionStart fires, the field gets stamped.
+        workingDirUpdatedAt: f.workingDirUpdatedAt,
         createdAt: f.createdAt,
         lastSeenAt: f.lastSeenAt,
         sessionIds: new Set<string>(),
@@ -73,6 +97,7 @@ export class TabRegistry {
         tabId,
         userId,
         workingDir: cwd,
+        workingDirUpdatedAt: cwd ? now : undefined,
         createdAt: now,
         lastSeenAt: now,
         sessionIds: new Set<string>(),
@@ -83,7 +108,15 @@ export class TabRegistry {
     } else {
       tab.lastSeenAt = now;
       if (!tab.userId && userId) tab.userId = userId;
-      if (!tab.workingDir && cwd) tab.workingDir = cwd;
+      // Re-stamp updatedAt whenever a SessionStart confirms the tab's
+      // current workingDir — even if the path matches what we already
+      // stored. The SessionStart hook fires inside the live shell, so any
+      // value it carries is by definition fresh; we want the freshness
+      // window to track that signal, not the original capture date.
+      if (cwd) {
+        tab.workingDir = cwd;
+        tab.workingDirUpdatedAt = now;
+      }
     }
     tab.sessionIds.add(sessionId);
     tab.status = 'active';
@@ -146,6 +179,31 @@ export class TabRegistry {
   /** Fetch a TabMeta by tabId. */
   getTab(tabId: string): TabMeta | undefined {
     return this.tabs.get(tabId);
+  }
+
+  /**
+   * Return the tab's persisted `workingDir` only when it was last stamped
+   * within `ttlMs`. Stale or never-stamped values return `undefined` so the
+   * caller (shell.ts) falls through to the adapter's configured default.
+   *
+   * QA-FIXES #17 — without this gate, a tab whose `workingDir` was captured
+   * weeks ago by an old SessionStart would resurface across relay restart,
+   * stranding the user in an unrelated dir on reconnect.
+   *
+   * `now` defaults to `Date.now()` and is overridable for tests.
+   */
+  getFreshWorkingDir(
+    tabId: string,
+    ttlMs: number,
+    now: number = Date.now(),
+  ): string | undefined {
+    const tab = this.tabs.get(tabId);
+    if (!tab || !tab.workingDir) return undefined;
+    if (!tab.workingDirUpdatedAt) return undefined;
+    const stamped = Date.parse(tab.workingDirUpdatedAt);
+    if (!Number.isFinite(stamped)) return undefined;
+    if (now - stamped > ttlMs) return undefined;
+    return tab.workingDir;
   }
 
   /**
