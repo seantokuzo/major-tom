@@ -14,6 +14,7 @@ import type { WebSocket } from 'ws';
 import { verifySessionToken, SESSION_COOKIE } from '../auth/session.js';
 import type { PtyAdapter, PtyClient } from '../adapters/pty-adapter.js';
 import type { TabRegistry } from '../tabs/tab-registry.js';
+import { DEFAULT_WORKING_DIR_TTL_MS } from '../tabs/tab-registry.js';
 import { MAJOR_TOM_CONFIG_DIR } from '../installer/install-hooks.js';
 import { logger } from '../utils/logger.js';
 
@@ -23,8 +24,18 @@ interface ShellRouteDeps {
    * Used to look up a tab's persisted workingDir (from the last SessionStart
    * hook) so reconnects after relay restart respawn in the tab's prior cwd
    * instead of HOME. Optional — when undefined, the adapter uses its default.
+   *
+   * The persisted dir is consulted only when its `workingDirUpdatedAt`
+   * stamp is within `workingDirTtlMs` (default 12h). Older values fall
+   * through to the adapter default — see QA-FIXES #17.
    */
   tabRegistry?: TabRegistry;
+  /**
+   * Override the freshness window used when consulting persisted workingDir.
+   * Defaults to `DEFAULT_WORKING_DIR_TTL_MS` (12h). Tests pass a smaller
+   * value; production uses the default.
+   */
+  workingDirTtlMs?: number;
 }
 
 interface ShellAuthResult {
@@ -136,6 +147,7 @@ function buildEnvExtras(tabId: string): Record<string, string> {
 
 export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
   const { ptyAdapter, tabRegistry } = deps;
+  const workingDirTtlMs = deps.workingDirTtlMs ?? DEFAULT_WORKING_DIR_TTL_MS;
 
   return async (fastify) => {
     fastify.get<{
@@ -180,7 +192,12 @@ export function createShellRoute(deps: ShellRouteDeps): FastifyPluginAsync {
         // spawn. TabRegistry captures cwd at SessionStart hook-time and
         // persists it; the adapter validates the path before use and falls
         // back to its default if the directory is gone.
-        const persistedCwd = tabRegistry?.getTab(tabId)?.workingDir;
+        //
+        // QA-FIXES #17 — gate by freshness so a stamp captured weeks ago
+        // (e.g. user has not run `claude` in this tab since) cannot
+        // resurface and pin a reconnect to a stale dir. Falls through to
+        // the adapter default when stale, missing, or never-stamped.
+        const persistedCwd = tabRegistry?.getFreshWorkingDir(tabId, workingDirTtlMs);
         const outcome = ptyAdapter.attach(tabId, client, {
           cols,
           rows,
