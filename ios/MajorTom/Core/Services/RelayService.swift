@@ -220,6 +220,115 @@ final class RelayService {
         }
     }
 
+    // MARK: - Relay Config (`/api/relay-config`)
+
+    /// Mirrors `relay/src/config/relay-config.ts::RelayConfig`. Add new
+    /// fields here and on the relay side together; older relays without
+    /// the field will simply omit it on GET.
+    struct RelayConfigData: Codable, Equatable {
+        var defaultSpawnCwd: String?
+    }
+
+    enum RelayConfigError: LocalizedError {
+        case notAuthenticated
+        case invalidServerURL
+        case http(status: Int, message: String?)
+        case transport(Error)
+
+        var errorDescription: String? {
+            switch self {
+            case .notAuthenticated:
+                return "Not paired with a relay yet."
+            case .invalidServerURL:
+                return "Invalid relay server URL."
+            case .http(let status, let message):
+                if let message, !message.isEmpty {
+                    return message
+                }
+                return "Relay returned HTTP \(status)."
+            case .transport(let err):
+                return err.localizedDescription
+            }
+        }
+    }
+
+    /// Fetch the relay-side config (currently `defaultSpawnCwd`). Returns
+    /// an empty struct when the relay has nothing persisted.
+    func fetchRelayConfig() async throws -> RelayConfigData {
+        let request = try makeRelayConfigRequest(method: "GET", body: nil)
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw RelayConfigError.http(status: -1, message: nil)
+            }
+            if http.statusCode == 200 {
+                return (try? JSONDecoder().decode(RelayConfigData.self, from: data))
+                    ?? RelayConfigData(defaultSpawnCwd: nil)
+            }
+            throw RelayConfigError.http(
+                status: http.statusCode,
+                message: errorMessage(from: data),
+            )
+        } catch let err as RelayConfigError {
+            throw err
+        } catch {
+            throw RelayConfigError.transport(error)
+        }
+    }
+
+    /// PATCH the relay-side config. Pass `nil` to clear `defaultSpawnCwd`.
+    /// Server validates the path is a real directory; bad values return
+    /// HTTP 400 with a human-readable message.
+    func updateRelayConfig(defaultSpawnCwd: String?) async throws -> RelayConfigData {
+        let payload: [String: Any?] = ["defaultSpawnCwd": defaultSpawnCwd]
+        let body = try JSONSerialization.data(withJSONObject: payload, options: [.fragmentsAllowed])
+        var request = try makeRelayConfigRequest(method: "PATCH", body: body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw RelayConfigError.http(status: -1, message: nil)
+            }
+            if http.statusCode == 200 {
+                return (try? JSONDecoder().decode(RelayConfigData.self, from: data))
+                    ?? RelayConfigData(defaultSpawnCwd: defaultSpawnCwd)
+            }
+            throw RelayConfigError.http(
+                status: http.statusCode,
+                message: errorMessage(from: data),
+            )
+        } catch let err as RelayConfigError {
+            throw err
+        } catch {
+            throw RelayConfigError.transport(error)
+        }
+    }
+
+    private func makeRelayConfigRequest(method: String, body: Data?) throws -> URLRequest {
+        guard let auth = authService else { throw RelayConfigError.notAuthenticated }
+        let baseURL = AuthService.normalizeBaseURL(auth.serverURL)
+        guard let url = URL(string: "\(baseURL)/api/relay-config") else {
+            throw RelayConfigError.invalidServerURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.httpBody = body
+        if let cookie = auth.sessionCookie {
+            request.setValue("mt-session=\(cookie)", forHTTPHeaderField: "Cookie")
+        } else {
+            throw RelayConfigError.notAuthenticated
+        }
+        return request
+    }
+
+    private func errorMessage(from data: Data) -> String? {
+        guard
+            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let msg = obj["error"] as? String
+        else { return nil }
+        return msg
+    }
+
     // MARK: - Session
 
     func startSession(adapter: AdapterType = .cli, workingDir: String? = nil) async throws {

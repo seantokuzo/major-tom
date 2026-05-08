@@ -243,6 +243,13 @@ struct SettingsView: View {
 
     private var developerSection: some View {
         Section {
+            NavigationLink {
+                DefaultWorkingDirView(relay: relay)
+            } label: {
+                Label("Default Working Directory", systemImage: "folder.badge.gearshape")
+            }
+            .listRowBackground(MajorTomTheme.Colors.surface)
+
             Toggle(isOn: $showsPerfHUD) {
                 Label("SpriteKit Stats", systemImage: "speedometer")
             }
@@ -253,7 +260,7 @@ struct SettingsView: View {
         } header: {
             Text("Developer")
         } footer: {
-            Text("Overlays SpriteKit FPS + node/draw/quad counts on the Office scene. Use during Instruments profiling — see docs/PERF-BASELINE.md. (Not the iOS Metal Performance HUD — that lives in iOS Settings → Developer and can't be toggled from an app.)")
+            Text("Default Working Directory sets where new terminal tabs spawn when the tab has no recently-used directory. SpriteKit Stats overlays FPS + draw counts on the Office scene during Instruments profiling — see docs/PERF-BASELINE.md.")
         }
     }
 
