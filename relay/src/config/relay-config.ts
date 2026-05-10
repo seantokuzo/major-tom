@@ -38,8 +38,17 @@ export const DEFAULT_RELAY_CONFIG_FILE = join(
   'relay-config.json',
 );
 
+/**
+ * Distinguishes user-input errors (`validation`) from disk-write failures
+ * (`io`) so the REST layer can pick the right HTTP status. Validation
+ * errors = 400; IO errors = 500. Without the kind, a misconfigured path
+ * and an out-of-disk would look the same to the client.
+ */
 export class RelayConfigError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly kind: 'validation' | 'io' = 'validation',
+  ) {
     super(message);
     this.name = 'RelayConfigError';
   }
@@ -100,10 +109,12 @@ export class RelayConfigStore {
   }
 
   /**
-   * Persist a new config. Validates fields before writing — bad values
-   * throw `RelayConfigError` and DO NOT mutate the in-memory cache or
-   * disk. I/O failures on the write itself log at WARN but do not throw
-   * (the cache has already advanced; the next save will retry).
+   * Persist a new config. Validation runs first — bad values throw
+   * `RelayConfigError(kind='validation')` and never touch disk or the
+   * in-memory cache. After a successful write, the cache advances so
+   * memory always matches what is persisted. I/O failures throw
+   * `RelayConfigError(kind='io')` so the REST route can return 500
+   * instead of misleading the client into thinking the value persisted.
    */
   async save(next: RelayConfig): Promise<void> {
     if (next.defaultSpawnCwd !== undefined) {
@@ -126,16 +137,21 @@ export class RelayConfigStore {
         throw new RelayConfigError(`defaultSpawnCwd does not exist: ${v}`);
       }
     }
-    this.cached = { ...next };
     try {
       await mkdir(dirname(this.path), { recursive: true });
-      await writeFile(this.path, JSON.stringify(this.cached, null, 2), 'utf-8');
+      await writeFile(this.path, JSON.stringify(next, null, 2), 'utf-8');
     } catch (err) {
       logger.warn(
         { err, path: this.path },
-        'Relay config save failed — in-memory cache preserved',
+        'Relay config save failed — cache NOT advanced; client receives 500',
+      );
+      throw new RelayConfigError(
+        `Failed to persist relay config: ${(err as Error).message}`,
+        'io',
       );
     }
+    // Disk holds the new value — safe to advance memory.
+    this.cached = { ...next };
   }
 }
 

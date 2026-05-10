@@ -160,6 +160,35 @@ describe('PATCH /api/relay-config', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('returns 500 when the disk write fails (does not silently claim success)', async () => {
+    // Build an isolated app whose store points at a file path nested
+    // INSIDE an existing file — `writeFile` rejects with ENOTDIR. Without
+    // the `kind === 'io'` branch added in the disk-write fix, the route
+    // would return 200 + the new value while disk has the old value.
+    const sentinel = join(baseDir, 'sentinel.txt');
+    await writeFile(sentinel, 'hi', 'utf-8');
+    const blockedStore = new RelayConfigStore(join(sentinel, 'cfg.json'));
+    await blockedStore.load();
+
+    const blockedApp = Fastify({ logger: false });
+    await blockedApp.register(cookie);
+    await blockedApp.register(authPlugin);
+    await blockedApp.register(createRelayConfigRoutes({ configStore: blockedStore }));
+    await blockedApp.ready();
+    try {
+      const res = await blockedApp.inject({
+        method: 'PATCH',
+        url: '/api/relay-config',
+        headers: { cookie: cookieHeader, 'content-type': 'application/json' },
+        payload: { defaultSpawnCwd: baseDir },
+      });
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toHaveProperty('error');
+    } finally {
+      await blockedApp.close();
+    }
+  });
+
   it('ignores unknown fields without rejecting', async () => {
     // PATCH should be permissive on unknown keys so future fields can land
     // without breaking older clients. Only the validated subset is

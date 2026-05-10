@@ -77,7 +77,8 @@ export function createRelayConfigRoutes(deps: RelayConfigDeps): FastifyPluginAsy
           await configStore.save(next);
         } catch (err) {
           if (err instanceof RelayConfigError) {
-            return reply.code(400).send({ error: err.message });
+            const status = err.kind === 'io' ? 500 : 400;
+            return reply.code(status).send({ error: err.message });
           }
           logger.warn({ err }, 'Relay config save threw unexpectedly');
           return reply.code(500).send({ error: 'Failed to save relay config' });

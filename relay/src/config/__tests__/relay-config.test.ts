@@ -132,6 +132,42 @@ describe('RelayConfigStore', () => {
       const loaded = await fresh.load();
       expect(loaded.defaultSpawnCwd).toBeUndefined();
     });
+
+    it('throws RelayConfigError(kind=io) and rolls back the cache when writeFile fails', async () => {
+      // Path inside a file (not a directory) — `mkdir` succeeds because
+      // `recursive: true` is a no-op when the path exists, but writing a
+      // file at `<existing-file>/relay-config.json` rejects with ENOTDIR.
+      // This forces the IO failure branch.
+      const filePath = join(baseDir, 'sentinel.txt');
+      await writeFile(filePath, 'hi', 'utf-8');
+      const blockedPath = join(filePath, 'relay-config.json');
+      const store = new RelayConfigStore(blockedPath);
+      // Seed memory with a known prior value via a separate, working store.
+      store['cached'] = { defaultSpawnCwd: '/old' };
+
+      await expect(
+        store.save({ defaultSpawnCwd: baseDir }),
+      ).rejects.toMatchObject({
+        name: 'RelayConfigError',
+        kind: 'io',
+      });
+      // Cache must NOT have advanced — otherwise PATCH would silently
+      // claim the value persisted while disk has the old one.
+      expect(store.get().defaultSpawnCwd).toBe('/old');
+    });
+
+    it('rejects validation errors with kind=validation', async () => {
+      const store = new RelayConfigStore(configFile);
+      try {
+        await store.save({ defaultSpawnCwd: '' });
+        expect.unreachable('should have thrown');
+      } catch (err) {
+        expect(err).toMatchObject({
+          name: 'RelayConfigError',
+          kind: 'validation',
+        });
+      }
+    });
   });
 });
 
