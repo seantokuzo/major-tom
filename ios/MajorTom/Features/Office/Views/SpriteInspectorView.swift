@@ -30,6 +30,10 @@ struct SpriteInspectorView: View {
     @State private var draft: String = ""
     @State private var responseExpanded: Bool = false
     @State private var questionExpanded: Bool = false
+    /// Sheet detent. The "More" toggles snap this to `.large` so the inspector
+    /// actually has room to show the full payload — at `.medium` the content
+    /// area is too tight for `.lineLimit(nil)` to grow visibly.
+    @State private var selectedDetent: PresentationDetent = .medium
     @State private var spriteScene: InspectorSpriteScene?
 
     /// Transient "agent completed" banner shown for ~2.5s when a linked agent
@@ -107,7 +111,7 @@ struct SpriteInspectorView: View {
         }
         .padding(MajorTomTheme.Spacing.lg)
         .background(MajorTomTheme.Colors.surface)
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $selectedDetent)
         .presentationDragIndicator(.visible)
         .onAppear {
             // Mark any unread response as read (clears green glow on sprite)
@@ -128,6 +132,7 @@ struct SpriteInspectorView: View {
             draft = ""
             responseExpanded = false
             questionExpanded = false
+            selectedDetent = .medium
         }
         // Scenario 9 downgrade — was linked at tap, now idle.
         .onChange(of: currentAgent.linkedSubagentId) { oldValue, newValue in
@@ -416,16 +421,30 @@ struct SpriteInspectorView: View {
                 Spacer()
                 if question.count > 140 {
                     Button(questionExpanded ? "Less" : "More") {
-                        questionExpanded.toggle()
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            questionExpanded.toggle()
+                            if questionExpanded { selectedDetent = .large }
+                        }
                     }
                     .font(MajorTomTheme.Typography.caption)
                     .foregroundStyle(MajorTomTheme.Colors.accent)
                 }
             }
-            Text(question)
-                .font(MajorTomTheme.Typography.codeFontSmall)
-                .foregroundStyle(MajorTomTheme.Colors.textSecondary)
-                .lineLimit(questionExpanded ? nil : 3)
+            if questionExpanded {
+                ScrollView(.vertical, showsIndicators: true) {
+                    Text(question)
+                        .font(MajorTomTheme.Typography.codeFontSmall)
+                        .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 200)
+            } else {
+                Text(question)
+                    .font(MajorTomTheme.Typography.codeFontSmall)
+                    .foregroundStyle(MajorTomTheme.Colors.textSecondary)
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(MajorTomTheme.Spacing.sm)
         .background(MajorTomTheme.Colors.background)
@@ -444,16 +463,30 @@ struct SpriteInspectorView: View {
                 Spacer()
                 if response.count > 200 {
                     Button(responseExpanded ? "Less" : "More") {
-                        responseExpanded.toggle()
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            responseExpanded.toggle()
+                            if responseExpanded { selectedDetent = .large }
+                        }
                     }
                     .font(MajorTomTheme.Typography.caption)
                     .foregroundStyle(MajorTomTheme.Colors.accent)
                 }
             }
-            Text(response)
-                .font(MajorTomTheme.Typography.body)
-                .foregroundStyle(MajorTomTheme.Colors.textPrimary)
-                .lineLimit(responseExpanded ? nil : 6)
+            if responseExpanded {
+                ScrollView(.vertical, showsIndicators: true) {
+                    Text(response)
+                        .font(MajorTomTheme.Typography.body)
+                        .foregroundStyle(MajorTomTheme.Colors.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 360)
+            } else {
+                Text(response)
+                    .font(MajorTomTheme.Typography.body)
+                    .foregroundStyle(MajorTomTheme.Colors.textPrimary)
+                    .lineLimit(6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(MajorTomTheme.Spacing.sm)
         .background(MajorTomTheme.Colors.allow.opacity(0.08))
