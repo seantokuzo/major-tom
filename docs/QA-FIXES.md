@@ -388,19 +388,20 @@ The original "role labels use agent-type instead of humanized role" issue — re
 
 ---
 
-### 15. /btw response inspector bubble "more/less" expand is a no-op (device QA 2026-04-29)
+### 15. /btw response inspector bubble "more/less" expand is a no-op (FIXED — PR #169, 2026-05-11)
 
 **Symptom (Wave A device QA, 2026-04-29):** Sean ran A1 — tapped a PTY subagent sprite mid-tool, sent a /btw, response delivered. The inspector pane truncates the response with a `more` (and after toggle attempt, `less`) toggle. Tapping the toggle does nothing — text stays truncated.
 
 **Important:** the in-scene **speech bubble above the sprite** correctly shows the FULL response on one line — so the response payload IS arriving in full client-side. Only the inspector's collapse/expand affordance is dead.
 
-**Expected:** tapping `more` should expand the inspector text to the full payload; `less` should collapse back.
+**Root cause:** `@State responseExpanded` was flipping correctly and `.lineLimit(responseExpanded ? nil : 6)` re-applied, but the sheet was stuck at `.medium` detent where the content area is too tight for `.lineLimit(nil)` to grow visibly — the parent VStack's `Spacer` absorbed the extra space.
 
-**Files likely involved:**
-- `ios/MajorTom/Features/Office/` inspector view (`SpriteInspectorView.swift` or sibling) — the truncation toggle handler
-- Whatever `@State` flag drives the truncated-vs-expanded render
+**Fix shipped (PR #169, `bf31a5a`):** added a `selectedDetent` binding so the sheet snaps to `.large` on tap-More, and swapped the `.lineLimit(nil)` path for a bounded `ScrollView` (`maxHeight: 360` for response, `200` for question) so very long payloads stay reachable. Collapsed state keeps the existing truncation. Same fix applied to `pendingQuestionView` (same code shape, same latent bug). Detent resets to `.medium` alongside the existing draft/expansion resets on sprite-switch.
 
-**Priority:** P2 polish — full text is reachable via the in-scene speech bubble; this is the inspector-side affordance being broken.
+Review: 3/3 specialists `ship`, 0 blocking, 0 advisory. CI green. Single-file change, 44 LoC.
+
+**Files:**
+- `ios/MajorTom/Features/Office/Views/SpriteInspectorView.swift` — `selectedDetent` state, conditional ScrollView render in `responseView` and `pendingQuestionView`.
 
 ---
 
