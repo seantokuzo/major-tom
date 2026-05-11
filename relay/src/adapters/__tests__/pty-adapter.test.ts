@@ -623,6 +623,59 @@ describe('PtyAdapter cwd override (QA-FIXES #12)', () => {
     }
   });
 
+  it('resolves the default lazily when cwd is a getter (hot-reloads config changes)', () => {
+    // QA-FIXES #19 — defaultSpawnCwd is wired through a getter so a config
+    // change picked up by the relay between spawns flows through without
+    // a restart. A fixed string would silently snapshot the old value.
+    let active = '/first';
+    const cwds: string[] = [];
+    const fakePty = {
+      pid: 1, cols: 80, rows: 24,
+      onData() {}, onExit() {}, kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+    };
+    const a = new PtyAdapter({
+      cwd: () => active,
+      env: { SHELL: '/bin/bash' },
+      spawn: ((_file: string, _args: string[], opts: { cwd: string }) => {
+        cwds.push(opts.cwd);
+        return fakePty;
+      }) as never,
+    });
+    try {
+      a.attach('tab-1', makeClient(), ATTACH_DEFAULTS);
+      active = '/second';
+      a.attach('tab-2', makeClient(), ATTACH_DEFAULTS);
+      expect(cwds).toEqual(['/first', '/second']);
+    } finally {
+      a.dispose();
+    }
+  });
+
+  it('falls back to $HOME when the cwd getter returns an empty string', () => {
+    // Defensive: a misconfigured config file could yield "". node-pty
+    // rejects empty cwd, so re-resolve to $HOME instead of letting that
+    // propagate.
+    let capturedCwd: string | undefined;
+    const fakePty = {
+      pid: 1, cols: 80, rows: 24,
+      onData() {}, onExit() {}, kill: vi.fn(), resize: vi.fn(), write: vi.fn(),
+    };
+    const a = new PtyAdapter({
+      cwd: () => '',
+      env: { SHELL: '/bin/bash', HOME: '/home/fallback' },
+      spawn: ((_file: string, _args: string[], opts: { cwd: string }) => {
+        capturedCwd = opts.cwd;
+        return fakePty;
+      }) as never,
+    });
+    try {
+      a.attach('tab-1', makeClient(), ATTACH_DEFAULTS);
+      expect(capturedCwd).toBe('/home/fallback');
+    } finally {
+      a.dispose();
+    }
+  });
+
   it('uses the adapter default when no cwd override is supplied', () => {
     let capturedCwd: string | undefined;
     const fakePty = {

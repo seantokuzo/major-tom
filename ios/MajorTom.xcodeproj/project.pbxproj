@@ -118,6 +118,7 @@
 		93364D032EFFBC61FEAFD519 /* SessionCountWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1CCA0A46BE9EDE79DF3CB8F /* SessionCountWidget.swift */; };
 		93EFF11D75E2B7730AA50D4E /* ActivityStation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1C51280EF867529A6909DDD /* ActivityStation.swift */; };
 		95294489029F6CCA66271C3B /* RateLimitSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D06F8E498C8D1F63A30D6A5F /* RateLimitSettingsView.swift */; };
+		662C3BE3B2B3A7F8C42FC4AD /* DefaultWorkingDirView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6809542F2D405907D24C90EB /* DefaultWorkingDirView.swift */; };
 		961131A6B840819BB8224A5A /* WorkspaceTreeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C81160C4EC85E9F1578864 /* WorkspaceTreeView.swift */; };
 		9643125507370C9DB009F0FF /* GitDiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF7AD5FC894586150B89BEAD /* GitDiffView.swift */; };
 		97FD06A7190429C1A1F445B1 /* MajorTomDynamicIsland.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11221A86D528743D2A8857BE /* MajorTomDynamicIsland.swift */; };
@@ -398,6 +399,7 @@
 		CEE5C5DC2463A313FEDD6406 /* TerminalTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTabBar.swift; sourceTree = "<group>"; };
 		CF16084D9274212487A6B7CC /* TokenBreakdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenBreakdownView.swift; sourceTree = "<group>"; };
 		D06F8E498C8D1F63A30D6A5F /* RateLimitSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateLimitSettingsView.swift; sourceTree = "<group>"; };
+		6809542F2D405907D24C90EB /* DefaultWorkingDirView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultWorkingDirView.swift; sourceTree = "<group>"; };
 		D136B4051E73808BE748883D /* MajorTomWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MajorTomWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		D23AB94034A1FEDA8FDC0C0A /* FleetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetModels.swift; sourceTree = "<group>"; };
 		D4E5F6071829A1B2C3A4B5C6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -1362,6 +1364,7 @@
 			isa = PBXGroup;
 			children = (
 				177E95044756377A532D2A5F /* AuditLogView.swift */,
+				6809542F2D405907D24C90EB /* DefaultWorkingDirView.swift */,
 				5B2D2956D7BBBE520D548CED /* DeviceManagementView.swift */,
 				6C4FC6C7F8AA0ACAD27D5D54 /* DirectoryPermissionsView.swift */,
 				D06F8E498C8D1F63A30D6A5F /* RateLimitSettingsView.swift */,
@@ -1760,6 +1763,7 @@
 				241AFDC78C513CD9E223E14B /* PromptHistoryViewModel.swift in Sources */,
 				35BC4313A2E9AFEBD7B113B0 /* PromptTemplate.swift in Sources */,
 				95294489029F6CCA66271C3B /* RateLimitSettingsView.swift in Sources */,
+				662C3BE3B2B3A7F8C42FC4AD /* DefaultWorkingDirView.swift in Sources */,
 				3C07EFEF4D80196CACF66B4F /* RelayService.swift in Sources */,
 				BB21AA01CD8C672445BE8C70 /* NetworkPathMonitor.swift in Sources */,
 				9A1B2C3D4E5F60718293ABCD /* TabTitleStore.swift in Sources */,

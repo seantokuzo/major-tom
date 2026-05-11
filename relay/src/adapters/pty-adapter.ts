@@ -75,7 +75,14 @@ export interface PtyAdapterOptions {
   graceMs?: number;
   bufferBytes?: number;
   inputMaxBytes?: number;
-  cwd?: string;
+  /**
+   * Default cwd used when no per-attach override is supplied OR when the
+   * override directory is missing / not a directory. Accepts either a fixed
+   * path or a getter — the getter form lets the relay hot-reload the
+   * configured `defaultSpawnCwd` between PTY spawns without restarting
+   * (QA-FIXES #19). When omitted, falls back to `$HOME`.
+   */
+  cwd?: string | (() => string);
   /** Override for `process.env`. Defaults to `process.env`. */
   env?: Record<string, string | undefined>;
   /** Explicit shell path. Defaults to `env.SHELL || '/bin/bash'`. */
@@ -151,7 +158,8 @@ export class PtyAdapter {
   private readonly graceMs: number;
   private readonly bufferBytes: number;
   private readonly inputMaxBytes: number;
-  private readonly cwd: string;
+  /** Fallback cwd resolver — called once per spawn so config changes are live. */
+  private readonly resolveDefaultCwd: () => string;
   private readonly env: Record<string, string | undefined>;
   private readonly shell: string;
   private readonly shellArgs: string[];
@@ -163,7 +171,21 @@ export class PtyAdapter {
     this.bufferBytes = opts.bufferBytes ?? DEFAULT_BUFFER_BYTES;
     this.inputMaxBytes = opts.inputMaxBytes ?? DEFAULT_INPUT_MAX_BYTES;
     this.env = opts.env ?? process.env;
-    this.cwd = opts.cwd ?? this.env['HOME'] ?? homedir();
+    const homeFallback = (): string => this.env['HOME'] ?? homedir();
+    if (typeof opts.cwd === 'function') {
+      const getter = opts.cwd;
+      // Wrap so an empty / blank getter return still falls back to $HOME
+      // rather than spawning into "" (node-pty would reject that).
+      this.resolveDefaultCwd = (): string => {
+        const v = getter();
+        return v && v.length > 0 ? v : homeFallback();
+      };
+    } else if (typeof opts.cwd === 'string' && opts.cwd.length > 0) {
+      const fixed = opts.cwd;
+      this.resolveDefaultCwd = (): string => fixed;
+    } else {
+      this.resolveDefaultCwd = homeFallback;
+    }
     this.shell = opts.shell ?? this.env['SHELL'] ?? '/bin/bash';
     this.shellArgs = opts.shellArgs ?? ['-l'];
     this.spawnFn = opts.spawn ?? pty.spawn;
@@ -464,20 +486,21 @@ export class PtyAdapter {
   }
 
   private resolveSpawnCwd(tabId: string, override: string | undefined): string {
-    if (!override) return this.cwd;
+    const fallback = this.resolveDefaultCwd();
+    if (!override) return fallback;
     try {
       if (statSync(override).isDirectory()) return override;
       logger.warn(
-        { tabId, override, fallback: this.cwd },
+        { tabId, override, fallback },
         'Tab cwd override exists but is not a directory — falling back',
       );
     } catch (err) {
       logger.warn(
-        { err, tabId, override, fallback: this.cwd },
+        { err, tabId, override, fallback },
         'Tab cwd override unreadable — falling back to default',
       );
     }
-    return this.cwd;
+    return fallback;
   }
 
   private evict(tabId: string): void {

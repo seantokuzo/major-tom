@@ -27,6 +27,13 @@ export interface PersistedTabFile {
   tabId: string;
   userId?: string;
   workingDir?: string;
+  /**
+   * ISO timestamp of the last `workingDir` write. Optional — pre-existing
+   * records written before QA-FIXES #17 won't have it; the registry treats
+   * those as stale on rehydrate. New writes always include it when
+   * `workingDir` is set.
+   */
+  workingDirUpdatedAt?: string;
   createdAt: string;
   lastSeenAt: string;
   sessionIds: string[];
@@ -104,6 +111,9 @@ export class TabRegistryPersistence {
       tabId: meta.tabId,
       ...(meta.userId !== undefined ? { userId: meta.userId } : {}),
       ...(meta.workingDir !== undefined ? { workingDir: meta.workingDir } : {}),
+      ...(meta.workingDirUpdatedAt !== undefined
+        ? { workingDirUpdatedAt: meta.workingDirUpdatedAt }
+        : {}),
       createdAt: meta.createdAt,
       lastSeenAt: meta.lastSeenAt,
       sessionIds: [...meta.sessionIds],
@@ -191,5 +201,9 @@ function isValidPersistedFile(v: unknown): v is PersistedTabFile {
   if (status !== 'active' && status !== 'idle' && status !== 'closed') return false;
   if (o['userId'] !== undefined && typeof o['userId'] !== 'string') return false;
   if (o['workingDir'] !== undefined && typeof o['workingDir'] !== 'string') return false;
+  if (
+    o['workingDirUpdatedAt'] !== undefined &&
+    typeof o['workingDirUpdatedAt'] !== 'string'
+  ) return false;
   return true;
 }

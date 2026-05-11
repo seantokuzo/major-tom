@@ -23,6 +23,11 @@ import { createWsRoute } from './routes/ws.js';
 import { createShellRoute, clearUserIdForTab, getUserIdForTab } from './routes/shell.js';
 import { createApiApprovalsRoutes } from './routes/api-approvals.js';
 import { createPreferencesRoutes } from './routes/preferences.js';
+import { createRelayConfigRoutes } from './routes/relay-config.js';
+import {
+  RelayConfigStore,
+  resolveDefaultSpawnCwd,
+} from './config/relay-config.js';
 import { PtyAdapter } from './adapters/pty-adapter.js';
 
 // Phase 13 Wave 2 — shell-side approval routing
@@ -110,6 +115,14 @@ export async function buildApp(config: AppConfig) {
   // tab↔session mapping that backs the iOS Office metaphor.
   const tabRegistryPersistence = new TabRegistryPersistence();
   const tabRegistry = new TabRegistry(tabRegistryPersistence);
+
+  // Relay-side runtime config (`~/.major-tom/relay-config.json`). Holds
+  // `defaultSpawnCwd` today; future fields layer on without schema
+  // changes. Loaded once at boot; PATCH writes via /api/relay-config
+  // mutate both disk and the in-memory cache so the next PTY spawn picks
+  // up the new value without a restart (QA-FIXES #19).
+  const relayConfigStore = new RelayConfigStore();
+  await relayConfigStore.load();
 
   // Multi-user services — only created when multi-user mode is enabled
   const userRegistry = config.multiUserEnabled ? new UserRegistry() : undefined;
@@ -354,7 +367,13 @@ export async function buildApp(config: AppConfig) {
     graceMs: parseNonNegativeInt(process.env['MAJOR_TOM_PTY_GRACE_MS']),
     bufferBytes: parseNonNegativeInt(process.env['MAJOR_TOM_PTY_BUFFER_BYTES']),
     inputMaxBytes: parseNonNegativeInt(process.env['MAJOR_TOM_PTY_INPUT_MAX']),
-    cwd: config.claudeWorkDir,
+    // QA-FIXES #17 / #19 — resolve the default spawn cwd lazily so
+    // `MAJORTOM_DEFAULT_CWD` env changes (rare) and PATCH /api/relay-config
+    // updates (common via iOS Settings) flow into the next PTY spawn
+    // without requiring a relay restart. The `claudeWorkDir` from server.ts
+    // continues to drive the SDK path; PTY now decouples to the resolver
+    // cascade (env → relay-config.json → ~/Documents/code/dev → ~).
+    cwd: () => resolveDefaultSpawnCwd(relayConfigStore),
     // Tab-Keyed Offices — PTY grace-expire / natural exit is when the
     // tab is truly gone. Clear the shell.ts userId map, drop the
     // TabRegistry entry, and broadcast tab.closed so the iOS Office
@@ -409,6 +428,9 @@ export async function buildApp(config: AppConfig) {
     userRegistry,
     multiUserEnabled: config.multiUserEnabled,
   }));
+
+  // Relay-side runtime config (defaultSpawnCwd today; auth required).
+  await app.register(createRelayConfigRoutes({ configStore: relayConfigStore }));
 
   // Shell WebSocket — registered after `createPreferencesRoutes` so its
   // path doesn't collide with any earlier catch-all. PtyAdapter was

@@ -61,6 +61,7 @@ describe('TabRegistryPersistence', () => {
           tabId: '../etc/passwd',
           userId: undefined,
           workingDir: undefined,
+          workingDirUpdatedAt: undefined,
           createdAt: new Date().toISOString(),
           lastSeenAt: new Date().toISOString(),
           sessionIds: new Set(),
@@ -205,6 +206,74 @@ describe('TabRegistryPersistence', () => {
       const fresh = new TabRegistry(persistence);
       await fresh.restoreFromDisk();
       expect(fresh.listTabs()).toEqual([]);
+    });
+  });
+
+  describe('workingDirUpdatedAt round-trip (QA-FIXES #17)', () => {
+    it('persists workingDirUpdatedAt and reads it back', async () => {
+      const registry = new TabRegistry(persistence);
+      registry.registerSessionStart('sess-1', 'tab-A', '/home/u/proj', 'user-1');
+      const stamp = registry.getTab('tab-A')!.workingDirUpdatedAt;
+      await new Promise((r) => setTimeout(r, 20));
+
+      const loaded = await persistence.load('tab-A');
+      expect(loaded?.workingDirUpdatedAt).toBe(stamp);
+    });
+
+    it('rehydrates workingDirUpdatedAt from disk', async () => {
+      let stamp: string | undefined;
+      {
+        const firstRegistry = new TabRegistry(persistence);
+        firstRegistry.registerSessionStart('sess-1', 'tab-A', '/proj', 'user-1');
+        stamp = firstRegistry.getTab('tab-A')!.workingDirUpdatedAt;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      const fresh = new TabRegistry(persistence);
+      await fresh.restoreFromDisk();
+      expect(fresh.getTab('tab-A')?.workingDirUpdatedAt).toBe(stamp);
+    });
+
+    it('treats legacy records without workingDirUpdatedAt as stale on rehydrate', async () => {
+      // Hand-write a v1 file that pre-dates the new field — accepted by the
+      // schema validator (the field is optional) and rehydrated with
+      // updatedAt=undefined so getFreshWorkingDir returns undefined.
+      await writeFile(
+        join(baseDir, 'tab-legacy.json'),
+        JSON.stringify({
+          version: 1,
+          tabId: 'tab-legacy',
+          userId: 'user-1',
+          workingDir: '/old/path',
+          createdAt: new Date().toISOString(),
+          lastSeenAt: new Date().toISOString(),
+          sessionIds: [],
+          status: 'idle',
+        }),
+        'utf-8',
+      );
+      const fresh = new TabRegistry(persistence);
+      await fresh.restoreFromDisk();
+      expect(fresh.getTab('tab-legacy')?.workingDir).toBe('/old/path');
+      expect(fresh.getTab('tab-legacy')?.workingDirUpdatedAt).toBeUndefined();
+    });
+
+    it('rejects records with non-string workingDirUpdatedAt', async () => {
+      await writeFile(
+        join(baseDir, 'tab-bad.json'),
+        JSON.stringify({
+          version: 1,
+          tabId: 'tab-bad',
+          workingDir: '/p',
+          workingDirUpdatedAt: 12345,
+          createdAt: new Date().toISOString(),
+          lastSeenAt: new Date().toISOString(),
+          sessionIds: [],
+          status: 'idle',
+        }),
+        'utf-8',
+      );
+      const loaded = await persistence.load('tab-bad');
+      expect(loaded).toBeNull();
     });
   });
 
