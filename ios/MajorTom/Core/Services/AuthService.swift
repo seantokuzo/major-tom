@@ -66,12 +66,16 @@ final class AuthService {
     /// Prepend the right scheme when the user typed a bare hostname. iOS
     /// App Transport Security blocks plain http:// to public domains, so
     /// we default to https:// unless the address clearly points at LAN /
-    /// localhost / an IP (in which case http:// is correct for dev).
+    /// localhost / an IP / an mDNS `.local` host (in which case http://
+    /// is correct for dev and permitted by `NSAllowsLocalNetworking`).
     static func normalizeBaseURL(_ address: String) -> String {
         if address.contains("://") { return address }
         let lower = address.lowercased()
         // Explicit loopback / localhost.
         if lower == "localhost" || lower.hasPrefix("localhost:") { return "http://\(address)" }
+        // mDNS / Bonjour `.local` hosts — link-local, plain HTTP allowed.
+        let hostPart = lower.split(separator: ":").first.map(String.init) ?? lower
+        if hostPart.hasSuffix(".local") { return "http://\(address)" }
         // IPv4 pattern (optionally followed by `:port`) — LAN / dev target.
         let ipv4 = #"^\d{1,3}(\.\d{1,3}){3}(:\d+)?$"#
         if address.range(of: ipv4, options: .regularExpression) != nil {

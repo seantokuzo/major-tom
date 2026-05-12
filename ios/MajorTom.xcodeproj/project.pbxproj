@@ -55,6 +55,7 @@
 		3C07EFEF4D80196CACF66B4F /* RelayService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EF58FBAC8341407F9E3E7A0 /* RelayService.swift */; };
 		9A1B2C3D4E5F60718293ABCD /* TabTitleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A1B2C3D4E5F60718293BCDE /* TabTitleStore.swift */; };
 		BB21AA01CD8C672445BE8C70 /* NetworkPathMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB21AA00CD8C672445BE8C71 /* NetworkPathMonitor.swift */; };
+		BB21AA02CD8C672445BE8C72 /* BonjourBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB21AA03CD8C672445BE8C73 /* BonjourBrowser.swift */; };
 		3DC3F97C0E915D4328BA3D23 /* xterm-addon-fit.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 70D288C1139CE55F81CA6B84 /* xterm-addon-fit.min.js */; };
 		3EBF323994DDFA263A66D119 /* FleetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C243979CB87B28424C0EC73 /* FleetViewModel.swift */; };
 		3F2C8C3720ABDE4346DD4010 /* PhoneWatchConnectivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F93EA76007AD19338D6B61 /* PhoneWatchConnectivityService.swift */; };
@@ -323,6 +324,7 @@
 		6EF58FBAC8341407F9E3E7A0 /* RelayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayService.swift; sourceTree = "<group>"; };
 		9A1B2C3D4E5F60718293BCDE /* TabTitleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabTitleStore.swift; sourceTree = "<group>"; };
 		BB21AA00CD8C672445BE8C71 /* NetworkPathMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPathMonitor.swift; sourceTree = "<group>"; };
+		BB21AA03CD8C672445BE8C73 /* BonjourBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourBrowser.swift; sourceTree = "<group>"; };
 		70D288C1139CE55F81CA6B84 /* xterm-addon-fit.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "xterm-addon-fit.min.js"; sourceTree = "<group>"; };
 		72D88CD4F990BB00B9695888 /* ActivitySelectionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivitySelectionEngine.swift; sourceTree = "<group>"; };
 		735C53A97B86E2331E03A4F0 /* DelayCountdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelayCountdownView.swift; sourceTree = "<group>"; };
@@ -863,6 +865,7 @@
 				72E9104D85D94935AD94E196 /* FeatureFlags.swift */,
 				7794C5813F5964F288D432AD /* HapticService.swift */,
 				A9BD8A95DFAD6160FF41E83F /* KeychainService.swift */,
+				BB21AA03CD8C672445BE8C73 /* BonjourBrowser.swift */,
 				BB21AA00CD8C672445BE8C71 /* NetworkPathMonitor.swift */,
 				1972DF8FED85D9290EA3F331 /* PerfHUDPreferences.swift */,
 				28F93EA76007AD19338D6B61 /* PhoneWatchConnectivityService.swift */,
@@ -1766,6 +1769,7 @@
 				662C3BE3B2B3A7F8C42FC4AD /* DefaultWorkingDirView.swift in Sources */,
 				3C07EFEF4D80196CACF66B4F /* RelayService.swift in Sources */,
 				BB21AA01CD8C672445BE8C70 /* NetworkPathMonitor.swift in Sources */,
+				BB21AA02CD8C672445BE8C72 /* BonjourBrowser.swift in Sources */,
 				9A1B2C3D4E5F60718293ABCD /* TabTitleStore.swift in Sources */,
 				ECD4CC99C031E1B803D88C76 /* Session.swift in Sources */,
 				7800B5EFB116E5708F3A6300 /* SessionCostRankingView.swift in Sources */,
