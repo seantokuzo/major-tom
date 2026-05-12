@@ -7,10 +7,10 @@ final class PairingViewModel {
     var serverAddress: String = ""
     var authMethods: AuthMethods?
     var isFetchingMethods = false
-    let network: NetworkPathMonitor
-    let browser: BonjourBrowser
 
     private let auth: AuthService
+    private let network: NetworkPathMonitor
+    private let browser: BonjourBrowser
 
     init(auth: AuthService, network: NetworkPathMonitor? = nil, browser: BonjourBrowser? = nil) {
         self.auth = auth
@@ -48,6 +48,25 @@ final class PairingViewModel {
     /// or local-network permission has been denied.
     var discoveredServices: [BonjourBrowser.DiscoveredService] {
         browser.services
+    }
+
+    /// Whether Bonjour discovery is actively browsing (`false` after
+    /// stop or permission denial).
+    var isBrowsing: Bool {
+        browser.isBrowsing
+    }
+
+    /// Start mDNS discovery. Idempotent — safe to call repeatedly on
+    /// view appear. Wraps the Bonjour service to preserve MVVM so the
+    /// view doesn't reach into the discovery service directly.
+    func startDiscovery() {
+        browser.start()
+    }
+
+    /// Stop mDNS discovery and tear down active resolvers. Called on
+    /// view disappear.
+    func stopDiscovery() {
+        browser.stop()
     }
 
     /// Single preset matched to the phone's current reachability — `nil`
@@ -148,12 +167,21 @@ final class PairingViewModel {
 
     private func applyAddress(_ address: String) async {
         serverAddress = address
+        // Surface "Server unreachable at <URL>" on chip-tap the same way
+        // submitPIN does — keeps the spec's targeted error path consistent
+        // whether the user reaches the relay via chip or PIN submit.
+        if !(await reachable(address)) {
+            auth.authState = .error("Server unreachable at \(address). Pick a different relay or check your network.")
+            return
+        }
         await fetchAuthMethods()
     }
 
-    /// 2-second HEAD/GET probe against `/auth/methods`. Treats any
-    /// 2xx-or-4xx response as "reachable" (a 401/403 still proves the
-    /// server is alive) — only transport errors mean unreachable.
+    /// 2-second probe against `/auth/methods`. Returns `true` for any
+    /// HTTP response (including 4xx/5xx) — only transport errors mean
+    /// unreachable. A reachable-but-broken server still gets the user
+    /// past the targeted "Server unreachable at <URL>" message into the
+    /// PIN-exchange path where downstream errors carry more detail.
     private func reachable(_ address: String) async -> Bool {
         let baseURL = AuthService.normalizeBaseURL(address)
         guard let url = URL(string: "\(baseURL)/auth/methods") else { return false }
@@ -161,7 +189,7 @@ final class PairingViewModel {
         request.timeoutInterval = 2.0
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
-            return (response as? HTTPURLResponse)?.statusCode != nil
+            return response is HTTPURLResponse
         } catch {
             return false
         }

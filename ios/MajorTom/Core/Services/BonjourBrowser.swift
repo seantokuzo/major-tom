@@ -24,6 +24,13 @@ final class BonjourBrowser {
     private(set) var services: [DiscoveredService] = []
     private(set) var isBrowsing = false
 
+    /// Cap on concurrent resolvers + emitted services. A hostile peer on
+    /// the LAN can flood the multicast group with unique `_majortom._tcp`
+    /// names; without a cap each name opens an `NWConnection` and a chip
+    /// row, eventually pressuring layout + fd state. 16 is plenty for any
+    /// realistic deployment (home LAN typically has 1, lab setups <5).
+    private static let maxServices = 16
+
     private var browser: NWBrowser?
     private var resolvers: [String: NWConnection] = [:]
 
@@ -70,11 +77,13 @@ final class BonjourBrowser {
             resolvers.removeValue(forKey: name)
         }
 
-        // Resolve newly-seen services.
+        // Resolve newly-seen services, bounded by `maxServices` so
+        // multicast flood from a hostile peer can't grow the chip list.
         for result in results {
             guard let name = Self.serviceName(from: result) else { continue }
             if services.contains(where: { $0.id == name }) { continue }
             if resolvers[name] != nil { continue }
+            if services.count + resolvers.count >= Self.maxServices { break }
             startResolve(for: result, name: name)
         }
     }
@@ -116,6 +125,9 @@ final class BonjourBrowser {
     /// Convert an NWEndpoint's resolved peer to a "host:port" string
     /// suitable for `AuthService.normalizeBaseURL`. Hostnames are
     /// preferred over raw IPs so the value survives DHCP renewals.
+    /// Link-local IPv6 with a zone identifier (`fe80::1%en0`) is
+    /// intentionally skipped — the percent sign breaks `URL(string:)`
+    /// and the `.name` / `.ipv4` branches dominate Bonjour resolution.
     private static func address(from endpoint: NWEndpoint?) -> String? {
         guard case .hostPort(let host, let port) = endpoint else { return nil }
         let hostString: String
@@ -124,8 +136,8 @@ final class BonjourBrowser {
             hostString = name
         case .ipv4(let ip):
             hostString = "\(ip)"
-        case .ipv6(let ip):
-            hostString = "[\(ip)]"
+        case .ipv6:
+            return nil
         @unknown default:
             return nil
         }

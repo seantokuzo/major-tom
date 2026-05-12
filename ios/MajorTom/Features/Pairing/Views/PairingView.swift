@@ -153,7 +153,7 @@ struct PairingView: View {
         .animation(.easeInOut(duration: 0.2), value: viewModel.authState)
         .task {
             // Start Bonjour discovery for live local-network relays.
-            viewModel.browser.start()
+            viewModel.startDiscovery()
             // Seed an empty server field — prefers a discovered service if
             // one's already known, falls back to the path monitor's
             // recommendation. One-shot so reachability flips don't fight a
@@ -162,7 +162,7 @@ struct PairingView: View {
             await viewModel.fetchAuthMethods()
         }
         .onDisappear {
-            viewModel.browser.stop()
+            viewModel.stopDiscovery()
         }
     }
 
@@ -180,12 +180,23 @@ struct PairingView: View {
                                 HapticService.impact(.light)
                                 Task { await viewModel.useDiscovered(service) }
                             } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "wifi")
-                                        .font(.system(size: 10))
-                                    Text(service.displayName)
-                                        .font(.system(.caption2, design: .monospaced))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "wifi")
+                                            .font(.system(size: 10))
+                                        Text(service.displayName)
+                                            .font(.system(.caption2, design: .monospaced))
+                                            .lineLimit(1)
+                                    }
+                                    // Surface the resolved address as a
+                                    // second line so the user can spot
+                                    // lookalike chips from a hostile peer
+                                    // (Bonjour names are attacker-controlled
+                                    // — see PHASE-PAIRING-REBOOT Wave 2).
+                                    Text(service.address)
+                                        .font(.system(size: 9, design: .monospaced))
                                         .lineLimit(1)
+                                        .opacity(0.75)
                                 }
                                 .foregroundStyle(
                                     viewModel.serverAddress == service.address
@@ -205,7 +216,7 @@ struct PairingView: View {
                     }
                 }
             }
-        } else if viewModel.browser.isBrowsing {
+        } else if viewModel.isBrowsing {
             HStack(spacing: 6) {
                 ProgressView().scaleEffect(0.6)
                 Text("Looking for relay on your network...")
