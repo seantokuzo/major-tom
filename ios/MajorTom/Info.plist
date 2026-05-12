@@ -9,6 +9,12 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Major Tom discovers your relay server on the local network so you don't have to type its IP address.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_majortom._tcp</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

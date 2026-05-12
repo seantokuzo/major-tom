@@ -9,6 +9,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
 import { pinManager } from './auth/pin-manager.js';
+import { startMdns, type MdnsHandle } from './discovery/mdns.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PIN_FILE = resolve(__dirname, '..', '.pin');
@@ -40,10 +41,13 @@ async function main() {
     process.exit(1);
   }
 
+  let mdns: MdnsHandle | undefined;
+
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, 'Received shutdown signal');
     try { unlinkSync(PIN_FILE); } catch { /* ignore */ }
+    if (mdns) await mdns.stop();
     await app.close();
     process.exit(0);
   };
@@ -53,6 +57,11 @@ async function main() {
 
   try {
     await app.listen({ port: PORT, host: '0.0.0.0' });
+
+    // Advertise on the local network so the iOS app can discover us
+    // without the user typing the Mac's LAN IP. Failures here are
+    // non-fatal — the relay still serves HTTP, just without auto-discovery.
+    mdns = startMdns(PORT);
 
     // Startup info
     console.log('');

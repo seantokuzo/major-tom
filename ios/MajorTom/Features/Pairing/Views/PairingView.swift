@@ -5,7 +5,6 @@ import SwiftUI
 enum ServerPreset: String {
     case cloudflare = "majortom.seantokuzodevtunnel.space"
     case tailscale  = "100.69.151.117:9090"
-    case lan        = "192.168.1.210:9090"
     case localhost   = "localhost:9090"
 
     var address: String { rawValue }
@@ -14,7 +13,6 @@ enum ServerPreset: String {
         switch self {
         case .cloudflare: return "☁️ Tunnel"
         case .tailscale:  return "🔒 Tailscale"
-        case .lan:        return "📡 LAN"
         case .localhost:   return "💻 Local"
         }
     }
@@ -22,10 +20,12 @@ enum ServerPreset: String {
     /// Single preset for the device's current reachability. Tailscale
     /// (or any VPN presenting as `.other`) wins over LAN; cellular-only
     /// falls back to the public Cloudflare tunnel; offline returns nil.
+    /// LAN is intentionally NOT a preset — it's served by Bonjour
+    /// discovery in the pairing view, since the Mac's LAN IP drifts.
     init?(reachability: NetworkPathMonitor.Reachability) {
         switch reachability {
         case .tailscale: self = .tailscale
-        case .lan:       self = .lan
+        case .lan:       return nil
         case .cellular:  self = .cloudflare
         case .offline:   return nil
         }
@@ -85,10 +85,13 @@ struct PairingView: View {
                         Task { await viewModel.fetchAuthMethods() }
                     }
 
-                // QA-FIXES #21: auto-pick a single relay URL based on
-                // the phone's network state. Tailscale wins over LAN
-                // (stable hostname, immune to LAN-IP drift); cellular-
-                // only falls back to the public Cloudflare tunnel.
+                // Bonjour-discovered chips (live local-network relays)
+                // sit above the static fallback so the user sees the
+                // current LAN target without typing the Mac's IP.
+                discoveredChips
+
+                // Static fallback presets (tunnel, Tailscale, localhost)
+                // for off-LAN access — LAN itself comes from Bonjour above.
                 recommendationChip
                     .frame(maxWidth: .infinity, alignment: .center)
             }
@@ -149,11 +152,66 @@ struct PairingView: View {
         .background(MajorTomTheme.Colors.background)
         .animation(.easeInOut(duration: 0.2), value: viewModel.authState)
         .task {
-            // Seed an empty server field with whatever the path monitor
-            // recommends, then fetch auth methods. The seeding is one-shot
-            // so reachability flips don't fight a user-typed override.
+            // Start Bonjour discovery for live local-network relays.
+            viewModel.browser.start()
+            // Seed an empty server field — prefers a discovered service if
+            // one's already known, falls back to the path monitor's
+            // recommendation. One-shot so reachability flips don't fight a
+            // user-typed override.
             viewModel.applyInitialRecommendationIfNeeded()
             await viewModel.fetchAuthMethods()
+        }
+        .onDisappear {
+            viewModel.browser.stop()
+        }
+    }
+
+    @ViewBuilder
+    private var discoveredChips: some View {
+        if !viewModel.discoveredServices.isEmpty {
+            VStack(spacing: 6) {
+                Text("Found on your network")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(viewModel.discoveredServices) { service in
+                            Button {
+                                HapticService.impact(.light)
+                                Task { await viewModel.useDiscovered(service) }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "wifi")
+                                        .font(.system(size: 10))
+                                    Text(service.displayName)
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .lineLimit(1)
+                                }
+                                .foregroundStyle(
+                                    viewModel.serverAddress == service.address
+                                        ? MajorTomTheme.Colors.background
+                                        : MajorTomTheme.Colors.textSecondary
+                                )
+                                .padding(.horizontal, MajorTomTheme.Spacing.sm)
+                                .padding(.vertical, 4)
+                                .background(
+                                    viewModel.serverAddress == service.address
+                                        ? MajorTomTheme.Colors.accent
+                                        : MajorTomTheme.Colors.surfaceElevated
+                                )
+                                .clipShape(Capsule())
+                            }
+                        }
+                    }
+                }
+            }
+        } else if viewModel.browser.isBrowsing {
+            HStack(spacing: 6) {
+                ProgressView().scaleEffect(0.6)
+                Text("Looking for relay on your network...")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+            }
         }
     }
 
