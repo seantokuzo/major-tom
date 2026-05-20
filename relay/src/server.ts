@@ -22,7 +22,7 @@ const CLAUDE_WORK_DIR = process.env['CLAUDE_WORK_DIR'] ?? process.cwd();
 const MULTI_USER_ENABLED = (process.env['MULTI_USER_ENABLED'] ?? 'false').toLowerCase() === 'true';
 const AUTH_GOOGLE_ENABLED = process.env['AUTH_GOOGLE_ENABLED'] !== undefined
   ? process.env['AUTH_GOOGLE_ENABLED'].toLowerCase() === 'true'
-  : !!process.env['GOOGLE_CLIENT_ID'];
+  : !!(process.env['GOOGLE_CLIENT_ID'] || process.env['GOOGLE_CLIENT_ID_IOS']);
 const AUTH_PIN_ENABLED = (process.env['AUTH_PIN_ENABLED'] ?? 'true').toLowerCase() === 'true';
 
 async function main() {

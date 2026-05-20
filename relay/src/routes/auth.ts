@@ -29,6 +29,11 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
 
   return async (fastify) => {
     const GOOGLE_CLIENT_ID = process.env['GOOGLE_CLIENT_ID'];
+    const GOOGLE_CLIENT_ID_IOS = process.env['GOOGLE_CLIENT_ID_IOS'];
+    // ID tokens from the PWA (GIS web client) and the iOS app carry
+    // different `aud` claims — accept either when verifying.
+    const GOOGLE_ALLOWED_AUDIENCES = [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_ID_IOS]
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
     const ALLOWED_EMAIL = process.env['ALLOWED_EMAIL'];
     const isSecure = process.env['NODE_ENV'] === 'production'
       || !!process.env['CLOUDFLARE_TUNNEL'];
@@ -53,10 +58,17 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
        * Public (no auth required).
        */
       fastify.get('/auth/google/client-id', async (_request, reply) => {
-        if (!GOOGLE_CLIENT_ID) {
+        if (!GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID_IOS) {
           return reply.code(503).send({ error: 'Google OAuth not configured' });
         }
-        return { clientId: GOOGLE_CLIENT_ID };
+        // `clientId` keeps existing PWA contract (GIS needs the web client).
+        // `iosClientId` is consumed by the native iOS app — when set, the
+        // pairing view enables Sign-in-with-Google via ASWebAuthenticationSession
+        // + PKCE against this client ID.
+        return {
+          clientId: GOOGLE_CLIENT_ID ?? null,
+          iosClientId: GOOGLE_CLIENT_ID_IOS ?? null,
+        };
       });
 
       /**
@@ -76,7 +88,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
           },
         },
         async (request, reply) => {
-          if (!GOOGLE_CLIENT_ID) {
+          if (GOOGLE_ALLOWED_AUDIENCES.length === 0) {
             return reply.code(503).send({ error: 'Google OAuth not configured' });
           }
 
@@ -86,7 +98,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
           }
 
           try {
-            const payload = await verifyGoogleIdToken(credential, GOOGLE_CLIENT_ID);
+            const payload = await verifyGoogleIdToken(credential, GOOGLE_ALLOWED_AUDIENCES);
 
             if (!payload.sub) {
               logger.error({ payload }, 'Google token payload missing sub claim');

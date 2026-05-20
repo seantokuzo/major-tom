@@ -128,7 +128,7 @@ final class AuthService {
                 authState = .paired(deviceId: deviceId)
 
                 // Decode the response for user info
-                if let loginResponse = try? JSONDecoder().decode(PinLoginResponse.self, from: data) {
+                if let loginResponse = try? JSONDecoder().decode(RelayLoginResponse.self, from: data) {
                     userId = loginResponse.userId
                     userRole = loginResponse.role.flatMap { UserRole(rawValue: $0) }
                 }
@@ -139,6 +139,73 @@ final class AuthService {
             } else {
                 let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
                 authState = .error("Pairing failed: \(errorBody)")
+            }
+        } catch {
+            authState = .error("Connection failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Google OAuth
+
+    /// Exchange a Google ID token (obtained client-side via `GoogleOAuthService`)
+    /// for a relay session cookie. Mirrors the PIN-login flow — same cookie
+    /// path, same Keychain entries — so the rest of the app doesn't care
+    /// which auth method got us here.
+    func signInWithGoogle(idToken: String) async {
+        authState = .pairing
+
+        let baseURL = AuthService.normalizeBaseURL(serverURL)
+        guard let url = URL(string: "\(baseURL)/auth/google") else {
+            authState = .error("Invalid server URL")
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["credential": idToken]
+
+        do {
+            request.httpBody = try JSONEncoder().encode(body)
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                authState = .error("Invalid response")
+                return
+            }
+
+            if httpResponse.statusCode == 200 {
+                let cookie = extractSessionCookie(from: httpResponse)
+                guard let cookie else {
+                    authState = .error("No session cookie received")
+                    return
+                }
+
+                let deviceId = UUID().uuidString
+                try KeychainService.save(cookie, for: .deviceToken)
+                try KeychainService.save(deviceId, for: .deviceId)
+                try KeychainService.save(deviceName, for: .deviceName)
+                sessionCookie = cookie
+                authState = .paired(deviceId: deviceId)
+
+                if let loginResponse = try? JSONDecoder().decode(RelayLoginResponse.self, from: data) {
+                    userId = loginResponse.userId
+                    userRole = loginResponse.role.flatMap { UserRole(rawValue: $0) }
+                }
+            } else if httpResponse.statusCode == 401 {
+                authState = .error("Google sign-in rejected by relay")
+            } else if httpResponse.statusCode == 403 {
+                // Relay's ALLOWED_EMAIL guard or invite-code requirement.
+                let errorBody = String(data: data, encoding: .utf8) ?? ""
+                if errorBody.contains("invite") {
+                    authState = .error("Invite code required — sign in via web first")
+                } else {
+                    authState = .error("This Google account is not allowed on this relay")
+                }
+            } else {
+                let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+                authState = .error("Sign-in failed: \(errorBody)")
             }
         } catch {
             authState = .error("Connection failed: \(error.localizedDescription)")
@@ -168,11 +235,14 @@ final class AuthService {
     }
 }
 
-// MARK: - PIN Login Response
+// MARK: - Relay Login Response
 
-private struct PinLoginResponse: Codable {
+/// Shape returned by `/auth/pin/login` and `/auth/google` — same fields,
+/// optional `userId` + `role` populated only in multi-user mode.
+private struct RelayLoginResponse: Codable {
     let email: String
     let name: String?
+    let picture: String?
     let userId: String?
     let role: String?
 }
