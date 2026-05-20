@@ -140,9 +140,13 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
               await userRegistry.createUser(user);
               logger.info({ email, userId }, 'First user bootstrapped as admin');
             } else if (!user) {
-              // Registry has users but this person isn't one — check invite code
+              // Registry has users but this person isn't one — check invite code.
+              // Structured `code` field lets clients (iOS, PWA) distinguish
+              // INVITE_REQUIRED from ALLOWED_EMAIL denial without parsing
+              // free-text. PWA already expects this code in
+              // `web/src/lib/components/LoginScreen.svelte`.
               if (!inviteCode) {
-                return reply.code(403).send({ error: 'Access denied — invite code required' });
+                return reply.code(403).send({ error: 'Access denied — invite code required', code: 'INVITE_REQUIRED' });
               }
               const redeemed = await userRegistry.redeemInviteCode(inviteCode, {
                 id: userId,
@@ -151,7 +155,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
                 picture: payload.picture,
               });
               if (!redeemed) {
-                return reply.code(403).send({ error: 'Invalid or expired invite code' });
+                return reply.code(403).send({ error: 'Invalid or expired invite code', code: 'INVITE_INVALID' });
               }
               user = await userRegistry.getUser(userId);
               if (!user) {

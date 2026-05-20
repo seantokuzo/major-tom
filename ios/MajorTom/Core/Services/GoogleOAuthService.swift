@@ -1,6 +1,7 @@
 import AuthenticationServices
 import CryptoKit
 import Foundation
+import OSLog
 import UIKit
 
 enum GoogleOAuthError: LocalizedError {
@@ -8,7 +9,8 @@ enum GoogleOAuthError: LocalizedError {
     case userCanceled
     case missingAuthorizationCode
     case stateMismatch
-    case tokenExchangeFailed(String)
+    case nonceMismatch
+    case tokenExchangeFailed
     case missingIDToken
     case presentationUnavailable
 
@@ -22,8 +24,14 @@ enum GoogleOAuthError: LocalizedError {
             return "Google did not return an authorization code"
         case .stateMismatch:
             return "OAuth state mismatch — possible CSRF attempt"
-        case .tokenExchangeFailed(let detail):
-            return "Token exchange failed: \(detail)"
+        case .nonceMismatch:
+            return "OAuth nonce mismatch — possible ID token replay"
+        case .tokenExchangeFailed:
+            // Detail goes to os_log under category "oauth" rather than the
+            // UI string — Google's error responses sometimes include client
+            // ID fragments / partial token material, and any diagnostics
+            // collection downstream shouldn't pick those up.
+            return "Google token exchange failed"
         case .missingIDToken:
             return "Token response missing id_token"
         case .presentationUnavailable:
@@ -31,6 +39,8 @@ enum GoogleOAuthError: LocalizedError {
         }
     }
 }
+
+private let oauthLog = Logger(subsystem: "com.majortom.app", category: "oauth")
 
 /// Google OAuth via ASWebAuthenticationSession + PKCE (no SDK).
 ///
@@ -90,6 +100,14 @@ final class GoogleOAuthService: NSObject {
             clientID: iosClientID,
             redirectURI: redirectURI
         )
+
+        // Bind the ID token to this specific OAuth session. PKCE binds the
+        // *code* to this app; nonce binds the *ID token* to this session.
+        // Without this check, anyone who can mint a valid ID token for the
+        // same `aud` (e.g. a malicious app running its own PKCE flow with
+        // this public iOS client ID) could replay the token to the relay.
+        try GoogleOAuthService.verifyIDTokenNonce(idToken, expected: nonce)
+
         return idToken
     }
 
@@ -136,7 +154,9 @@ final class GoogleOAuthService: NSObject {
         state: String,
         nonce: String
     ) throws -> URL {
-        var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
+        guard var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth") else {
+            throw GoogleOAuthError.tokenExchangeFailed
+        }
         components.queryItems = [
             URLQueryItem(name: "client_id", value: clientID),
             URLQueryItem(name: "redirect_uri", value: redirectURI),
@@ -149,9 +169,38 @@ final class GoogleOAuthService: NSObject {
             URLQueryItem(name: "prompt", value: "select_account"),
         ]
         guard let url = components.url else {
-            throw GoogleOAuthError.tokenExchangeFailed("Failed to build authorize URL")
+            throw GoogleOAuthError.tokenExchangeFailed
         }
         return url
+    }
+
+    /// Decode the unverified ID token payload (relay verifies the signature)
+    /// just to enforce the `nonce` binding from the authorize step. The
+    /// payload is JWT-shaped: `<header>.<payload>.<signature>`, each part
+    /// base64url-encoded.
+    static func verifyIDTokenNonce(_ idToken: String, expected: String) throws {
+        let parts = idToken.split(separator: ".")
+        guard parts.count == 3 else {
+            throw GoogleOAuthError.nonceMismatch
+        }
+        guard let payloadData = base64URLDecode(String(parts[1])),
+              let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+              let claimNonce = json["nonce"] as? String else {
+            throw GoogleOAuthError.nonceMismatch
+        }
+        // Constant-time compare — `nonce` is opaque random data so any
+        // timing leak is bounded by length, but it costs nothing to do
+        // this right.
+        let lhs = Array(claimNonce.utf8)
+        let rhs = Array(expected.utf8)
+        guard lhs.count == rhs.count else {
+            throw GoogleOAuthError.nonceMismatch
+        }
+        var diff: UInt8 = 0
+        for i in 0..<lhs.count { diff |= lhs[i] ^ rhs[i] }
+        guard diff == 0 else {
+            throw GoogleOAuthError.nonceMismatch
+        }
     }
 
     static func parseCallback(_ url: URL) throws -> (code: String, state: String?) {
@@ -163,7 +212,8 @@ final class GoogleOAuthService: NSObject {
             if errorParam == "access_denied" {
                 throw GoogleOAuthError.userCanceled
             }
-            throw GoogleOAuthError.tokenExchangeFailed("Google returned error: \(errorParam)")
+            oauthLog.error("Google authorize endpoint returned error=\(errorParam, privacy: .public)")
+            throw GoogleOAuthError.tokenExchangeFailed
         }
         guard let code = items.first(where: { $0.name == "code" })?.value, !code.isEmpty else {
             throw GoogleOAuthError.missingAuthorizationCode
@@ -216,7 +266,8 @@ final class GoogleOAuthService: NSObject {
         redirectURI: String
     ) async throws -> String {
         guard let tokenURL = URL(string: "https://oauth2.googleapis.com/token") else {
-            throw GoogleOAuthError.tokenExchangeFailed("Invalid token URL")
+            oauthLog.error("Failed to construct Google token URL")
+            throw GoogleOAuthError.tokenExchangeFailed
         }
 
         let bodyItems = [
@@ -237,11 +288,17 @@ final class GoogleOAuthService: NSObject {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
-            throw GoogleOAuthError.tokenExchangeFailed("Non-HTTP response")
+            oauthLog.error("Google token endpoint returned non-HTTP response")
+            throw GoogleOAuthError.tokenExchangeFailed
         }
         if http.statusCode != 200 {
+            // Log the body server-side (os_log redacts by default) but keep
+            // it out of the user-facing error string — Google's failure
+            // bodies sometimes echo client IDs or partial token material,
+            // and any future "Send diagnostics" path shouldn't pick those up.
             let snippet = String(data: data, encoding: .utf8) ?? "<binary>"
-            throw GoogleOAuthError.tokenExchangeFailed("HTTP \(http.statusCode): \(snippet.prefix(200))")
+            oauthLog.error("Google token exchange HTTP \(http.statusCode, privacy: .public): \(snippet, privacy: .private)")
+            throw GoogleOAuthError.tokenExchangeFailed
         }
         let decoded = try JSONDecoder().decode(GoogleTokenResponse.self, from: data)
         guard let idToken = decoded.idToken, !idToken.isEmpty else {
@@ -265,7 +322,7 @@ final class GoogleOAuthService: NSObject {
     }
 }
 
-// MARK: - Base64URL helper
+// MARK: - Base64URL helpers
 
 private func base64URLEncode(_ data: Data) -> String {
     data.base64EncodedString()
@@ -274,19 +331,29 @@ private func base64URLEncode(_ data: Data) -> String {
         .replacingOccurrences(of: "=", with: "")
 }
 
+fileprivate func base64URLDecode(_ string: String) -> Data? {
+    var s = string
+        .replacingOccurrences(of: "-", with: "+")
+        .replacingOccurrences(of: "_", with: "/")
+    // Re-add padding to make the length a multiple of 4.
+    while s.count % 4 != 0 { s.append("=") }
+    return Data(base64Encoded: s)
+}
+
 // MARK: - ASWebAuthenticationPresentationContextProviding
 
 extension GoogleOAuthService: ASWebAuthenticationPresentationContextProviding {
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        // ASWebAuthenticationSession calls this on the main actor in practice
-        // but the protocol isn't annotated. Hop to MainActor synchronously
-        // via DispatchQueue.main.sync would deadlock; instead capture from
-        // the connected scenes API directly — it's safe from any thread.
-        let scenes = UIApplication.shared.connectedScenes
-        let window = scenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first(where: { $0.isKeyWindow })
-        return window ?? ASPresentationAnchor()
+        // ASWebAuthenticationSession is documented to invoke this on the
+        // main actor, but the protocol isn't annotated. `assumeIsolated`
+        // tells the Swift 6 strict-concurrency checker we trust that
+        // contract — UIApplication.shared / connectedScenes are MainActor.
+        MainActor.assumeIsolated {
+            let window = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+                .first(where: { $0.isKeyWindow })
+            return window ?? ASPresentationAnchor()
+        }
     }
 }

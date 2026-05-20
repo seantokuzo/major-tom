@@ -196,11 +196,15 @@ final class AuthService {
             } else if httpResponse.statusCode == 401 {
                 authState = .error("Google sign-in rejected by relay")
             } else if httpResponse.statusCode == 403 {
-                // Relay's ALLOWED_EMAIL guard or invite-code requirement.
-                let errorBody = String(data: data, encoding: .utf8) ?? ""
-                if errorBody.contains("invite") {
+                // Relay's ALLOWED_EMAIL guard or invite-code requirement —
+                // distinguish via the structured `code` field. Relay emits
+                // `INVITE_REQUIRED` / `INVITE_INVALID` for the invite paths;
+                // everything else is the ALLOWED_EMAIL guard.
+                let parsed = try? JSONDecoder().decode(RelayErrorResponse.self, from: data)
+                switch parsed?.code {
+                case "INVITE_REQUIRED", "INVITE_INVALID":
                     authState = .error("Invite code required — sign in via web first")
-                } else {
+                default:
                     authState = .error("This Google account is not allowed on this relay")
                 }
             } else {
@@ -219,9 +223,11 @@ final class AuthService {
               let url = response.url else { return nil }
 
         let cookies = HTTPCookie.cookies(withResponseHeaderFields: headers, for: url)
-        // Look for the session cookie (relay uses "mt-session")
+        // Match exactly on the relay's session cookie name — no permissive
+        // fallback to "first cookie", which would silently land non-session
+        // cookies (rate-limit helpers, `__Secure-*` variants) in Keychain
+        // and break every subsequent WebSocket auth attempt.
         return cookies.first(where: { $0.name == "mt-session" })?.value
-            ?? cookies.first?.value
     }
 
     // MARK: - Unpair
@@ -245,4 +251,12 @@ private struct RelayLoginResponse: Codable {
     let picture: String?
     let userId: String?
     let role: String?
+}
+
+/// Error envelope returned by `/auth/*` routes on non-2xx responses.
+/// `code` is a stable machine-readable identifier (`INVITE_REQUIRED`,
+/// `INVITE_INVALID`, ...); `error` is a human-readable string.
+private struct RelayErrorResponse: Decodable {
+    let error: String?
+    let code: String?
 }
