@@ -28,6 +28,18 @@ Replace the hardcoded LAN constant with live mDNS/Bonjour discovery. Probe URLs 
 - `GET /api/discovery` on relay returns live `lan` / `tailscale` URLs from `os.networkInterfaces()` for clients connected via the stable tunnel.
 - Track URL provenance (user-typed vs discovered vs auto) so we know which we can safely re-resolve.
 - Auto-clear stale stored URLs on app foreground when pre-flight ping fails.
+- Relay fingerprint UX — surface a cert/pubkey hash both on the Mac's terminal at boot and on the iOS chip after discovery; require explicit verification before PIN save. This is the targeted mitigation for the mDNS impersonation surface flagged in the PR #170 round-1 security advisory (`relay/src/discovery/mdns.ts`) and the chip-as-trust-signal advisory (`ios/MajorTom/Core/Services/BonjourBrowser.swift`).
+- Sanitize control / RTL / zero-width / combining chars from `displayName` rendering so attacker-controlled Bonjour names can't impersonate the real chip via homoglyphs (round-1 advisory `PairingView.swift:186`).
+
+### Wave 2A — frictionless re-pair (parallel with Wave 2)
+
+The 6-digit PIN with 5-min TTL is fine for *first* pair but becomes a UX wall whenever the user signs out or the cookie expires. Field reality: Sean hits PIN re-entry repeatedly during dev/QA cycles and times out every time. Termius solves this for SSH by saving credentials once — the user just taps "connect to my Mac" and the saved cred auto-authenticates. MajorTom can match that without inventing anything new — the relay already supports Google OAuth, the iOS app just doesn't surface it.
+
+This wave is **independent of Wave 2** — different files, different concerns, can ship in either order.
+
+- **Surface Google OAuth in `PairingView`** when `authMethods.google == true`. The relay already implements `AUTH_GOOGLE_ENABLED` with the OAuth code-exchange flow; iOS just needs a "Sign in with Google" button alongside the PIN keypad. After OAuth, the iOS app receives a persistent device cookie (same Keychain path as PIN) and never has to PIN again unless the user signs out. **This is the real Termius answer.**
+- **`MAJORTOM_PIN_TTL_MIN` env knob** in `relay/src/auth/pin-manager.ts` — the hardcoded `PIN_EXPIRY_MS = 5 * 60 * 1000` becomes `parseInt(process.env['MAJORTOM_PIN_TTL_MIN'] ?? '5', 10) * 60_000`. Default stays 5 min for prod; the personal-machine deployment can bump it to 30. Trivial change, big QoL win for dev sessions.
+- **Biometric quick-pair (optional, nice-to-have)** — after first successful PIN pair, store the PIN in Keychain protected by `kSecAccessControlBiometryCurrentSet`. On next sign-in-from-scratch, offer "Use Face ID to re-pair" so the user authenticates with their face instead of retyping the 6 digits. Useful only if the user signs out often; skip if the OAuth path lands first.
 
 ### Wave 3 — UX polish (deferred)
 
