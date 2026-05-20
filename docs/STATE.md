@@ -4,6 +4,21 @@
 
 ## Current Phase (in flight)
 
+**Pairing Reboot** — kill the hardcoded LAN IP + the PIN re-entry treadmill. Wave 1 + Wave 2A item 1 shipped; Wave 2 (provenance + security UX) and Wave 2A items 2-3 still queued. Spec: `docs/PHASE-PAIRING-REBOOT.md`. Memory: `project_pairing_reboot_handoff.md`.
+
+| Wave | Scope | Status |
+|------|-------|--------|
+| 1 — mDNS discovery + pre-flight ping | Relay advertises `_majortom._tcp` via `bonjour-service`; iOS `BonjourBrowser` (NWBrowser); hardcoded `.lan` preset dropped; chip-tap + PIN submit pre-flight `/auth/methods` for actionable "Server unreachable" errors | SHIPPED (#170, 2026-05-12) |
+| 2A item 1 — Google OAuth in iOS PairingView | ASWebAuthenticationSession + PKCE (no SDK), iOS-side nonce verify, relay accepts dual audiences (`GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_ID_IOS`), `/auth/google/client-id` returns iOS client ID for runtime gating, structured `INVITE_REQUIRED`/`INVITE_INVALID` codes on 403 | SHIPPED (#171, 2026-05-20). **Activation gated on Sean creating an iOS OAuth client in Google Cloud Console + setting `GOOGLE_CLIENT_ID_IOS` in relay `.env`.** |
+| 2A item 2 — `MAJORTOM_PIN_TTL_MIN` env knob | Replace hardcoded `PIN_EXPIRY_MS = 5 * 60 * 1000` with `parseInt(process.env['MAJORTOM_PIN_TTL_MIN'] ?? '5', 10) * 60_000` in `relay/src/auth/pin-manager.ts`. ~5 LoC. | PENDING — picked up next session |
+| 2A item 3 — Biometric quick-pair | Optional. Store last-good PIN in Keychain under `kSecAccessControlBiometryCurrentSet`; offer "Use Face ID to re-pair" button. Skip if OAuth lands first (it has). | DEPRIORITIZED |
+| 2 — Provenance + tunnel discovery + fingerprint UX | `/api/discovery` endpoint, URL provenance tracking, auto-clear stale URLs on app foreground, relay-fingerprint chip + sanitize Bonjour `displayName` (mitigates round-1 Wave 1 hostile-relay advisories) | DEFERRED |
+| 3 — UX polish | Chip RTT labels, recently-used history, manual-override lock icon | DEFERRED |
+
+---
+
+## Previous Phase
+
 **Tab-Keyed Offices** — ALL WAVES + L-MATRIX QA SHIPPED (PRs #149–#156). **Wave A shipped (PR #159, 2026-04-22)**: PtyBtwQueue routes `sprite.message` for PTY sessions via a per-subagent FIFO that writes framed text into the PTY and taps `PtyAdapter.onOutput` for reply correlation (2s settle, 30s max-wait, tab-wide serialization, ANSI-stripped tail). Closes QA-FIXES #11 Layer 2. **Wave B shipped (PR #157, 2026-04-21)**: iOS refreshes sprite state on WS reattach + tab.list.response arrival; relay `sprite.state.request` gained sandboxGuard and dropped the per-session attach gate. QA-FIXES #7 closed. **Wave D shipped (PRs #160 + #161 + #162, 2026-04-22)**: PR #160 closes #12 (PTY reconnect cwd restore) + #14 (xterm OSC 0/2 title suppression) + #11b ("Performance HUD" → "SpriteKit Stats" rename + clarified footer). PR #161 closes #9 + #6 — relay randomizes CharacterType per spawn from a 14-char CHARACTER_POOL w/ session-roster dup-avoidance; iOS trusts relay's characterType verbatim; RoleMapper's role→character logic deleted (aura palette stays); spec §Q2 + locked table struck. PR #162 closes the routing half of #8 — Office view auto-pops to the Manager on tab teardown (cold-tap + live teardown via `.onChange(viewModel == nil)`). Remaining Wave D loose ends (both device-QA-gated): animation-timing half of #8 (extend walk-off duration when Office is foregrounded) + #13 (stale-sprite cleanup post-relay-restart — user to re-QA first since Wave B may have subsumed). Spec: `docs/PHASE-TAB-KEYED-OFFICES.md` (Gate D superseded by PR #155). Memory: `project_qa_followups_phase.md`. Sprite 4-6 QA unpaused.
 
 | Wave | Scope | Status |
