@@ -37,9 +37,18 @@ The 6-digit PIN with 5-min TTL is fine for *first* pair but becomes a UX wall wh
 
 This wave is **independent of Wave 2** — different files, different concerns, can ship in either order.
 
-- **Surface Google OAuth in `PairingView`** when `authMethods.google == true`. The relay already implements `AUTH_GOOGLE_ENABLED` with the OAuth code-exchange flow; iOS just needs a "Sign in with Google" button alongside the PIN keypad. After OAuth, the iOS app receives a persistent device cookie (same Keychain path as PIN) and never has to PIN again unless the user signs out. **This is the real Termius answer.**
+- ✅ **Surface Google OAuth in `PairingView`** when `authMethods.google == true`. **Shipped (this PR.)** Native flow uses `ASWebAuthenticationSession` + PKCE (no SDK), exchanges Google's `id_token` against the relay's existing `/auth/google` endpoint, and lands the same `mt-session` cookie in Keychain as the PIN path. The relay's audience check now accepts both `GOOGLE_CLIENT_ID` (PWA / GIS) and `GOOGLE_CLIENT_ID_IOS` (native iOS client). `/auth/google/client-id` surfaces the iOS client ID so the button only renders when the relay is actually configured for it — no broken state when the env knob is unset.
 - **`MAJORTOM_PIN_TTL_MIN` env knob** in `relay/src/auth/pin-manager.ts` — the hardcoded `PIN_EXPIRY_MS = 5 * 60 * 1000` becomes `parseInt(process.env['MAJORTOM_PIN_TTL_MIN'] ?? '5', 10) * 60_000`. Default stays 5 min for prod; the personal-machine deployment can bump it to 30. Trivial change, big QoL win for dev sessions.
 - **Biometric quick-pair (optional, nice-to-have)** — after first successful PIN pair, store the PIN in Keychain protected by `kSecAccessControlBiometryCurrentSet`. On next sign-in-from-scratch, offer "Use Face ID to re-pair" so the user authenticates with their face instead of retyping the 6 digits. Useful only if the user signs out often; skip if the OAuth path lands first.
+
+#### Wave 2A item 1 — operator setup
+
+To actually use Sign-in-with-Google from the iOS app, the relay operator needs to:
+
+1. **Create an iOS OAuth client in Google Cloud Console.**
+   APIs & Services → Credentials → Create credentials → OAuth client ID → Application type *iOS*. Bundle ID = `com.majortom.app`. Save the resulting client ID (format `<num>-<suffix>.apps.googleusercontent.com`).
+2. **Set `GOOGLE_CLIENT_ID_IOS` in the relay's `.env`.** Restart the relay. `/auth/google/client-id` will now expose `iosClientId`, and the iOS app's pairing view will render the "Sign in with Google" button.
+3. **No iOS rebuild needed.** `ASWebAuthenticationSession` intercepts the reverse-client-ID callback scheme at the OS level for the duration of the session — no `CFBundleURLTypes` registration required.
 
 ### Wave 3 — UX polish (deferred)
 

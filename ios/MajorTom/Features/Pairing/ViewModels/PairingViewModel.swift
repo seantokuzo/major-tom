@@ -7,15 +7,29 @@ final class PairingViewModel {
     var serverAddress: String = ""
     var authMethods: AuthMethods?
     var isFetchingMethods = false
+    /// Google iOS OAuth client ID surfaced by the relay (`/auth/google/client-id`).
+    /// `nil` when the relay hasn't enabled iOS Google auth — the Google
+    /// button stays hidden in that case rather than offering a broken flow.
+    var googleIOSClientID: String?
+    /// Set while the Google OAuth sheet is presented or the relay is
+    /// exchanging the ID token. Drives the spinner on the Google button.
+    var isSigningInWithGoogle = false
 
     private let auth: AuthService
     private let network: NetworkPathMonitor
     private let browser: BonjourBrowser
+    private let googleOAuth: GoogleOAuthService
 
-    init(auth: AuthService, network: NetworkPathMonitor? = nil, browser: BonjourBrowser? = nil) {
+    init(
+        auth: AuthService,
+        network: NetworkPathMonitor? = nil,
+        browser: BonjourBrowser? = nil,
+        googleOAuth: GoogleOAuthService? = nil
+    ) {
         self.auth = auth
         self.network = network ?? NetworkPathMonitor()
         self.browser = browser ?? BonjourBrowser()
+        self.googleOAuth = googleOAuth ?? GoogleOAuthService()
         self.serverAddress = auth.serverURL
     }
 
@@ -35,6 +49,14 @@ final class PairingViewModel {
     /// Whether PIN auth is available (or auth methods haven't been fetched yet).
     var isPinEnabled: Bool {
         authMethods?.pin ?? true
+    }
+
+    /// Whether Google sign-in is offerable in the UI — relay must have Google
+    /// auth enabled AND have an iOS client ID configured. The iOS app can't
+    /// run the flow without a client ID, so we hide the button instead of
+    /// surfacing a broken state.
+    var isGoogleEnabled: Bool {
+        (authMethods?.google ?? false) && (googleIOSClientID?.isEmpty == false)
     }
 
     /// Whether any auth method is available.
@@ -102,6 +124,8 @@ final class PairingViewModel {
     }
 
     /// Fetch auth methods from the relay to adapt the login UI.
+    /// Also fetches the Google client-id payload when Google is enabled so
+    /// the iOS app knows whether the relay is set up for native sign-in.
     func fetchAuthMethods() async {
         let trimmed = serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -120,6 +144,76 @@ final class PairingViewModel {
         } catch {
             // Older relays may not have this endpoint — show all methods
             authMethods = nil
+        }
+
+        if authMethods?.google == true {
+            await fetchGoogleClientID(baseURL: baseURL)
+        } else {
+            googleIOSClientID = nil
+        }
+    }
+
+    /// Pull the relay's iOS Google client ID. Optional endpoint — older
+    /// relays don't return `iosClientId`, in which case the Google button
+    /// stays hidden and the user falls back to PIN.
+    private func fetchGoogleClientID(baseURL: String) async {
+        guard let url = URL(string: "\(baseURL)/auth/google/client-id") else { return }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                googleIOSClientID = nil
+                return
+            }
+            let payload = try JSONDecoder().decode(GoogleClientIDResponse.self, from: data)
+            let trimmed = payload.iosClientId?.trimmingCharacters(in: .whitespacesAndNewlines)
+            googleIOSClientID = (trimmed?.isEmpty == false) ? trimmed : nil
+        } catch {
+            googleIOSClientID = nil
+        }
+    }
+
+    private struct GoogleClientIDResponse: Decodable {
+        let clientId: String?
+        let iosClientId: String?
+    }
+
+    /// Run the full Google sign-in flow: present the OAuth sheet, exchange
+    /// the auth code for an ID token, then exchange the ID token for a
+    /// relay session cookie. Pre-flights reachability so we surface
+    /// "Server unreachable at <URL>" instead of "Connection failed" when
+    /// the user picked a stale chip.
+    func signInWithGoogle() async {
+        let trimmed = serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let clientID = googleIOSClientID, !clientID.isEmpty else {
+            auth.authState = .error("Relay isn't configured for iOS Google sign-in")
+            return
+        }
+
+        if !(await reachable(trimmed)) {
+            auth.authState = .error("Server unreachable at \(trimmed). Pick a different relay or check your network.")
+            HapticService.deny()
+            return
+        }
+
+        auth.saveServerURL(trimmed)
+        isSigningInWithGoogle = true
+        defer { isSigningInWithGoogle = false }
+
+        do {
+            let idToken = try await googleOAuth.signIn(iosClientID: clientID)
+            await auth.signInWithGoogle(idToken: idToken)
+            if auth.isPaired {
+                HapticService.celebrate()
+            } else {
+                HapticService.deny()
+            }
+        } catch GoogleOAuthError.userCanceled {
+            // Silent — the user dismissed the sheet on purpose.
+        } catch {
+            auth.authState = .error(error.localizedDescription)
+            HapticService.deny()
         }
     }
 

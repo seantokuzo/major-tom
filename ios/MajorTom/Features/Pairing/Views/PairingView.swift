@@ -103,9 +103,17 @@ struct PairingView: View {
             } else if !viewModel.hasAnyAuthMethod {
                 // No auth methods enabled on the relay
                 noAuthMethodsView
-            } else if viewModel.isPinEnabled {
-                // PIN auth available — show PIN entry
-                pinDisplay
+            } else {
+                if viewModel.isGoogleEnabled {
+                    googleSignInButton
+                    if viewModel.isPinEnabled {
+                        orSeparator
+                    }
+                }
+                if viewModel.isPinEnabled {
+                    // PIN auth available — show PIN entry
+                    pinDisplay
+                }
             }
 
             // Error message
@@ -269,6 +277,53 @@ struct PairingView: View {
             return "Enter the 6-digit PIN from your relay server"
         }
         return "Connect to your relay server"
+    }
+
+    // MARK: - Google Sign-In
+
+    private var googleSignInButton: some View {
+        Button {
+            HapticService.impact(.medium)
+            Task { await viewModel.signInWithGoogle() }
+        } label: {
+            HStack(spacing: MajorTomTheme.Spacing.sm) {
+                if viewModel.isSigningInWithGoogle {
+                    ProgressView()
+                        .tint(MajorTomTheme.Colors.textPrimary)
+                } else {
+                    Image(systemName: "g.circle.fill")
+                        .font(.system(size: 20))
+                }
+                Text(viewModel.isSigningInWithGoogle ? "Signing in…" : "Sign in with Google")
+                    .font(MajorTomTheme.Typography.headline)
+            }
+            .foregroundStyle(MajorTomTheme.Colors.textPrimary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, MajorTomTheme.Spacing.md)
+            .background(MajorTomTheme.Colors.surfaceElevated)
+            .overlay {
+                RoundedRectangle(cornerRadius: MajorTomTheme.Radius.medium)
+                    .stroke(MajorTomTheme.Colors.surface, lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: MajorTomTheme.Radius.medium))
+        }
+        .disabled(viewModel.isSigningInWithGoogle || viewModel.isPairing)
+        .padding(.horizontal, MajorTomTheme.Spacing.xxl)
+    }
+
+    private var orSeparator: some View {
+        HStack(spacing: MajorTomTheme.Spacing.md) {
+            Rectangle()
+                .fill(MajorTomTheme.Colors.surfaceElevated)
+                .frame(height: 1)
+            Text("or use PIN")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(MajorTomTheme.Colors.textTertiary)
+            Rectangle()
+                .fill(MajorTomTheme.Colors.surfaceElevated)
+                .frame(height: 1)
+        }
+        .padding(.horizontal, MajorTomTheme.Spacing.xxl)
     }
 
     private var noAuthMethodsView: some View {

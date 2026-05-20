@@ -20,14 +20,18 @@ export interface GoogleTokenPayload extends JWTPayload {
 /**
  * Verify a Google ID token and return the payload.
  * Checks issuer, audience, expiration, and email_verified.
+ *
+ * `audience` accepts either a single client ID (PWA-only deployments)
+ * or an array (e.g. [web, iOS] when both PWA and native clients sign in
+ * against the same relay — their ID tokens carry different `aud` claims).
  */
 export async function verifyGoogleIdToken(
   idToken: string,
-  clientId: string,
+  audience: string | string[],
 ): Promise<GoogleTokenPayload> {
   const { payload } = await jwtVerify(idToken, GOOGLE_JWKS, {
     issuer: ['https://accounts.google.com', 'accounts.google.com'],
-    audience: clientId,
+    audience,
   });
 
   const p = payload as GoogleTokenPayload;

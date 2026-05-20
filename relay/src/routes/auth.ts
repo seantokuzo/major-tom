@@ -29,6 +29,11 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
 
   return async (fastify) => {
     const GOOGLE_CLIENT_ID = process.env['GOOGLE_CLIENT_ID'];
+    const GOOGLE_CLIENT_ID_IOS = process.env['GOOGLE_CLIENT_ID_IOS'];
+    // ID tokens from the PWA (GIS web client) and the iOS app carry
+    // different `aud` claims — accept either when verifying.
+    const GOOGLE_ALLOWED_AUDIENCES = [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_ID_IOS]
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
     const ALLOWED_EMAIL = process.env['ALLOWED_EMAIL'];
     const isSecure = process.env['NODE_ENV'] === 'production'
       || !!process.env['CLOUDFLARE_TUNNEL'];
@@ -53,10 +58,17 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
        * Public (no auth required).
        */
       fastify.get('/auth/google/client-id', async (_request, reply) => {
-        if (!GOOGLE_CLIENT_ID) {
+        if (!GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID_IOS) {
           return reply.code(503).send({ error: 'Google OAuth not configured' });
         }
-        return { clientId: GOOGLE_CLIENT_ID };
+        // `clientId` keeps existing PWA contract (GIS needs the web client).
+        // `iosClientId` is consumed by the native iOS app — when set, the
+        // pairing view enables Sign-in-with-Google via ASWebAuthenticationSession
+        // + PKCE against this client ID.
+        return {
+          clientId: GOOGLE_CLIENT_ID ?? null,
+          iosClientId: GOOGLE_CLIENT_ID_IOS ?? null,
+        };
       });
 
       /**
@@ -76,7 +88,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
           },
         },
         async (request, reply) => {
-          if (!GOOGLE_CLIENT_ID) {
+          if (GOOGLE_ALLOWED_AUDIENCES.length === 0) {
             return reply.code(503).send({ error: 'Google OAuth not configured' });
           }
 
@@ -86,7 +98,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
           }
 
           try {
-            const payload = await verifyGoogleIdToken(credential, GOOGLE_CLIENT_ID);
+            const payload = await verifyGoogleIdToken(credential, GOOGLE_ALLOWED_AUDIENCES);
 
             if (!payload.sub) {
               logger.error({ payload }, 'Google token payload missing sub claim');
@@ -128,9 +140,13 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
               await userRegistry.createUser(user);
               logger.info({ email, userId }, 'First user bootstrapped as admin');
             } else if (!user) {
-              // Registry has users but this person isn't one — check invite code
+              // Registry has users but this person isn't one — check invite code.
+              // Structured `code` field lets clients (iOS, PWA) distinguish
+              // INVITE_REQUIRED from ALLOWED_EMAIL denial without parsing
+              // free-text. PWA already expects this code in
+              // `web/src/lib/components/LoginScreen.svelte`.
               if (!inviteCode) {
-                return reply.code(403).send({ error: 'Access denied — invite code required' });
+                return reply.code(403).send({ error: 'Access denied — invite code required', code: 'INVITE_REQUIRED' });
               }
               const redeemed = await userRegistry.redeemInviteCode(inviteCode, {
                 id: userId,
@@ -139,7 +155,7 @@ export function createAuthRoutes(deps: AuthRouteDeps): FastifyPluginAsync {
                 picture: payload.picture,
               });
               if (!redeemed) {
-                return reply.code(403).send({ error: 'Invalid or expired invite code' });
+                return reply.code(403).send({ error: 'Invalid or expired invite code', code: 'INVITE_INVALID' });
               }
               user = await userRegistry.getUser(userId);
               if (!user) {
