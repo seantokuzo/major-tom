@@ -1,6 +1,6 @@
 #!/bin/bash
 # Generate a fresh 6-digit login PIN from the relay server.
-# PIN expires after 5 minutes.
+# PIN expires after MAJORTOM_PIN_TTL_MIN minutes (default 5).
 
 PORT="${WS_PORT:-9090}"
 RESPONSE=$(curl -sfS -X POST "http://localhost:${PORT}/auth/pin/generate" 2>&1)
