@@ -1,6 +1,7 @@
 /**
  * PIN manager — generates and validates 6-digit PINs for quick auth.
- * Only one active PIN at a time. 5-minute expiry, rate-limited.
+ * Only one active PIN at a time. Expiry defaults to 5 min, overridable
+ * via MAJORTOM_PIN_TTL_MIN. Rate-limited.
  */
 import { randomInt } from 'node:crypto';
 
@@ -15,7 +16,8 @@ interface AttemptRecord {
   windowStart: number;
 }
 
-const PIN_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+const PIN_TTL_MIN = Math.max(1, parseInt(process.env['MAJORTOM_PIN_TTL_MIN'] ?? '5', 10) || 5);
+const PIN_EXPIRY_MS = PIN_TTL_MIN * 60_000;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 const RATE_LIMIT_MAX_ATTEMPTS = 5;
 
