@@ -4,13 +4,13 @@
 
 ## Current Phase (in flight)
 
-**Pairing Reboot** — kill the hardcoded LAN IP + the PIN re-entry treadmill. Wave 1 + Wave 2A item 1 shipped; Wave 2 (provenance + security UX) and Wave 2A items 2-3 still queued. Spec: `docs/PHASE-PAIRING-REBOOT.md`. Memory: `project_pairing_reboot_handoff.md`.
+**Pairing Reboot** — kill the hardcoded LAN IP + the PIN re-entry treadmill. Wave 1 + Wave 2A items 1-2 shipped; Wave 2 (provenance + security UX) and Wave 2A item 3 still queued (deprioritized — OAuth has subsumed). Spec: `docs/PHASE-PAIRING-REBOOT.md`. Memory: `project_pairing_reboot_handoff.md`.
 
 | Wave | Scope | Status |
 |------|-------|--------|
 | 1 — mDNS discovery + pre-flight ping | Relay advertises `_majortom._tcp` via `bonjour-service`; iOS `BonjourBrowser` (NWBrowser); hardcoded `.lan` preset dropped; chip-tap + PIN submit pre-flight `/auth/methods` for actionable "Server unreachable" errors | SHIPPED (#170, 2026-05-12) |
 | 2A item 1 — Google OAuth in iOS PairingView | ASWebAuthenticationSession + PKCE (no SDK), iOS-side nonce verify, relay accepts dual audiences (`GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_ID_IOS`), `/auth/google/client-id` returns iOS client ID for runtime gating, structured `INVITE_REQUIRED`/`INVITE_INVALID` codes on 403 | SHIPPED (#171, 2026-05-20). **Activation gated on Sean creating an iOS OAuth client in Google Cloud Console + setting `GOOGLE_CLIENT_ID_IOS` in relay `.env`.** |
-| 2A item 2 — `MAJORTOM_PIN_TTL_MIN` env knob | Replace hardcoded `PIN_EXPIRY_MS = 5 * 60 * 1000` with `parseInt(process.env['MAJORTOM_PIN_TTL_MIN'] ?? '5', 10) * 60_000` in `relay/src/auth/pin-manager.ts`. ~5 LoC. | PENDING — picked up next session |
+| 2A item 2 — `MAJORTOM_PIN_TTL_MIN` env knob | `PIN_EXPIRY_MS` now derived from `MAJORTOM_PIN_TTL_MIN` env var (default 5, clamped to ≥ 1 min). Documented in `.env.example`; `get-pin.sh` comment updated. No iOS change. | SHIPPED (#172, 2026-05-21). Set `MAJORTOM_PIN_TTL_MIN=30` in relay `.env` to bump TTL. |
 | 2A item 3 — Biometric quick-pair | Optional. Store last-good PIN in Keychain under `kSecAccessControlBiometryCurrentSet`; offer "Use Face ID to re-pair" button. Skip if OAuth lands first (it has). | DEPRIORITIZED |
 | 2 — Provenance + tunnel discovery + fingerprint UX | `/api/discovery` endpoint, URL provenance tracking, auto-clear stale URLs on app foreground, relay-fingerprint chip + sanitize Bonjour `displayName` (mitigates round-1 Wave 1 hostile-relay advisories) | DEFERRED |
 | 3 — UX polish | Chip RTT labels, recently-used history, manual-override lock icon | DEFERRED |
