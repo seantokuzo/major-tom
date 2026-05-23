@@ -175,26 +175,6 @@ Reproducible: happens specifically when a custom subagent type (e.g. `claude-cod
 
 ---
 
-### 10. PTY-launched subagent sprites stuck on "Spawning" status forever
-
-**Symptom (L11 QA, 2026-04-20):** when claude runs inside a terminal tab (PTY path, not SDK/fleet), subagents spawn successfully, the sprite appears, but the status badge permanently shows "SPAWNING". The sprite never transitions to "WORKING" while actually running tools, never to "IDLE" when waiting, and jumps straight to dismissal when SubagentStop fires. The inspector can't show what tool the subagent is running ("Reading file X", "Running bash", etc.).
-
-**Root cause:** The relay's PTY hook path only wires `SubagentStart` → `agent.spawn` and `SubagentStop` → `agent.dismissed`. There is no Claude Code hook for "subagent is now running a tool". The SDK adapter path synthesizes `agent.working` / `agent.idle` from `tool-start` / `tool-complete` stream events; the PTY path has no equivalent producer.
-
-**Fix direction:**
-- Wire `PreToolUse` hook payloads (which already flow through `/hooks/pre-tool-use`) to also emit `agent.working` when the tool call is attributed to a subagent. The hook payload's `parent_tool_use_id` / `session_id` should let us identify which live subagent owns the call. The task description becomes the tool name (`Read`, `Bash`, `Grep`, etc.) with optional input summary.
-- Consider `PostToolUse` → `agent.idle` symmetric transition. Or at least flip back to `.working` with a blank task until the next tool starts. Short-lived "idle" flips during a multi-tool subagent would look jittery — maybe stay `.working` until SubagentStop.
-- Relay changes live in `relay/src/hooks/hook-server.ts` (pre-tool-use branch → also emit agent-lifecycle working) and the subagent attribution logic.
-
-**Priority:** P1 — core sprite storytelling broken for every PTY-launched claude session. Also likely the root cause of QA-FIXES #11 (/btw send).
-
-**Files:**
-- `relay/src/hooks/hook-server.ts` — emit agent.working alongside approval enqueue.
-- `relay/src/events/agent-tracker.ts` — possibly new `working(agentId, tool)` shape.
-- iOS `OfficeViewModel.handleAgentWorking` — already consumes correctly; no change expected.
-
----
-
 ### 11. `/btw` send broken for PTY sprites (layered root cause)
 
 **Symptom (L11 QA, 2026-04-20):** user taps a PTY-subagent sprite in the Office, types a `/btw` message, hits send. Text stays in the input. No relay receipt.
