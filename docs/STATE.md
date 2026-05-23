@@ -2,19 +2,14 @@
 
 > Auto-injected into fresh sessions. Keep concise.
 
-## Current Phase (in flight)
+## Current Phase
 
-**Pairing Reboot** — kill the hardcoded LAN IP + the PIN re-entry treadmill. Wave 1 + Wave 2A items 1-2 shipped; OAuth-only consolidation (PR #173) makes Google sign-in the sole iOS auth path with PIN gated behind `AUTH_PIN_ENABLED`. Wave 2 (provenance + security UX) deferred; Wave 2A item 3 deprioritized (OAuth subsumed). Spec: `docs/PHASE-PAIRING-REBOOT.md`. Memory: `project_pairing_reboot_handoff.md`.
+**No active phase.** Pairing Reboot closed 2026-05-23 — see `docs/PHASE-PAIRING-REBOOT.md § Phase Closeout`. Next phase up to Sean. QA-FIXES P3 queue still has open items: #18 (PR #174 probable fix, needs device QA), #20 (SpriteKit Stats overlay), #16 (/btw subagent reply quality). See `project_qa_followups_queue.md`.
 
-| Wave | Scope | Status |
-|------|-------|--------|
-| 1 — mDNS discovery + pre-flight ping | Relay advertises `_majortom._tcp` via `bonjour-service`; iOS `BonjourBrowser` (NWBrowser); hardcoded `.lan` preset dropped; chip-tap + PIN submit pre-flight `/auth/methods` for actionable "Server unreachable" errors | SHIPPED (#170, 2026-05-12) |
-| 2A item 1 — Google OAuth in iOS PairingView | ASWebAuthenticationSession + PKCE (no SDK), iOS-side nonce verify, relay accepts dual audiences (`GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_ID_IOS`), `/auth/google/client-id` returns iOS client ID for runtime gating, structured `INVITE_REQUIRED`/`INVITE_INVALID` codes on 403 | SHIPPED (#171, 2026-05-20). Activated 2026-05-22 (iOS OAuth client in Google Cloud Console + `GOOGLE_CLIENT_ID_IOS` in relay `.env`). |
-| 2A item 2 — `MAJORTOM_PIN_TTL_MIN` env knob | `PIN_EXPIRY_MS` now derived from `MAJORTOM_PIN_TTL_MIN` env var (default 5, clamped to ≥ 1 min). Documented in `.env.example`; `get-pin.sh` comment updated. No iOS change. | SHIPPED (#172, 2026-05-21). Set `MAJORTOM_PIN_TTL_MIN=30` in relay `.env` to bump TTL. |
-| 2A item 3 — Biometric quick-pair | Optional. Store last-good PIN in Keychain under `kSecAccessControlBiometryCurrentSet`; offer "Use Face ID to re-pair" button. | DEPRIORITIZED — OAuth + 7-day session cookie + Google passkey already deliver Face-ID-only re-auth. |
-| OAuth-only consolidation | iOS PairingView stripped of all PIN UI (PIN dots/keypad/Connect button) AND all URL surface (text field, Bonjour chip row, "Auto:" preset, "Offline" hint). URL resolution silent at call-time: Bonjour → reachability preset → tunnel fallback. `ServerPreset.lan` now falls back to `.cloudflare` so LAN-with-no-Bonjour still works. Relay `AUTH_PIN_ENABLED=false` returns 404 on `/auth/pin/*` (code intact for future re-enable). Tunnel hostname + Tailscale address hoisted into gitignored `Secrets.swift` (template at `Secrets.swift.example`). | SHIPPED (#173, 2026-05-23). Round 1 Tier 2 + Tier 3 deep both ship/0/9 advisory. |
-| 2 — Provenance + tunnel discovery + fingerprint UX | `/api/discovery` endpoint, URL provenance tracking, auto-clear stale URLs on app foreground, relay-fingerprint chip + sanitize Bonjour `displayName` (mitigates round-1 Wave 1 hostile-relay advisories) | DEFERRED |
-| 3 — UX polish | Chip RTT labels, recently-used history, manual-override lock icon | DEFERRED (UX has been radically simplified — most of Wave 3 is now obsolete) |
+### Pairing Reboot (closed 2026-05-23)
+
+Killed the hardcoded LAN IP + the PIN re-entry treadmill. Four PRs shipped: #170 (mDNS + pre-flight ping), #171 (Google OAuth in iOS), #172 (`MAJORTOM_PIN_TTL_MIN` env knob), #173 (OAuth-only consolidation — PIN UI gone from iOS, URL UI gone, `AUTH_PIN_ENABLED=false` 404s PIN routes, tunnel URL hoisted into gitignored `Secrets.swift`). Wave 2 (provenance UX) + Wave 3 (UX polish) marked **OBSOLETE** in the phase doc closeout — every UI surface they were designed to harden is gone. Wave 2A item 3 (biometric) **DEPRIORITIZED** — Google passkey + 7-day OAuth cookie already deliver Face-ID-only re-auth. Memory: `project_pairing_reboot_handoff.md`.
+
 
 ---
 
