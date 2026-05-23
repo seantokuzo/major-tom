@@ -1,5 +1,33 @@
 import Foundation
 
+// MARK: - Server Presets
+
+/// Relay URL targets picked from the device's current reachability.
+/// LAN deliberately falls through to the public tunnel — Bonjour
+/// discovery (see `currentRelayURL`) takes precedence when an mDNS
+/// broadcast is visible, so the tunnel is only used as a safety net
+/// when Bonjour can't see the relay (mDNS blocked, Mac asleep).
+enum ServerPreset {
+    case cloudflare
+    case tailscale
+
+    var address: String {
+        switch self {
+        case .cloudflare: return Secrets.tunnelURL
+        case .tailscale:  return Secrets.tailscaleAddress
+        }
+    }
+
+    init?(reachability: NetworkPathMonitor.Reachability) {
+        switch reachability {
+        case .tailscale: self = .tailscale
+        case .lan:       self = .cloudflare
+        case .cellular:  self = .cloudflare
+        case .offline:   return nil
+        }
+    }
+}
+
 @Observable
 @MainActor
 final class PairingViewModel {

@@ -1,35 +1,5 @@
 import SwiftUI
 
-// MARK: - Server Presets
-
-/// Relay URL targets picked from the device's current reachability.
-/// LAN deliberately falls through to the public tunnel — Bonjour
-/// discovery (see `PairingViewModel.currentRelayURL`) takes precedence
-/// when an mDNS broadcast is visible, so the tunnel is only used as a
-/// safety net when Bonjour can't see the relay (mDNS blocked, Mac asleep).
-enum ServerPreset {
-    case cloudflare
-    case tailscale
-    case localhost
-
-    var address: String {
-        switch self {
-        case .cloudflare: return Secrets.tunnelURL
-        case .tailscale:  return Secrets.tailscaleAddress
-        case .localhost:  return "localhost:9090"
-        }
-    }
-
-    init?(reachability: NetworkPathMonitor.Reachability) {
-        switch reachability {
-        case .tailscale: self = .tailscale
-        case .lan:       self = .cloudflare
-        case .cellular:  self = .cloudflare
-        case .offline:   return nil
-        }
-    }
-}
-
 struct PairingView: View {
     @State private var viewModel: PairingViewModel
 
