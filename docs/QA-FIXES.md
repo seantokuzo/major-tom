@@ -449,28 +449,6 @@ Review: 3/3 specialists `ship`, 0 blocking, 0 advisory. CI green. Single-file ch
 
 ---
 
-### 20. SpriteKit Stats overlay text is tiny / hidden behind bottom tab bar (device QA 2026-05-02)
-
-**Symptom (Wave D #11b device QA, 2026-05-02):** Sean toggled Settings → Developer → "SpriteKit Stats" ON, opened an Office. The expected SKView built-in text overlay (FPS / nodes / draws / quads in bottom-right corner) is either tiny or rendered BEHIND the bottom tab bar (Terminal / Office / Connect / Analytics / … More). Effectively unusable for spot-checking perf.
-
-**Root cause:** SKView's `showsFPS` / `showsNodeCount` / `showsDrawCount` / `showsQuadCount` render their text in the bottom-right corner of the SKView's bounds. The Office's SKView extends behind the bottom safe area / tab bar, so the auto-positioned text gets occluded.
-
-**Fix directions:**
-- **A.** Inset the SKView's bottom edge by tab bar height + safe-area-bottom — sacrifices ~80px of Office viewport but shows stats cleanly.
-- **B.** Replace SKView's built-in stats with a SwiftUI overlay (manual `Text` views reading `scene.lastUpdateTime` / `nodes.count` etc. via `OfficeSceneManager` exposing them as `@Observable`). Positioned via `.safeAreaInset(edge: .bottom)`. Cleaner, gives us control over font size + color.
-- **C.** Move the SKView's stats to top-right via subclassing — SKView's text positioning isn't directly settable but iOS-level workarounds exist.
-
-**B is recommended** — built-in SKView stats are notoriously unreadable on phone screens (white text on whatever the scene background is, no shadow, fixed font size). Going custom future-proofs us.
-
-**Priority:** P3 — dev tooling not user-facing. Only matters when we want to spot-check perf on device.
-
-**Files:**
-- `ios/MajorTom/Features/Office/Views/OfficeView.swift` — SKView container, `.safeAreaInset` wiring
-- `ios/MajorTom/Features/Office/ViewModels/OfficeSceneManager.swift` — expose stats counters
-- `ios/MajorTom/Features/Office/Views/OfficeScene.swift` — likely where the toggle flips `showsFPS` etc.
-
----
-
 ### 18. Bash PS1 missing `\W`/`\w` expansion on first prompt of fresh tab (device QA 2026-05-01)
 
 **Symptom (mid-Wave-D14 device QA, 2026-05-01):** Sean opens a fresh Terminal tab → bash spawns → first prompt renders WITHOUT the cwd basename (the `\W` part of his PS1). `ls` confirms the shell IS in the right cwd (`~/Documents/code/dev`). Once he `cd`'s to ANY directory (even the same one), the prompt renders correctly with the basename. Bug is purely first-prompt only.
