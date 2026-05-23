@@ -1,10 +1,36 @@
 import Foundation
 
+// MARK: - Server Presets
+
+/// Relay URL targets picked from the device's current reachability.
+/// LAN deliberately falls through to the public tunnel — Bonjour
+/// discovery (see `currentRelayURL`) takes precedence when an mDNS
+/// broadcast is visible, so the tunnel is only used as a safety net
+/// when Bonjour can't see the relay (mDNS blocked, Mac asleep).
+enum ServerPreset {
+    case cloudflare
+    case tailscale
+
+    var address: String {
+        switch self {
+        case .cloudflare: return Secrets.tunnelURL
+        case .tailscale:  return Secrets.tailscaleAddress
+        }
+    }
+
+    init?(reachability: NetworkPathMonitor.Reachability) {
+        switch reachability {
+        case .tailscale: self = .tailscale
+        case .lan:       self = .cloudflare
+        case .cellular:  self = .cloudflare
+        case .offline:   return nil
+        }
+    }
+}
+
 @Observable
 @MainActor
 final class PairingViewModel {
-    var pin: String = ""
-    var serverAddress: String = ""
     var authMethods: AuthMethods?
     var isFetchingMethods = false
     /// Google iOS OAuth client ID surfaced by the relay (`/auth/google/client-id`).
@@ -30,7 +56,6 @@ final class PairingViewModel {
         self.network = network ?? NetworkPathMonitor()
         self.browser = browser ?? BonjourBrowser()
         self.googleOAuth = googleOAuth ?? GoogleOAuthService()
-        self.serverAddress = auth.serverURL
     }
 
     var authState: AuthState { auth.authState }
@@ -42,15 +67,6 @@ final class PairingViewModel {
         return nil
     }
 
-    var canSubmit: Bool {
-        pin.count == 6 && !isPairing
-    }
-
-    /// Whether PIN auth is available (or auth methods haven't been fetched yet).
-    var isPinEnabled: Bool {
-        authMethods?.pin ?? true
-    }
-
     /// Whether Google sign-in is offerable in the UI — relay must have Google
     /// auth enabled AND have an iOS client ID configured. The iOS app can't
     /// run the flow without a client ID, so we hide the button instead of
@@ -59,28 +75,24 @@ final class PairingViewModel {
         (authMethods?.google ?? false) && (googleIOSClientID?.isEmpty == false)
     }
 
-    /// Whether any auth method is available.
-    var hasAnyAuthMethod: Bool {
-        guard let methods = authMethods else { return true }
-        return methods.pin || methods.google
-    }
-
-    /// Live list of relays discovered on the local network via Bonjour
-    /// (`_majortom._tcp`). Empty when offline, browsing hasn't started,
-    /// or local-network permission has been denied.
-    var discoveredServices: [BonjourBrowser.DiscoveredService] {
-        browser.services
-    }
-
-    /// Whether Bonjour discovery is actively browsing (`false` after
-    /// stop or permission denial).
-    var isBrowsing: Bool {
-        browser.isBrowsing
+    /// Resolve the relay URL at call-time:
+    /// 1. First Bonjour-discovered service if any (lowest latency on LAN).
+    /// 2. Reachability-driven preset (Tailscale on VPN, tunnel otherwise).
+    /// 3. Tunnel hostname as a final safety net so signin never has nothing to hit.
+    var currentRelayURL: String {
+        if let discovered = browser.services.first {
+            return discovered.address
+        }
+        if let preset = ServerPreset(reachability: network.reachability) {
+            return preset.address
+        }
+        return Secrets.tunnelURL
     }
 
     /// Start mDNS discovery. Idempotent — safe to call repeatedly on
-    /// view appear. Wraps the Bonjour service to preserve MVVM so the
-    /// view doesn't reach into the discovery service directly.
+    /// view appear. The pairing UI no longer surfaces the discovered
+    /// services, but they still drive `currentRelayURL` so an on-LAN
+    /// relay is preferred over the tunnel.
     func startDiscovery() {
         browser.start()
     }
@@ -91,49 +103,17 @@ final class PairingViewModel {
         browser.stop()
     }
 
-    /// Single preset matched to the phone's current reachability — `nil`
-    /// when offline or before the path monitor has fired its first update.
-    var recommendedPreset: ServerPreset? {
-        ServerPreset(reachability: network.reachability)
-    }
-
-    /// Apply the auto-picked URL and refetch auth methods.
-    func useRecommended() async {
-        guard let preset = recommendedPreset else { return }
-        await applyAddress(preset.address)
-    }
-
-    /// Apply a Bonjour-discovered relay and refetch auth methods.
-    func useDiscovered(_ service: BonjourBrowser.DiscoveredService) async {
-        await applyAddress(service.address)
-    }
-
-    /// On first appear, if the user has no saved server URL, seed the field
-    /// with the first discovered service if one exists, falling back to the
-    /// path monitor's recommendation. Subsequent reachability changes do
-    /// NOT auto-overwrite — the user can tap a chip to refresh on demand.
-    func applyInitialRecommendationIfNeeded() {
-        guard serverAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        if let discovered = discoveredServices.first {
-            serverAddress = discovered.address
-            return
-        }
-        if let preset = recommendedPreset {
-            serverAddress = preset.address
-        }
-    }
-
     /// Fetch auth methods from the relay to adapt the login UI.
     /// Also fetches the Google client-id payload when Google is enabled so
     /// the iOS app knows whether the relay is set up for native sign-in.
     func fetchAuthMethods() async {
-        let trimmed = serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        let target = currentRelayURL
+        guard !target.isEmpty else { return }
 
         isFetchingMethods = true
         defer { isFetchingMethods = false }
 
-        let baseURL = AuthService.normalizeBaseURL(trimmed)
+        let baseURL = AuthService.normalizeBaseURL(target)
         guard let url = URL(string: "\(baseURL)/auth/methods") else { return }
 
         do {
@@ -142,7 +122,6 @@ final class PairingViewModel {
                   httpResponse.statusCode == 200 else { return }
             authMethods = try JSONDecoder().decode(AuthMethods.self, from: data)
         } catch {
-            // Older relays may not have this endpoint — show all methods
             authMethods = nil
         }
 
@@ -155,7 +134,8 @@ final class PairingViewModel {
 
     /// Pull the relay's iOS Google client ID. Optional endpoint — older
     /// relays don't return `iosClientId`, in which case the Google button
-    /// stays hidden and the user falls back to PIN.
+    /// stays hidden and the user sees the "Google sign-in not available"
+    /// fallback.
     private func fetchGoogleClientID(baseURL: String) async {
         guard let url = URL(string: "\(baseURL)/auth/google/client-id") else { return }
         do {
@@ -182,22 +162,22 @@ final class PairingViewModel {
     /// the auth code for an ID token, then exchange the ID token for a
     /// relay session cookie. Pre-flights reachability so we surface
     /// "Server unreachable at <URL>" instead of "Connection failed" when
-    /// the user picked a stale chip.
+    /// the auto-picked relay can't be reached.
     func signInWithGoogle() async {
-        let trimmed = serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        let target = currentRelayURL
+        guard !target.isEmpty else { return }
         guard let clientID = googleIOSClientID, !clientID.isEmpty else {
             auth.authState = .error("Relay isn't configured for iOS Google sign-in")
             return
         }
 
-        if !(await reachable(trimmed)) {
-            auth.authState = .error("Server unreachable at \(trimmed). Pick a different relay or check your network.")
+        if !(await reachable(target)) {
+            auth.authState = .error("Server unreachable at \(target). Check your network or relay status.")
             HapticService.deny()
             return
         }
 
-        auth.saveServerURL(trimmed)
+        auth.saveServerURL(target)
         isSigningInWithGoogle = true
         defer { isSigningInWithGoogle = false }
 
@@ -217,65 +197,13 @@ final class PairingViewModel {
         }
     }
 
-    func submitPIN() async {
-        let trimmed = serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        // Pre-flight reachability ping — turns silent "Connection failed" into
-        // a specific "Server unreachable at <URL>" so the user knows whether
-        // to fix the URL or the PIN.
-        if !(await reachable(trimmed)) {
-            auth.authState = .error("Server unreachable at \(trimmed). Pick a different relay or check your network.")
-            HapticService.deny()
-            return
-        }
-
-        auth.saveServerURL(trimmed)
-        await auth.pair(pin: pin)
-
-        if auth.isPaired {
-            HapticService.celebrate()
-        } else {
-            HapticService.deny()
-            pin = ""
-        }
-    }
-
-    func appendDigit(_ digit: String) {
-        guard pin.count < 6 else { return }
-        pin += digit
-        HapticService.buttonTap()
-    }
-
-    func deleteDigit() {
-        guard !pin.isEmpty else { return }
-        pin.removeLast()
-        HapticService.buttonTap()
-    }
-
-    func clearPIN() {
-        pin = ""
-    }
-
     // MARK: - Helpers
-
-    private func applyAddress(_ address: String) async {
-        serverAddress = address
-        // Surface "Server unreachable at <URL>" on chip-tap the same way
-        // submitPIN does — keeps the spec's targeted error path consistent
-        // whether the user reaches the relay via chip or PIN submit.
-        if !(await reachable(address)) {
-            auth.authState = .error("Server unreachable at \(address). Pick a different relay or check your network.")
-            return
-        }
-        await fetchAuthMethods()
-    }
 
     /// 2-second probe against `/auth/methods`. Returns `true` for any
     /// HTTP response (including 4xx/5xx) — only transport errors mean
     /// unreachable. A reachable-but-broken server still gets the user
     /// past the targeted "Server unreachable at <URL>" message into the
-    /// PIN-exchange path where downstream errors carry more detail.
+    /// sign-in path where downstream errors carry more detail.
     private func reachable(_ address: String) async -> Bool {
         let baseURL = AuthService.normalizeBaseURL(address)
         guard let url = URL(string: "\(baseURL)/auth/methods") else { return false }

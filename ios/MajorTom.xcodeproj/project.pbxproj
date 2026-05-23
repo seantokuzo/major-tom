@@ -193,6 +193,7 @@
 		ECD4CC99C031E1B803D88C76 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 591E0D4455AD31B2BBD8761C /* Session.swift */; };
 		ECE7FC357B702CB405A5F331 /* MajorTomActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4BCC156442BF0A60A71BE43 /* MajorTomActivity.swift */; };
 		ED4F918BF0F4278063303B34 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2873A7A68C25BFA4E7C9756 /* AuthService.swift */; };
+		5644BBFA710B43CDACBD8F36 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF11B5D163424D8787E0E238 /* Secrets.swift */; };
 		EEC364BAF46BDDC91935F90C /* GitHubPullRequestsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B08AE1A01F5A9974B81ABDC /* GitHubPullRequestsView.swift */; };
 		EED4F3F2058E244DD48046D0 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC2DDB367FB9D1034575BBC5 /* WidgetData.swift */; };
 		EFAA4EF100ED5F838DC54CC8 /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91CC00DFBC23B1D7A0EC631C /* WatchModels.swift */; };
@@ -258,7 +259,7 @@
 		1B08AE1A01F5A9974B81ABDC /* GitHubPullRequestsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubPullRequestsView.swift; sourceTree = "<group>"; };
 		1CFE6DFB18C709862C80D1B4 /* SessionCostRankingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCostRankingView.swift; sourceTree = "<group>"; };
 		2145B0466091139BF0BC856D /* Activities.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Activities.json; sourceTree = "<group>"; };
-		2155A4D6123944C4CDE2BEE8 /* MajorTom.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MajorTom.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2155A4D6123944C4CDE2BEE8 /* Major Tom.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Major Tom.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		21F681FC6A3D7B14792DDC15 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		252632F83335C10C98CF577C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		27113A30A32A3F67614DC533 /* FleetWorkerCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetWorkerCard.swift; sourceTree = "<group>"; };
@@ -368,6 +369,7 @@
 		A0599D42F77C6262147106A2 /* ToolHumanizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolHumanizer.swift; sourceTree = "<group>"; };
 		A198759EB4EA086A9CBF595F /* AchievementsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementsViewModel.swift; sourceTree = "<group>"; };
 		A2873A7A68C25BFA4E7C9756 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		AF11B5D163424D8787E0E238 /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
 		A36A4C7C1708949F54A7FB29 /* Annotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Annotation.swift; sourceTree = "<group>"; };
 		A41DCABE657223AAA37DDFCF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A68F8F8EAF85A677E32B2E34 /* WaypointPathfinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaypointPathfinder.swift; sourceTree = "<group>"; };
@@ -458,7 +460,7 @@
 		00EBF36EF8823CBEA092949A /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				2155A4D6123944C4CDE2BEE8 /* MajorTom.app */,
+				2155A4D6123944C4CDE2BEE8 /* Major Tom.app */,
 				9E41011D1A5C03C795509B68 /* MajorTomWatch.app */,
 				D136B4051E73808BE748883D /* MajorTomWidgets.appex */,
 			);
@@ -873,6 +875,7 @@
 				83DC9EE0B42BC2DFDC0BFBE3 /* PerfHUDPreferences.swift */,
 				28F93EA76007AD19338D6B61 /* PhoneWatchConnectivityService.swift */,
 				6EF58FBAC8341407F9E3E7A0 /* RelayService.swift */,
+				AF11B5D163424D8787E0E238 /* Secrets.swift */,
 				9EA1E31252AE384FC025109F /* TabTitleStore.swift */,
 			);
 			path = Services;
@@ -1526,7 +1529,7 @@
 			packageProductDependencies = (
 			);
 			productName = MajorTom;
-			productReference = 2155A4D6123944C4CDE2BEE8 /* MajorTom.app */;
+			productReference = 2155A4D6123944C4CDE2BEE8 /* Major Tom.app */;
 			productType = "com.apple.product-type.application";
 		};
 		1D494ABB3D630BF9E0170060 /* MajorTomWidgets */ = {
@@ -1574,14 +1577,9 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					0F467BB7A12BEE96B6C65CF5 = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 					1D494ABB3D630BF9E0170060 = {
-						DevelopmentTeam = "";
-						ProvisioningStyle = Automatic;
-					};
-					466CF4A3CC1BD1A5FFC19FC3 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
@@ -1763,6 +1761,7 @@
 				95294489029F6CCA66271C3B /* RateLimitSettingsView.swift in Sources */,
 				3C07EFEF4D80196CACF66B4F /* RelayService.swift in Sources */,
 				DCC1DFB067FAF0EA4CB17690 /* RoleMapper.swift in Sources */,
+				5644BBFA710B43CDACBD8F36 /* Secrets.swift in Sources */,
 				ECD4CC99C031E1B803D88C76 /* Session.swift in Sources */,
 				7800B5EFB116E5708F3A6300 /* SessionCostRankingView.swift in Sources */,
 				8FBFC47F6355543CB70F368F /* SessionListView.swift in Sources */,
@@ -1853,6 +1852,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4B8499Z59P;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
 				INFOPLIST_KEY_CFBundleDisplayName = "Major Tom";
@@ -1860,6 +1862,7 @@
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.majortom.app.watchkitapp;
 				PRODUCT_NAME = MajorTomWatch;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SUPPORTS_MACCATALYST = NO;
@@ -1873,6 +1876,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4B8499Z59P;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
 				INFOPLIST_KEY_CFBundleDisplayName = "Major Tom";
@@ -1880,6 +1886,7 @@
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.majortom.app.watchkitapp;
 				PRODUCT_NAME = MajorTomWatch;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				SUPPORTS_MACCATALYST = NO;
@@ -1895,6 +1902,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 4B8499Z59P;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MajorTom/Info.plist;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
@@ -1956,7 +1964,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 4B8499Z59P;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -1986,7 +1994,11 @@
 				INFOPLIST_FILE = MajorTomWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Major Tom Widgets";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../../Frameworks @executable_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+					"@executable_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.majortom.app.widgets;
 				PRODUCT_NAME = MajorTomWidgets;
 				SDKROOT = iphoneos;
@@ -2002,6 +2014,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 4B8499Z59P;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MajorTom/Info.plist;
 				INFOPLIST_GENERATION_MODE = GeneratedFile;
@@ -2034,7 +2047,11 @@
 				INFOPLIST_FILE = MajorTomWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Major Tom Widgets";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../../Frameworks @executable_path/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+					"@executable_path/Frameworks",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.majortom.app.widgets;
 				PRODUCT_NAME = MajorTomWidgets;
 				SDKROOT = iphoneos;
@@ -2081,7 +2098,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 4B8499Z59P;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
