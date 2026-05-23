@@ -187,7 +187,13 @@ export class PtyAdapter {
       this.resolveDefaultCwd = homeFallback;
     }
     this.shell = opts.shell ?? this.env['SHELL'] ?? '/bin/bash';
-    this.shellArgs = opts.shellArgs ?? ['-l'];
+    // `-l -i`: login + explicit interactive. `-l` so the shell picks up the
+    // user's `.bash_profile` / `.zprofile` env (PATH, NVM, etc.); `-i` to
+    // force interactive mode so bash sources `.bashrc` even though the PTY
+    // stdin already qualifies as a TTY. Without `-i`, some bash setups skip
+    // the user's prompt-defining `.bashrc` on the very first render, leaving
+    // the default `\s-\v\$` PS1 visible until the next prompt (QA-FIXES #18).
+    this.shellArgs = opts.shellArgs ?? ['-l', '-i'];
     this.spawnFn = opts.spawn ?? pty.spawn;
     this.onTabClosed = opts.onTabClosed;
   }

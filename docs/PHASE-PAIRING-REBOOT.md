@@ -69,3 +69,46 @@ To actually use Sign-in-with-Google from the iOS app, the relay operator needs t
 - No relay-side `/api/discovery` endpoint (Wave 2).
 - No `tunnel:setup`/cloudflared changes.
 - No PWA changes — PWA discovery is handled by `window.location` already.
+
+---
+
+## Phase Closeout (2026-05-23)
+
+Pairing Reboot is **closed**. The original pain (DHCP-drift LAN IP + 5-min PIN treadmill) is fully resolved by what shipped, and the remaining waves are obsolete because the PR-#173 consolidation simplified the UX past what they were designed to fix.
+
+### Shipped
+
+| Wave | PR | Merged | Effect |
+|------|----|--------|--------|
+| 1 — mDNS discovery + pre-flight ping | #170 | 2026-05-12 | LAN-IP drift fixed; "Server unreachable" replaces "Connection failed" |
+| 2A item 1 — Google OAuth in iOS PairingView | #171 | 2026-05-20 | ASWebAuthenticationSession + PKCE; 7-day session cookie |
+| 2A item 2 — `MAJORTOM_PIN_TTL_MIN` env knob | #172 | 2026-05-21 | PIN TTL now configurable (dormant after OAuth-only flip) |
+| OAuth-only consolidation | #173 | 2026-05-23 | PIN UI gone from iOS, URL UI gone, `AUTH_PIN_ENABLED=false` on relay returns 404 on PIN routes, tunnel URL hoisted into gitignored `Secrets.swift` |
+
+### Wave 2 — provenance + security UX → **OBSOLETE**
+
+The OAuth-only consolidation removed every UI surface Wave 2 was designed to harden:
+
+- `GET /api/discovery` was for surfacing the live tunnel URL on chips → no chips render anymore.
+- URL provenance tracking + stale-URL auto-clear → no URL input field for the user to manage.
+- Relay fingerprint chip → no chips.
+- Sanitize Bonjour `displayName` rendering → `displayName` no longer rendered anywhere (Bonjour is now silent infrastructure feeding `currentRelayURL`).
+
+The realistic threat model is now `ALLOWED_EMAIL`-gated: even if an attacker fronts an mDNS lookalike `_majortom._tcp` service on a hostile LAN, the OAuth flow won't mint a session unless the Google account's email matches `seantokuzo@gmail.com` on the real relay. Documented as an explicit design trade-off in PR #173's review responses.
+
+### Wave 2A item 3 — biometric quick-pair → **DEPRIORITIZED (subsumed)**
+
+Google passkey on the user's Google account + 7-day OAuth session cookie + ASWebAuthenticationSession's cookie reuse already deliver the Face-ID-only re-auth Wave 2A item 3 was designed to add. Revisit only if Sean reports signing out often.
+
+### Wave 3 — UX polish → **OBSOLETE**
+
+- Chip RTT labels → no chips.
+- "Recently used" history → no URL UI to history.
+- Manual override 🔒 lock icon → no manual override.
+
+The login screen is now logo + "Sign in with Google to connect" + one button. There is nothing left to polish at this layer.
+
+### Out of phase (still queued)
+
+- `docs/QA-FIXES.md` follow-ups — see `project_qa_followups_phase.md` and `project_qa_p3_handoff.md`.
+- README setup doc for fresh clones (someone has to copy `Secrets.swift.example` → `Secrets.swift` before iOS builds) — see PR #173 advisory thread for context.
