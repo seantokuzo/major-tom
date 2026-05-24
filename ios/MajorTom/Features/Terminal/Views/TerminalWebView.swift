@@ -33,6 +33,18 @@ struct TerminalWebView: UIViewRepresentable {
         contentController.removeScriptMessageHandler(forName: "majorTom")
         contentController.removeAllUserScripts()
         webView.navigationDelegate = nil
+        // Wave 1 Terminal UX: detach the touch gestures + edit-menu
+        // interaction installed by attachTouchGestures(to:). UIKit would
+        // tear these down on WKWebView dealloc, but being explicit avoids
+        // the coordinator outliving the webview by one runloop and firing
+        // a stale arrow-key emission.
+        webView.gestureRecognizers?
+            .filter { $0.delegate === coordinator }
+            .forEach { webView.removeGestureRecognizer($0) }
+        if let interaction = coordinator.editMenuInteraction {
+            webView.removeInteraction(interaction)
+            coordinator.editMenuInteraction = nil
+        }
         // Nil the viewModel's weak reference to prevent stale calls
         coordinator.viewModel.webView = nil
         // Break WKWebViewConfiguration → WKUserContentController → Coordinator retain cycle
@@ -85,6 +97,11 @@ struct TerminalWebView: UIViewRepresentable {
         // Store a weak reference in the view model so the native keybar
         // can forward key taps via evaluateJavaScript.
         viewModel.webView = webView
+
+        // Wave 1 Terminal UX: swipe → arrow keys, long-press → Paste menu.
+        // Gestures live on the WKWebView; the Coordinator owns their state
+        // and the UIEditMenuInteraction so cleanup happens via dismantleUIView.
+        context.coordinator.attachTouchGestures(to: webView)
 
         // Inject the auth cookie, then load the terminal page.
         Task { @MainActor in
@@ -207,13 +224,119 @@ struct TerminalWebView: UIViewRepresentable {
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, UIGestureRecognizerDelegate {
         /// Exposed (not private) so `dismantleUIView` can nil the viewModel's
         /// weak webView reference during teardown to prevent stale calls.
         let viewModel: TerminalViewModel
 
+        // MARK: - Wave 1 Touch Gestures
+
+        /// Locked axis for the active pan — set on first significant
+        /// movement and cleared on gesture end. Prevents diagonal drags
+        /// from spraying mixed arrow keys.
+        fileprivate enum PanAxis { case horizontal, vertical }
+        private var panAxis: PanAxis?
+
+        /// Cumulative translation at the moment of the most recent arrow
+        /// emission. Subtracting from the current translation gives the
+        /// delta since the last emission, so emission rate stays uniform
+        /// across the full drag.
+        private var lastEmittedTranslation: CGPoint = .zero
+
+        /// Owned interaction so dismantleUIView can detach it cleanly.
+        var editMenuInteraction: UIEditMenuInteraction?
+
         init(viewModel: TerminalViewModel) {
             self.viewModel = viewModel
+        }
+
+        /// Install the pan + long-press recognizers and the edit-menu
+        /// interaction. Called once from `makeUIView`; teardown is mirrored
+        /// in `dismantleUIView`.
+        func attachTouchGestures(to webView: WKWebView) {
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(handleTerminalPan(_:)))
+            pan.maximumNumberOfTouches = 1
+            pan.delegate = self
+            webView.addGestureRecognizer(pan)
+
+            let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleTerminalLongPress(_:)))
+            longPress.minimumPressDuration = 0.5
+            longPress.delegate = self
+            webView.addGestureRecognizer(longPress)
+
+            let interaction = UIEditMenuInteraction(delegate: self)
+            webView.addInteraction(interaction)
+            editMenuInteraction = interaction
+        }
+
+        /// Pan handler — converts dominant-axis movement into a stream of
+        /// arrow-key bytes. Each ~one-character step along the locked axis
+        /// emits one key, so a slow drag scrolls smoothly and a quick flick
+        /// emits a burst. Sends batched escape sequences to minimise
+        /// JS-bridge round-trips.
+        @MainActor
+        @objc func handleTerminalPan(_ recognizer: UIPanGestureRecognizer) {
+            let translation = recognizer.translation(in: recognizer.view)
+            switch recognizer.state {
+            case .began:
+                panAxis = nil
+                lastEmittedTranslation = .zero
+
+            case .changed:
+                let dx = translation.x - lastEmittedTranslation.x
+                let dy = translation.y - lastEmittedTranslation.y
+                // Steps roughly match the rendered glyph metrics so drag
+                // distance lines up with on-screen movement. Monospace
+                // glyphs are ~0.6 the height of their em-square.
+                let fontSize = CGFloat(viewModel.keybarViewModel.fontSize)
+                let verticalStep = max(16, fontSize * 1.2)
+                let horizontalStep = max(10, fontSize * 0.65)
+
+                if panAxis == nil {
+                    // Wait until movement on either axis crosses the
+                    // vertical step before committing — keeps small jitters
+                    // from picking the wrong axis.
+                    if abs(dx) < verticalStep && abs(dy) < verticalStep { return }
+                    panAxis = abs(dx) > abs(dy) ? .horizontal : .vertical
+                }
+
+                guard let axis = panAxis else { return }
+                switch axis {
+                case .vertical:
+                    let steps = Int(dy / verticalStep)
+                    if steps == 0 { return }
+                    // Drag down → cursor down (\e[B); drag up → cursor up (\e[A).
+                    let key = steps < 0 ? "\u{1B}[A" : "\u{1B}[B"
+                    viewModel.sendBytes(String(repeating: key, count: abs(steps)))
+                    lastEmittedTranslation.y += CGFloat(steps) * verticalStep
+                case .horizontal:
+                    let steps = Int(dx / horizontalStep)
+                    if steps == 0 { return }
+                    let key = steps < 0 ? "\u{1B}[D" : "\u{1B}[C"
+                    viewModel.sendBytes(String(repeating: key, count: abs(steps)))
+                    lastEmittedTranslation.x += CGFloat(steps) * horizontalStep
+                }
+
+            case .ended, .cancelled, .failed:
+                panAxis = nil
+                lastEmittedTranslation = .zero
+
+            default:
+                break
+            }
+        }
+
+        /// Long-press handler — surface the system Paste menu at the press
+        /// location. Selection / Copy will land in Wave 2; this round only
+        /// adds Paste so users stop relying on the keybar long-press as
+        /// the only paste path.
+        @MainActor
+        @objc func handleTerminalLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            guard recognizer.state == .began else { return }
+            guard let interaction = editMenuInteraction else { return }
+            let location = recognizer.location(in: recognizer.view)
+            let configuration = UIEditMenuConfiguration(identifier: nil, sourcePoint: location)
+            interaction.presentEditMenu(with: configuration)
         }
 
         // MARK: - WKScriptMessageHandler
@@ -253,5 +376,49 @@ struct TerminalWebView: UIViewRepresentable {
             // Signal the view model to show recovery UI and reload on next update.
             viewModel.handleProcessTermination()
         }
+
+        // MARK: - UIGestureRecognizerDelegate
+
+        /// Run alongside the WKWebView's own recognizers so single taps still
+        /// reach the focus path (which raises the keyboard). Our pan only
+        /// engages once translation crosses its step threshold, and the long-
+        /// press only fires after 0.5s — neither competes with a quick tap.
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+
+    }
+}
+
+// MARK: - UIEditMenuInteractionDelegate
+//
+// Pulled out into its own `@preconcurrency` extension because the protocol
+// itself isn't `@MainActor`-isolated in the iOS 17 SDK headers, so adding it
+// to the class declaration triggers a Swift 6 actor-isolation warning. UIKit
+// always invokes this delegate on the main thread in practice, so `@MainActor`
+// on the method is safe — `@preconcurrency` tells the compiler to relax the
+// strict-Swift-6 conformance check for this one protocol.
+extension TerminalWebView.Coordinator: @preconcurrency UIEditMenuInteractionDelegate {
+    @MainActor
+    func editMenuInteraction(
+        _ interaction: UIEditMenuInteraction,
+        menuFor configuration: UIEditMenuConfiguration,
+        suggestedActions: [UIMenuElement]
+    ) -> UIMenu? {
+        guard UIPasteboard.general.hasStrings else { return UIMenu(children: []) }
+        let paste = UIAction(
+            title: "Paste",
+            image: UIImage(systemName: "doc.on.clipboard")
+        ) { [weak self] _ in
+            guard let self,
+                  let text = UIPasteboard.general.string,
+                  !text.isEmpty else { return }
+            self.viewModel.pasteText(text)
+            HapticService.impact(.light)
+        }
+        return UIMenu(children: [paste])
     }
 }
