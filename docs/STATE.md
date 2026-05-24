@@ -4,7 +4,7 @@
 
 ## Current Phase
 
-**No active phase.** Pairing Reboot closed 2026-05-23 — see `docs/PHASE-PAIRING-REBOOT.md § Phase Closeout`. Next phase up to Sean. QA-FIXES P3 queue still has open items: #18 (PR #174 probable fix, needs device QA), #20 (SpriteKit Stats overlay), #16 (/btw subagent reply quality). See `project_qa_followups_queue.md`.
+**Terminal UX** — Wave 1 shipped (PR #175, 2026-05-23). 4-wave bundle pulled from `project_qa_followups_queue.md` top-of-stack. Wave 1 (touch input) ships swipe→arrow keys + long-press→system Paste menu on the WKWebView terminal; round-1 verdict clean across all 3 specialists, 0 blocking, 0 advisory. **Device QA pending on Sean's phone** — test plan in PR #175. Wave 2 (selection + copy) requires research-agent scout on xterm.js touch-selection in iOS WKWebView before starting per `project_terminal_ux_phase.md` warning. Wave 4 (autocorrect toggle) can slip in parallel if Wave 1 device QA stalls.
 
 ### Pairing Reboot (closed 2026-05-23)
 
