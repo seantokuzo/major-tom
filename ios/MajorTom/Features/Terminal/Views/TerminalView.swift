@@ -374,10 +374,11 @@ struct TerminalView: View {
                 errorView(message: message)
             default:
                 ZStack {
+                    // Terminal UX Wave 1 — long-press on the terminal now
+                    // surfaces the system Paste edit menu (handled inside
+                    // TerminalWebView's Coordinator). Copy mode is still
+                    // reachable via the status-bar toggle.
                     TerminalWebView(viewModel: viewModel)
-                        .onLongPressGesture(minimumDuration: 0.5) {
-                            toggleCopyMode()
-                        }
 
                     if viewModel.didTerminate {
                         recoveryOverlay
