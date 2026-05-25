@@ -7,8 +7,22 @@
 
 ## Current Phase
 
-**Wave 3 — Two Parallel Tracks** (Phase 14 SwiftTerm + Ground Control)
-Both tracks at Wave 3, independent, zero shared files. Run on separate branches.
+**P0 — Relay-restart login bug (DO THIS FIRST).** After a relay restart Sean
+can't log in on iOS ("Google OAuth not available"). This blocks ALL device QA,
+including Terminal UX Wave 1. Full diagnosis + prioritized fix plan (P1-P5) in
+`docs/HANDOFF-RELAY-OAUTH-RESTART.md`; memory `project_relay_oauth_restart_bug.md`.
+Start there: capture the live failing request from the phone FIRST, then fix.
+Relay-side OAuth is PROVEN working — the bug is app↔relay reachability + a
+`SESSION_SECRET` regenerate/append footgun. Sean approved "full hardening".
+
+**Then — Terminal UX bundle.** Wave 1 (touch input: swipe→arrows, long-press→
+Paste) SHIPPED via PR #175, build installed on Sean's phone, **device QA still
+pending (blocked by the login bug above)**. Waves 2-4 pending; Wave 2
+(selection+copy) needs an xterm.js touch-selection research scout first. See
+`docs/STATE.md` + `project_terminal_ux_phase.md`.
+
+> NOTE: keep this file in sync with `docs/STATE.md` — both are state docs;
+> THIS one (`.claude/STATE.md`) is what the session-start hook injects.
 
 ## Strategy
 
