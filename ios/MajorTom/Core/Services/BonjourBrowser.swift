@@ -135,7 +135,9 @@ final class BonjourBrowser {
         case .name(let name, _):
             hostString = name
         case .ipv4(let ip):
-            hostString = "\(ip)"
+            // IPv4Address interpolation can append a "%en0" zone id; the '%'
+            // breaks URL(string:), and a literal IPv4 never needs one.
+            hostString = String("\(ip)".prefix { $0 != "%" })
         case .ipv6:
             return nil
         @unknown default:
