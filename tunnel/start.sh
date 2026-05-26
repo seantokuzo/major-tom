@@ -25,4 +25,7 @@ if [ -z "${TUNNEL_ID}" ]; then
   exit 1
 fi
 
-exec cloudflared tunnel --config "${CONFIG_FILE}" run "${TUNNEL_ID}"
+# Force the HTTP/2 edge transport. The QUIC default flaps on some networks
+# ("failed to accept QUIC stream: timeout: no recent network activity"),
+# repeatedly dropping the WebSocket before the PTY can spawn.
+exec cloudflared tunnel --config "${CONFIG_FILE}" --protocol http2 run "${TUNNEL_ID}"
