@@ -41,7 +41,8 @@ final class RelayURLResolver {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: timeout)
         while clock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(150))
+            // Break (don't busy-spin) if the task is cancelled mid-wait.
+            do { try await Task.sleep(for: .milliseconds(150)) } catch { break }
             if let lan = browser.services.first?.address { return lan }
         }
         return auth.serverURL
