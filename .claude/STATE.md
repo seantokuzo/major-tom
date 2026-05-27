@@ -7,19 +7,34 @@
 
 ## Current Phase
 
-**P0 — Relay-restart login bug (DO THIS FIRST).** After a relay restart Sean
-can't log in on iOS ("Google OAuth not available"). This blocks ALL device QA,
-including Terminal UX Wave 1. Full diagnosis + prioritized fix plan (P1-P5) in
-`docs/HANDOFF-RELAY-OAUTH-RESTART.md`; memory `project_relay_oauth_restart_bug.md`.
-Start there: capture the live failing request from the phone FIRST, then fix.
-Relay-side OAuth is PROVEN working — the bug is app↔relay reachability + a
-`SESSION_SECRET` regenerate/append footgun. Sean approved "full hardening".
+**P0 terminal-connect — SHIPPED (PR #177, merged → main `adf2711`).** Two fixes:
+- **%en0 Bonjour fix** (`ios/.../BonjourBrowser.swift`) — strips the `%en0` zone
+  id that broke `URL(string:)` (this was the real "OAuth not available" login
+  bug; verified on device).
+- **Tunnel HTTP/2** (`tunnel/start.sh --protocol http2`) — stops cloudflared
+  flapping on QUIC, which had been dropping the WebSocket before the PTY spawned.
 
-**Then — Terminal UX bundle.** Wave 1 (touch input: swipe→arrows, long-press→
-Paste) SHIPPED via PR #175, build installed on Sean's phone, **device QA still
-pending (blocked by the login bug above)**. Waves 2-4 pending; Wave 2
-(selection+copy) needs an xterm.js touch-selection research scout first. See
-`docs/STATE.md` + `project_terminal_ux_phase.md`.
+The tunnel is stable; the terminal connects. Full context: memory
+`project_terminal_lan_connect_handoff.md`.
+
+**HELD — draft PR #176:** the LAN-preference feature (app-level Bonjour +
+`RelayURLResolver` → app prefers a live LAN address over the frozen tunnel).
+Round-1 review = ship/0-blocking but flagged a **high-impact security** issue:
+`bestRelayURL` hands the session cookie to the first `_majortom._tcp` mDNS
+responder with no relay-identity binding (LAN peer → token theft → shell). Sean
+chose **option 2**: ship the safe fixes (done), hold the LAN feature until
+**relay-identity binding** exists (TXT/cert fingerprint pinned at pairing,
+verified at connect). That binding is the **NEXT** task to unblock #176 — full
+plan + file refs in `docs/HANDOFF-RELAY-IDENTITY-BINDING.md`.
+
+Relay `SESSION_SECRET` hardening (P3/P4/P5 in
+`docs/HANDOFF-RELAY-OAUTH-RESTART.md`) is still pending as a **separate relay
+PR** — lower urgency (it did NOT cause this; env loaded fine, footgun didn't fire).
+
+**Terminal UX bundle.** Wave 1 (touch input) SHIPPED via PR #175; device QA now
+unblocked by the login fix but still gated on the terminal-connect fix above.
+Waves 2-4 pending; Wave 2 (selection+copy) needs an xterm.js touch-selection
+research scout first. See `project_terminal_ux_phase.md`.
 
 > NOTE: keep this file in sync with `docs/STATE.md` — both are state docs;
 > THIS one (`.claude/STATE.md`) is what the session-start hook injects.
