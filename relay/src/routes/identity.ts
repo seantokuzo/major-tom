@@ -63,10 +63,12 @@ export function createIdentityRoutes(deps: IdentityDeps): FastifyPluginAsync {
 
       const message = Buffer.concat([Buffer.from(CHALLENGE_CONTEXT, 'utf-8'), nonce]);
       const signature = deps.identity.sign(message);
+      // Every binary field on the identity surface (publicKey, fingerprint,
+      // signature) is base64url so the iOS verifier uses a single decoder.
       return {
         alg: 'ed25519',
         publicKey: deps.identity.publicKeyBase64url,
-        signature: signature.toString('base64'),
+        signature: signature.toString('base64url'),
       };
     });
   };

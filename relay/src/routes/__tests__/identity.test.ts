@@ -70,7 +70,7 @@ describe('POST /identity/challenge', () => {
 
     const message = Buffer.concat([Buffer.from(CHALLENGE_CONTEXT, 'utf-8'), nonce]);
     expect(
-      verify(null, message, publicKeyFrom(body.publicKey), Buffer.from(body.signature, 'base64')),
+      verify(null, message, publicKeyFrom(body.publicKey), Buffer.from(body.signature, 'base64url')),
     ).toBe(true);
   });
 
@@ -84,7 +84,7 @@ describe('POST /identity/challenge', () => {
     });
     const body = res.json() as { publicKey: string; signature: string };
     expect(
-      verify(null, nonce, publicKeyFrom(body.publicKey), Buffer.from(body.signature, 'base64')),
+      verify(null, nonce, publicKeyFrom(body.publicKey), Buffer.from(body.signature, 'base64url')),
     ).toBe(false);
   });
 
