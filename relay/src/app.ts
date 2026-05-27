@@ -24,10 +24,12 @@ import { createShellRoute, clearUserIdForTab, getUserIdForTab } from './routes/s
 import { createApiApprovalsRoutes } from './routes/api-approvals.js';
 import { createPreferencesRoutes } from './routes/preferences.js';
 import { createRelayConfigRoutes } from './routes/relay-config.js';
+import { createIdentityRoutes } from './routes/identity.js';
 import {
   RelayConfigStore,
   resolveDefaultSpawnCwd,
 } from './config/relay-config.js';
+import { RelayIdentity } from './identity/relay-identity.js';
 import { PtyAdapter } from './adapters/pty-adapter.js';
 
 // Phase 13 Wave 2 — shell-side approval routing
@@ -72,6 +74,9 @@ import { homedir } from 'node:os';
 declare module 'fastify' {
   interface FastifyInstance {
     userRegistry?: UserRegistry;
+    // base64url sha256 of the relay's Ed25519 public key. Set once in
+    // buildApp so server.ts can advertise it in the mDNS TXT record.
+    relayIdentityFingerprint: string;
   }
 }
 
@@ -123,6 +128,13 @@ export async function buildApp(config: AppConfig) {
   // up the new value without a restart (QA-FIXES #19).
   const relayConfigStore = new RelayConfigStore();
   await relayConfigStore.load();
+
+  // Relay identity — persistent Ed25519 keypair (`~/.major-tom/relay-identity.json`)
+  // giving the relay a stable, verifiable identity independent of the rotating
+  // SESSION_SECRET. The fingerprint is advertised over mDNS TXT and the key is
+  // proven via POST /identity/challenge, so the iOS app can pin it at pairing
+  // and refuse to hand the session cookie to an unverified LAN host.
+  const relayIdentity = await RelayIdentity.load();
 
   // Multi-user services — only created when multi-user mode is enabled
   const userRegistry = config.multiUserEnabled ? new UserRegistry() : undefined;
@@ -336,6 +348,7 @@ export async function buildApp(config: AppConfig) {
   await app.register(websocketPlugin);
 
   // ── Decorate with shared services ──────────────────────
+  app.decorate('relayIdentityFingerprint', relayIdentity.fingerprint);
   if (userRegistry) {
     app.decorate('userRegistry', userRegistry);
   }
@@ -350,6 +363,12 @@ export async function buildApp(config: AppConfig) {
     authGoogleEnabled: config.authGoogleEnabled,
     authPinEnabled: config.authPinEnabled,
   }));
+
+  // Relay identity (public) — Ed25519 public key + fingerprint and a
+  // nonce-signing challenge. Lets the iOS app pin the relay's identity at
+  // pairing and verify a discovered LAN host holds the matching private key
+  // before trusting it with the session cookie (LAN-preference binding).
+  await app.register(createIdentityRoutes({ identity: relayIdentity }));
 
   // ── Shell PTY adapter ──────────────────────────────────
   // Instantiated before any route that references it (health + shell).
