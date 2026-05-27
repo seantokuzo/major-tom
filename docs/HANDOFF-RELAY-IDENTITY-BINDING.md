@@ -6,6 +6,65 @@
 
 ---
 
+## STATUS (2026-05-27) — RELAY HALF SHIPPED (PR #178, merged → main `2a48f79`)
+
+The relay side is done and on main. As-built contract the iOS side must match:
+
+- **Identity:** persistent Ed25519 keypair at `~/.major-tom/relay-identity.json`
+  (PKCS#8 PEM, mode 0600, generated once; corrupt/missing → regenerate).
+  Module: `relay/src/identity/relay-identity.ts`.
+- **mDNS TXT:** `fp=<base64url(sha256(rawPubKey))>` added in
+  `relay/src/discovery/mdns.ts`. **Discovery FILTER only, not a trust anchor**
+  (plaintext multicast — anyone can echo it).
+- **`GET /identity`** (public) → `{ alg:"ed25519", publicKey, fingerprint }`.
+  `publicKey` = base64url of the raw 32-byte Ed25519 key. Captured at pairing.
+- **`POST /identity/challenge`** (public) → body `{ nonce: <base64 string> }`
+  (decoded 16–64 bytes) → `{ alg, publicKey, signature }`. **Signature is over
+  `UTF8("major-tom/relay-identity/v1:") || nonceBytes`**, NOT the bare nonce;
+  `signature` is **base64url**. The constant `CHALLENGE_CONTEXT` is exported from
+  `relay/src/routes/identity.ts` — mirror it byte-for-byte on iOS.
+- Routes registered in `relay/src/app.ts`; both paths in `PUBLIC_PATHS`
+  (`relay/src/plugins/auth.ts`).
+
+**Correction to the original plan below:** challenge-response signing is
+**MANDATORY**, not optional. A TXT-fingerprint pin alone is defeated because the
+fp is public (multicast) — an attacker just echoes it. Trust = pinned public key
++ a valid signature over a fresh nonce. (Closes impostor / "first responder"
+cookie theft; does NOT defeat an on-path MITM forwarding the nonce to the real
+relay — needs TLS channel binding, a separate follow-up hardening.)
+
+### Round-1 advisory dispositions (carry into #176)
+1. **base64url consistency** — FIXED in relay (`0f2fbad`): signature is base64url
+   like publicKey/fingerprint. iOS decodes every binary field as base64url.
+2. **LAN-only scoping of /identity/challenge** — DECLINED (signatures leak
+   nothing / are useless to a remote party; IP-based LAN detection behind
+   Cloudflare is fragile; `GET /identity` must stay tunnel-reachable for pairing).
+3. **CHALLENGE_CONTEXT canonical source** — TODO in #176: mirror the exact bytes,
+   add a comment citing the relay constant as canonical, and add an end-to-end
+   iOS test that verifies a real relay signature so a desync fails CI.
+
+### Remaining iOS work (folds into draft PR #176, branch `fix/ios-relay-lan-connect`)
+1. `BonjourBrowser.swift` — add `fingerprint: String?` to `DiscoveredService`,
+   parse the TXT `fp` from `NWBrowser.Result.metadata` (`.bonjour(NWTXTRecord)`).
+2. `KeychainService.swift` — new key for the pinned relay public key. At pairing
+   (post-OAuth, against the authed host) `GET /identity`, store `publicKey`.
+   Wire in `PairingViewModel.signInWithGoogle` / `AuthService`.
+3. `RelayURLResolver.swift` — gate LAN preference: fast-filter discovered hosts
+   by pinned fp, then `POST /identity/challenge` with a fresh 32-byte nonce and
+   verify the Ed25519 signature (CryptoKit
+   `Curve25519.Signing.PublicKey(rawRepresentation:).isValidSignature(_:for:)`)
+   over `CHALLENGE_CONTEXT||nonce` against the pinned key. Cache only verified
+   hosts so the sync `bestRelayURL` stays safe; else fall back to the tunnel.
+   Callers: `MajorTomApp:87` (connect), `TerminalViewModel:382/400/410` (shell).
+4. Build iOS, rebase #176 onto main (drops the already-merged %en0 + tunnel
+   commits), mark ready, run Tier-2 review, merge.
+
+Decoding note: the relay sends base64url for `publicKey` + `signature`; send the
+`nonce` TO the relay as standard base64. On iOS, base64url-decode the relay's
+values and base64-encode your nonce.
+
+---
+
 ## TL;DR
 
 - **Already shipped (PR #177 → main `adf2711`):** `%en0` Bonjour fix + tunnel

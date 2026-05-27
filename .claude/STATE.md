@@ -17,15 +17,27 @@
 The tunnel is stable; the terminal connects. Full context: memory
 `project_terminal_lan_connect_handoff.md`.
 
-**HELD — draft PR #176:** the LAN-preference feature (app-level Bonjour +
-`RelayURLResolver` → app prefers a live LAN address over the frozen tunnel).
-Round-1 review = ship/0-blocking but flagged a **high-impact security** issue:
-`bestRelayURL` hands the session cookie to the first `_majortom._tcp` mDNS
-responder with no relay-identity binding (LAN peer → token theft → shell). Sean
-chose **option 2**: ship the safe fixes (done), hold the LAN feature until
-**relay-identity binding** exists (TXT/cert fingerprint pinned at pairing,
-verified at connect). That binding is the **NEXT** task to unblock #176 — full
-plan + file refs in `docs/HANDOFF-RELAY-IDENTITY-BINDING.md`.
+**Relay-identity binding — RELAY HALF SHIPPED (PR #178, merged → main `2a48f79`).**
+The relay now has a persistent Ed25519 identity (`~/.major-tom/relay-identity.json`).
+Its fingerprint rides the mDNS TXT record (`fp=`), `GET /identity` exposes the
+public key (base64url) + fingerprint, and `POST /identity/challenge` signs a
+domain-separated client nonce (`"major-tom/relay-identity/v1:" + nonce`; signature
+base64url). Round-1 review: unanimous ship, 0 blocking. **Key correction vs. the
+original handoff:** a TXT-fingerprint pin alone is NOT sufficient (the fp is
+plaintext multicast — any LAN host can echo it), so challenge-response signing is
+**mandatory**; the fp is only a discovery filter. Closes the impostor "first
+responder" cookie-theft hole; does NOT defeat an on-path MITM forwarding the nonce
+(needs TLS channel binding — tracked as follow-up hardening).
+
+**IN PROGRESS — iOS half (folds into draft PR #176, branch `fix/ios-relay-lan-connect`):**
+pin the relay public key in Keychain at pairing (post-OAuth `GET /identity`),
+parse the TXT `fp` in `BonjourBrowser`, and gate `RelayURLResolver.bestRelayURL`
+on a challenge-response verify (CryptoKit Ed25519) against the pinned key before
+handing the session cookie to any discovered LAN host — else fall back to the
+tunnel. Then rebase #176 onto main, mark ready, review, merge. Carried review
+advisory: mirror `CHALLENGE_CONTEXT` byte-for-byte + add an end-to-end signature
+test so relay/iOS can't silently desync. As-shipped contract + full iOS spec in
+`docs/HANDOFF-RELAY-IDENTITY-BINDING.md`.
 
 Relay `SESSION_SECRET` hardening (P3/P4/P5 in
 `docs/HANDOFF-RELAY-OAUTH-RESTART.md`) is still pending as a **separate relay

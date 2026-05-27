@@ -4,6 +4,8 @@
 
 ## Current Phase
 
+**Relay-identity binding** — RELAY HALF SHIPPED (PR #178, 2026-05-27 → main `2a48f79`). Persistent Ed25519 relay identity: fingerprint in mDNS TXT (`fp=`), `GET /identity` (public key) + `POST /identity/challenge` (signs `"major-tom/relay-identity/v1:" + nonce`, base64url). Unblocks the held LAN-preference feature. **iOS half next** — pin the key at pairing + challenge-response verify before trusting a discovered LAN host, folds into draft PR #176. As-shipped contract + iOS spec: `docs/HANDOFF-RELAY-IDENTITY-BINDING.md`. Signing is mandatory (the fingerprint is public); the MITM-forwarding residual is deferred to TLS-pinning hardening.
+
 **Terminal UX** — Wave 1 shipped (PR #175, 2026-05-23). 4-wave bundle pulled from `project_qa_followups_queue.md` top-of-stack. Wave 1 (touch input) ships swipe→arrow keys + long-press→system Paste menu on the WKWebView terminal; round-1 verdict clean across all 3 specialists, 0 blocking, 0 advisory. **Device QA pending on Sean's phone** — test plan in PR #175. Wave 2 (selection + copy) requires research-agent scout on xterm.js touch-selection in iOS WKWebView before starting per `project_terminal_ux_phase.md` warning. Wave 4 (autocorrect toggle) can slip in parallel if Wave 1 device QA stalls.
 
 ### Pairing Reboot (closed 2026-05-23)
