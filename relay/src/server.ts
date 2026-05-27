@@ -61,7 +61,9 @@ async function main() {
     // Advertise on the local network so the iOS app can discover us
     // without the user typing the Mac's LAN IP. Failures here are
     // non-fatal — the relay still serves HTTP, just without auto-discovery.
-    mdns = startMdns(PORT);
+    // The identity fingerprint rides along in the TXT record so the app can
+    // fast-filter discovered hosts before challenging them (see app.ts).
+    mdns = startMdns(PORT, app.relayIdentityFingerprint);
 
     // Startup info
     console.log('');

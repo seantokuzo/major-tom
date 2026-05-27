@@ -18,6 +18,8 @@ const PUBLIC_PATHS = new Set([
   '/auth/me', // returns 401 if no session — frontend uses this to check auth state
   '/auth/methods', // public — clients need this to determine available auth methods
   '/auth/pin/login', // public — PIN auth handles its own rate limiting
+  '/identity', // public — exposes only the relay's PUBLIC identity key + fingerprint
+  '/identity/challenge', // public — signs a client nonce to prove key possession (LAN identity binding)
 ]);
 
 /** Path prefixes that are always public (static files handled by @fastify/static) */
