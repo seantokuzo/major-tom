@@ -6,7 +6,17 @@
 
 ---
 
-## STATUS (2026-05-27) — RELAY HALF SHIPPED (PR #178, merged → main `2a48f79`)
+## STATUS (2026-05-28) — FULLY SHIPPED (relay PR #178 + iOS PR #176)
+
+> ✅ **iOS half shipped: PR #176, merged → main `04850e9`.** The app pins the
+> relay public key at pairing and gates `RelayURLResolver` on a CryptoKit Ed25519
+> challenge-response verify (fail-closed to the tunnel). Review: unanimous ship,
+> 0 blocking; impartial judge merge/high. Deferred follow-ups: #179 (snapshot
+> `bestRelayURL` per connection — transient desync), #180 (relay CI vector for the
+> handshake contract). The "Remaining iOS work" section below is now DONE —
+> retained for reference. On-path MITM residual still needs TLS channel binding.
+
+## (original) RELAY HALF SHIPPED (PR #178, merged → main `2a48f79`)
 
 The relay side is done and on main. As-built contract the iOS side must match:
 

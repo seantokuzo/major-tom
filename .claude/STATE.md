@@ -29,15 +29,25 @@ plaintext multicast — any LAN host can echo it), so challenge-response signing
 responder" cookie-theft hole; does NOT defeat an on-path MITM forwarding the nonce
 (needs TLS channel binding — tracked as follow-up hardening).
 
-**IN PROGRESS — iOS half (folds into draft PR #176, branch `fix/ios-relay-lan-connect`):**
-pin the relay public key in Keychain at pairing (post-OAuth `GET /identity`),
-parse the TXT `fp` in `BonjourBrowser`, and gate `RelayURLResolver.bestRelayURL`
-on a challenge-response verify (CryptoKit Ed25519) against the pinned key before
-handing the session cookie to any discovered LAN host — else fall back to the
-tunnel. Then rebase #176 onto main, mark ready, review, merge. Carried review
-advisory: mirror `CHALLENGE_CONTEXT` byte-for-byte + add an end-to-end signature
-test so relay/iOS can't silently desync. As-shipped contract + full iOS spec in
-`docs/HANDOFF-RELAY-IDENTITY-BINDING.md`.
+**Relay-identity binding — iOS HALF SHIPPED (PR #176, merged → main `04850e9`).**
+The app now pins the relay's Ed25519 public key at pairing (post-OAuth
+`GET /identity` against the authed host → Keychain `relay_public_key`, cleared on
+unpair) and gates the LAN preference on a challenge-response verify: `RelayURLResolver`
+only hands the session cookie to a discovered LAN host that signs a fresh 32-byte
+nonce (`POST /identity/challenge`) verifiably against the pinned key (CryptoKit
+Ed25519 over `"major-tom/relay-identity/v1:" || nonce`), else falls back to the
+tunnel (**fail-closed**; no pinned key → always tunnel). `BonjourBrowser` parses
+the TXT `fp` as a fast filter only; `RelayIdentityVerifier` mirrors
+`CHALLENGE_CONTEXT` byte-for-byte and carries a DEBUG self-test over a real
+relay-produced vector (no iOS XCTest target yet, so it's an in-process tripwire).
+Review: unanimous ship, 0 blocking; impartial judge merge/high. **Follow-ups
+deferred:** #179 (snapshot `bestRelayURL` once per connection to kill a transient,
+self-healing cookie-domain/socket-host desync) and #180 (relay CI vector locking
+the handshake contract). The on-path MITM residual still needs TLS channel
+binding (tracked). Full spec: `docs/HANDOFF-RELAY-IDENTITY-BINDING.md`.
+
+With both halves shipped, the **LAN-preference feature is now fully unblocked**:
+the app prefers a verified local relay over the tunnel at connect time.
 
 Relay `SESSION_SECRET` hardening (P3/P4/P5 in
 `docs/HANDOFF-RELAY-OAUTH-RESTART.md`) is still pending as a **separate relay
