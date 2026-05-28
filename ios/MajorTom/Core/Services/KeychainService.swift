@@ -9,6 +9,11 @@ enum KeychainService {
         case deviceId = "device_id"
         case deviceName = "device_name"
         case serverURL = "server_url"
+        /// base64url of the paired relay's raw Ed25519 public key, captured at
+        /// pairing from `GET /identity`. Pins the relay identity so a discovered
+        /// LAN host must prove possession of the matching private key (challenge-
+        /// response) before the session cookie is handed to it.
+        case relayPublicKey = "relay_public_key"
     }
 
     static func save(_ value: String, for key: Key) throws {
@@ -67,7 +72,7 @@ enum KeychainService {
     }
 
     static func deleteAll() {
-        for key in [Key.deviceToken, .deviceId, .deviceName, .serverURL] {
+        for key in [Key.deviceToken, .deviceId, .deviceName, .serverURL, .relayPublicKey] {
             delete(key)
         }
     }

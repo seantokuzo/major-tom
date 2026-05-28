@@ -127,8 +127,12 @@ final class TerminalViewModel {
         keybarViewModel.selectedTheme
     }
 
-    /// Reference to the auth service for relay URL and token.
+    /// Reference to the auth service for the session token.
     private let auth: AuthService
+
+    /// Resolves the relay base URL at access time, preferring a live LAN
+    /// (Bonjour) address over the tunnel frozen into `auth.serverURL`.
+    private let relayResolver: RelayURLResolver
 
     /// Shared store of user-supplied tab titles. Bidirectional — the
     /// Office Manager writes here too and this VM sees the change via
@@ -144,9 +148,10 @@ final class TerminalViewModel {
     /// UserDefaults key for the active tab ID (string).
     private static let persistedActiveTabIdKey = "mt-terminal-active-tab-id"
 
-    init(auth: AuthService, titleStore: TabTitleStore) {
+    init(auth: AuthService, titleStore: TabTitleStore, relayResolver: RelayURLResolver) {
         self.auth = auth
         self.titleStore = titleStore
+        self.relayResolver = relayResolver
         self.keybarViewModel = KeybarViewModel(auth: auth)
 
         // Restore persisted tab IDs. Tab-Keyed Offices (Wave 4) — we no
@@ -374,7 +379,7 @@ final class TerminalViewModel {
 
     /// Build the relay WebSocket URL for `/shell/:tabId`.
     var relayURL: String {
-        let base = auth.serverURL
+        let base = relayResolver.bestRelayURL
         let scheme = base.contains("://") ? "" : "http://"
         // Strip protocol prefix for the host, then decide ws/wss
         let fullBase = "\(scheme)\(base)"
@@ -392,7 +397,7 @@ final class TerminalViewModel {
 
     /// The relay domain for cookie injection.
     var relayDomain: String {
-        let base = auth.serverURL
+        let base = relayResolver.bestRelayURL
         let cleaned = base
             .replacingOccurrences(of: "https://", with: "")
             .replacingOccurrences(of: "http://", with: "")
@@ -402,7 +407,7 @@ final class TerminalViewModel {
 
     /// Full relay base URL (http/https) for cookie path.
     var relayBaseURL: String {
-        let base = auth.serverURL
+        let base = relayResolver.bestRelayURL
         let scheme = base.contains("://") ? "" : "http://"
         return "\(scheme)\(base)"
     }

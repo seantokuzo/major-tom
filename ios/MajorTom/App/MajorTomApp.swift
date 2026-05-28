@@ -10,6 +10,8 @@ struct MajorTomApp: App {
     @State private var watchConnectivity = PhoneWatchConnectivityService()
     @State private var titleStore: TabTitleStore
     @State private var terminalViewModel: TerminalViewModel
+    @State private var bonjour: BonjourBrowser
+    @State private var relayResolver: RelayURLResolver
     @State private var achievementsViewModel: AchievementsViewModel?
     @State private var selectedTab: AppTab = .terminal
 
@@ -19,9 +21,13 @@ struct MajorTomApp: App {
         // a per-tab iOS decision — no auto-creation tied to claude.
         let authService = AuthService()
         let store = TabTitleStore()
+        let browser = BonjourBrowser()
+        let resolver = RelayURLResolver(auth: authService, browser: browser)
         _auth = State(initialValue: authService)
         _titleStore = State(initialValue: store)
-        _terminalViewModel = State(initialValue: TerminalViewModel(auth: authService, titleStore: store))
+        _bonjour = State(initialValue: browser)
+        _relayResolver = State(initialValue: resolver)
+        _terminalViewModel = State(initialValue: TerminalViewModel(auth: authService, titleStore: store, relayResolver: resolver))
     }
     @Environment(\.scenePhase) private var scenePhase
 
@@ -75,8 +81,12 @@ struct MajorTomApp: App {
                 guard isPaired else { return }
                 Task {
                     _ = await notificationService.requestPermission()
-                    await relay.fetchAuthMethods(serverURL: auth.serverURL)
-                    try? await relay.connect(to: auth.serverURL)
+                    // Prefer a LAN relay (Bonjour) over the tunnel that login
+                    // froze into auth.serverURL — give discovery a brief window,
+                    // then connect to whatever it resolved.
+                    let url = await relayResolver.resolvePreferringLAN()
+                    await relay.fetchAuthMethods(serverURL: url)
+                    try? await relay.connect(to: url)
                 }
             }
             // Wave 4: flush queued /btw messages when the relay reconnects so
@@ -127,10 +137,19 @@ struct MajorTomApp: App {
             }
             // Check for cross-process shortcut actions (Siri / Shortcuts app) on scene phase change
             .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
+                switch newPhase {
+                case .active:
+                    // Keep LAN discovery alive while foregrounded (paired only)
+                    // so reconnects prefer the LAN; tear it down in the
+                    // background to avoid needless mDNS browsing.
+                    if auth.isPaired { bonjour.start() }
                     if let action = ShortcutActionKey.consumeAction() {
                         handleShortcutAction(action)
                     }
+                case .background:
+                    bonjour.stop()
+                default:
+                    break
                 }
             }
         }
