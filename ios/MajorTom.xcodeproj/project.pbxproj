@@ -145,6 +145,7 @@
 		B7F0B7EF40820D1ACBD5720D /* Annotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A36A4C7C1708949F54A7FB29 /* Annotation.swift */; };
 		B80728DFDC6CDB7632A9C9F3 /* BonjourBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = C069FA164159ADD13137E0D4 /* BonjourBrowser.swift */; };
 		DA7A9B0C1E2F3A4B5C6D7E8F /* RelayURLResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9D8C7B6A5040312233445F /* RelayURLResolver.swift */; };
+		DA7A9B0C1E2F3A4B5C6D7E90 /* RelayIdentityVerifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9D8C7B6A50403122334460 /* RelayIdentityVerifier.swift */; };
 		B9CFDC96DCA82CD435DD595A /* AchievementDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67A72007588F923516F48711 /* AchievementDetailView.swift */; };
 		BA5A66BBDF281BB44ECE265A /* SessionStatusWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA07545B6E9F73EED9477FB /* SessionStatusWidget.swift */; };
 		BD4DE18F7D89A6E7BE778875 /* CharacterConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49975C50EF000FB470E30360 /* CharacterConfig.swift */; };
@@ -394,6 +395,7 @@
 		C0656AE4C6DEE802350E31BF /* MajorTomLiveActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MajorTomLiveActivityView.swift; sourceTree = "<group>"; };
 		C069FA164159ADD13137E0D4 /* BonjourBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourBrowser.swift; sourceTree = "<group>"; };
 		FE9D8C7B6A5040312233445F /* RelayURLResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayURLResolver.swift; sourceTree = "<group>"; };
+		FE9D8C7B6A50403122334460 /* RelayIdentityVerifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayIdentityVerifier.swift; sourceTree = "<group>"; };
 		C13191C0A248C84CA6959981 /* WebSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketClient.swift; sourceTree = "<group>"; };
 		C1CCA0A46BE9EDE79DF3CB8F /* SessionCountWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCountWidget.swift; sourceTree = "<group>"; };
 		C3905D6FC3ABC4A370246F3F /* FleetDashboardWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetDashboardWidget.swift; sourceTree = "<group>"; };
@@ -869,6 +871,7 @@
 				A2873A7A68C25BFA4E7C9756 /* AuthService.swift */,
 				C069FA164159ADD13137E0D4 /* BonjourBrowser.swift */,
 				FE9D8C7B6A5040312233445F /* RelayURLResolver.swift */,
+				FE9D8C7B6A50403122334460 /* RelayIdentityVerifier.swift */,
 				10F013B10B2AA2CD96B19588 /* DangerScoring.swift */,
 				0C7C2FED0200F1F7FCCC6ABA /* FeatureFlags.swift */,
 				11059EFAA85B7AEC69089941 /* GoogleOAuthService.swift */,
@@ -1678,6 +1681,7 @@
 				5C09E77A601A493E96E1CFF9 /* AutoApprovalBadge.swift in Sources */,
 				B80728DFDC6CDB7632A9C9F3 /* BonjourBrowser.swift in Sources */,
 				DA7A9B0C1E2F3A4B5C6D7E8F /* RelayURLResolver.swift in Sources */,
+				DA7A9B0C1E2F3A4B5C6D7E90 /* RelayIdentityVerifier.swift in Sources */,
 				4D8A276AB100B6546118BDCB /* CIPanelView.swift in Sources */,
 				559913FC6E46B681AB795212 /* CIRunsView.swift in Sources */,
 				BD4DE18F7D89A6E7BE778875 /* CharacterConfig.swift in Sources */,

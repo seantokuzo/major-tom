@@ -125,6 +125,9 @@ final class AuthService {
                 try KeychainService.save(cookie, for: .deviceToken)
                 try KeychainService.save(deviceId, for: .deviceId)
                 try KeychainService.save(deviceName, for: .deviceName)
+                // Pin the relay identity against the host we actually authed to,
+                // before flipping to `.paired` (which kicks off the connect path).
+                await pinRelayIdentity(baseURL: baseURL)
                 sessionCookie = cookie
                 authState = .paired(deviceId: deviceId)
 
@@ -187,6 +190,9 @@ final class AuthService {
                 try KeychainService.save(cookie, for: .deviceToken)
                 try KeychainService.save(deviceId, for: .deviceId)
                 try KeychainService.save(deviceName, for: .deviceName)
+                // Pin the relay identity against the host we actually authed to,
+                // before flipping to `.paired` (which kicks off the connect path).
+                await pinRelayIdentity(baseURL: baseURL)
                 sessionCookie = cookie
                 authState = .paired(deviceId: deviceId)
 
@@ -214,6 +220,31 @@ final class AuthService {
             }
         } catch {
             authState = .error("Connection failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Relay Identity Pin
+
+    /// Capture and pin the relay's Ed25519 public key at pairing. Fetched from
+    /// `GET /identity` against the OAuth'd host (the one we trust because the
+    /// user just authed to it), so a later LAN-discovered host can be required
+    /// to prove possession of the matching private key before we trust it with
+    /// the session cookie (see `RelayURLResolver` / `RelayIdentityVerifier`).
+    ///
+    /// Best-effort: a relay without `/identity` (older build) simply never gets
+    /// a pinned key, so the resolver always falls back to the tunnel — safe.
+    private func pinRelayIdentity(baseURL: String) async {
+        guard let url = URL(string: "\(baseURL)/identity") else { return }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 4.0
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let identity = try? JSONDecoder().decode(RelayIdentityResponse.self, from: data),
+                  !identity.publicKey.isEmpty else { return }
+            try? KeychainService.save(identity.publicKey, for: .relayPublicKey)
+        } catch {
+            // Network/transport failure — leave any prior pin untouched.
         }
     }
 
@@ -252,6 +283,13 @@ private struct RelayLoginResponse: Codable {
     let picture: String?
     let userId: String?
     let role: String?
+}
+
+/// Shape returned by `GET /identity` — the relay's Ed25519 identity. We pin
+/// `publicKey` (base64url of the raw 32-byte key); `alg`/`fingerprint` are
+/// derivable from it and not stored.
+private struct RelayIdentityResponse: Decodable {
+    let publicKey: String
 }
 
 /// Error envelope returned by `/auth/*` routes on non-2xx responses.

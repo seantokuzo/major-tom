@@ -19,6 +19,12 @@ final class BonjourBrowser {
         /// be a `.local` mDNS hostname or a literal IP — both are accepted
         /// by the system resolver on subsequent HTTP requests.
         let address: String
+        /// Relay identity fingerprint advertised in the Bonjour TXT record
+        /// (`fp` = base64url(sha256(pubKey))), or `nil` if the responder
+        /// published none. A *discovery filter only* — the fingerprint is
+        /// public multicast, so trust is established by `RelayIdentityVerifier`'s
+        /// challenge-response, not by this value matching.
+        let fingerprint: String?
     }
 
     private(set) var services: [DiscoveredService] = []
@@ -84,11 +90,11 @@ final class BonjourBrowser {
             if services.contains(where: { $0.id == name }) { continue }
             if resolvers[name] != nil { continue }
             if services.count + resolvers.count >= Self.maxServices { break }
-            startResolve(for: result, name: name)
+            startResolve(for: result, name: name, fingerprint: Self.fingerprint(from: result))
         }
     }
 
-    private func startResolve(for result: NWBrowser.Result, name: String) {
+    private func startResolve(for result: NWBrowser.Result, name: String, fingerprint: String?) {
         let params = NWParameters.tcp
         params.prohibitedInterfaceTypes = [.cellular]
         let conn = NWConnection(to: result.endpoint, using: params)
@@ -100,7 +106,7 @@ final class BonjourBrowser {
                 switch state {
                 case .ready:
                     if let address = Self.address(from: conn.currentPath?.remoteEndpoint) {
-                        let entry = DiscoveredService(id: name, displayName: name, address: address)
+                        let entry = DiscoveredService(id: name, displayName: name, address: address, fingerprint: fingerprint)
                         if !self.services.contains(entry) {
                             self.services.append(entry)
                         }
@@ -119,6 +125,16 @@ final class BonjourBrowser {
 
     private static func serviceName(from result: NWBrowser.Result) -> String? {
         if case .service(let name, _, _, _) = result.endpoint { return name }
+        return nil
+    }
+
+    /// Pull the relay identity fingerprint (`fp`) from the Bonjour TXT record
+    /// carried on the browse result, if present. Absent for responders that
+    /// publish no TXT record — in which case the resolver still challenges the
+    /// host (the signature, not the fingerprint, is the trust anchor).
+    private static func fingerprint(from result: NWBrowser.Result) -> String? {
+        guard case .bonjour(let txtRecord) = result.metadata else { return nil }
+        if case .string(let fp) = txtRecord.getEntry(for: "fp") { return fp }
         return nil
     }
 
