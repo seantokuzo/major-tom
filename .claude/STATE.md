@@ -49,6 +49,13 @@ binding (tracked). Full spec: `docs/HANDOFF-RELAY-IDENTITY-BINDING.md`.
 With both halves shipped, the **LAN-preference feature is now fully unblocked**:
 the app prefers a verified local relay over the tunnel at connect time.
 
+**NEXT (queued — `docs/HANDOFF-POST-IDENTITY-FOLLOWUPS.md`):**
+- **Session 1:** iOS #179 (snapshot `bestRelayURL` once per connection) + relay
+  #180 (CI vector locking the challenge contract) + **device-QA** the LAN feature
+  (reinstall main's build first — phone has the old pre-identity build).
+- **Session 2 (later):** Terminal UX Wave 2 (selection + copy) — **xterm.js
+  touch-selection research scout REQUIRED first** (see `project_terminal_ux_phase`).
+
 Relay `SESSION_SECRET` hardening (P3/P4/P5 in
 `docs/HANDOFF-RELAY-OAUTH-RESTART.md`) is still pending as a **separate relay
 PR** — lower urgency (it did NOT cause this; env loaded fine, footgun didn't fire).
