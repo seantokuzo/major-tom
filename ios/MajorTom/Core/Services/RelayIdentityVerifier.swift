@@ -116,14 +116,22 @@ enum RelayIdentityVerifier {
     /// docs/HANDOFF-RELAY-IDENTITY-BINDING.md): verify a REAL relay-produced
     /// Ed25519 vector through the exact path the app uses. If `challengeContext`,
     /// the base64url decode, or the CryptoKit wiring ever drift from the relay,
-    /// this trips immediately in a debug build. The vector was produced by the
-    /// same byte construction as `relay/src/identity/relay-identity.ts`
-    /// (`sign(null, utf8(CHALLENGE_CONTEXT) || nonce, ed25519PrivKey)`).
+    /// this trips immediately in a debug build.
+    ///
+    /// SINGLE SOURCE OF TRUTH (#180): this quadruple is pinned identically in the
+    /// relay CI lane — `relay/src/routes/__tests__/identity.test.ts`, the
+    /// "canonical /identity/challenge signed-byte vector" suite. Both sides
+    /// derive it from the SAME deterministic Ed25519 key (PKCS#8 from raw seed
+    /// 0x01..0x20) over the SAME byte construction as
+    /// `relay/src/identity/relay-identity.ts`
+    /// (`sign(null, utf8(CHALLENGE_CONTEXT) || nonce, ed25519PrivKey)`), with the
+    /// nonce expressed as STANDARD base64. If you regenerate one side, regenerate
+    /// the other identically or the iOS↔relay handshake desyncs silently.
     static func runSelfTest() {
-        let publicKeyB64u = "q4pQhxT0AhdTFWnjIPoOMxPAdpvhS3MD3FIH99vdrSg"
+        let publicKeyB64u = "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ"
         let nonceB64 = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
-        let signatureB64u = "BEtOQAX7i_EacFiPJmeXoGzlf5P4LCz90oQL3myQB6q9CrumI2N86iHGISPp8cil76iAOeBkq3vQuO1v6jvkCQ"
-        let expectedFingerprint = "wJZelWR9DWLLvgFUBSq1F_N_x8gmTFBp_3z14su95sU"
+        let signatureB64u = "Q7L_CUIA7y7nO6T7uOd0ipZjlKvVA_wKGXGgZK0ZkEz5aei-B1jB1gRXHYcoLrOUaLKFWysFS84zOdAjpcfmCQ"
+        let expectedFingerprint = "ZbYGc9btiEvwHCwiLYKtoHQPKawzVdapJcgfF_R6J7g"
 
         guard let raw = data(fromBase64url: publicKeyB64u),
               let nonce = Data(base64Encoded: nonceB64),
