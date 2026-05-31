@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import { createPublicKey, randomBytes, verify } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -106,5 +106,128 @@ describe('POST /identity/challenge', () => {
       payload: { nonce: Buffer.alloc(8).toString('base64') },
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+/**
+ * Canonical signed-byte contract — the GREEN-lane tripwire (#180).
+ *
+ * The whole-suite goal: a future base64 ⇄ base64url "cleanup" on EITHER side of
+ * the iOS↔relay handshake must not be able to silently desync it. So we pin the
+ * EXACT (publicKeyB64url, nonceStdB64, signatureB64url, fingerprint) quadruple
+ * against a CHECKED-IN, deterministic Ed25519 key. Any change to the encodings,
+ * the domain-separation prefix, the nonce-decode base, the fingerprint hash, or
+ * the message-assembly order flips one of these hardcoded strings and fails the
+ * lane loudly.
+ *
+ * This exercises the REAL relay code path — not a re-implementation:
+ *   - public key + fingerprint come from `RelayIdentity.derivePublic()` (loaded
+ *     from the fixed PKCS#8 PEM persisted below),
+ *   - the signature comes from `RelayIdentity.sign()`,
+ *   - the message is assembled byte-for-byte the way `POST /identity/challenge`
+ *     does it (`utf8(CHALLENGE_CONTEXT) || nonce`).
+ *
+ * The SAME quadruple is mirrored in the iOS DEBUG self-test
+ * (`ios/MajorTom/Core/Services/RelayIdentityVerifier.swift` → `runSelfTest()`),
+ * so the two clients verify against ONE source of truth. If you regenerate this
+ * vector, regenerate that one identically.
+ *
+ * Fixed key material: a PKCS#8 Ed25519 private key built from the raw seed
+ * bytes 0x01..0x20. Fixed nonce: bytes 0x00..0x1F as STANDARD base64 (with
+ * padding) — the relay decodes the nonce with `Buffer.from(nonce, 'base64')`.
+ */
+describe('canonical /identity/challenge signed-byte vector (#180)', () => {
+  // PKCS#8 PEM of the deterministic Ed25519 key (raw seed 0x01..0x20).
+  const FIXED_PRIVATE_KEY_PEM = [
+    '-----BEGIN PRIVATE KEY-----',
+    'MC4CAQAwBQYDK2VwBCIEIAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8g',
+    '-----END PRIVATE KEY-----',
+    '',
+  ].join('\n');
+
+  // Fixed nonce bytes 0x00..0x1F as STANDARD base64 (32 bytes → passes the
+  // 16–64 byte bound; STANDARD base64 keeps padding).
+  const NONCE_STD_B64 = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
+
+  // The pinned quadruple. Hardcoded on purpose: these strings are the contract.
+  const EXPECTED_PUBLIC_KEY_B64URL = 'ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ';
+  const EXPECTED_SIGNATURE_B64URL =
+    'Q7L_CUIA7y7nO6T7uOd0ipZjlKvVA_wKGXGgZK0ZkEz5aei-B1jB1gRXHYcoLrOUaLKFWysFS84zOdAjpcfmCQ';
+  const EXPECTED_FINGERPRINT = 'ZbYGc9btiEvwHCwiLYKtoHQPKawzVdapJcgfF_R6J7g';
+
+  let fixtureDir: string;
+  let fixedIdentity: RelayIdentity;
+
+  beforeEach(async () => {
+    fixtureDir = await mkdtemp(join(tmpdir(), 'identity-vector-'));
+    const idFile = join(fixtureDir, 'relay-identity.json');
+    await writeFile(
+      idFile,
+      JSON.stringify({ version: 1, alg: 'ed25519', privateKeyPem: FIXED_PRIVATE_KEY_PEM }),
+      'utf-8',
+    );
+    // Loads the FIXED key — real derivePublic() + real sign() are exercised.
+    fixedIdentity = await RelayIdentity.load(idFile);
+  });
+
+  afterEach(async () => {
+    await rm(fixtureDir, { recursive: true, force: true });
+  });
+
+  it('derives the exact pinned public key (base64url) from the fixed key', () => {
+    expect(fixedIdentity.publicKeyBase64url).toBe(EXPECTED_PUBLIC_KEY_B64URL);
+  });
+
+  it('derives the exact pinned fingerprint = base64url(sha256(rawPublicKey))', () => {
+    expect(fixedIdentity.fingerprint).toBe(EXPECTED_FINGERPRINT);
+  });
+
+  it('produces the exact pinned signature over utf8(CHALLENGE_CONTEXT) || nonce', () => {
+    // STANDARD-base64 nonce decode — identical to the route's
+    // `Buffer.from(nonceB64, 'base64')`.
+    const nonce = Buffer.from(NONCE_STD_B64, 'base64');
+    expect(nonce).toHaveLength(32);
+
+    // Message assembled byte-for-byte the way POST /identity/challenge does it.
+    const message = Buffer.concat([Buffer.from(CHALLENGE_CONTEXT, 'utf-8'), nonce]);
+    const signatureB64url = fixedIdentity.sign(message).toString('base64url');
+
+    expect(signatureB64url).toBe(EXPECTED_SIGNATURE_B64URL);
+  });
+
+  it('the pinned signature verifies over the pinned public key + nonce', () => {
+    const nonce = Buffer.from(NONCE_STD_B64, 'base64');
+    const message = Buffer.concat([Buffer.from(CHALLENGE_CONTEXT, 'utf-8'), nonce]);
+    const ok = verify(
+      null,
+      message,
+      publicKeyFrom(EXPECTED_PUBLIC_KEY_B64URL),
+      Buffer.from(EXPECTED_SIGNATURE_B64URL, 'base64url'),
+    );
+    expect(ok).toBe(true);
+  });
+
+  it('the live POST /identity/challenge route reproduces the pinned vector', async () => {
+    // End-to-end through the route, with the fixed identity wired in — proves
+    // the contract holds across the real Fastify handler, not just sign().
+    const routeApp = Fastify({ logger: false });
+    await routeApp.register(cookie);
+    await routeApp.register(createIdentityRoutes({ identity: fixedIdentity }));
+    await routeApp.ready();
+    try {
+      const res = await routeApp.inject({
+        method: 'POST',
+        url: '/identity/challenge',
+        headers: { 'content-type': 'application/json' },
+        payload: { nonce: NONCE_STD_B64 },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { alg: string; publicKey: string; signature: string };
+      expect(body.alg).toBe('ed25519');
+      expect(body.publicKey).toBe(EXPECTED_PUBLIC_KEY_B64URL);
+      expect(body.signature).toBe(EXPECTED_SIGNATURE_B64URL);
+    } finally {
+      await routeApp.close();
+    }
   });
 });
