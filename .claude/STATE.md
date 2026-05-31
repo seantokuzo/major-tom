@@ -41,18 +41,29 @@ the TXT `fp` as a fast filter only; `RelayIdentityVerifier` mirrors
 `CHALLENGE_CONTEXT` byte-for-byte and carries a DEBUG self-test over a real
 relay-produced vector (no iOS XCTest target yet, so it's an in-process tripwire).
 Review: unanimous ship, 0 blocking; impartial judge merge/high. **Follow-ups
-deferred:** #179 (snapshot `bestRelayURL` once per connection to kill a transient,
-self-healing cookie-domain/socket-host desync) and #180 (relay CI vector locking
-the handshake contract). The on-path MITM residual still needs TLS channel
-binding (tracked). Full spec: `docs/HANDOFF-RELAY-IDENTITY-BINDING.md`.
+#179 + #180 — SHIPPED 2026-05-30** (PR #181 merged `5171ed4`: snapshots
+`bestRelayURL` once per terminal connection via `TerminalViewModel.snapshotRelay()`
+→ kills the transient cookie-domain/socket-host desync, removed the live-reading
+`relayURL`/`relayDomain`/`relayBaseURL`/`isRelaySecure` props; PR #182 merged
+`1254ede`: deterministic relay vitest pins the `/identity/challenge` signed-byte
+contract in CI from a fixed-seed key + syncs the iOS `RelayIdentityVerifier`
+self-test to the same quadruple). Both unanimous ship, 0 blocking, CI green; each
+also passed an independent adversarial pre-PR verify. The on-path MITM residual
+still needs TLS channel binding (tracked). Full spec:
+`docs/HANDOFF-RELAY-IDENTITY-BINDING.md`.
 
 With both halves shipped, the **LAN-preference feature is now fully unblocked**:
 the app prefers a verified local relay over the tunnel at connect time.
 
 **NEXT (queued — `docs/HANDOFF-POST-IDENTITY-FOLLOWUPS.md`):**
-- **Session 1:** iOS #179 (snapshot `bestRelayURL` once per connection) + relay
-  #180 (CI vector locking the challenge contract) + **device-QA** the LAN feature
-  (reinstall main's build first — phone has the old pre-identity build).
+- **Session 1 — code DONE (PRs #181/#182 merged 2026-05-30); ONLY device-QA
+  remains.** Reinstall **main**'s build on Sean's phone (it still has the old
+  pre-identity build), then run the LAN checklist in
+  `docs/HANDOFF-POST-IDENTITY-FOLLOWUPS.md` Part C: golden-path verified-LAN
+  connect (terminal `/shell` works over LAN, not the tunnel), rogue-responder
+  fallback, off-LAN/cellular tunnel fallback, DEBUG self-test passes on launch.
+  Also covers the pending PR #175 Wave-1 touch-input QA. **Needs Sean's unlocked
+  phone** — agent can't run this solo.
 - **Session 2 (later):** Terminal UX Wave 2 (selection + copy) — **xterm.js
   touch-selection research scout REQUIRED first** (see `project_terminal_ux_phase`).
 
@@ -61,9 +72,9 @@ Relay `SESSION_SECRET` hardening (P3/P4/P5 in
 PR** — lower urgency (it did NOT cause this; env loaded fine, footgun didn't fire).
 
 **Terminal UX bundle.** Wave 1 (touch input) SHIPPED via PR #175; device QA now
-unblocked by the login fix but still gated on the terminal-connect fix above.
-Waves 2-4 pending; Wave 2 (selection+copy) needs an xterm.js touch-selection
-research scout first. See `project_terminal_ux_phase.md`.
+fully unblocked (login + terminal-connect both fixed) — folded into the Session 1
+Part C device-QA pass above. Waves 2-4 pending; Wave 2 (selection+copy) needs an
+xterm.js touch-selection research scout first. See `project_terminal_ux_phase.md`.
 
 > NOTE: keep this file in sync with `docs/STATE.md` — both are state docs;
 > THIS one (`.claude/STATE.md`) is what the session-start hook injects.

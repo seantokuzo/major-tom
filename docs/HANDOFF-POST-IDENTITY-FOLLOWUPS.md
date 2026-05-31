@@ -10,7 +10,19 @@
 
 ## SESSION 1 — close the advisory loop (#179 + #180) + device-QA the LAN feature
 
+> **STATUS (2026-05-30): Parts A + B SHIPPED (PRs #181 + #182 merged to main). Only
+> Part C — device QA, which needs Sean's unlocked phone — remains.**
+
 ### Part A — Issue #179: snapshot `bestRelayURL` once per connection (iOS)
+> ✅ **SHIPPED 2026-05-30 — PR #181 (`5171ed4`).** Implemented via
+> `TerminalViewModel.snapshotRelay()` — the lone read of `bestRelayURL`, captured in
+> `TerminalWebView.makeUIView` *before any await*; the immutable `RelaySnapshot`
+> (single `base`) feeds the `/shell` socket URL + cookie domain + secure flag, so
+> they can't diverge. The live-reading `relayURL` / `relayDomain` / `relayBaseURL`
+> props and `isRelaySecure()` were **removed** — any mention of them below describes
+> the PRE-fix code. Sim build + independent adversarial pre-review both clean;
+> unanimous ship, 0 blocking, CI green.
+
 **Bug:** `RelayURLResolver.bestRelayURL` (sync getter, `RelayURLResolver.swift:50`)
 can flip tunnel→verified-LAN *across an `await`*, because `verifiedLANAddress` is
 mutated asynchronously by `resolvePreferringLAN`. `TerminalWebView` reads it at
@@ -38,6 +50,19 @@ can't diverge.
   `build_sim`) and ideally device-verify alongside Part C.
 
 ### Part B — Issue #180: relay CI vector locking the challenge contract (relay)
+> ✅ **SHIPPED 2026-05-30 — PR #182 (`1254ede`).** Deterministic vitest in
+> `relay/src/routes/__tests__/identity.test.ts` pins the canonical
+> `(publicKey, nonce, signature, fingerprint)` quadruple from a fixed-seed
+> (`0x01..0x20`) PKCS#8 key loaded via the **real** `RelayIdentity.load()`, with a
+> 5th case driving the **live Fastify route** end-to-end. The iOS
+> `RelayIdentityVerifier.runSelfTest()` vector was swapped to the SAME quadruple
+> (one source of truth) — this **replaces** the throwaway-key vector listed below.
+> Canonical quadruple now in source: publicKey `ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ`,
+> signature `Q7L_CUIA7y7nO6T7uOd0ipZjlKvVA_wKGXGgZK0ZkEz5aei-B1jB1gRXHYcoLrOUaLKFWysFS84zOdAjpcfmCQ`,
+> fingerprint `ZbYGc9btiEvwHCwiLYKtoHQPKawzVdapJcgfF_R6J7g` (nonce unchanged). Relay
+> suite 373/373 green; adversarial verify independently re-derived the quadruple
+> from the seed. Unanimous ship, 0 blocking.
+
 **Goal:** lock the signed-byte construction in the green relay CI lane so a future
 base64 ⇄ base64url "cleanup" on either side can't silently desync the handshake.
 - Construction (canonical): `relay/src/routes/identity.ts` `CHALLENGE_CONTEXT =
