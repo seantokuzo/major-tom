@@ -212,7 +212,9 @@ final class TerminalViewModel {
     /// Call once after auth is established (e.g. from the terminal view's
     /// onAppear or after a successful auth check).
     func reconcileWithRelay() async {
-        let base = relayBaseURL
+        // One-shot REST call — snapshot the resolver once so the base URL is
+        // stable for this request (same capture-once discipline as #179).
+        let base = snapshotRelay().baseURL
         guard let url = URL(string: "\(base)/shell/tabs") else { return }
 
         var request = URLRequest(url: url)
@@ -325,7 +327,8 @@ final class TerminalViewModel {
     /// logged and swallowed — the PTY will eventually expire via the
     /// 30-minute grace timer, which is the existing fallback behavior.
     private func killTabOnRelay(tabId: String) async {
-        let base = relayBaseURL
+        // One-shot REST call — snapshot the resolver once for a stable base URL.
+        let base = snapshotRelay().baseURL
         guard let url = URL(string: "\(base)/shell/\(tabId)/kill") else { return }
 
         var request = URLRequest(url: url)
@@ -377,17 +380,57 @@ final class TerminalViewModel {
 
     // MARK: - Relay Configuration
 
-    /// Build the relay WebSocket URL for `/shell/:tabId`.
-    var relayURL: String {
-        let base = relayResolver.bestRelayURL
-        let scheme = base.contains("://") ? "" : "http://"
-        // Strip protocol prefix for the host, then decide ws/wss
-        let fullBase = "\(scheme)\(base)"
-        let wsScheme = fullBase.hasPrefix("https://") ? "wss" : "ws"
-        let host = fullBase
-            .replacingOccurrences(of: "https://", with: "")
-            .replacingOccurrences(of: "http://", with: "")
-        return "\(wsScheme)://\(host)"
+    /// An immutable view of the relay endpoint captured from a SINGLE read of
+    /// `RelayURLResolver.bestRelayURL`. All three derived values (socket URL,
+    /// cookie domain, secure flag) are computed from the one captured `base`,
+    /// so they can never diverge — see #179. `bestRelayURL` can flip
+    /// tunnel→verified-LAN across an `await` while a connection is being set
+    /// up; capturing it once and threading this snapshot through the connect
+    /// path keeps the cookie domain pinned to the same host the socket dials.
+    struct RelaySnapshot {
+        /// The raw `host[:port]` (or full URL) captured from the resolver.
+        let base: String
+
+        /// The relay WebSocket URL for `/shell/:tabId` (`ws`/`wss`).
+        var socketURL: String {
+            let scheme = base.contains("://") ? "" : "http://"
+            // Strip protocol prefix for the host, then decide ws/wss.
+            let fullBase = "\(scheme)\(base)"
+            let wsScheme = fullBase.hasPrefix("https://") ? "wss" : "ws"
+            let host = fullBase
+                .replacingOccurrences(of: "https://", with: "")
+                .replacingOccurrences(of: "http://", with: "")
+            return "\(wsScheme)://\(host)"
+        }
+
+        /// The relay domain for cookie injection (host only, no port).
+        var cookieDomain: String {
+            let cleaned = base
+                .replacingOccurrences(of: "https://", with: "")
+                .replacingOccurrences(of: "http://", with: "")
+            return cleaned.components(separatedBy: ":").first ?? cleaned
+        }
+
+        /// Full relay base URL (http/https) — used to decide the cookie's
+        /// `secure` flag.
+        var baseURL: String {
+            let scheme = base.contains("://") ? "" : "http://"
+            return "\(scheme)\(base)"
+        }
+
+        /// True when the relay uses a secure transport (`https`/`wss`).
+        var isSecure: Bool {
+            let lowered = baseURL.lowercased()
+            return lowered.hasPrefix("https://") || lowered.hasPrefix("wss://")
+        }
+    }
+
+    /// Capture `bestRelayURL` ONCE for a single connection attempt. The caller
+    /// (`TerminalWebView`) threads the returned snapshot through cookie
+    /// injection and the JS config so the cookie domain and socket host are
+    /// guaranteed consistent even if a LAN host gets verified mid-connect.
+    func snapshotRelay() -> RelaySnapshot {
+        RelaySnapshot(base: relayResolver.bestRelayURL)
     }
 
     /// The session JWT token for auth.
@@ -395,33 +438,18 @@ final class TerminalViewModel {
         auth.sessionCookie
     }
 
-    /// The relay domain for cookie injection.
-    var relayDomain: String {
-        let base = relayResolver.bestRelayURL
-        let cleaned = base
-            .replacingOccurrences(of: "https://", with: "")
-            .replacingOccurrences(of: "http://", with: "")
-        // Strip port if present for cookie domain
-        return cleaned.components(separatedBy: ":").first ?? cleaned
-    }
-
-    /// Full relay base URL (http/https) for cookie path.
-    var relayBaseURL: String {
-        let base = relayResolver.bestRelayURL
-        let scheme = base.contains("://") ? "" : "http://"
-        return "\(scheme)\(base)"
-    }
-
-    /// Build the config object to inject into the terminal page via WKUserScript.
+    /// Build the config object to inject into the terminal page via WKUserScript,
+    /// using the socket URL from the supplied connection snapshot so it matches
+    /// the host the auth cookie is pinned to.
     ///
     /// The token is included so the JS layer can use it as a query-param
     /// fallback if cookie auth fails (WKWebView edge cases). The JS side
     /// only appends `?token=` when `config.tokenFallback` is true — by
     /// default cookies are the primary auth path, keeping the JWT out of
     /// URLs/logs/proxies.
-    var bridgeConfig: [String: Any] {
+    func bridgeConfig(for snapshot: RelaySnapshot) -> [String: Any] {
         var config: [String: Any] = [
-            "relayURL": relayURL,
+            "relayURL": snapshot.socketURL,
             "tabId": tabId,
             "theme": themeConfig,
             "fontSize": keybarViewModel.fontSize,

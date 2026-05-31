@@ -59,9 +59,16 @@ struct TerminalWebView: UIViewRepresentable {
         // The JS side calls: window.webkit.messageHandlers.majorTom.postMessage({...})
         contentController.add(context.coordinator, name: "majorTom")
 
+        // Snapshot the relay endpoint ONCE for this connection attempt (#179).
+        // `bestRelayURL` can flip tunnel→verified-LAN across the `await` inside
+        // injectAuthCookie; deriving the JS config, the cookie domain, and the
+        // secure flag from this single capture keeps the cookie host and the
+        // socket host from diverging (which silently breaks /shell auth).
+        let relaySnapshot = viewModel.snapshotRelay()
+
         // Inject the config as a WKUserScript that runs at document start,
         // so it's available before terminal.html's own scripts execute.
-        let configJSON = serializeConfig(viewModel.bridgeConfig)
+        let configJSON = serializeConfig(viewModel.bridgeConfig(for: relaySnapshot))
         let configScript = WKUserScript(
             source: "window.__MAJOR_TOM_CONFIG__ = \(configJSON);",
             injectionTime: .atDocumentStart,
@@ -103,9 +110,11 @@ struct TerminalWebView: UIViewRepresentable {
         // and the UIEditMenuInteraction so cleanup happens via dismantleUIView.
         context.coordinator.attachTouchGestures(to: webView)
 
-        // Inject the auth cookie, then load the terminal page.
+        // Inject the auth cookie, then load the terminal page. The same
+        // snapshot used for the JS config drives the cookie domain/secure
+        // flag, so the two can't diverge if a LAN host is verified mid-await.
         Task { @MainActor in
-            await injectAuthCookie(into: dataStore)
+            await injectAuthCookie(into: dataStore, relay: relaySnapshot)
             loadTerminalPage(webView)
         }
 
@@ -159,29 +168,31 @@ struct TerminalWebView: UIViewRepresentable {
 
     // MARK: - Cookie Injection
 
-    /// Returns true when the relay URL uses a secure transport (`https`/`wss`).
-    private func isRelaySecure() -> Bool {
-        let base = viewModel.relayBaseURL.lowercased()
-        return base.hasPrefix("https://") || base.hasPrefix("wss://")
-    }
-
     /// Inject the session JWT as an HTTPCookie into the WKWebsiteDataStore.
     /// This is the primary auth mechanism for the WebSocket connection.
     /// Cookie expiry matches the relay's 7-day JWT lifetime so reconnects
     /// don't fail with a dropped cookie while the token is still valid.
-    private func injectAuthCookie(into dataStore: WKWebsiteDataStore) async {
+    ///
+    /// The `relay` snapshot is captured once per connection attempt in
+    /// `makeUIView` (#179) so the cookie's domain/secure flag are derived from
+    /// the same host the `/shell` socket dials — they can't diverge even if a
+    /// LAN host is verified during the `await` below.
+    private func injectAuthCookie(
+        into dataStore: WKWebsiteDataStore,
+        relay: TerminalViewModel.RelaySnapshot
+    ) async {
         guard let token = viewModel.authToken else { return }
 
         var cookieProperties: [HTTPCookiePropertyKey: Any] = [
             .name: "mt-session",
             .value: token,
-            .domain: viewModel.relayDomain,
+            .domain: relay.cookieDomain,
             .path: "/",
             .expires: Date().addingTimeInterval(7 * 24 * 60 * 60), // 7 days — matches relay JWT lifetime
         ]
 
         // Mark secure when relay uses HTTPS/WSS; omit for local http/ws dev.
-        if isRelaySecure() {
+        if relay.isSecure {
             cookieProperties[.secure] = "TRUE"
         }
 
