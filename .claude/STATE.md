@@ -56,14 +56,22 @@ With both halves shipped, the **LAN-preference feature is now fully unblocked**:
 the app prefers a verified local relay over the tunnel at connect time.
 
 **NEXT (queued — `docs/HANDOFF-POST-IDENTITY-FOLLOWUPS.md`):**
-- **Session 1 — code DONE (PRs #181/#182 merged 2026-05-30); ONLY device-QA
-  remains.** Reinstall **main**'s build on Sean's phone (it still has the old
-  pre-identity build), then run the LAN checklist in
-  `docs/HANDOFF-POST-IDENTITY-FOLLOWUPS.md` Part C: golden-path verified-LAN
-  connect (terminal `/shell` works over LAN, not the tunnel), rogue-responder
-  fallback, off-LAN/cellular tunnel fallback, DEBUG self-test passes on launch.
-  Also covers the pending PR #175 Wave-1 touch-input QA. **Needs Sean's unlocked
-  phone** — agent can't run this solo.
+- **Session 1 — DONE (PRs #181/#182/#184).** Device QA 2026-06-02/03 on Sean's
+  phone: Google login ✅; terminal `/shell` connects + PTY spawns ✅ (after the
+  PR #184 fix); `RelayIdentityVerifier` DEBUG self-test passes on launch ✅.
+  **Terminal-connect regression found + fixed — PR #184 (merged `cf94401`):**
+  `RelaySnapshot` built `ws://`/`http://` for the public tunnel host → iOS App
+  Transport Security blocked `/shell` before it left the device → the terminal
+  never connected over the tunnel (only ever worked over LAN). Now derives the
+  scheme from `AuthService.normalizeBaseURL` (public→`wss`/`https`,
+  LAN→`ws`/`http`); `normalizeBaseURL` made `nonisolated`.
+  **STILL OPEN — #183:** LAN preference never engages on Wi-Fi (app rides the
+  tunnel). Root cause is Bonjour resolve timing — `BonjourBrowser.startResolve`
+  waits for an `NWConnection` `.ready` (full TCP handshake) before a host is
+  usable, vs `resolvePreferringLAN`'s 2s window — NOT a pin/connect race (the
+  code already pins before flipping `.paired`). App is fully functional via the
+  tunnel. PR #175 Wave-1 touch-input QA still unconfirmed (Sean was testing
+  terminal connect).
 - **Session 2 (later):** Terminal UX Wave 2 (selection + copy) — **xterm.js
   touch-selection research scout REQUIRED first** (see `project_terminal_ux_phase`).
 
