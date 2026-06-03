@@ -69,7 +69,7 @@ final class AuthService {
     /// we default to https:// unless the address clearly points at LAN /
     /// localhost / an IP / an mDNS `.local` host (in which case http://
     /// is correct for dev and permitted by `NSAllowsLocalNetworking`).
-    static func normalizeBaseURL(_ address: String) -> String {
+    nonisolated static func normalizeBaseURL(_ address: String) -> String {
         if address.contains("://") { return address }
         let lower = address.lowercased()
         // Explicit loopback / localhost.

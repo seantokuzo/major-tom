@@ -391,37 +391,39 @@ final class TerminalViewModel {
         /// The raw `host[:port]` (or full URL) captured from the resolver.
         let base: String
 
-        /// The relay WebSocket URL for `/shell/:tabId` (`ws`/`wss`).
+        /// Full relay base URL (`http`/`https`) for the captured host. Scheme
+        /// inference is delegated to `AuthService.normalizeBaseURL` — the SAME
+        /// rule every other relay request uses — instead of a naive default.
+        /// This matters for the tunnel: a public DNS host MUST be `https://`
+        /// (iOS App Transport Security blocks plain `http://`/`ws://` to public
+        /// domains, so the old naive `http://`/`ws://` default made `/shell`
+        /// fail before it ever left the device). A LAN IP / `.local` / localhost
+        /// host correctly stays on `http://`.
+        var baseURL: String {
+            AuthService.normalizeBaseURL(base)
+        }
+
+        /// The relay WebSocket URL for `/shell/:tabId`, matching `baseURL`'s
+        /// scheme (`https`→`wss`, `http`→`ws`).
         var socketURL: String {
-            let scheme = base.contains("://") ? "" : "http://"
-            // Strip protocol prefix for the host, then decide ws/wss.
-            let fullBase = "\(scheme)\(base)"
-            let wsScheme = fullBase.hasPrefix("https://") ? "wss" : "ws"
-            let host = fullBase
+            let wsScheme = baseURL.hasPrefix("https://") ? "wss" : "ws"
+            let host = baseURL
                 .replacingOccurrences(of: "https://", with: "")
                 .replacingOccurrences(of: "http://", with: "")
             return "\(wsScheme)://\(host)"
         }
 
-        /// The relay domain for cookie injection (host only, no port).
+        /// The relay domain for cookie injection (host only, no scheme/port).
         var cookieDomain: String {
-            let cleaned = base
+            let cleaned = baseURL
                 .replacingOccurrences(of: "https://", with: "")
                 .replacingOccurrences(of: "http://", with: "")
             return cleaned.components(separatedBy: ":").first ?? cleaned
         }
 
-        /// Full relay base URL (http/https) — used to decide the cookie's
-        /// `secure` flag.
-        var baseURL: String {
-            let scheme = base.contains("://") ? "" : "http://"
-            return "\(scheme)\(base)"
-        }
-
         /// True when the relay uses a secure transport (`https`/`wss`).
         var isSecure: Bool {
-            let lowered = baseURL.lowercased()
-            return lowered.hasPrefix("https://") || lowered.hasPrefix("wss://")
+            baseURL.lowercased().hasPrefix("https://")
         }
     }
 
