@@ -33,10 +33,69 @@ final class RelayURLResolver {
     private let auth: AuthService
     private let browser: BonjourBrowser
 
-    /// A LAN address proven THIS SESSION to belong to the pinned relay identity
-    /// via challenge-response. Only this — never an unverified mDNS responder —
-    /// is handed to the cookie-bearing connections.
-    private var verifiedLANAddress: String?
+    /// A LAN address proven to belong to the pinned relay identity via
+    /// challenge-response, **bound to the trust context it was proven in**.
+    /// Only this — never an unverified mDNS responder — is handed to the
+    /// cookie-bearing connections.
+    ///
+    /// The address alone is not a safe cache key: it is a forgeable string
+    /// (`192.168.1.x:9090`, or a `.local` hostname an attacker can adopt), so a
+    /// bare address cache would let a hostile responder on a *different* network
+    /// inherit a proof issued on the network we verified at home. The bindings
+    /// below are what make that impossible.
+    private struct VerifiedLANHost {
+        /// The `host:port` that signed our nonce.
+        let address: String
+        /// The pinned relay public key the signature was verified against.
+        /// Unpair/re-pair rewrites `relay_public_key`, so a proof issued under
+        /// relay A's key can never be reused for relay B — no caller has to
+        /// remember to invalidate.
+        let pinnedKey: String
+        /// `BonjourBrowser.generation` at verification time. Any `stop()`/
+        /// `start()` cycle — background→foreground being the important one, since
+        /// that's the boundary across which the device can wake on a completely
+        /// different LAN — bumps it and voids the proof.
+        let browserGeneration: Int
+    }
+
+    /// Deliberately not observed: this is a security cache read from
+    /// `bestRelayURL` on the connect path, not view state, and self-healing reads
+    /// mutate it.
+    @ObservationIgnored private var verifiedLAN: VerifiedLANHost?
+
+    /// THE single gate for reusing a prior proof. Returns an address only when
+    /// every part of the trust context still holds — same pinned key, same
+    /// browse session, host still advertised — and drops the entry otherwise, so
+    /// both callers fail closed to the tunnel. No path in this type returns a LAN
+    /// address without either passing through here or completing a fresh
+    /// challenge against the currently-pinned key.
+    private var reusableVerifiedLANAddress: String? {
+        guard let cached = verifiedLAN else { return nil }
+        guard let pinned = KeychainService.load(.relayPublicKey), pinned == cached.pinnedKey else {
+            resolveLog.notice("cached LAN host dropped: pinned relay identity changed")
+            verifiedLAN = nil
+            return nil
+        }
+        guard cached.browserGeneration == browser.generation else {
+            resolveLog.notice("cached LAN host dropped: discovery restarted (possible network change)")
+            verifiedLAN = nil
+            return nil
+        }
+        // Not a trust failure — a service can flap — so keep the entry and let a
+        // later browse result make it usable again.
+        guard browser.services.contains(where: { $0.address == cached.address }) else { return nil }
+        return cached.address
+    }
+
+    /// Drop any cached LAN proof. Called from the app when the trust context
+    /// changes in a way the bindings above cannot see from the inside — currently
+    /// app backgrounding, after which the device may return on a different
+    /// network with an attacker advertising the same `host:port` string.
+    func invalidateVerifiedLANHost() {
+        guard verifiedLAN != nil else { return }
+        resolveLog.info("cached LAN host invalidated (app backgrounded)")
+        verifiedLAN = nil
+    }
 
     init(auth: AuthService, browser: BonjourBrowser) {
         self.auth = auth
@@ -49,27 +108,38 @@ final class RelayURLResolver {
     }
 
     /// Best relay base URL for a *synchronous* caller (e.g. the terminal
-    /// building its `/shell` URL): a LAN host we already verified this session
-    /// AND that is still being advertised, else the frozen `auth.serverURL`
-    /// (tunnel). Never returns an unverified host — verification happens only in
-    /// the async `resolvePreferringLAN`. Returned in the same raw `host[:port]`
-    /// form as `auth.serverURL`, so callers keep normalizing via `AuthService`.
+    /// building its `/shell` URL): a LAN host whose proof is still bound to the
+    /// current trust context (see `reusableVerifiedLANAddress`), else the frozen
+    /// `auth.serverURL` (tunnel). Never returns an unverified host —
+    /// verification happens only in the async `resolvePreferringLAN`. Returned in
+    /// the same raw `host[:port]` form as `auth.serverURL`, so callers keep
+    /// normalizing via `AuthService`.
     var bestRelayURL: String {
-        if let verified = verifiedLANAddress,
-           browser.services.contains(where: { $0.address == verified }) {
-            return verified
-        }
-        return auth.serverURL
+        reusableVerifiedLANAddress ?? auth.serverURL
     }
 
-    /// How long we wait for Bonjour to show *any* sign of a local responder
-    /// before giving up on the LAN. Sized for the cellular / remote case: with
-    /// nothing advertising `_majortom._tcp` this is the entire cost added to
-    /// connect (down from the old flat 2s window). Deliberately NOT gated on
-    /// `NetworkPathMonitor.reachability` — that starts at `.offline` until
-    /// `NWPathMonitor` delivers its first update, so a launch-time check would
-    /// skip the LAN exactly when we most want it.
-    private static let discoveryGrace: Duration = .seconds(1)
+    /// How long Bonjour gets to show *any* sign of a local responder before we
+    /// give up on the LAN — measured from the instant the **browser** started,
+    /// not from the instant this resolve started (`BonjourBrowser.startedAt`).
+    ///
+    /// Anchoring at resolve start is what makes the window a straight tax: the
+    /// browser and the resolve both begin within milliseconds of each other on a
+    /// cold launch of an already-paired device, so the whole discover → TCP
+    /// handshake → `.ready` pipeline has to fit inside it. Anchoring at browser
+    /// start means the pre-warm actually counts — by sign-in time the browser has
+    /// usually been running for seconds, so warm services are challenged
+    /// immediately and a cellular device pays only `discoveryGraceFloor`.
+    ///
+    /// Deliberately NOT gated on `NetworkPathMonitor.reachability` — that starts
+    /// at `.offline` until `NWPathMonitor` delivers its first update, so a
+    /// launch-time check would skip the LAN exactly when we most want it.
+    private static let discoveryGrace: Duration = .seconds(2)
+
+    /// Minimum wait measured from *this* resolve's start, so a resolve that
+    /// begins while the browser is still coming up isn't cut off before the first
+    /// poll. Also the entire LAN cost for a device whose browser has been warm
+    /// and empty for longer than `discoveryGrace` (cellular / remote).
+    private static let discoveryGraceFloor: Duration = .milliseconds(250)
 
     /// Hard ceiling on the LAN window. Only reachable when a responder is
     /// actually mid-resolve or mid-challenge — the grace window ends the wait
@@ -89,21 +159,44 @@ final class RelayURLResolver {
     /// against a relay that predates `/identity`) we never trust a LAN host and
     /// always return the tunnel. Idempotently starts discovery.
     ///
-    /// **Timing policy (#183).** The old flat 2s window routinely expired before
-    /// `BonjourBrowser` had finished its discover → TCP-handshake → `.ready`
-    /// pipeline, so the LAN never won on Wi-Fi. It is replaced by a window that
-    /// is *short when nothing is there* and *patient when something is*:
+    /// **Timing policy (#183).** The old flat 2s window was measured from the
+    /// resolve's own start, and the browser started at that same instant, so the
+    /// whole discover → TCP-handshake → `.ready` pipeline had to fit inside it.
+    /// The window is now *anchored at browser start* and *short when nothing is
+    /// there, patient when something is*:
     ///
-    /// - `discoveryGrace` (1s): if nothing local has answered by then — nothing
-    ///   discovered, nothing mid-resolve — return the tunnel. Cellular and
-    ///   remote users pay 1s instead of the old 2s.
+    /// - `discoveryGrace` (2s **from `browser.startedAt`**): if nothing local has
+    ///   answered by then — nothing discovered, nothing mid-resolve — return the
+    ///   tunnel. Because the browser is started when the UI scene appears, this
+    ///   is mostly spent *before* a resolve even begins.
+    /// - `discoveryGraceFloor` (250ms from this resolve's start) keeps a resolve
+    ///   that fires while the browser is still coming up from being cut off, and
+    ///   is the whole LAN cost once the browser has been warm and empty.
     /// - Extend past the grace window only while `browser.pendingResolveCount`
     ///   is non-zero, i.e. a discovered responder is genuinely mid-handshake.
-    ///   `BonjourBrowser` caps each handshake at 3s, so a black-holed advertiser
-    ///   cannot hold the window open indefinitely.
-    /// - `maxWait` (4s) is a hard ceiling: no *new* challenge starts after it,
-    ///   which also bounds the old worst case where up to 16 discovered hosts
-    ///   could each burn a 2s challenge timeout serially inside one pass.
+    ///   `BonjourBrowser` caps each resolve at 3s (TCP timeout + wall-clock
+    ///   watchdog), so a black-holed or path-less advertiser cannot hold the
+    ///   window open indefinitely.
+    /// - `maxWait` (4s from this resolve's start) is a hard ceiling: no *new*
+    ///   challenge starts after it, which also bounds the old worst case where up
+    ///   to 16 discovered hosts could each burn a 2s challenge timeout serially
+    ///   inside one pass.
+    ///
+    /// Resulting cost, versus `main`'s flat 2s-from-resolve-start window:
+    ///
+    /// | Case | `main` | now |
+    /// |---|---|---|
+    /// | cold launch already paired, relay on LAN | 2s of browse time, all of it inside the connect wait | ~2s of browse time starting at scene appear, ~1.95s of connect wait |
+    /// | fresh sign-in (browser warm for seconds) | 2s from a cold browser | warm services challenged on the first pass — no wait at all |
+    /// | any later resolve in a warm process | 2s | ~250ms when nothing is on the LAN |
+    /// | cellular, cold launch | 2s | ~1.95s — unchanged, because a cold browser is indistinguishable from a slow one without a transport signal |
+    /// | cellular, after warm-up | 2s | ~250ms |
+    ///
+    /// Cutting the cold-launch cellular case needs a reachability gate, which is
+    /// *not* the naive "skip the LAN when `.cellular`" that was rejected above
+    /// (`NetworkPathMonitor` starts at `.offline`); it has to be an early *break*
+    /// once reachability has positively reported `.cellular`. Deferred until the
+    /// on-device instrumentation says what the real numbers are.
     ///
     /// A challenge already in flight is allowed to finish (it is the payoff),
     /// so the absolute worst case is `maxWait` + one challenge timeout.
@@ -111,13 +204,13 @@ final class RelayURLResolver {
         let clock = ContinuousClock()
         let started = clock.now
 
-        // Re-use a still-advertised verified host without re-challenging.
-        if let verified = verifiedLANAddress,
-           browser.services.contains(where: { $0.address == verified }) {
-            resolveLog.info("resolve → LAN \(verified, privacy: .public) (cached, verified this session)")
-            return verified
+        // Re-use a proof that is still bound to the current pinned key + browse
+        // session, without re-challenging.
+        if let cached = reusableVerifiedLANAddress {
+            resolveLog.info("resolve → LAN \(cached, privacy: .public) (cached, still bound to the pinned identity)")
+            return cached
         }
-        verifiedLANAddress = nil
+        verifiedLAN = nil
 
         guard let pinned = KeychainService.load(.relayPublicKey),
               let pinnedRaw = RelayIdentityVerifier.data(fromBase64url: pinned) else {
@@ -129,8 +222,23 @@ final class RelayURLResolver {
         browser.start()
         resolveLog.info("resolve start: \(self.browser.services.count, privacy: .public) warm, \(self.browser.pendingResolveCount, privacy: .public) resolving, pinned fp \(BonjourBrowser.shortFingerprint(expectedFingerprint), privacy: .public)")
 
-        let graceDeadline = started.advanced(by: Self.discoveryGrace)
+        // Capture the browse session BEFORE any challenge. If discovery restarts
+        // mid-loop (a `.failed` browser tears itself down and rebuilds), a proof
+        // earned against a service discovered in the old session must not be
+        // cached under the new one — binding the stale generation makes the entry
+        // immediately unusable, i.e. fail closed.
+        let browseGeneration = browser.generation
+
         let ceiling = started.advanced(by: Self.maxWait)
+        // Anchored at browser start (see `discoveryGrace`), floored relative to
+        // this resolve, and clamped under the ceiling so the two can never
+        // invert.
+        let browserStart = browser.startedAt ?? started
+        let graceDeadline = min(
+            max(browserStart.advanced(by: Self.discoveryGrace),
+                started.advanced(by: Self.discoveryGraceFloor)),
+            ceiling
+        )
         var challenged: Set<String> = []
 
         while true {
@@ -155,7 +263,11 @@ final class RelayURLResolver {
                 let verified = await RelayIdentityVerifier.challenge(baseURL: base, pinnedPublicKeyBase64url: pinned)
                 resolveLog.info("challenge \(service.address, privacy: .public) → \(verified ? "VERIFIED" : "rejected", privacy: .public) in \(BonjourBrowser.elapsedMS(from: challengeStart, clock: clock), privacy: .public)ms")
                 if verified {
-                    verifiedLANAddress = service.address
+                    verifiedLAN = VerifiedLANHost(
+                        address: service.address,
+                        pinnedKey: pinned,
+                        browserGeneration: browseGeneration
+                    )
                     resolveLog.info("resolve → LAN \(service.address, privacy: .public) in \(BonjourBrowser.elapsedMS(from: started, clock: clock), privacy: .public)ms")
                     return service.address
                 }

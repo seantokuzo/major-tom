@@ -62,12 +62,15 @@ struct PairingView: View {
         .background(MajorTomTheme.Colors.background)
         .animation(.easeInOut(duration: 0.2), value: viewModel.authState)
         .task {
-            // Bonjour browses silently so LAN-resolved URLs are preferred
-            // over the tunnel when the relay is on the same network. Idempotent
-            // — the app already started this browser at launch. Deliberately
-            // NOT stopped on disappear: this view disappears the moment pairing
-            // succeeds, which is precisely when `resolvePreferringLAN` needs the
-            // warm cache (#183). The app's scenePhase handler owns teardown.
+            // Warm the app-level browser so `resolvePreferringLAN` has a
+            // populated cache the instant sign-in flips `isPaired` (#183).
+            // Idempotent — the app already started it when the scene appeared.
+            // Discovery does NOT influence which host this view talks to (see
+            // `PairingViewModel.currentRelayURL`): pre-pairing there is no pinned
+            // identity to challenge a responder against. Deliberately NOT stopped
+            // on disappear — this view disappears the moment pairing succeeds,
+            // which is precisely when the resolver needs the warm cache. The
+            // app's scenePhase handler owns teardown.
             viewModel.startDiscovery()
             await viewModel.fetchAuthMethods()
         }

@@ -28,15 +28,6 @@ struct MajorTomApp: App {
         _bonjour = State(initialValue: browser)
         _relayResolver = State(initialValue: resolver)
         _terminalViewModel = State(initialValue: TerminalViewModel(auth: authService, titleStore: store, relayResolver: resolver))
-        // #183: pre-warm mDNS discovery at the earliest possible moment.
-        // `resolvePreferringLAN` used to start the browser itself, at the same
-        // instant it began waiting — so discover → TCP handshake → `.ready`
-        // never finished inside its window and the LAN never won. Browsing is
-        // unauthenticated and cheap (no credentials leave the device); trust is
-        // still gated downstream by the signed Ed25519 challenge. Started here
-        // rather than in `.onAppear` so it can't race the `isPaired` handler,
-        // and torn down on `.background` by the scenePhase handler below.
-        browser.start()
     }
     @Environment(\.scenePhase) private var scenePhase
 
@@ -55,6 +46,21 @@ struct MajorTomApp: App {
             .tint(MajorTomTheme.Colors.accent)
             .preferredColorScheme(.dark)
             .onAppear {
+                // #183: pre-warm mDNS discovery so `resolvePreferringLAN` reads a
+                // warm cache instead of starting the browser at the same instant
+                // it begins waiting. Deliberately here and NOT in `init()`: three
+                // App Intents ship with `openAppWhenRun = false`
+                // (`FleetStatusIntent`, `SessionSummaryIntent`,
+                // `ToggleGodModeIntent`) and the Watch counterpart wakes us via
+                // `sendMessage`/`transferUserInfo`, so the process can be launched
+                // with no UI scene at all — `init()` would browse mDNS and open
+                // `:9090` TCP resolves entirely off-screen, where the Local
+                // Network permission can't even be prompted for. `.onAppear` runs
+                // only when a scene is connected, which is exactly the gate we
+                // want. Racing the `isPaired` handler below is harmless because
+                // `resolvePreferringLAN` starts the browser itself if needed and
+                // measures its grace window from `BonjourBrowser.startedAt`.
+                bonjour.start()
                 let achievementsVM = AchievementsViewModel(auth: auth)
                 achievementsViewModel = achievementsVM
                 relay.officeSceneManager = officeSceneManager
@@ -164,6 +170,13 @@ struct MajorTomApp: App {
                     }
                 case .background:
                     bonjour.stop()
+                    // Backgrounding is the boundary across which the device can
+                    // wake up on a completely different LAN, where a hostile peer
+                    // can advertise the same `host:port` string we verified at
+                    // home. Drop the proof so the next connect re-challenges (or
+                    // fails closed to the tunnel) instead of handing the session
+                    // cookie to whoever now answers at that address.
+                    relayResolver.invalidateVerifiedLANHost()
                 default:
                     break
                 }
