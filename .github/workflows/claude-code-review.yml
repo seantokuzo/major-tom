@@ -48,7 +48,14 @@ jobs:
   preflight:
     name: Preflight (skip drafts/forks)
     runs-on: ubuntu-latest
+    # DORMANT — see the gate comment in claude.yml. This is the workflow that
+    # actually auto-fired on `pull_request: opened` and put four permanently-red
+    # checks on every PR. The specialist jobs below carry the same gate rather
+    # than relying on skip-propagation through `needs:`, because each has its
+    # own `if:` and a job with an explicit `if:` is not reliably skipped by a
+    # skipped dependency.
     if: |
+      vars.CLAUDE_REVIEWS_ENABLED == 'true' &&
       github.repository == 'seantokuzo/major-tom' &&
       (github.event_name == 'workflow_dispatch' ||
        github.event.pull_request.draft != true)
@@ -80,8 +87,9 @@ jobs:
     needs: preflight
     name: 🔒 Security specialist
     if: |
-      needs.preflight.outputs.specialists == 'all' ||
-      contains(needs.preflight.outputs.specialists, 'security')
+      vars.CLAUDE_REVIEWS_ENABLED == 'true' &&
+      (needs.preflight.outputs.specialists == 'all' ||
+       contains(needs.preflight.outputs.specialists, 'security'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -185,8 +193,9 @@ jobs:
     needs: preflight
     name: 🏗️ Architecture specialist
     if: |
-      needs.preflight.outputs.specialists == 'all' ||
-      contains(needs.preflight.outputs.specialists, 'architecture')
+      vars.CLAUDE_REVIEWS_ENABLED == 'true' &&
+      (needs.preflight.outputs.specialists == 'all' ||
+       contains(needs.preflight.outputs.specialists, 'architecture'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -295,8 +304,9 @@ jobs:
     needs: preflight
     name: ✅ Correctness specialist
     if: |
-      needs.preflight.outputs.specialists == 'all' ||
-      contains(needs.preflight.outputs.specialists, 'correctness')
+      vars.CLAUDE_REVIEWS_ENABLED == 'true' &&
+      (needs.preflight.outputs.specialists == 'all' ||
+       contains(needs.preflight.outputs.specialists, 'correctness'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:

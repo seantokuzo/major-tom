@@ -36,7 +36,13 @@ jobs:
     name: Claude
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # DORMANT: the Claude GitHub App is not installed on this repo, so
+    # claude-code-action fails at token exchange with
+    # "401 - Claude Code is not installed on this repository".
+    # Gated off so a stray mention no-ops (skipped) instead of going red.
+    # Re-enable by setting repo variable CLAUDE_REVIEWS_ENABLED=true.
     if: |
+      vars.CLAUDE_REVIEWS_ENABLED == 'true' &&
       github.repository == 'seantokuzo/major-tom' &&
       (
         github.event_name == 'workflow_dispatch' ||

@@ -29,7 +29,11 @@ jobs:
   preflight:
     name: Preflight
     runs-on: ubuntu-latest
+    # DORMANT — see the gate comment in claude.yml. Every downstream job here
+    # is `needs: preflight` with no independent `if:`, so gating preflight
+    # skips the whole graph cleanly.
     if: |
+      vars.CLAUDE_REVIEWS_ENABLED == 'true' &&
       github.repository == 'seantokuzo/major-tom' &&
       (github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'pull_request' &&
