@@ -144,6 +144,34 @@ panel will scrutinize it.
   URL entry was removed in PR #173 OAuth-only consolidation — check
   `project_ios_secrets_indirection.md` before re-adding any URL UI.)
 
+> **STATUS UPDATE (PR #191) — this is now the ONLY LAN path into pairing, and
+> it does not exist. `bash start.sh --local` + iOS pairing is UNSUPPORTED on
+> plain Wi-Fi.**
+>
+> PR #191 removed the Bonjour branch from `PairingViewModel.currentRelayURL`
+> for a security reason that stands: pre-pairing there is no pinned relay
+> identity, so `RelayIdentityVerifier` structurally cannot challenge a
+> discovered host — and `signInWithGoogle` POSTs the Google ID token to
+> whatever `currentRelayURL` returns, then pins *that* host's key. An mDNS
+> first-responder could take the entire pairing flow. **Do not revert it.**
+>
+> Consequence: `currentRelayURL` is now reachability-preset → tunnel only, and
+> `PairingView` has had no manual-URL field since PR #173. So the "trap"
+> described above is no longer mDNS-miss-dependent — with the tunnel off there
+> is simply nothing reachable to pair against, and the Retry button on
+> "Google sign-in not available" can never succeed.
+>
+> Escape hatch that still works: the relay binds `0.0.0.0`
+> (`relay/src/server.ts:59`), so with Tailscale connected
+> `ServerPreset(reachability: .tailscale)` reaches a `--local` relay fine.
+> Plain Wi-Fi without Tailscale is the broken case. Post-pairing LAN
+> preference is unaffected — `RelayURLResolver` still prefers a
+> challenge-verified LAN host.
+>
+> Tracked in **#198**. P1 above matters more than ever: today "couldn't reach
+> the relay" and "relay has no Google auth configured" render the same
+> dead-end screen, which is what makes this failure mode so confusing.
+
 ### P3 — relay: kill the `SESSION_SECRET` append/regenerate footgun
 `relay/src/auth/session.ts:24-48` (`getSessionSecret`).
 - Never silently regenerate when a `.env` with a `SESSION_SECRET` exists on

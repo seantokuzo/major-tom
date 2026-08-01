@@ -63,6 +63,19 @@ final class RelayURLResolver {
     /// mutate it.
     @ObservationIgnored private var verifiedLAN: VerifiedLANHost?
 
+    /// The resolve pass currently in flight, if any.
+    ///
+    /// `resolvePreferringLAN` now has two independent triggers — the
+    /// `auth.isPaired` connect path and the scenePhase `.active` re-resolve —
+    /// and on a cold launch of an already-paired device both fire within
+    /// milliseconds of each other. Overlapping calls are therefore routine, not
+    /// exotic. Two passes would each issue their own `/identity/challenge`
+    /// round-trip to the same host: correct (nothing writes `verifiedLAN`
+    /// without a signature that verified against the pinned key, and the two
+    /// passes can only agree), but a wasted nonce round-trip per host and a log
+    /// that reads like a double-connect. Joiners await this task instead.
+    @ObservationIgnored private var inFlightResolve: Task<String, Never>?
+
     /// THE single gate for reusing a prior proof. Returns an address only when
     /// every part of the trust context still holds — same pinned key, same
     /// browse session, host still advertised — and drops the entry otherwise, so
@@ -91,7 +104,21 @@ final class RelayURLResolver {
     /// changes in a way the bindings above cannot see from the inside — currently
     /// app backgrounding, after which the device may return on a different
     /// network with an attacker advertising the same `host:port` string.
+    ///
+    /// Pairs with the scenePhase `.active` re-resolve in `MajorTomApp`: dropping
+    /// the proof with no trigger to re-earn it would pin the process to the
+    /// tunnel for the rest of its life, since `bestRelayURL` is synchronous and
+    /// cannot challenge.
     func invalidateVerifiedLANHost() {
+        // Cancel any pass still in flight, not just the cached entry. A resolve
+        // that started before backgrounding captured the pre-`stop()`
+        // `BonjourBrowser.generation`, so whatever it proves is already unusable
+        // by the time it lands — and the foreground re-resolve would *join* it
+        // (see `inFlightResolve`) and inherit that dead answer instead of
+        // opening a fresh pass against the new browse session. Cancellation is
+        // fail-closed: `performResolve` breaks out and returns the tunnel.
+        inFlightResolve?.cancel()
+        inFlightResolve = nil
         guard verifiedLAN != nil else { return }
         resolveLog.info("cached LAN host invalidated (app backgrounded)")
         verifiedLAN = nil
@@ -200,7 +227,26 @@ final class RelayURLResolver {
     ///
     /// A challenge already in flight is allowed to finish (it is the payoff),
     /// so the absolute worst case is `maxWait` + one challenge timeout.
+    ///
+    /// **Idempotent under concurrency.** Overlapping callers share a single pass
+    /// (`inFlightResolve`) rather than each opening their own — see that
+    /// property for why overlap is now the normal cold-launch shape.
     func resolvePreferringLAN() async -> String {
+        if let inFlight = inFlightResolve {
+            resolveLog.info("resolve joined a pass already in flight")
+            return await inFlight.value
+        }
+        let pass = Task { await self.performResolve() }
+        inFlightResolve = pass
+        let result = await pass.value
+        // Only the caller that opened the pass clears it, and only if it is
+        // still the registered one — `invalidateVerifiedLANHost` may have
+        // cancelled and replaced/cleared it while we were awaiting.
+        if inFlightResolve == pass { inFlightResolve = nil }
+        return result
+    }
+
+    private func performResolve() async -> String {
         let clock = ContinuousClock()
         let started = clock.now
 
@@ -263,6 +309,22 @@ final class RelayURLResolver {
                 let verified = await RelayIdentityVerifier.challenge(baseURL: base, pinnedPublicKeyBase64url: pinned)
                 resolveLog.info("challenge \(service.address, privacy: .public) → \(verified ? "VERIFIED" : "rejected", privacy: .public) in \(BonjourBrowser.elapsedMS(from: challengeStart, clock: clock), privacy: .public)ms")
                 if verified {
+                    // Cancellation is cooperative, so a challenge that was
+                    // already in flight when `invalidateVerifiedLANHost()` ran
+                    // resumes *after* it — and would otherwise write a cache
+                    // entry over an invalidation that already happened, and hand
+                    // a LAN address to a caller (or a joiner) that must fail
+                    // closed. The signature itself was genuine; the trust context
+                    // it was earned in is the thing that just went away.
+                    //
+                    // The `browserGeneration` binding would also catch this the
+                    // next time the browser restarts, but that is a downstream
+                    // guard for a *later* read. This is the one that keeps the
+                    // return value of this call honest.
+                    if Task.isCancelled {
+                        resolveLog.notice("resolve → tunnel: \(service.address, privacy: .public) verified but the pass was cancelled mid-challenge")
+                        return auth.serverURL
+                    }
                     verifiedLAN = VerifiedLANHost(
                         address: service.address,
                         pinnedKey: pinned,

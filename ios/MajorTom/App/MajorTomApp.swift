@@ -165,6 +165,25 @@ struct MajorTomApp: App {
                     // since sign-in completing is exactly when the first
                     // `resolvePreferringLAN` fires.
                     bonjour.start()
+                    // The other half of the `.background` invalidation below.
+                    // `resolvePreferringLAN` otherwise has exactly one trigger —
+                    // the `auth.isPaired` transition — which does NOT fire on
+                    // foreground, so a proof dropped on background could never be
+                    // re-earned: `bestRelayURL` is synchronous and can't
+                    // challenge, so every terminal tab opened for the rest of the
+                    // process would ride the tunnel. On a phone that background
+                    // round-trip happens within minutes of every launch, i.e.
+                    // #183's headline symptom for the dominant usage pattern.
+                    //
+                    // Fire-and-forget on purpose: nothing awaits it, so it can't
+                    // stall the UI or the connect path. A tab opened before it
+                    // lands just gets the tunnel for that one connection and the
+                    // next one gets the LAN. Overlap with the cold-launch resolve
+                    // is deduplicated inside `resolvePreferringLAN`, so a launch
+                    // costs one pass, not two.
+                    if auth.isPaired {
+                        Task { _ = await relayResolver.resolvePreferringLAN() }
+                    }
                     if let action = ShortcutActionKey.consumeAction() {
                         handleShortcutAction(action)
                     }
@@ -175,7 +194,9 @@ struct MajorTomApp: App {
                     // can advertise the same `host:port` string we verified at
                     // home. Drop the proof so the next connect re-challenges (or
                     // fails closed to the tunnel) instead of handing the session
-                    // cookie to whoever now answers at that address.
+                    // cookie to whoever now answers at that address. The
+                    // re-challenge is the `.active` re-resolve above — these two
+                    // only make sense as a pair.
                     relayResolver.invalidateVerifiedLANHost()
                 default:
                     break
