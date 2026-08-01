@@ -28,6 +28,15 @@ struct MajorTomApp: App {
         _bonjour = State(initialValue: browser)
         _relayResolver = State(initialValue: resolver)
         _terminalViewModel = State(initialValue: TerminalViewModel(auth: authService, titleStore: store, relayResolver: resolver))
+        // #183: pre-warm mDNS discovery at the earliest possible moment.
+        // `resolvePreferringLAN` used to start the browser itself, at the same
+        // instant it began waiting — so discover → TCP handshake → `.ready`
+        // never finished inside its window and the LAN never won. Browsing is
+        // unauthenticated and cheap (no credentials leave the device); trust is
+        // still gated downstream by the signed Ed25519 challenge. Started here
+        // rather than in `.onAppear` so it can't race the `isPaired` handler,
+        // and torn down on `.background` by the scenePhase handler below.
+        browser.start()
     }
     @Environment(\.scenePhase) private var scenePhase
 
@@ -37,7 +46,10 @@ struct MajorTomApp: App {
                 if auth.isPaired {
                     mainTabView
                 } else {
-                    PairingView(auth: auth)
+                    // Share the app-level browser so the cache the pairing view
+                    // warms is the same one `resolvePreferringLAN` reads the
+                    // moment sign-in flips `isPaired` (#183).
+                    PairingView(auth: auth, browser: bonjour)
                 }
             }
             .tint(MajorTomTheme.Colors.accent)
@@ -139,10 +151,14 @@ struct MajorTomApp: App {
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
                 case .active:
-                    // Keep LAN discovery alive while foregrounded (paired only)
-                    // so reconnects prefer the LAN; tear it down in the
-                    // background to avoid needless mDNS browsing.
-                    if auth.isPaired { bonjour.start() }
+                    // Keep LAN discovery alive for the whole foreground session
+                    // so both sign-in and later reconnects find a warm cache
+                    // (#183); tear it down in the background so nothing browses
+                    // mDNS while the app is off-screen. No longer gated on
+                    // `isPaired` — an unpaired device needs the warm cache most,
+                    // since sign-in completing is exactly when the first
+                    // `resolvePreferringLAN` fires.
+                    bonjour.start()
                     if let action = ShortcutActionKey.consumeAction() {
                         handleShortcutAction(action)
                     }

@@ -93,14 +93,13 @@ final class PairingViewModel {
     /// view appear. The pairing UI no longer surfaces the discovered
     /// services, but they still drive `currentRelayURL` so an on-LAN
     /// relay is preferred over the tunnel.
+    ///
+    /// There is no matching `stop` — the browser is the app-level one and
+    /// `MajorTomApp`'s scenePhase handler owns its teardown. Stopping it when
+    /// this view disappears would wipe the discovery cache at the exact moment
+    /// pairing succeeds and `RelayURLResolver` needs it (#183).
     func startDiscovery() {
         browser.start()
-    }
-
-    /// Stop mDNS discovery and tear down active resolvers. Called on
-    /// view disappear.
-    func stopDiscovery() {
-        browser.stop()
     }
 
     /// Fetch auth methods from the relay to adapt the login UI.

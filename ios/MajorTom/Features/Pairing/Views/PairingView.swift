@@ -3,8 +3,12 @@ import SwiftUI
 struct PairingView: View {
     @State private var viewModel: PairingViewModel
 
-    init(auth: AuthService) {
-        _viewModel = State(initialValue: PairingViewModel(auth: auth))
+    /// `browser` is the app-level `BonjourBrowser` (see `MajorTomApp`). Sharing
+    /// it means the cache warmed while the user signs in is the same one
+    /// `RelayURLResolver` reads the instant pairing completes (#183); its
+    /// lifecycle is owned by the app's scenePhase handler, not by this view.
+    init(auth: AuthService, browser: BonjourBrowser) {
+        _viewModel = State(initialValue: PairingViewModel(auth: auth, browser: browser))
     }
 
     var body: some View {
@@ -59,12 +63,13 @@ struct PairingView: View {
         .animation(.easeInOut(duration: 0.2), value: viewModel.authState)
         .task {
             // Bonjour browses silently so LAN-resolved URLs are preferred
-            // over the tunnel when the relay is on the same network.
+            // over the tunnel when the relay is on the same network. Idempotent
+            // — the app already started this browser at launch. Deliberately
+            // NOT stopped on disappear: this view disappears the moment pairing
+            // succeeds, which is precisely when `resolvePreferringLAN` needs the
+            // warm cache (#183). The app's scenePhase handler owns teardown.
             viewModel.startDiscovery()
             await viewModel.fetchAuthMethods()
-        }
-        .onDisappear {
-            viewModel.stopDiscovery()
         }
     }
 
@@ -130,5 +135,5 @@ struct PairingView: View {
 }
 
 #Preview {
-    PairingView(auth: AuthService())
+    PairingView(auth: AuthService(), browser: BonjourBrowser())
 }

@@ -1,5 +1,12 @@
 import Foundation
 import Network
+import OSLog
+
+/// Discovery timing lives under `com.majortom.app` / `discovery` so an
+/// on-device pass can be read straight out of Console.app. Only service
+/// names, `.local` hostnames and NWError text are emitted — never keys,
+/// cookies or tokens (this browser never sees any).
+private let discoveryLog = Logger(subsystem: "com.majortom.app", category: "discovery")
 
 /// Discovers Major Tom relay instances on the local network via Bonjour
 /// (`_majortom._tcp`). Each discovered service is resolved to a `host:port`
@@ -30,6 +37,15 @@ final class BonjourBrowser {
     private(set) var services: [DiscoveredService] = []
     private(set) var isBrowsing = false
 
+    /// Browse results currently mid-resolve (TCP handshake in flight).
+    /// `RelayURLResolver` polls this to hold its LAN window open **only**
+    /// while a local responder is genuinely being resolved — with nothing
+    /// answering on the LAN (cellular / remote) it stays 0 and the resolver
+    /// falls through to the tunnel as soon as its short grace window closes.
+    /// Derived from `resolvers` rather than mirrored into a second stored
+    /// property so the two can never desync (#183).
+    var pendingResolveCount: Int { resolvers.count }
+
     /// Cap on concurrent resolvers + emitted services. A hostile peer on
     /// the LAN can flood the multicast group with unique `_majortom._tcp`
     /// names; without a cap each name opens an `NWConnection` and a chip
@@ -37,11 +53,21 @@ final class BonjourBrowser {
     /// realistic deployment (home LAN typically has 1, lab setups <5).
     private static let maxServices = 16
 
+    /// Hard bound on a single resolve's TCP handshake. Without it a peer that
+    /// black-holes SYNs to `:9090` keeps `pendingResolveCount` above zero for
+    /// the platform default (tens of seconds), which would pin
+    /// `RelayURLResolver`'s adaptive window at its ceiling on every connect.
+    /// 3s is far above a real LAN handshake (single-digit ms).
+    private static let resolveConnectTimeoutSeconds = 3
+
     private var browser: NWBrowser?
     private var resolvers: [String: NWConnection] = [:]
 
+    private let clock = ContinuousClock()
+
     func start() {
         guard browser == nil else { return }
+        discoveryLog.info("browser starting")
         let descriptor = NWBrowser.Descriptor.bonjour(type: "_majortom._tcp", domain: nil)
         let params = NWParameters()
         params.includePeerToPeer = false
@@ -54,8 +80,20 @@ final class BonjourBrowser {
         }
         browser.stateUpdateHandler = { [weak self] state in
             Task { @MainActor [weak self] in
-                if case .failed = state {
+                switch state {
+                case .ready:
+                    discoveryLog.info("browser ready")
+                case .waiting(let error):
+                    // The tell-tale for a denied/undetermined Local Network
+                    // permission — worth its own line in the #183 timing pass.
+                    discoveryLog.notice("browser waiting: \(error.localizedDescription, privacy: .public)")
+                case .failed(let error):
+                    discoveryLog.error("browser failed: \(error.localizedDescription, privacy: .public)")
                     self?.isBrowsing = false
+                case .cancelled:
+                    discoveryLog.info("browser cancelled")
+                default:
+                    break
                 }
             }
         }
@@ -65,6 +103,12 @@ final class BonjourBrowser {
     }
 
     func stop() {
+        // Log only when there was something to tear down, but ALWAYS run the
+        // teardown below — an early return here could strand a `services` entry
+        // appended by a resolver callback that landed after a previous `stop()`.
+        if browser != nil || !resolvers.isEmpty {
+            discoveryLog.info("browser stopping (\(self.services.count, privacy: .public) discovered, \(self.resolvers.count, privacy: .public) resolving)")
+        }
         browser?.cancel()
         browser = nil
         for conn in resolvers.values { conn.cancel() }
@@ -75,6 +119,7 @@ final class BonjourBrowser {
 
     private func handleResults(_ results: Set<NWBrowser.Result>) {
         let activeNames = Set(results.compactMap(Self.serviceName(from:)))
+        discoveryLog.info("browse results: \(activeNames.count, privacy: .public) advertised, \(self.services.count, privacy: .public) resolved, \(self.resolvers.count, privacy: .public) resolving")
 
         // Drop services that no longer appear in the browse results.
         services.removeAll { !activeNames.contains($0.id) }
@@ -97,30 +142,76 @@ final class BonjourBrowser {
     private func startResolve(for result: NWBrowser.Result, name: String, fingerprint: String?) {
         let params = NWParameters.tcp
         params.prohibitedInterfaceTypes = [.cellular]
+        if let tcp = params.defaultProtocolStack.transportProtocol as? NWProtocolTCP.Options {
+            tcp.connectionTimeout = Self.resolveConnectTimeoutSeconds
+        }
         let conn = NWConnection(to: result.endpoint, using: params)
+        let startedAt = clock.now
         resolvers[name] = conn
+        discoveryLog.info("resolve start \(name, privacy: .public) (fp \(Self.shortFingerprint(fingerprint), privacy: .public))")
 
         conn.stateUpdateHandler = { [weak self] state in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                let elapsed = Self.elapsedMS(from: startedAt, clock: self.clock)
                 switch state {
                 case .ready:
+                    // State callbacks hop through a `Task`, so a `stop()` or a
+                    // browse-result eviction can land first. If this resolver is
+                    // no longer the registered one, don't resurrect a service
+                    // that was torn down — just release the connection.
+                    guard self.resolvers[name] === conn else {
+                        conn.cancel()
+                        return
+                    }
                     if let address = Self.address(from: conn.currentPath?.remoteEndpoint) {
+                        discoveryLog.info("resolve ready \(name, privacy: .public) → \(address, privacy: .public) in \(elapsed, privacy: .public)ms")
                         let entry = DiscoveredService(id: name, displayName: name, address: address, fingerprint: fingerprint)
                         if !self.services.contains(entry) {
                             self.services.append(entry)
                         }
+                    } else {
+                        discoveryLog.notice("resolve ready \(name, privacy: .public) but no usable host:port in \(elapsed, privacy: .public)ms")
                     }
                     conn.cancel()
-                    self.resolvers.removeValue(forKey: name)
-                case .failed, .cancelled:
-                    self.resolvers.removeValue(forKey: name)
+                    self.clearResolver(name, ifIdenticalTo: conn)
+                case .failed(let error):
+                    discoveryLog.notice("resolve failed \(name, privacy: .public) after \(elapsed, privacy: .public)ms: \(error.localizedDescription, privacy: .public)")
+                    self.clearResolver(name, ifIdenticalTo: conn)
+                case .cancelled:
+                    self.clearResolver(name, ifIdenticalTo: conn)
                 default:
                     break
                 }
             }
         }
         conn.start(queue: .main)
+    }
+
+    /// Drop a finished resolver, but only if the slot still holds *this*
+    /// connection. `.ready` cancels the connection, so a `.cancelled` callback
+    /// always trails it; without the identity check that trailing callback
+    /// would evict a fresh resolver started for the same service name in
+    /// between (service flap), silently zeroing `pendingResolveCount`.
+    private func clearResolver(_ name: String, ifIdenticalTo conn: NWConnection) {
+        guard resolvers[name] === conn else { return }
+        resolvers.removeValue(forKey: name)
+    }
+
+    /// Whole milliseconds since `start` — the unit every discovery/resolve log
+    /// line reports so an on-device pass can be read without arithmetic.
+    static func elapsedMS(from start: ContinuousClock.Instant, clock: ContinuousClock) -> Int {
+        let elapsed = start.duration(to: clock.now)
+        let (seconds, attoseconds) = elapsed.components
+        return Int(seconds * 1_000 + attoseconds / 1_000_000_000_000_000)
+    }
+
+    /// First 8 chars of a relay fingerprint for log correlation. The
+    /// fingerprint is public data (plaintext mDNS TXT), but a prefix is
+    /// enough to correlate lines and keeps them short.
+    static func shortFingerprint(_ fingerprint: String?) -> String {
+        guard let fingerprint, !fingerprint.isEmpty else { return "none" }
+        return String(fingerprint.prefix(8))
     }
 
     private static func serviceName(from result: NWBrowser.Result) -> String? {

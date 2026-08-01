@@ -1,4 +1,11 @@
 import Foundation
+import OSLog
+
+/// Connect-time LAN-vs-tunnel decisions land under `com.majortom.app` /
+/// `resolve`. Only addresses, fingerprint prefixes (public mDNS data) and
+/// elapsed milliseconds are emitted — never the session cookie, the pinned
+/// key, a nonce or a signature.
+private let resolveLog = Logger(subsystem: "com.majortom.app", category: "resolve")
 
 /// Resolves the best relay base URL to connect to *at connect time*,
 /// preferring a Bonjour-discovered LAN host over the frozen `auth.serverURL`
@@ -55,31 +62,75 @@ final class RelayURLResolver {
         return auth.serverURL
     }
 
+    /// How long we wait for Bonjour to show *any* sign of a local responder
+    /// before giving up on the LAN. Sized for the cellular / remote case: with
+    /// nothing advertising `_majortom._tcp` this is the entire cost added to
+    /// connect (down from the old flat 2s window). Deliberately NOT gated on
+    /// `NetworkPathMonitor.reachability` — that starts at `.offline` until
+    /// `NWPathMonitor` delivers its first update, so a launch-time check would
+    /// skip the LAN exactly when we most want it.
+    private static let discoveryGrace: Duration = .seconds(1)
+
+    /// Hard ceiling on the LAN window. Only reachable when a responder is
+    /// actually mid-resolve or mid-challenge — the grace window ends the wait
+    /// otherwise. Sized to cover mDNS browse + TCP handshake + one challenge
+    /// round-trip on a slow/busy Wi-Fi network.
+    private static let maxWait: Duration = .seconds(4)
+
+    /// Re-check cadence while the window is open.
+    private static let pollInterval: Duration = .milliseconds(150)
+
     /// Resolve preferring the LAN, but only after proving a discovered host is
-    /// the relay we paired with. Gives Bonjour a brief window to answer, then
-    /// for each discovered host fast-filters on the advertised fingerprint and
-    /// challenges it to sign a fresh nonce (`RelayIdentityVerifier`). The first
-    /// host that returns a valid signature against the pinned key is cached and
-    /// returned; otherwise we fall back to the tunnel. With no pinned identity
-    /// (paired against a relay that predates `/identity`) we never trust a LAN
-    /// host and always return the tunnel. Idempotently starts discovery.
-    func resolvePreferringLAN(timeout: Duration = .seconds(2)) async -> String {
+    /// the relay we paired with. Gives Bonjour a window to answer, then for each
+    /// discovered host fast-filters on the advertised fingerprint and challenges
+    /// it to sign a fresh nonce (`RelayIdentityVerifier`). The first host that
+    /// returns a valid signature against the pinned key is cached and returned;
+    /// otherwise we fall back to the tunnel. With no pinned identity (paired
+    /// against a relay that predates `/identity`) we never trust a LAN host and
+    /// always return the tunnel. Idempotently starts discovery.
+    ///
+    /// **Timing policy (#183).** The old flat 2s window routinely expired before
+    /// `BonjourBrowser` had finished its discover → TCP-handshake → `.ready`
+    /// pipeline, so the LAN never won on Wi-Fi. It is replaced by a window that
+    /// is *short when nothing is there* and *patient when something is*:
+    ///
+    /// - `discoveryGrace` (1s): if nothing local has answered by then — nothing
+    ///   discovered, nothing mid-resolve — return the tunnel. Cellular and
+    ///   remote users pay 1s instead of the old 2s.
+    /// - Extend past the grace window only while `browser.pendingResolveCount`
+    ///   is non-zero, i.e. a discovered responder is genuinely mid-handshake.
+    ///   `BonjourBrowser` caps each handshake at 3s, so a black-holed advertiser
+    ///   cannot hold the window open indefinitely.
+    /// - `maxWait` (4s) is a hard ceiling: no *new* challenge starts after it,
+    ///   which also bounds the old worst case where up to 16 discovered hosts
+    ///   could each burn a 2s challenge timeout serially inside one pass.
+    ///
+    /// A challenge already in flight is allowed to finish (it is the payoff),
+    /// so the absolute worst case is `maxWait` + one challenge timeout.
+    func resolvePreferringLAN() async -> String {
+        let clock = ContinuousClock()
+        let started = clock.now
+
         // Re-use a still-advertised verified host without re-challenging.
         if let verified = verifiedLANAddress,
            browser.services.contains(where: { $0.address == verified }) {
+            resolveLog.info("resolve → LAN \(verified, privacy: .public) (cached, verified this session)")
             return verified
         }
         verifiedLANAddress = nil
 
         guard let pinned = KeychainService.load(.relayPublicKey),
               let pinnedRaw = RelayIdentityVerifier.data(fromBase64url: pinned) else {
+            resolveLog.notice("resolve → tunnel: no pinned relay identity (paired pre-/identity)")
             return auth.serverURL
         }
         let expectedFingerprint = RelayIdentityVerifier.fingerprint(forRawPublicKey: pinnedRaw)
 
         browser.start()
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: timeout)
+        resolveLog.info("resolve start: \(self.browser.services.count, privacy: .public) warm, \(self.browser.pendingResolveCount, privacy: .public) resolving, pinned fp \(BonjourBrowser.shortFingerprint(expectedFingerprint), privacy: .public)")
+
+        let graceDeadline = started.advanced(by: Self.discoveryGrace)
+        let ceiling = started.advanced(by: Self.maxWait)
         var challenged: Set<String> = []
 
         while true {
@@ -87,20 +138,48 @@ final class RelayURLResolver {
             // during an await are picked up on the next outer pass. `challenged`
             // prevents re-issuing a challenge to the same address.
             for service in browser.services where !challenged.contains(service.address) {
+                // Don't *start* a new challenge past the ceiling — each one can
+                // burn its own HTTP timeout, so an unbounded pass over many
+                // discovered hosts would stall the connect path.
+                if clock.now >= ceiling { break }
                 challenged.insert(service.address)
                 // A mismatched advertised fingerprint can't be our relay — skip
                 // the round-trip. A *missing* fingerprint is still challenged;
                 // the signature, not the fingerprint, is the trust anchor.
-                if let fp = service.fingerprint, fp != expectedFingerprint { continue }
+                if let fp = service.fingerprint, fp != expectedFingerprint {
+                    resolveLog.notice("skip \(service.address, privacy: .public): advertised fp \(BonjourBrowser.shortFingerprint(fp), privacy: .public) ≠ pinned")
+                    continue
+                }
                 let base = AuthService.normalizeBaseURL(service.address)
-                if await RelayIdentityVerifier.challenge(baseURL: base, pinnedPublicKeyBase64url: pinned) {
+                let challengeStart = clock.now
+                let verified = await RelayIdentityVerifier.challenge(baseURL: base, pinnedPublicKeyBase64url: pinned)
+                resolveLog.info("challenge \(service.address, privacy: .public) → \(verified ? "VERIFIED" : "rejected", privacy: .public) in \(BonjourBrowser.elapsedMS(from: challengeStart, clock: clock), privacy: .public)ms")
+                if verified {
                     verifiedLANAddress = service.address
+                    resolveLog.info("resolve → LAN \(service.address, privacy: .public) in \(BonjourBrowser.elapsedMS(from: started, clock: clock), privacy: .public)ms")
                     return service.address
                 }
             }
-            if clock.now >= deadline { break }
+
+            let now = clock.now
+            if now >= ceiling {
+                resolveLog.notice("resolve → tunnel: hit \(Self.maxWait.description, privacy: .public) ceiling after \(challenged.count, privacy: .public) challenge(s)")
+                break
+            }
+            // Hold the window open past the grace period only while a discovered
+            // responder is still mid-handshake. Nothing pending == nothing local
+            // is coming, so cellular/remote falls through immediately.
+            if now >= graceDeadline && browser.pendingResolveCount == 0 {
+                resolveLog.info("resolve → tunnel: no local responder after \(BonjourBrowser.elapsedMS(from: started, clock: clock), privacy: .public)ms (\(challenged.count, privacy: .public) challenged)")
+                break
+            }
             // Break (don't busy-spin) if the task is cancelled mid-wait.
-            do { try await Task.sleep(for: .milliseconds(150)) } catch { break }
+            do {
+                try await Task.sleep(for: Self.pollInterval)
+            } catch {
+                resolveLog.notice("resolve → tunnel: cancelled after \(BonjourBrowser.elapsedMS(from: started, clock: clock), privacy: .public)ms")
+                break
+            }
         }
         return auth.serverURL
     }
