@@ -556,10 +556,25 @@
      */
     paste: function(text) {
       if (term && ws && ws.readyState === WebSocket.OPEN) {
-        // Send directly to the PTY, bypassing xterm input processing
-        // to avoid bracket paste mode issues in raw paste.
-        // Encode as binary so the relay treats it as PTY input.
-        ws.send(encoder.encode(text));
+        // Route through xterm's paste path, NOT a raw ws.send. term.paste()
+        // does not write to the screen buffer — it normalizes the text and
+        // fires the same onData event typing does, so there is no local echo.
+        // What it adds is the two things a raw send silently drops:
+        //   1. Bracketed paste (DEC private mode 2004). When the app has
+        //      enabled it, xterm wraps the payload in ESC[200~ … ESC[201~ so
+        //      the shell treats it as literal text. Without the wrapper a
+        //      multi-line clipboard payload auto-executes every line the
+        //      instant it lands; with it the lines sit inert on the prompt
+        //      awaiting Enter, and the `claude` TUI receives them as ONE
+        //      multi-line prompt instead of N submitted turns.
+        //   2. Newline normalization (/\r?\n/g → "\r"). zsh binds both ^J and
+        //      ^M to accept-line, so raw CRLF content double-submits.
+        // Encoding is downstream and unchanged: term.onData still does the
+        // TextEncoder + binary ws.send, so the wire contract is identical.
+        // (The previous code hand-rolled the send in order to "reuse the
+        // shared encoder" — which encoder instance is used was never the
+        // point, and chasing it is what left paste dead since 6db7835.)
+        term.paste(text);
       }
     },
 
