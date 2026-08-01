@@ -37,12 +37,30 @@ struct MajorTomApp: App {
                 if auth.isPaired {
                     mainTabView
                 } else {
-                    PairingView(auth: auth)
+                    // Share the app-level browser so the cache the pairing view
+                    // warms is the same one `resolvePreferringLAN` reads the
+                    // moment sign-in flips `isPaired` (#183).
+                    PairingView(auth: auth, browser: bonjour)
                 }
             }
             .tint(MajorTomTheme.Colors.accent)
             .preferredColorScheme(.dark)
             .onAppear {
+                // #183: pre-warm mDNS discovery so `resolvePreferringLAN` reads a
+                // warm cache instead of starting the browser at the same instant
+                // it begins waiting. Deliberately here and NOT in `init()`: three
+                // App Intents ship with `openAppWhenRun = false`
+                // (`FleetStatusIntent`, `SessionSummaryIntent`,
+                // `ToggleGodModeIntent`) and the Watch counterpart wakes us via
+                // `sendMessage`/`transferUserInfo`, so the process can be launched
+                // with no UI scene at all — `init()` would browse mDNS and open
+                // `:9090` TCP resolves entirely off-screen, where the Local
+                // Network permission can't even be prompted for. `.onAppear` runs
+                // only when a scene is connected, which is exactly the gate we
+                // want. Racing the `isPaired` handler below is harmless because
+                // `resolvePreferringLAN` starts the browser itself if needed and
+                // measures its grace window from `BonjourBrowser.startedAt`.
+                bonjour.start()
                 let achievementsVM = AchievementsViewModel(auth: auth)
                 achievementsViewModel = achievementsVM
                 relay.officeSceneManager = officeSceneManager
@@ -139,15 +157,47 @@ struct MajorTomApp: App {
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
                 case .active:
-                    // Keep LAN discovery alive while foregrounded (paired only)
-                    // so reconnects prefer the LAN; tear it down in the
-                    // background to avoid needless mDNS browsing.
-                    if auth.isPaired { bonjour.start() }
+                    // Keep LAN discovery alive for the whole foreground session
+                    // so both sign-in and later reconnects find a warm cache
+                    // (#183); tear it down in the background so nothing browses
+                    // mDNS while the app is off-screen. No longer gated on
+                    // `isPaired` — an unpaired device needs the warm cache most,
+                    // since sign-in completing is exactly when the first
+                    // `resolvePreferringLAN` fires.
+                    bonjour.start()
+                    // The other half of the `.background` invalidation below.
+                    // `resolvePreferringLAN` otherwise has exactly one trigger —
+                    // the `auth.isPaired` transition — which does NOT fire on
+                    // foreground, so a proof dropped on background could never be
+                    // re-earned: `bestRelayURL` is synchronous and can't
+                    // challenge, so every terminal tab opened for the rest of the
+                    // process would ride the tunnel. On a phone that background
+                    // round-trip happens within minutes of every launch, i.e.
+                    // #183's headline symptom for the dominant usage pattern.
+                    //
+                    // Fire-and-forget on purpose: nothing awaits it, so it can't
+                    // stall the UI or the connect path. A tab opened before it
+                    // lands just gets the tunnel for that one connection and the
+                    // next one gets the LAN. Overlap with the cold-launch resolve
+                    // is deduplicated inside `resolvePreferringLAN`, so a launch
+                    // costs one pass, not two.
+                    if auth.isPaired {
+                        Task { _ = await relayResolver.resolvePreferringLAN() }
+                    }
                     if let action = ShortcutActionKey.consumeAction() {
                         handleShortcutAction(action)
                     }
                 case .background:
                     bonjour.stop()
+                    // Backgrounding is the boundary across which the device can
+                    // wake up on a completely different LAN, where a hostile peer
+                    // can advertise the same `host:port` string we verified at
+                    // home. Drop the proof so the next connect re-challenges (or
+                    // fails closed to the tunnel) instead of handing the session
+                    // cookie to whoever now answers at that address. The
+                    // re-challenge is the `.active` re-resolve above — these two
+                    // only make sense as a pair.
+                    relayResolver.invalidateVerifiedLANHost()
                 default:
                     break
                 }

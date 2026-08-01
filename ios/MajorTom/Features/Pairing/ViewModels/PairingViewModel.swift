@@ -3,10 +3,11 @@ import Foundation
 // MARK: - Server Presets
 
 /// Relay URL targets picked from the device's current reachability.
-/// LAN deliberately falls through to the public tunnel — Bonjour
-/// discovery (see `currentRelayURL`) takes precedence when an mDNS
-/// broadcast is visible, so the tunnel is only used as a safety net
-/// when Bonjour can't see the relay (mDNS blocked, Mac asleep).
+/// LAN deliberately falls through to the public tunnel: pre-pairing there is no
+/// pinned relay identity to challenge a discovered host against, so an mDNS
+/// responder can never be trusted here. LAN preference is applied *after*
+/// pairing, by `RelayURLResolver`, where the Ed25519 challenge-response gate
+/// exists. See `currentRelayURL`.
 enum ServerPreset {
     case cloudflare
     case tailscale
@@ -46,15 +47,20 @@ final class PairingViewModel {
     private let browser: BonjourBrowser
     private let googleOAuth: GoogleOAuthService
 
+    /// `browser` is **required** and must be the app-level `BonjourBrowser`.
+    /// A private instance would warm a cache `RelayURLResolver` never reads,
+    /// silently reintroducing #183 with no compile error — and, since this type
+    /// no longer has a `stopDiscovery`, would browse with no teardown path at
+    /// all. Making it non-optional makes that mistake unrepresentable.
     init(
         auth: AuthService,
+        browser: BonjourBrowser,
         network: NetworkPathMonitor? = nil,
-        browser: BonjourBrowser? = nil,
         googleOAuth: GoogleOAuthService? = nil
     ) {
         self.auth = auth
+        self.browser = browser
         self.network = network ?? NetworkPathMonitor()
-        self.browser = browser ?? BonjourBrowser()
         self.googleOAuth = googleOAuth ?? GoogleOAuthService()
     }
 
@@ -75,32 +81,39 @@ final class PairingViewModel {
         (authMethods?.google ?? false) && (googleIOSClientID?.isEmpty == false)
     }
 
-    /// Resolve the relay URL at call-time:
-    /// 1. First Bonjour-discovered service if any (lowest latency on LAN).
-    /// 2. Reachability-driven preset (Tailscale on VPN, tunnel otherwise).
-    /// 3. Tunnel hostname as a final safety net so signin never has nothing to hit.
+    /// Resolve the relay URL for the *pre-pairing* flow:
+    /// 1. Reachability-driven preset (Tailscale on VPN, tunnel otherwise).
+    /// 2. Tunnel hostname as a final safety net so signin never has nothing to hit.
+    ///
+    /// SECURITY: deliberately **not** Bonjour-derived. Before pairing there is no
+    /// pinned relay identity, so `RelayIdentityVerifier` cannot challenge a
+    /// discovered host and any LAN peer advertising `_majortom._tcp` could be the
+    /// first responder — it would serve `/auth/methods`, hand back *its own*
+    /// Google `iosClientId`, and receive the resulting ID token (which
+    /// `signInWithGoogle` POSTs to this same host after freezing it into
+    /// `auth.serverURL`). Sharing the app-level browser (#183) keeps
+    /// `browser.services` warm by the time this view runs, which is exactly what
+    /// made that first-responder shortcut reachable. LAN preference belongs after
+    /// pairing, in `RelayURLResolver`, where the challenge-response gate exists.
     var currentRelayURL: String {
-        if let discovered = browser.services.first {
-            return discovered.address
-        }
         if let preset = ServerPreset(reachability: network.reachability) {
             return preset.address
         }
         return Secrets.tunnelURL
     }
 
-    /// Start mDNS discovery. Idempotent — safe to call repeatedly on
-    /// view appear. The pairing UI no longer surfaces the discovered
-    /// services, but they still drive `currentRelayURL` so an on-LAN
-    /// relay is preferred over the tunnel.
+    /// Start mDNS discovery. Idempotent — safe to call repeatedly on view appear.
+    /// Nothing in the pairing flow *consumes* discovery (see `currentRelayURL`);
+    /// this exists purely to guarantee the app-level browser is warm before
+    /// sign-in flips `isPaired`, since that transition is what fires the first
+    /// `RelayURLResolver.resolvePreferringLAN` (#183).
+    ///
+    /// There is no matching `stop` — the browser is the app-level one and
+    /// `MajorTomApp`'s scenePhase handler owns its teardown. Stopping it when
+    /// this view disappears would wipe the discovery cache at the exact moment
+    /// pairing succeeds and `RelayURLResolver` needs it.
     func startDiscovery() {
         browser.start()
-    }
-
-    /// Stop mDNS discovery and tear down active resolvers. Called on
-    /// view disappear.
-    func stopDiscovery() {
-        browser.stop()
     }
 
     /// Fetch auth methods from the relay to adapt the login UI.
