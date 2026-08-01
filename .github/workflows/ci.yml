@@ -21,6 +21,8 @@ jobs:
   lint-relay:
     name: Lint (Relay)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: relay
@@ -46,6 +48,8 @@ jobs:
   typecheck-relay:
     name: Typecheck (Relay)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: relay
@@ -72,6 +76,8 @@ jobs:
     name: Test (Relay)
     runs-on: ubuntu-latest
     needs: [lint-relay, typecheck-relay]
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: relay
@@ -100,6 +106,8 @@ jobs:
     name: Build (Relay)
     runs-on: ubuntu-latest
     needs: [lint-relay, typecheck-relay]
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: relay
@@ -185,8 +193,24 @@ jobs:
             echo "ios=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          FILES=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
-          echo "Changed files:"
+          # The PR files API is hard-capped at 3000 entries — `--paginate` does
+          # NOT lift it. Past that the list is silently truncated, so a large PR
+          # could hide its ios/ entries and skip the gate. Read the true count
+          # off the PR object and fail OPEN (build iOS) at the cap.
+          CHANGED_COUNT=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.changed_files')
+          echo "PR reports $CHANGED_COUNT changed files."
+          if (( CHANGED_COUNT >= 3000 )); then
+            echo "At/over the 3000-file API cap — the file list may be truncated."
+            echo "Failing open: build-ios will run."
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # `previous_filename` matters: a rename OUT of ios/ reports only the
+          # new path, so matching on .filename alone would miss a PR that moves
+          # the app (ios/ -> apps/ios/) and leaves the -project path below stale.
+          FILES=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)')
+          echo "Changed files (including pre-rename paths):"
           echo "$FILES"
           # ios/** is the app itself. ci.yml is included so changes to THIS job
           # are exercised by the PR that makes them. The iOS app has no other
@@ -217,9 +241,17 @@ jobs:
   # =============================================================================
   build-ios:
     name: Build (iOS)
-    runs-on: macos-latest
+    # Pinned to the image, not the `macos-latest` alias. The alias resolves to
+    # macos-26-arm64 today; when GitHub rolls it forward to an image that no
+    # longer ships Xcode 26.5, `xcode-select -s` below exits 1 and every
+    # iOS-touching PR goes red on GitHub's schedule rather than ours. Pinning
+    # the image keeps the runner and the toolchain moving together.
+    runs-on: macos-26
     needs: [changes]
     if: needs.changes.outputs.ios == 'true'
+    # Measured job time is ~2 min. The 360-minute default would let a wedged
+    # xcodebuild/CoreSimulator hang for six hours with ci-success pending on it.
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -304,7 +336,13 @@ jobs:
   label-pr:
     name: Label PR
     runs-on: ubuntu-latest
-    needs: [lint-relay, typecheck-relay, test-relay, build-relay]
+    # `changes` + `build-ios` are in this list on purpose. Without them the job
+    # ran to completion before the (much slower) macOS build finished and wrote
+    # `CI Pass` on a PR whose iOS result did not exist yet — observed on this
+    # PR's own first run: Label PR completed 23:28:00, Build (iOS) 23:28:47.
+    # `main` has no branch protection, so the label IS the merge signal.
+    needs:
+      [lint-relay, typecheck-relay, test-relay, build-relay, changes, build-ios]
     if: always() && github.event_name == 'pull_request'
     steps:
       - name: Add Lint Failure label
@@ -382,8 +420,11 @@ jobs:
               name: 'Test Failure'
             });
 
+      # Covers both build jobs — an iOS compile failure is a build failure.
       - name: Add Build Failure label
-        if: needs.build-relay.result == 'failure'
+        if: |
+          needs.build-relay.result == 'failure' ||
+          needs.build-ios.result == 'failure'
         uses: actions/github-script@v7
         with:
           script: |
@@ -394,8 +435,12 @@ jobs:
               labels: ['Build Failure']
             });
 
+      # 'skipped' is a legitimate build-ios state (path-gated), so tolerate it.
       - name: Remove Build Failure label on success
-        if: needs.build-relay.result == 'success'
+        if: |
+          needs.build-relay.result == 'success' &&
+          (needs.build-ios.result == 'success' ||
+           needs.build-ios.result == 'skipped')
         uses: actions/github-script@v7
         continue-on-error: true
         with:
@@ -407,12 +452,19 @@ jobs:
               name: 'Build Failure'
             });
 
+      # Must stay logically identical to the ci-success gate below: every job
+      # green, `changes` green, and build-ios either green or legitimately
+      # skipped (skipped is only legitimate when the detector said ios=false).
       - name: Add CI Pass label
         if: |
           needs.lint-relay.result == 'success' &&
           needs.typecheck-relay.result == 'success' &&
           needs.test-relay.result == 'success' &&
-          needs.build-relay.result == 'success'
+          needs.build-relay.result == 'success' &&
+          needs.changes.result == 'success' &&
+          (needs.build-ios.result == 'success' ||
+            (needs.build-ios.result == 'skipped' &&
+             needs.changes.outputs.ios != 'true'))
         uses: actions/github-script@v7
         with:
           script: |
@@ -423,12 +475,19 @@ jobs:
               labels: ['CI Pass']
             });
 
+      # Exact negation of the add condition — written as `!(...)` so the two can
+      # never drift apart, and so non-'failure' bad states (cancelled, or an
+      # illegitimate skip) also strip a stale label instead of leaving it.
       - name: Remove CI Pass label on failure
         if: |
-          needs.lint-relay.result == 'failure' ||
-          needs.typecheck-relay.result == 'failure' ||
-          needs.test-relay.result == 'failure' ||
-          needs.build-relay.result == 'failure'
+          !(needs.lint-relay.result == 'success' &&
+            needs.typecheck-relay.result == 'success' &&
+            needs.test-relay.result == 'success' &&
+            needs.build-relay.result == 'success' &&
+            needs.changes.result == 'success' &&
+            (needs.build-ios.result == 'success' ||
+              (needs.build-ios.result == 'skipped' &&
+               needs.changes.outputs.ios != 'true')))
         uses: actions/github-script@v7
         continue-on-error: true
         with:
@@ -446,8 +505,11 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [lint-relay, typecheck-relay, test-relay, build-relay, changes, build-ios]
+    needs:
+      [lint-relay, typecheck-relay, test-relay, build-relay, changes, build-ios]
     if: always()
+    permissions:
+      contents: read
     steps:
       - name: Check all jobs passed
         env:
@@ -457,6 +519,7 @@ jobs:
           BUILD_RELAY: ${{ needs.build-relay.result }}
           CHANGES: ${{ needs.changes.result }}
           BUILD_IOS: ${{ needs.build-ios.result }}
+          IOS_CHANGED: ${{ needs.changes.outputs.ios }}
         run: |
           if [[ "$LINT_RELAY" != "success" ]] || \
              [[ "$TYPECHECK_RELAY" != "success" ]] || \
@@ -473,4 +536,12 @@ jobs:
             echo "iOS build failed (result: $BUILD_IOS)"
             exit 1
           fi
-          echo "All CI checks passed! (iOS: $BUILD_IOS)"
+          # ...and this closes the other half: a skip is only legitimate when
+          # the detector actually said ios=false. If build-ios's `if:` is ever
+          # edited so it skips while ios=true, the iOS gate would silently stop
+          # existing and every PR after that would still print "passed".
+          if [[ "$BUILD_IOS" == "skipped" ]] && [[ "$IOS_CHANGED" == "true" ]]; then
+            echo "::error::build-ios was skipped but the change detector reported iOS-affecting changes (ios=$IOS_CHANGED). The iOS gate is broken."
+            exit 1
+          fi
+          echo "All CI checks passed! (iOS: $BUILD_IOS, ios-changed: $IOS_CHANGED)"
