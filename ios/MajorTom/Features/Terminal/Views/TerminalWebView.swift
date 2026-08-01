@@ -429,9 +429,19 @@ extension TerminalWebView.Coordinator: @preconcurrency UIEditMenuInteractionDele
         suggestedActions: [UIMenuElement]
     ) -> UIMenu? {
         guard UIPasteboard.general.hasStrings else { return UIMenu(children: []) }
+        // `identifier: .paste` is load-bearing, not cosmetic. Reading
+        // `UIPasteboard.general.string` programmatically trips the iOS 16
+        // "Allow Paste?" modal; the system waives it only for UIPasteControl,
+        // the standard `paste(_:)` responder command, or — as here — a
+        // UIAction tagged with the standard paste identifier. UIPasteControl
+        // is a UIView and can't live inside a UIMenu, so this identifier is
+        // the only exemption available on this path. Without it, tapping
+        // "Don't Allow" makes the `guard let text` below fail silently, which
+        // is indistinguishable from the dead-paste bug this file just fixed.
         let paste = UIAction(
             title: "Paste",
-            image: UIImage(systemName: "doc.on.clipboard")
+            image: UIImage(systemName: "doc.on.clipboard"),
+            identifier: .paste
         ) { [weak self] _ in
             guard let self,
                   let text = UIPasteboard.general.string,
