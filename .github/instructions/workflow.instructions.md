@@ -24,7 +24,7 @@ Major Tom uses a **phase-based, GSD-inspired workflow**. No Jira, no sprints, no
 | ------- | ------------ |
 | "Plan phase N", "What's next?" | `mt-orchestrator.md` + `mt-researcher.md` |
 | "Build it", "DESTROY IT!", "Execute" | `mt-orchestrator.md` → spawns specialists |
-| "Has comments", "Address feedback" | Read pr-review.instructions.md |
+| "Review it", "Address the findings" | `CLAUDE.md` "Local Code Review" |
 | "Merged!", "Phase done" | Update PLANNING.md progress, STATE.md |
 
 ---
@@ -64,17 +64,16 @@ Before ANY push:
 4. Fix issues, commit fixes
 5. Run CI locally
 
-### 5. PR + Claude Auto-Review
+### 5. PR + Local Review
 
 1. Push branch
 2. Create PR (not draft) with template
 3. Apply labels, assign @seantokuzo
-4. **Claude auto-reviews** via `.github/workflows/claude-code-review.yml` — Tier 2 (3 specialists + verdict synthesizer) fires on PR open/sync. The verdict sticky (`<!-- MT-VERDICT-STICKY -->`) is the round-completion signal.
-5. Follow the autonomous loop in `~/.claude/CLAUDE.md` "PR Review Workflow (canonical)" — poll, address, judge, merge.
+4. **Review runs locally** — nothing on GitHub reviews this repo. The orchestrator picks a 1-4 specialist panel from what the diff touches and spawns them read-only, in parallel. Panel selection table + reviewer brief: `CLAUDE.md` "Local Code Review".
 
-### 6. Address Comments
+### 6. Address Findings
 
-See `.github/instructions/pr-review.instructions.md` for project-specific extensions and `~/.claude/CLAUDE.md` "PR Review Workflow (canonical)" for the canonical autonomous loop + judge sub-agent step.
+Triage each finding `fix-now` / `respond` / `defer`, push back with evidence, verify every fix with an independent subagent, then judge and merge. Canonical loop: `~/.claude/CLAUDE.md` "Code Review Workflow"; project extensions: `CLAUDE.md` "Code Review Pipeline". CI (`ci.yml`) is still the merge gate.
 
 ---
 

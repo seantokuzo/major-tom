@@ -69,8 +69,8 @@ When creating a PR:
 1. **Create PR** (not draft)
 2. **Assign `@seantokuzo`**
 3. **Apply labels**: component + type + `Needs Review`
-4. **Claude auto-reviews** via `.github/workflows/claude-code-review.yml` (Tier 2: 3 specialists + verdict synthesizer)
-5. **Follow autonomous loop** in `~/.claude/CLAUDE.md` "PR Review Workflow (canonical)" + project extensions in `.github/instructions/pr-review.instructions.md`
+4. **Run review locally** — nothing on GitHub reviews this repo. The orchestrating agent spawns read-only specialist subagents against the diff per `CLAUDE.md` "Local Code Review"; `~/.claude/CLAUDE.md` "Code Review Workflow" is the canonical loop.
+5. **Record dispositions in the PR body** — fixed (with SHA), rejected (with reasoning), deferred (with issue number). That record is the review's only artifact.
 
 ## PR Labels
 
@@ -96,7 +96,6 @@ When creating a PR:
 | ----- | ------------- |
 | **Needs Review** | PR ready for review (agent applies) |
 | **Accepted** | Human approved, ready to merge |
-| **claude-deep-review** | Trigger Tier 3 deep review (manual or auto-applied by Tier 2 verdict synthesizer on escalation criteria) |
 | **expected-ci-fail** | CI failure is anticipated and tracked — bypasses the green-CI merge gate (early-phase work only) |
 
 ### CI Labels (auto-applied by GitHub Actions)
