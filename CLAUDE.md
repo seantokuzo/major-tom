@@ -88,51 +88,47 @@ See [docs/PLANNING.md](docs/PLANNING.md) for architecture, protocol spec, and ro
 
 ## Agent Workflow (GSD-Inspired)
 
-This project uses a **thin orchestrator, fat workers** pattern:
+This project uses a **thin orchestrator, fat workers** pattern. The role split is canonical in `~/.claude/CLAUDE.md` under **"Orchestrator Role"** — research, planning, spec writing, implementation, review, and shipping all go to subagents; the orchestrator keeps task decomposition, wave scheduling, conflict analysis, judging/merge, and reporting.
 
-1. **Orchestrator** stays lean — discovers work, groups into parallel waves, spawns subagents
+1. **Orchestrator** stays lean — discovers work, groups into parallel waves, spawns subagents; it does not implement
 2. **Subagents** get fresh context — each handles one component (iOS, relay, extension, sprites)
 3. **No nesting** — subagents never spawn sub-subagents
 4. **Atomic tasks** — one task = one commit
-5. **PR review pipeline** — after every PR, run the automated review loop (see `.agents/skills/pr-review-pipeline/SKILL.md`)
+5. **Local review pipeline** — after every PR, run the review loop below with specialist subagents
 6. **Auto-merge after clean review** — merge is earned after the review pipeline passes clean
 
-### PR Review Pipeline
+### Code Review Pipeline
 
-Canonical autonomous loop lives in `~/.claude/CLAUDE.md` under **"PR Review Workflow"**. Reviews are powered by the Claude GitHub App via three workflows in `.github/workflows/` — see "Reviewing with @claude" below for the tier table. Summary:
+Canonical autonomous loop lives in `~/.claude/CLAUDE.md` under **"Code Review Workflow"**. Reviews run **locally**: the orchestrating agent spawns read-only specialist subagents against the diff. Nothing reviews this repo automatically — no bot comments, no PR-open review, no verdict stickies. The brief you hand each reviewer is **"Local Code Review"** below.
 
-1. **Trigger model.** Tier 2 (`claude-code-review.yml`) auto-fires ONLY on `pull_request: opened` and `ready_for_review` (draft → ready also counts as round 1). It does NOT auto-rerun on `synchronize` — pushing fix commits is silent. **Subsequent rounds are agent-dispatched** via `workflow_dispatch`, so we only re-run lanes that had blocking findings instead of the whole panel every push.
-2. **Round completion = sticky updated for head SHA.** Each auto-review round posts/updates the verdict sticky `<!-- MT-VERDICT-STICKY -->` (Tier 2) or `<!-- MT-DEEP-VERDICT-STICKY -->` (Tier 3). The sticky is the round-completion signal — NOT inline comment counts.
-3. **Polling:** first poll 5m after round dispatch (specialists run in parallel, ~3-5 min each + synth). Subsequent polls every 2m until the sticky lands or updates.
-4. **Triage:** every comment is `fix-now` / `respond` / `defer`. Push back inline when the comment recommends defensive code for impossible cases, scope creep, or anything that conflicts with `CLAUDE.md` / `docs/PLANNING.md`.
-5. **Replies:** inline to each comment thread (never batched), with commit SHA for fixes or cited reasoning for pushback.
-6. **Decide what's next** based on the synth sticky:
-   - `verdict: ship` + CI green → **merge** (`gh pr merge --merge --delete-branch`)
-   - `verdict: fix-then-ship` + addressable blocking → fix, push, dispatch a TARGETED follow-up round (see below)
-   - `verdict: rethink` OR ambiguous trade-offs → **stop, surface to user** (don't auto-merge)
-   - 4 rounds reached → **stop, surface to user** (hard cap)
-7. **Targeted re-review dispatch.** After pushing fixes, identify which specialist(s) had blocking findings from the sticky and re-fire only those:
-   ```bash
-   gh workflow run claude-code-review.yml \
-     --ref <branch> \
-     --field pr_number=<N> \
-     --field specialists=correctness \
-     --field focus="Re-check the X fix in <sha> — Security and Architecture passed cleanly in round 1"
-   ```
-   `specialists` accepts any comma-separated subset of `security,architecture,correctness`. The synth always runs and uses the prior round's sentinels for skipped lanes (still authoritative until you say otherwise).
-8. **Quick inline Q&A vs full re-review.** For one-off questions on a specific finding ("does this still apply after my fix?"), prefer Tier 1 — drop `@claude addressed in <sha> — confirm fix in security finding line 42` as an inline reply, no full round needed. Use targeted Tier 2 dispatch only when you want fresh sentinels and a sticky update.
-9. **Round-N judge.** When the round-N sticky lands, spawn an impartial judge sub-agent per the global protocol — fresh general-purpose agent, no review history. Decision is `merge | re-review | human-decides`. Hard cap at 4 rounds.
-10. **CI gate:** must be green before merge unless the PR is labeled `expected-ci-fail`.
+| What's live on GitHub | Status |
+|---|---|
+| `.github/workflows/ci.yml` | **Live** — lint / typecheck / test / build relay. Merge gate. |
+| `.github/workflows/release.yml` | **Live** |
+| `claude.yml`, `claude-code-review.yml`, `claude-deep-review.yml` | **Dormant** — the Claude GitHub App is not installed. Left on disk; they never fire. Don't rely on them, don't wire anything to them. |
+
+Loop:
+
+1. **Pick the panel from the diff.** `gh pr diff <N> --name-only`, then choose specialists per the selection table in "Local Code Review". Never a fixed panel — 1-4 reviewers, spawned in parallel in one message.
+2. **Brief each reviewer** with the PR number, branch, stated scope, the paths to the standing priorities + "What NOT to flag" list, and the evidence rule. Reviewers are READ-ONLY.
+3. **Triage** every finding as `fix-now` / `respond` / `defer`. Read the file at the referenced line first — never operate blind. Drop any finding that arrives without a concrete failure scenario.
+4. **Push back with evidence, don't comply.** Reject findings that demand defensive code for impossible cases, scope creep, or anything conflicting with `CLAUDE.md` / `docs/PLANNING.md` — citing the specific guarantee, convention, or line. Reviewers here have been confidently wrong in ways that broke shipped features.
+5. **Fix, then verify the fixes independently.** Every fix round gets a fresh verifier subagent — not the implementer, not the reviewer who raised the finding. It checks that the fix addresses the finding, introduced no regression, and that the claims in the commit / PR body are true.
+6. **Verify build claims** — see "Build verification" below. Relay is covered by CI; **iOS is not** (#197), so an iOS build claim is only as good as the local run behind it.
+7. **Record dispositions in the PR body** — fixed (with SHA), rejected (with reasoning), deferred (with issue number). That record is the review's only artifact and it's what the judge reads.
+8. **Round-N judge.** Spawn an impartial judge subagent per the global protocol — fresh, no review history. Decision is `merge | re-review | human-decides`. `re-review` re-runs only the specialists with open findings. Hard cap at 4 rounds, then surface to the user.
+9. **CI gate:** must be green before merge unless the PR is labeled `expected-ci-fail`.
+10. **Merge:** `gh pr merge <N> --merge --delete-branch`.
 11. **Post-merge:** `git checkout main && git pull`, update `docs/STATE.md`, prep next phase prompt.
-12. **Override:** if the user says "wait for me", stop after PR creation — don't poll/merge.
-
-Execution details (bash commands, reply templates) are in `.agents/skills/pr-review-pipeline/SKILL.md`. That skill MUST align with the canonical rules + this section — if it drifts, fix the skill.
+12. **Override:** if the user says "wait for me", stop after PR creation — don't review or merge.
 
 ### Context Management
 
 - Keep main orchestrator context under 50% capacity
 - Spawn subagents for any task touching 5+ files
 - Pass file **paths** to subagents, not file contents
+- Conflict-analyse file sets **before** spawning — two concurrent agents never write the same file
+- Parallel agents on different branches get **worktree isolation**, never a shared checkout
 - Use agent files in `.agents/agents/` for role-specific prompts
 
 ### Agent Files
@@ -174,21 +170,22 @@ Before marking any task complete:
 
 ---
 
-## Reviewing with @claude
+## Local Code Review
 
-Three review tiers powered by the Claude GitHub App. **The action loads THIS file at runtime** — everything below is standing instructions for both the human and the reviewer.
+Reviews are run by the orchestrating agent using specialist subagents matched to the diff. **This section is the brief** — hand reviewers the path to it, don't paste it.
 
-### Review tiers
+**Reviewers are READ-ONLY.** No `Edit`, `Write`, or `NotebookEdit`; no commits, no pushes, no merges. They report findings; the orchestrator decides.
 
-| Tier | Trigger | Model | Effort | Use for |
-|------|---------|-------|--------|---------|
-| **1: `@claude` Q&A** | mention in issue / PR / review comment | Opus 4.6 | `max` | targeted questions, one-off code reads, CI-failure inspection |
-| **2: Auto-review** | every non-draft PR (open / sync / ready) | Opus 4.7 | `xhigh` | canonical multi-specialist review |
-| **3: Deep review** | label `claude-deep-review` (manual or auto-escalated) | Opus 4.7 | `max`, 30 turns | security-sensitive, large, or escalated changes |
+### Choosing specialists
 
-Workflows: `.github/workflows/claude.yml` (Tier 1), `claude-code-review.yml` (Tier 2), `claude-deep-review.yml` (Tier 3). Tier 2 runs three specialists in parallel (🔒 Security / 🏗️ Architecture / ✅ Correctness) plus a verdict synthesizer. Tier 3 adds a 🎯 Threat Model specialist.
+| Diff touches | Spawn | Sharpened on |
+|---|---|---|
+| `relay/src/auth/`, `relay/src/oauth/`, `ios/…/Keychain*`, identity/pinning, WS boundary, PTY spawn, tunnel | 🔒 **Security** | token + cookie flow, trust boundaries, what an attacker on the LAN or the tunnel can reach |
+| Swift actors, `async`/`Task` lifecycle, cancellation, caches + invalidation, reconnect/retry paths | ✅ **Correctness + concurrency** | isolation violations, races, missing cancellation checks, state that outlives its trust context |
+| new files, cross-component boundaries, `IAdapter`, protocol mirroring, iOS framework rules | 🏗️ **Architecture + conventions** | layering, god files, the rules in "What NOT To Do" |
+| a PR body making empirical claims — benchmarks, "verified", "this can't happen", root-cause narratives, build results | 🎯 **Adversarial verifier** | every claim checked against the code, claim by claim; report each as confirmed / wrong / unverifiable |
 
-All tiers are **READ-ONLY** — `Edit`, `Write`, and `NotebookEdit` are explicitly disallowed. No tier can modify code, push commits, or merge.
+1-4 reviewers, spawned in parallel in one message. Two with sharp briefs beat five generic ones. Anything on a sensitive path (auth, identity, tunnel, release) gets the adversarial verifier from round 1.
 
 ### Standing review priorities (in order)
 
@@ -211,6 +208,14 @@ All tiers are **READ-ONLY** — `Edit`, `Write`, and `NotebookEdit` are explicit
 | `ios/MajorTom/Features/*/Views/`, `ViewModels/` | Architecture (MVVM, `@Observable`, Concurrency) |
 | `.github/workflows/` | Security (Actions safety, fork guards, action SHA pinning) |
 
+### The evidence rule
+
+Hand this to every reviewer verbatim:
+
+> Every finding must come with a concrete failure scenario: the inputs or state that trigger it, and the bad outcome that results. "This could be unsafe" is not a finding. If you cannot write the scenario, drop the finding.
+
+Enforced on intake too — a finding that arrives without a scenario gets dropped, not debated.
+
 ### What NOT to flag
 
 - **Defensive code for impossible cases** — trust framework / type-system guarantees. Validate only at system boundaries (user input, external APIs, WebSocket inbound).
@@ -221,52 +226,51 @@ All tiers are **READ-ONLY** — `Edit`, `Write`, and `NotebookEdit` are explicit
 - **Style nits** — Prettier / SwiftFormat handle formatting; ignore.
 - **Comment density** — code without comments is fine if names are clear; only flag missing comments when WHY is non-obvious.
 
-### Mention syntax cheatsheet
+### Reviewer output
 
-```text
-# Targeted question
-@claude does this introduce any prompt-injection vectors via the terminal output path?
+Each reviewer returns findings ranked blocking → advisory — `file:line`, the failure scenario, a suggested fix — plus one verdict line:
 
-# Re-review after fixes
-@claude addressed in <sha> — re-review the security findings only
-
-# Inspect CI
-@claude check why CI is failing on this PR and surface the root cause
-
-# Explain
-@claude walk me through how the relay's session manager handles WebSocket reconnect
-
-# Trigger deep review
-# Add the `claude-deep-review` label, or run claude-deep-review.yml via workflow_dispatch
+```
+verdict: ship | fix-then-ship | rethink
+blocking: N   advisory: N   sensitive_paths_touched: yes|no
 ```
 
-### Round protocol
+The orchestrator triages (`fix-now` / `respond` / `defer`) and records every disposition in the PR body: fixed with SHA, rejected with cited reasoning, deferred with issue number.
 
-**Round 1** fires automatically on `pull_request: opened` and `ready_for_review` (draft → ready). **Round 2+ are agent-dispatched** via `workflow_dispatch` — `synchronize` is intentionally NOT a trigger, so a `git push` does not re-fire the panel. The orchestrating CLI agent reads the round-1 sticky, decides what to fix, pushes commits, and dispatches a TARGETED follow-up round on only the specialists that flagged issues. The verdict synthesizer posts a sticky (`<!-- MT-VERDICT-STICKY -->`) that's updated in place each round; skipped specialists keep their prior round's sentinel.
+### Verifying fixes
 
-Targeted dispatch:
+Fix commits are otherwise entirely unreviewed — they land after the review that would have caught them. **Every fix round gets an independent verifier subagent**: not the implementer, not the reviewer who raised the finding. It answers three questions:
+
+1. Does the fix address the finding, or just silence the symptom?
+2. Did it introduce a regression — especially in a path the original review never looked at?
+3. Are the claims in the fix commit and the updated PR body true?
+
+### Build verification
+
+**Relay** is covered by `ci.yml` (lint / typecheck / test / build). **iOS is not** — the `xcodebuild` job in `ci.yml` is commented out (#197), so a local build is the only gate that exists for `ios/`. Never assert an iOS build you didn't watch complete in the tree under review.
 
 ```bash
-gh workflow run claude-code-review.yml --ref <branch> \
-  --field pr_number=<N> \
-  --field specialists=correctness \
-  --field focus="Re-check the X fix in <sha> — Security/Architecture passed in round 1"
+xcodebuild -project <worktree>/ios/MajorTom.xcodeproj -scheme MajorTom \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath <worktree>/.build/verify build
 ```
 
-`specialists` accepts any comma-separated subset of `security,architecture,correctness`. Default is `all` (used implicitly on auto-fire).
+| Requirement | Why |
+|---|---|
+| Explicit `-project <worktree>/ios/MajorTom.xcodeproj` | A discovered/default project can resolve to another worktree. |
+| Dedicated `-derivedDataPath` under `.build/` | Shared DerivedData keys on `WorkspacePath` and will return `** BUILD SUCCEEDED **` for a *different* checkout's copy of `main`. This has already produced a false green in this repo. `.build/` is gitignored; a bare `.build-verify/` is not. |
+| Confirm the product contains the change | Exit code proves a build happened, not that it built *your* code. |
 
-- **Hard cap: 4 rounds.** After round 4 the synthesizer escalates to a human decision regardless of remaining issues.
-- **Auto-escalation to Tier 3** when the synthesizer detects: any specialist verdict = `rethink`, OR `sensitive_paths_touched: true` AND blocking>0, OR total blocking > 5, OR PR diff > 500 lines.
-- **CI must be green** before merge unless the PR is explicitly labeled `expected-ci-fail` (early-phase work).
+Two ways to confirm inclusion — do at least one:
 
-### Reviewer JSON sentinel format
+- **Provenance:** the `.d` dependency file for a changed type records the compiled source path. It must point into the worktree under review.
+- **Inclusion:** grep a string the change introduced out of the built product. **Trap:** `Major Tom.app/Major Tom` is a small stub — the Swift code lives in `Major Tom.app/Major Tom.debug.dylib`. Grep the dylib, not the app binary. For `terminal.html` and other bundled resources, hash or grep the copy inside the `.app`.
 
-Each specialist embeds a sentinel in its summary comment for the synthesizer to parse:
+### Rounds, judge, merge
 
-```html
-<!-- MT-REVIEW-JSON-{SECURITY|ARCHITECTURE|CORRECTNESS|THREATMODEL}
-{"verdict":"ship|fix-then-ship|rethink","blocking_count":N,"advisory_count":N,"sensitive_paths_touched":bool,"top_issues":[...],"rationale":"..."}
--->
-```
-
-Don't edit these by hand — they're regenerated each round.
+- **Round-N judge** — impartial subagent, fresh, no review history, per `~/.claude/CLAUDE.md`. Decision JSON: `{"decision":"merge|re-review|human-decides","confidence":"high|medium|low","reasoning":"..."}`.
+- **`re-review`** re-runs only the specialists with open findings, plus the fix verifier.
+- **Hard cap: 4 rounds**, then stop and surface to the user.
+- **`rethink`, or any ambiguous trade-off** → stop, surface to the user. Don't auto-merge through it.
+- **CI must be green** before merge unless the PR is labeled `expected-ci-fail` (early-phase work).
+- **Merge:** `gh pr merge <N> --merge --delete-branch`.
