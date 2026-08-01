@@ -559,7 +559,10 @@
         // Send directly to the PTY, bypassing xterm input processing
         // to avoid bracket paste mode issues in raw paste.
         // Encode as binary so the relay treats it as PTY input.
-        ws.send(encoder.encode(text));
+        // Build a local encoder: initTerminal()'s `encoder` is function-scoped
+        // and invisible from here (window.MajorTom lives at the outer IIFE
+        // level), so referencing it threw ReferenceError and paste no-op'd.
+        ws.send(new TextEncoder().encode(text));
       }
     },
 

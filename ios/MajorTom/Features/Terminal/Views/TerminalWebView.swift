@@ -346,6 +346,15 @@ struct TerminalWebView: UIViewRepresentable {
             guard recognizer.state == .began else { return }
             guard let interaction = editMenuInteraction else { return }
             let location = recognizer.location(in: recognizer.view)
+            // Tactile confirmation that the long-press crossed the threshold and
+            // the Paste menu is appearing. `.medium` matches the app's menu/mode
+            // feedback; the lighter tap-confirmation haptic fires on Paste itself.
+            // Gated on the same `hasStrings` check the menu delegate uses — with
+            // an empty pasteboard it returns an empty menu (nothing renders), so
+            // an unconditional buzz would promise UI that never shows.
+            if UIPasteboard.general.hasStrings {
+                HapticService.impact(.medium)
+            }
             let configuration = UIEditMenuConfiguration(identifier: nil, sourcePoint: location)
             interaction.presentEditMenu(with: configuration)
         }
