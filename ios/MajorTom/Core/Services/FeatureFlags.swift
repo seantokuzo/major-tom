@@ -12,10 +12,3 @@ import Foundation
 enum FeatureFlags {
     // No active flags.
 }
-
-// TEMPORARY — deliberate compile error to prove the CI iOS gate can go RED.
-// This commit is reverted immediately after the red run is observed.
-// See PR #202.
-enum RedPathProof {
-    static let deliberatelyBroken: Int = "this is not an Int"
-}
