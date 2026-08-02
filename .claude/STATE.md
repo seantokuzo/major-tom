@@ -82,7 +82,7 @@ on-device.
 - **LAN / discovery** — #193 advertiser slot starvation · #194 split timing
   invariant · #195 misplaced helpers · #196 LAN proof survives a foreground
   network change · #198 no non-mDNS LAN pairing fallback
-- **Infra gaps** — **#197 no iOS job in CI** · **#199 missing App Group
+- **Infra gaps** — #206 no branch protection · **#199 missing App Group
   entitlement (widget/watch/Shortcuts data bridge silently dead)** · #200
   `registerForRemoteNotifications` with no `aps-environment`
 
@@ -97,7 +97,7 @@ on-device.
   `release.yml`) still runs and still gates merge.
 - **The main agent is an orchestrator.** Research, planning, specs,
   implementation, review, and shipping all go to subagents.
-- **iOS has no CI** (#197) — a local `xcodebuild` is the only gate for `ios/`.
+- **iOS CI exists** (PR #202, closed #197) — `Build (iOS)` builds app + widgets + watch on any PR touching `ios/**`, path-gated, ~2 min. It is **advisory**: `main` has no branch protection (#206), so nothing blocks a merge over red.
   Never assert a build you didn't watch complete in the tree under review.
 - **Never touch the user's real `~/.claude/`** — Major Tom uses
   `$HOME/.major-tom/claude-config/` via `CLAUDE_CONFIG_DIR`.

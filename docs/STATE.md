@@ -11,7 +11,7 @@
 
 **PR #191 (`2054a50`) — LAN preference actually engages (#183).** Root cause was Bonjour resolve timing. Ships browser pre-warm at `.onAppear`, a discovery grace anchored at browser start (2s nominal, 250ms floor, 4s ceiling), a per-resolver watchdog, `.failed` cancel + teardown, handler identity guards, and `os_log` instrumentation. Review found worse than a timing bug: on `main` the verified-LAN cache was keyed on a forgeable address string with no invalidation, and this PR is what promoted that dead branch to the hot path. The cache is now bound to `(address, pinnedKey, browserGeneration)` behind a single gate, `.background` invalidation is paired with an `.active` re-resolve, and `resolvePreferringLAN` is single-flight with fail-closed cancellation. **Behavior change Sean explicitly approved:** the Bonjour branch is gone from `PairingViewModel.currentRelayURL`, so first-time pairing now requires the tunnel or Tailscale — an attacker on the LAN could otherwise have served their own OAuth client-id, taken the Google ID token, and had their relay key pinned. Post-pairing LAN preference is unaffected. Plain-Wi-Fi pairing against a `start.sh --local` relay stays broken until #198.
 
-**Neither PR has run on a physical device.** iOS has no CI job (#197), so a local `xcodebuild` is the only gate that exists for `ios/`.
+**Both PRs are installed on Sean's iPhone (2.0.0, built 2026-08-01) but not yet exercised.** iOS CI landed the same day (#197 closed, PR #202): `Build (iOS)` compiles the app, widgets, and watch target on every PR touching `ios/`, and the red path was proven with a deliberate compile error. Note the gate is **advisory** — `main` has no branch protection (#206).
 
 **Process — review is local now (commit `0ce0308`).** The Claude Code GitHub App is uninstalled permanently: no `@claude`, no auto-review on PR open, no verdict stickies, no bot inline comments. The orchestrating agent runs review itself by spawning read-only specialist subagents chosen from what the diff touches; `CLAUDE.md` "Local Code Review" is the brief. CI (`ci.yml`, `release.yml`) still runs on GitHub and still gates merge. The main agent is now an orchestrator — research, planning, spec writing, implementation, review, and shipping all go to subagents.
 
@@ -35,7 +35,7 @@
 |------|--------|
 | Terminal | #186 `setCopyMode` row math · #187 `onSelectionChange` clipboard stomping · #188 scrollback unreachable by touch · #189 >64 KiB paste silently lost · #190 `evaluateJavaScript` errors discarded · #192 keybar paste consent prompt |
 | LAN / discovery | #193 advertiser slot starvation · #194 split timing invariant · #195 misplaced helpers · #196 LAN proof survives a foreground network change · #198 no non-mDNS LAN pairing fallback |
-| Infra gaps | **#197 no iOS job in CI** · **#199 missing App Group entitlement — widget/watch/Shortcuts data bridge silently dead** · #200 `registerForRemoteNotifications` with no `aps-environment` |
+| Infra gaps | **#199 missing App Group entitlement — widget/watch/Shortcuts data bridge silently dead** · #200 `registerForRemoteNotifications` with no `aps-environment` · #206 no branch protection on `main` (CI gate is advisory) · #201 `.agents/` gitignored but CLAUDE.md points at it · #203 Actions SHA-pinning policy · #204 Tailscale IP in committed docs · #205 fork-skip that doesn't skip forks |
 
 ---
 
