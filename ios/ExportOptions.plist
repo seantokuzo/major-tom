@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Export options for producing a TestFlight/App Store IPA from a Release
+	  archive. Usage:
+
+	    xcodebuild archive \
+	      -project ios/MajorTom.xcodeproj -scheme MajorTom \
+	      -configuration Release -destination 'generic/platform=iOS' \
+	      -archivePath .build/MajorTom.xcarchive \
+	      -derivedDataPath .build/dd-testflight \
+	      -allowProvisioningUpdates
+
+	    xcodebuild -exportArchive \
+	      -archivePath .build/MajorTom.xcarchive \
+	      -exportOptionsPlist ios/ExportOptions.plist \
+	      -exportPath .build/export \
+	      -allowProvisioningUpdates
+
+	  NOTE: the login keychain must be unlocked before either command when
+	  running over SSH/tmux, or codesign fails with errSecInternalComponent:
+	    security unlock-keychain -p "" ~/Library/Keychains/login.keychain-db
+	-->
+
+	<!-- Xcode 15.3+ spelling of the old "app-store" method. -->
+	<key>method</key>
+	<string>app-store-connect</string>
+
+	<key>teamID</key>
+	<string>4B8499Z59P</string>
+
+	<!-- Automatic signing mints/refreshes the Apple Distribution certificate and
+	     the App Store provisioning profiles for com.majortom.app and
+	     com.majortom.app.widgets. Requires -allowProvisioningUpdates. -->
+	<key>signingStyle</key>
+	<string>automatic</string>
+
+	<!-- Ship dSYMs so TestFlight crash reports symbolicate. -->
+	<key>uploadSymbols</key>
+	<true/>
+
+	<!-- Reduce binary size; Swift symbols still resolve via the uploaded dSYMs. -->
+	<key>stripSwiftSymbols</key>
+	<true/>
+
+	<!-- Keep CFBundleVersion exactly as the project declares it. Letting Xcode
+	     manage it would silently rewrite the build number at export time and
+	     break the YYYYMMDDNN scheme that makes uploads reproducible. -->
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+</dict>
+</plist>
