@@ -2,6 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Export compliance. The only cryptography in this app is (a) TLS via
+	     URLSession/URLSessionWebSocketTask, and (b) CryptoKit SHA256 + Ed25519
+	     signature verification (relay identity check, OAuth PKCE challenge) —
+	     both are standard algorithms accessed through Apple's operating system,
+	     and the Ed25519 use is authentication-only. Nothing proprietary and no
+	     bundled crypto library, so this qualifies as exempt and NO is the
+	     accurate value. Declaring it here is what keeps uploaded builds out of
+	     the "Missing Compliance" state that blocks TestFlight distribution
+	     until someone answers the questionnaire in App Store Connect.
+	     https://developer.apple.com/documentation/security/complying-with-encryption-export-regulations -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

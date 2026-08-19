@@ -551,6 +551,134 @@ it permanent:
 
 ---
 
+## 10. TestFlight release
+
+Everything in this section is implemented and verified on `ci/testflight-prep`. It is the
+repeatable path from a clean tree to a validated App Store IPA.
+
+### 10.1 Build numbering — `YYYYMMDDNN`
+
+`CURRENT_PROJECT_VERSION` lives on the **project-level** Debug and Release configurations,
+so all three targets (app, widgets, watch) inherit one value and can never disagree.
+`MARKETING_VERSION` stays `2.0.0`.
+
+App Store Connect requires the build number to be unique and strictly increasing for a
+given marketing version. The scheme is a flat integer: four-digit year, two-digit month,
+two-digit day, two-digit same-day sequence.
+
+| Upload | Value |
+|---|---|
+| first of 2026-08-19 | `2026081901` |
+| second the same day | `2026081902` |
+| next day | `2026082001` |
+
+Monotonic by construction, needs no shared state or CI counter, and stays inside the
+`CFBundleVersion` per-component ceiling of 2³². Bump it in **`ios/MajorTom.xcodeproj/project.pbxproj`**
+(two occurrences — Debug and Release) and in `ios/project.yml` to keep the XcodeGen spec honest.
+A one-off override without editing the tree: append `CURRENT_PROJECT_VERSION=2026082001` to
+the `xcodebuild archive` command.
+
+`ios/ExportOptions.plist` sets `manageAppVersionAndBuildNumber = false` on purpose — left at
+its default, Xcode rewrites the build number during export and the on-disk value becomes a lie.
+
+### 10.2 Privacy manifests
+
+Three `PrivacyInfo.xcprivacy` files, one per bundle, because a manifest is scoped to the
+bundle containing the executable — an `.appex` and a watch app do **not** inherit the host
+app's ([Describing use of required reason API](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api)).
+
+| Bundle | File | Declares |
+|---|---|---|
+| `Major Tom.app` | `ios/MajorTom/PrivacyInfo.xcprivacy` | UserDefaults `CA92.1` + `1C8F.1`, SystemBootTime `35F9.1` |
+| `MajorTomWidgets.appex` | `ios/MajorTomWidgets/PrivacyInfo.xcprivacy` | UserDefaults `1C8F.1` |
+| `MajorTomWatch.app` | `ios/MajorTomWatch/PrivacyInfo.xcprivacy` | UserDefaults `1C8F.1` |
+
+Audited across the whole iOS tree; the other three required-reason categories have **no**
+call sites and are deliberately not declared — over-declaring is its own policy violation:
+
+- **FileTimestamp** — no `FileManager`, no `stat`/`getattrlist`, no `creationDate`/`modificationDate`/`resourceValues`
+- **DiskSpace** — no `statfs`/`volumeAvailableCapacity*`
+- **ActiveKeyboards** — no `UITextInputMode.activeInputModes`
+
+`NSPrivacyCollectedDataTypes` is an empty array. There is no developer-operated backend:
+traffic goes to the user's own relay and to Google as the user's own identity provider, and
+no analytics/attribution SDK is linked. `NSPrivacyTracking` is `false`.
+
+Each file is wired into its target's **Copy Bundle Resources** phase (the widget and watch
+targets had no resources phase at all and got one).
+
+### 10.3 Export compliance
+
+`ITSAppUsesNonExemptEncryption = false` in `ios/MajorTom/Info.plist`. The app's only
+cryptography is TLS via `URLSession`/`URLSessionWebSocketTask` and CryptoKit SHA-256 +
+Ed25519 verification (`RelayIdentityVerifier`, OAuth PKCE) — standard algorithms reached
+through the OS, with the Ed25519 use being authentication-only. No bundled crypto library,
+nothing proprietary. Without this key every upload lands in **Missing Compliance** and
+testers cannot install until someone answers the questionnaire in App Store Connect.
+
+### 10.4 Archive and export
+
+```bash
+# tmux/SSH is a non-GUI security session: codesign fails with
+# errSecInternalComponent (presented as a signing failure, never a prompt)
+# unless the login keychain is unlocked first.
+security unlock-keychain -p "" ~/Library/Keychains/login.keychain-db
+
+xcodebuild archive \
+  -project ios/MajorTom.xcodeproj -scheme MajorTom \
+  -configuration Release -destination 'generic/platform=iOS' \
+  -archivePath .build/MajorTom.xcarchive \
+  -derivedDataPath .build/dd-testflight \
+  -allowProvisioningUpdates
+
+xcodebuild -exportArchive \
+  -archivePath .build/MajorTom.xcarchive \
+  -exportOptionsPlist ios/ExportOptions.plist \
+  -exportPath .build/export \
+  -allowProvisioningUpdates
+```
+
+`xcodebuild archive` signs with **Apple Development** — that is expected. `-exportArchive`
+re-signs with the cloud-managed **Apple Distribution** certificate and the App Store
+provisioning profiles, which automatic signing mints on demand given `-allowProvisioningUpdates`.
+Confirm in `.build/export/DistributionSummary.plist`: `certificate.type` must read
+`Cloud Managed Apple Distribution`, entitlements must show `get-task-allow = false` and
+`beta-reports-active = true`.
+
+### 10.5 Uploading — needs an App Store Connect API key
+
+`altool`/`notarytool` cannot authenticate without one. The `.p8` must be readable at one of:
+`./private_keys`, `~/private_keys`, `~/.private_keys`, `~/.appstoreconnect/private_keys`.
+
+```bash
+xcrun altool --validate-app -f ".build/export/Major Tom.ipa" -t ios \
+  --apiKey <KEY_ID> --apiIssuer <ISSUER_ID>
+
+xcrun altool --upload-app -f ".build/export/Major Tom.ipa" -t ios \
+  --apiKey <KEY_ID> --apiIssuer <ISSUER_ID>
+```
+
+Create the key at App Store Connect → Users and Access → Integrations → App Store Connect
+API → Team Keys, role **App Manager**. The `.p8` downloads **once**.
+
+### 10.6 Known gaps that do NOT block an upload
+
+- **#199 — app target has no `CODE_SIGN_ENTITLEMENTS`.** Verified against the exported IPA:
+  the app's entitlements are `application-identifier`, `team-identifier`, `get-task-allow`
+  only — no App Group. The widget extension does carry `group.com.majortom.shared` and signs
+  fine, because App Store Connect validates each binary's entitlements against *its own*
+  App ID, not against its sibling's. So the upload succeeds and the widget / watch /
+  Shortcuts data bridge stays silently dead until #199 lands.
+- **#200 — `registerForRemoteNotifications()` with no `aps-environment`.** Not a signing or
+  validation input. At worst Apple emails the ITMS-90078 "Missing Push Notification
+  Entitlement" warning after processing; the build still reaches testers.
+- **Watch app is not in the archive.** `MajorTomWatch` is neither a dependency of `MajorTom`
+  nor in any embed phase, so `-scheme MajorTom` never builds it and the IPA contains only
+  the app plus `MajorTomWidgets.appex`. Its (absent) icon set therefore cannot fail
+  validation. Its privacy manifest is in place for whenever it does start shipping.
+
+---
+
 ## Sources
 
 - [Choosing a Membership](https://developer.apple.com/support/compare-memberships/) — free vs paid, 10 App IDs / 3 devices / 7-day expiry
@@ -562,3 +690,8 @@ it permanent:
 - [Configuring app groups](https://developer.apple.com/documentation/xcode/configuring-app-groups) — Xcode auto-registers `group.` containers
 - [Supported capabilities (iOS)](https://developer.apple.com/help/account/reference/supported-capabilities-ios) — App groups / Push notifications availability by membership
 - [Team ID glossary](https://developer.apple.com/help/glossary/team-id) — "unique 10-character string generated by Apple"
+- [Describing use of required reason API](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api) — the five categories, their APIs, and every valid reason code; per-bundle manifest rule; the May 1 2024 enforcement date
+- [TN3183: Adding required reason API entries to your privacy manifest](https://developer.apple.com/documentation/technotes/tn3183-adding-required-reason-api-entries-to-your-privacy-manifest) — key structure, and the authoritative list of the five `NSPrivacyAccessedAPICategory*` values
+- [Privacy manifest files](https://developer.apple.com/documentation/bundleresources/privacy-manifest-files) — the four top-level keys; manifest must be in the target's resources
+- [Complying with Encryption Export Regulations](https://developer.apple.com/documentation/security/complying-with-encryption-export-regulations) — `ITSAppUsesNonExemptEncryption`; OS-provided encryption (e.g. HTTPS via URLSession) is exempt
+- [Provide export compliance information for beta builds](https://developer.apple.com/help/app-store-connect/test-a-beta-version/provide-export-compliance-information-for-beta-builds/) — the "Missing Compliance" state, and that the Info.plist key removes the per-submission questionnaire

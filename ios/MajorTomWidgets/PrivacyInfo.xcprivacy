@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Privacy manifest for the MajorTomWidgets app extension.
+
+	  The .appex is a separate bundle with its own executable, so it needs its own
+	  manifest — it does not inherit the containing app's. Apple: "For each
+	  executable or dynamic library in an app that uses a required reason API, the
+	  bundle that includes the executable or dynamic library needs to include a
+	  privacy manifest file that reports the API."
+	  https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api
+
+	  This target compiles MajorTomWidgets/** plus
+	  MajorTom/Features/LiveActivity/MajorTomActivity.swift. Of the five
+	  required-reason categories, only UserDefaults is reached: FileTimestamp,
+	  DiskSpace, ActiveKeyboards and SystemBootTime have no call sites here.
+	-->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!--
+			  WidgetDataService reads the widget snapshot exclusively from
+			  UserDefaults(suiteName: "group.com.majortom.shared"). It never touches
+			  UserDefaults.standard, so CA92.1 is deliberately NOT declared.
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>1C8F.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -11,7 +11,11 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "2.0.0"
-    CURRENT_PROJECT_VERSION: 1
+    # Build number scheme: YYYYMMDDNN (date + 2-digit same-day sequence).
+    # Monotonic by construction, needs no shared state, and App Store Connect
+    # requires a unique, increasing build per upload of a given MARKETING_VERSION.
+    # Bump the NN on a second upload the same day. See docs/APPLE-SIGNING-SETUP.md.
+    CURRENT_PROJECT_VERSION: 2026081901
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
 
