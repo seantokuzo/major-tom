@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Privacy manifest for the MajorTomWatch watchOS app.
+
+	  The watch app is its own bundle with its own executable, so it carries its
+	  own manifest. Required-reason API declarations apply on watchOS as well as
+	  iOS.
+	  https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api
+
+	  Note: this target is not currently embedded in the iOS app, so it is absent
+	  from the App Store archive. The manifest is here so it is already correct
+	  whenever the watch app does start shipping.
+
+	  Of the five required-reason categories, only UserDefaults is reached.
+	-->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!--
+			  ComplicationProvider reads complication state from
+			  UserDefaults(suiteName: "group.com.majortom.shared"). No use of
+			  UserDefaults.standard anywhere in this target, so CA92.1 is
+			  deliberately NOT declared.
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>1C8F.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

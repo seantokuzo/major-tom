@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Privacy manifest for the Major Tom iOS app target.
+
+	  Only the required-reason API categories this target's code ACTUALLY calls
+	  are declared. Apple rejects uploads that under-declare (ITMS-91053), and
+	  over-declaring is a policy violation in its own right: "You may use these
+	  APIs and the data derived from their use for the declared reasons only."
+	  https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api
+
+	  Audited categories and the result for this target:
+	    FileTimestamp    - not used (no FileManager, no stat/getattrlist, no
+	                       creationDate/modificationDate/resourceValues calls)
+	    DiskSpace        - not used (no statfs/volumeAvailableCapacity*)
+	    ActiveKeyboards  - not used (no UITextInputMode.activeInputModes)
+	    SystemBootTime   - USED, declared below
+	    UserDefaults     - USED, declared below
+	-->
+
+	<!-- No tracking as defined by App Tracking Transparency. The app talks only
+	     to the user's own relay and to Google as the user's own identity
+	     provider; there are no ad/attribution/analytics SDKs linked. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!-- Nothing is collected. Session transcripts, terminal I/O and the signed-in
+	     Google account email travel only between this device and the relay the
+	     user runs on their own machine; the developer has no server and no
+	     access to any of it. -->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!--
+			  UserDefaults.standard: TabTitleStore, FeatureFlags, PerfHUDPreferences,
+			  LiveActivityManager, CrewRoster, TerminalViewModel, KeybarViewModel,
+			  SessionStorageService. All app-private preference state (CA92.1).
+
+			  UserDefaults(suiteName: "group.com.majortom.shared"):
+			  WidgetDataProvider, MajorTomShortcuts, PhoneWatchConnectivityService.
+			  Read/written only by this app, its widget extension and its watch app,
+			  all members of the same App Group (1C8F.1).
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+				<string>1C8F.1</string>
+			</array>
+		</dict>
+		<dict>
+			<!--
+			  ProcessInfo.processInfo.systemUptime in GridMovementEngine, and
+			  CACurrentMediaTime() in OfficeScene, are both used purely to measure
+			  elapsed time between in-app events (sprite movement stepping, tap vs.
+			  long-press discrimination). Neither the boot time nor anything derived
+			  from it leaves the device (35F9.1).
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>35F9.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
