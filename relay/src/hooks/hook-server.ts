@@ -759,6 +759,25 @@ export function createHookServer(
     }
   });
 
+  // `listen` reports bind failures ASYNCHRONOUSLY via the 'error' event, and an
+  // EventEmitter that emits 'error' with no listener rethrows — which would kill
+  // the whole relay. The caller's try/catch around createHookServer() cannot
+  // catch it, because `listen` has already returned by then. Concretely: a stale
+  // relay still holding HOOK_PORT makes the new one die on EADDRINUSE instead of
+  // reporting it. Approvals need this server, so the failure is serious — but a
+  // logged error the operator can act on beats an unhandled crash.
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.error(
+        { err, port },
+        'Hook HTTP server port already in use — another relay is likely running. ' +
+          'Permission approvals will NOT work until the conflict is resolved (set HOOK_PORT or stop the other relay).',
+      );
+      return;
+    }
+    logger.error({ err, port }, 'Hook HTTP server error — permission approvals may be unavailable');
+  });
+
   // Loopback only — these endpoints are trusted by Claude Code's hook
   // scripts running inside each PTY, no authentication. NEVER bind to
   // 0.0.0.0 or expose this port through Cloudflare.
